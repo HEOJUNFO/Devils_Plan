@@ -22,6 +22,7 @@ import {
   DIRECTORY_NAME,
   DIRECTORY_PARTY,
   PARTY_NAME,
+  PING,
   parseDirectoryMessage,
   parseServerMessage,
   type ClientMessage,
@@ -198,6 +199,10 @@ let leaveArmed: ReturnType<typeof setTimeout> | null = null;
 let online = false;
 /** What the waiting room says under the scene about starting, or about what was just refused. */
 let hint = "";
+/** When the room last sent this page anything, in ms since the epoch. */
+let heardAt = Date.now();
+/** Whether the game on show is still being played. */
+let gameOn = false;
 /** During a game: whether the right-hand column shows the chat rather than the moves. */
 let chatOpen = false;
 /** Lines others said during a game while the chat was not on show. */
@@ -610,6 +615,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
   current.addEventListener("message", (event) => {
     const message = parseServerMessage(event.data);
     if (message === null || socket !== current) return;
+    heardAt = Date.now();
     if (message.type === "lobby") {
       // The room is made: from here on a reconnect only comes back to it. A
       // second "make" would be refused as a stranger's once the room has let
@@ -624,6 +630,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // end: someone arriving after it, or who has put its results away, is
       // in the waiting room.
       const over = message.view.phase === "ended";
+      gameOn = !over;
       if (over && (table === null || dismissedGame === message.startedAt)) return;
       shownGame = message.startedAt;
       showTable().update(message);
@@ -872,6 +879,29 @@ function followAddress(): void {
 // An invitation opened in a tab that already shows this page changes only the
 // part after `#`, which loads nothing.
 addEventListener("hashchange", followAddress);
+
+// Tells the room this page is still there. The room is not woken by it: the
+// platform answers, and keeps the time, which is how the room later tells a
+// connection that has gone silent from one that is only quiet.
+setInterval(() => {
+  if (socket !== null && online) socket.send(PING);
+}, config.pingSeconds * 1000);
+
+// A table waiting on a player whose page went without a word (a laptop
+// closed, a network gone) wakes nobody, so the room would never notice. A
+// page that has heard nothing for a while during a game asks the room to
+// look. The room answers everyone, so one page asking is enough: the pages
+// wait a little longer the higher their slot, and the first to ask resets
+// the rest.
+const POKE_CHECK_MS = 5000;
+const POKE_STAGGER_MS = 3000;
+setInterval(() => {
+  if (socket === null || !online || table === null || !gameOn) return;
+  const wait = config.pokeSeconds * 1000 + (currentView?.you ?? 0) * POKE_STAGGER_MS;
+  if (Date.now() - heardAt < wait) return;
+  heardAt = Date.now();
+  send({ type: "poke" });
+}, POKE_CHECK_MS);
 
 // A page the browser has moved away from may be kept, frozen, in case the
 // player comes back to it: its connections would stay open and the room would

@@ -44,6 +44,17 @@ export type RejectReason =
 export const CLOSE_REJECTED = 4000;
 /** WebSocket close code the server uses when a player leaves on purpose. */
 export const CLOSE_LEFT = 4001;
+/** WebSocket close code the server uses for a connection that stopped answering. */
+export const CLOSE_STALE = 4002;
+
+/**
+ * What a page sends its room every `pingSeconds`, and what comes back. Plain
+ * text, not a message of the protocol: the platform answers it for the room
+ * without waking it, and remembers when, which is how the room later tells a
+ * connection that is still there from one that only looks open.
+ */
+export const PING = "ping";
+export const PONG = "pong";
 
 /**
  * Longest client message the server reads, in characters. Longer ones are
@@ -126,7 +137,13 @@ export type ClientMessage =
   /** Come into the room's voice chat or go out of it, and say whether the microphone is off. */
   | { type: "voice"; on: boolean; muted: boolean }
   /** A signal for the player in slot `to`, who is also in voice: see {@link RtcSignal}. */
-  | { type: "rtc"; to: number; signal: RtcSignal };
+  | { type: "rtc"; to: number; signal: RtcSignal }
+  /**
+   * Sent by a page that has heard nothing from the room for a while during a
+   * game: asks the room to end connections that have stopped answering, so a
+   * table is not left waiting on someone who is gone.
+   */
+  | { type: "poke" };
 
 function parseObject(raw: unknown, maxLength: number): Record<string, unknown> | null {
   if (typeof raw !== "string" || raw.length > maxLength) return null;
@@ -145,6 +162,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   const data = parseObject(raw, MAX_CLIENT_MESSAGE_LENGTH);
   if (data === null) return null;
   if (data.type === "leave") return { type: "leave" };
+  if (data.type === "poke") return { type: "poke" };
   if (data.type === "join") {
     if (typeof data.token !== "string" || typeof data.nick !== "string") return null;
     return {

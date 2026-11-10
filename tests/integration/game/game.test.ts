@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import rulesConfig from "../../../src/shared/game/rules-config.json";
 import { DEFAULT_GAME } from "../../../src/shared/games";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
-import { PARTY_NAME, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
+import { PARTY_NAME, PING, PONG, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
 
 type GameMessage = Extract<ServerMessage, { type: "game" }>;
@@ -15,6 +15,12 @@ const SMALLEST = Math.min(...Object.keys(tableSizes).map(Number));
 const LARGEST = Math.max(...Object.keys(tableSizes).map(Number));
 const AWAY_MS = roomConfig.awayTurnSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
+const STALE_MS = roomConfig.staleConnectionSeconds * 1000;
+
+/** The room's record of when each connection last pinged, which a test can stand in for. */
+interface PingRecord {
+  lastPingAt(connection: { state: unknown }): number | null;
+}
 
 /** A well-formed token that is different for each `n`. */
 function tokenFor(n: number): string {
@@ -28,13 +34,33 @@ class TestClient {
   /** Everything the room has sent this connection, as text. */
   readonly raw: string[] = [];
 
+  private pongs = 0;
+  private pongWaiting: (() => void) | null = null;
+
   constructor(private readonly ws: WebSocket) {
     ws.addEventListener("message", (event) => {
+      if (event.data === PONG) {
+        this.pongs++;
+        this.pongWaiting?.();
+        return;
+      }
       this.raw.push(event.data as string);
       this.unread.push(JSON.parse(event.data as string) as ServerMessage);
       this.waiting?.();
     });
     ws.accept();
+  }
+
+  /** Pings the room as a page does, and waits for the answer. */
+  async ping(): Promise<void> {
+    const before = this.pongs;
+    this.ws.send(PING);
+    while (this.pongs === before) {
+      await new Promise<void>((resolve) => {
+        this.pongWaiting = resolve;
+      });
+      this.pongWaiting = null;
+    }
   }
 
   /** The next message not yet read. */
@@ -459,6 +485,46 @@ describe("GameRoom: playing a game", () => {
 
     const after = await clients[acting].gameWhere((game) => game.view.history.length === 1);
     expect(after.rules.turnSeconds).toBe(short);
+    closeAll(clients);
+  });
+
+  it("starts the clock of a player who went silent on their turn, once another page pokes the room", async () => {
+    const stub = env.GameRoom.getByName("GAAAY");
+    const clients = await table("GAAAY", SMALLEST);
+    const games = await startGame(clients);
+    const acting = mover(games);
+    const watcher = clients[(acting + 1) % SMALLEST];
+    // every page has been pinging; the one whose turn it is stopped a while ago (client n holds slot n)
+    const pings: Record<number, number> = {};
+    for (let n = 0; n < SMALLEST; n++) pings[n] = n === acting ? Date.now() - STALE_MS - 1 : Date.now() + AWAY_MS * 2;
+    await runInDurableObject(stub, (room) => {
+      (room as unknown as PingRecord).lastPingAt = (connection) => {
+        const state = connection.state as { kind?: string; slot?: number } | null;
+        return state?.kind === "player" && state.slot !== undefined ? (pings[state.slot] ?? null) : null;
+      };
+    });
+
+    watcher.send({ type: "poke" });
+
+    const waiting = await watcher.gameWhere((game) => !game.players[games[acting].view.seat!].connected);
+    expect(waiting.turnEndsIn).toBeGreaterThan(0);
+    expect(waiting.turnEndsIn).toBeLessThanOrEqual(AWAY_MS);
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_MS + 1);
+    await runDurableObjectAlarm(stub);
+    const after = await watcher.gameWhere((game) => game.view.history.length === 1);
+    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, forced: true });
+    closeAll(clients.filter((_, n) => n !== acting));
+  });
+
+  it("sends everyone the game again when the room is poked, so the others need not ask", async () => {
+    const clients = await table("GAAAZ", SMALLEST);
+    await startGame(clients);
+
+    clients[0].send({ type: "poke" });
+
+    const again = await Promise.all(clients.map((client) => client.gameWhere()));
+    for (const game of again) expect(game.view.history).toHaveLength(0);
     closeAll(clients);
   });
 

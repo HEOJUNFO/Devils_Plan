@@ -32,6 +32,24 @@ export interface RoomConfig {
    */
   awaySlotSeconds: number;
   /**
+   * Seconds between the pings by which a page tells its room it is still
+   * there. The room answers them without waking (`PING`, `PONG`).
+   */
+  pingSeconds: number;
+  /**
+   * Seconds without a ping after which a connection that has been pinging is
+   * taken for dead and ended: a laptop that went to sleep or a network that
+   * dropped says nothing when it goes. Long enough for a tab in the
+   * background, whose timers the browser slows to one a minute.
+   */
+  staleConnectionSeconds: number;
+  /**
+   * Seconds a page waits, hearing nothing from the room during a game, before
+   * it asks the room to look for dead connections (`poke`). The room cannot
+   * do this unasked: nothing wakes it while everyone is silent.
+   */
+  pokeSeconds: number;
+  /**
    * The lengths of turn a host may choose from, in seconds; 0 is no limit,
    * which is how the game is documented. A limit is a matter of hosting, not
    * of the rules: among strangers, one player who walks away from the screen

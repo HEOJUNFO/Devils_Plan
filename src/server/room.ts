@@ -26,7 +26,10 @@ import {
 import {
   CLOSE_LEFT,
   CLOSE_REJECTED,
+  CLOSE_STALE,
   DIRECTORY_NAME,
+  PING,
+  PONG,
   parseClientMessage,
   type ChatRefusal,
   type ClientMessage,
@@ -71,7 +74,9 @@ type ConnectionState =
   /** Open, but has not sent `join` yet. `since` is when it connected. */
   | { kind: "pending"; since: number }
   /** Seated in the lobby. `voice` is there while this connection is in the room's voice chat. */
-  | { kind: "player"; slot: number; voice?: { muted: boolean } };
+  | { kind: "player"; slot: number; voice?: { muted: boolean } }
+  /** Ended by the room for having stopped answering; the socket may linger until the platform lets go of it. */
+  | { kind: "gone" };
 
 /**
  * The room's named timers. They share the object's one alarm through
@@ -89,6 +94,9 @@ const LOBBY_KEY = "lobby";
 const GAME_KEY = "game";
 /** Whether the directory has this room on its list, as far as the room knows. */
 const LISTED_KEY = "listed";
+
+/** The least time between two pokes the room acts on, in ms: asking twice in a row finds nothing new. */
+const POKE_GAP_MS = 10_000;
 
 /** Whether a game is being played: one that has started and not ended. */
 function running(session: Session | null): boolean {
@@ -147,6 +155,9 @@ export class GameRoom extends Server<Env> {
    */
   private readonly chatPace = new Map<number, ChatPace>();
 
+  /** When the room last acted on a poke, in ms since the epoch. */
+  private pokedAt = 0;
+
   /** Whether something holds the slot of `token` while they are away: a seat in a game being played. */
   private readonly keepsSlot = (token: string): boolean =>
     running(this.session) && (this.session?.tokens.includes(token) ?? false);
@@ -189,6 +200,8 @@ export class GameRoom extends Server<Env> {
       "CREATE TABLE IF NOT EXISTS room_state (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
     );
     this.timers = new Timers<TimerKind>(this.ctx.storage);
+    // Pings are answered for the room while it sleeps, and the time of each is kept (see `sweep`).
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
     this.lobby = this.load<LobbyState>(LOBBY_KEY);
     this.session = this.load<Session>(GAME_KEY);
   }
@@ -207,6 +220,8 @@ export class GameRoom extends Server<Env> {
   async onMessage(connection: Connection<ConnectionState>, message: WSMessage): Promise<void> {
     const parsed = parseClientMessage(message);
     if (parsed === null) return;
+    // Whatever was asked is answered as things really stand: without those who have gone silent.
+    await this.sweep(Date.now());
     const state = connection.state;
     if (parsed.type === "join") {
       // A second `join` on a seated connection is ignored.
@@ -222,6 +237,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "clock") this.handleClock(connection, state.slot, parsed.seconds);
     else if (parsed.type === "voice") this.handleVoice(connection, state.slot, parsed.on, parsed.muted);
     else if (parsed.type === "rtc") this.handleRtc(connection, state.slot, parsed.to, parsed.signal);
+    else if (parsed.type === "poke") this.handlePoke();
   }
 
   /**
@@ -230,14 +246,20 @@ export class GameRoom extends Server<Env> {
    * connected, the one after which the room is cleared.
    */
   async onClose(connection: Connection<ConnectionState>): Promise<void> {
+    if (connection.state?.kind !== "player") return;
+    await this.dropped(connection.id, connection.state.voice !== undefined);
+  }
+
+  /** The connection `id` of a player has ended, by closing or by going silent: see {@link onClose}. */
+  private async dropped(id: string, hadVoice: boolean): Promise<void> {
     const lobby = this.lobby;
-    if (lobby === null || connection.state?.kind !== "player") return;
-    const gone = new Set([connection.id]);
+    if (lobby === null) return;
+    const gone = new Set([id]);
     const connected = this.connectedSlots(gone);
     const noted = markAway(lobby, connected, Date.now());
     if (noted !== lobby) this.saveLobby(noted);
     this.broadcastLobby(gone);
-    if (connection.state.voice !== undefined) this.broadcastVoice(gone);
+    if (hadVoice) this.broadcastVoice(gone);
     await this.presenceChanged(gone);
     await this.scheduleSlots();
     await this.report(gone);
@@ -246,8 +268,57 @@ export class GameRoom extends Server<Env> {
     }
   }
 
+  /**
+   * Ends the connections that have stopped answering: ones that used to ping
+   * and have not for `staleConnectionSeconds`. A page that goes without a
+   * word (a laptop closed, a network gone) leaves its connection looking
+   * open; the room would show that player as here and a game would wait on
+   * them for good. A connection that has never pinged is left alone: it is a
+   * page older than the ping.
+   *
+   * The room cannot do this on a schedule without staying awake, so it does
+   * it whenever something else has woken it: a message (someone coming in
+   * sends one) or a timer. A table waiting on a silent player is woken by the
+   * others' pages (`poke`).
+   */
+  private async sweep(now: number): Promise<void> {
+    const limit = now - config.staleConnectionSeconds * 1000;
+    for (const c of this.getConnections<ConnectionState>()) {
+      if (c.state?.kind !== "player") continue;
+      const last = this.lastPingAt(c);
+      if (last === null || last > limit) continue;
+      const hadVoice = c.state.voice !== undefined;
+      c.setState({ kind: "gone" });
+      c.close(CLOSE_STALE, "stale");
+      await this.dropped(c.id, hadVoice);
+    }
+  }
+
+  /**
+   * When a connection last pinged, in ms since the epoch, or `null` if it
+   * never has. The platform keeps this while the room sleeps. A method of its
+   * own so that a test can stand in for the platform's record: its clock is
+   * not one a test can move.
+   */
+  lastPingAt(connection: Connection<ConnectionState>): number | null {
+    return this.ctx.getWebSocketAutoResponseTimestamp(connection)?.getTime() ?? null;
+  }
+
+  /**
+   * A page waiting on the table asked the room to look for dead connections,
+   * which `onMessage` has just done. Everyone is sent the game again, so the
+   * other pages hear from the room and do not all ask the same in turn.
+   */
+  private handlePoke(): void {
+    const now = Date.now();
+    if (now - this.pokedAt < POKE_GAP_MS && now >= this.pokedAt) return;
+    this.pokedAt = now;
+    this.broadcastGame();
+  }
+
   /** Runs every timer that is due. A kind this version does not know is dropped. */
   async onAlarm(): Promise<void> {
+    await this.sweep(Date.now());
     await this.timers.fire(Date.now(), (kind) => this.timerHandlers[kind]?.());
   }
 

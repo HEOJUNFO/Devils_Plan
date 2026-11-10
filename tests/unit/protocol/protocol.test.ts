@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_GAME } from "../../../src/shared/games";
 import {
   MAX_CLIENT_MESSAGE_LENGTH,
+  PING,
+  PONG,
   parseClientMessage,
   parseDirectoryMessage,
   parseServerMessage,
@@ -91,6 +93,15 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "rtc", to: 1.5, signal }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "rtc", to: 1, signal: { kind: "bye" } }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "rtc", to: 1 }))).toBeNull();
+  });
+
+  it("reads a poke", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "poke", extra: 1 }))).toEqual({ type: "poke" });
+  });
+
+  it("does not take the ping for a message of the protocol", () => {
+    expect(parseClientMessage(PING)).toBeNull();
+    expect(parseServerMessage(PONG)).toBeNull();
   });
 
   it("rejects a change of listing that does not say which way", () => {
