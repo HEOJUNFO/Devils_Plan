@@ -1,0 +1,32 @@
+# Where each file in assets/ and vendor/ came from, one entry per file. The field names are the
+# provenance record's, so the entries carry over when the game grows.
+# - path: assets/hit.wav      # relative to this game's folder
+#   origin: ai                # ai | bought | cc0 | you | outsourced | template | plugin | licensed | code | unknown
+#   tool: "what made or fetched it: the generator, or the script for code"
+#   model: "the model ID, when a model made it or an AI wrote its code"
+#   source: {vendor: "who made or sold it", product: "its name", url: "where from"}   # a download
+#   licence: {id: CC0-1.0}    # a download: the SPDX id where one exists
+#   date: 2026-01-31
+#   ships: true               # false for a file only the build uses
+#   placeholder: true         # until it is replaced; leave the line out otherwise
+- path: assets/Galmuri11.woff2
+  origin: licensed
+  tool: "curl from the npm package's CDN copy, unchanged"
+  source: {vendor: "Lee Minseo (quiple)", product: "Galmuri11, from the galmuri npm package 2.40.3", url: "https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/Galmuri11.woff2"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-11
+  ships: true
+- path: assets/Galmuri11-LICENSE.txt
+  origin: licensed
+  tool: "curl from the npm package's CDN copy, unchanged; the font's licence text, which must travel with the font"
+  source: {vendor: "Lee Minseo (quiple)", product: "Galmuri licence (SIL Open Font License 1.1)", url: "https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/LICENSE.txt"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-11
+  ships: true
+- path: vendor/pixelfx.js
+  origin: licensed
+  tool: "esbuild 0.28.2 --bundle --format=iife --global-name=PIXELFX --minify, over the project's pinned copy in vendor/pixelfx (src/core, fx/projectiles/muzzle-pistol, fx/spawn/poof, fx/ui/confetti); the MIT licence and notices are the file's first comment"
+  source: {vendor: "Patch", product: "pixelfx 0.3.1, commit 044e12a45dc9cc312cec50ee606dfc98afe5adc2", url: "https://github.com/patch-gg/pixelfx"}
+  licence: {id: MIT}
+  date: 2026-11-11
+  ships: true

@@ -1,0 +1,159 @@
+# The one-shot's small check (check-run/1).
+# Written by one-shot-check.sh --record: the results are /prototype's reading of
+# evidence/self-check.tsv; never edited by hand.
+kind: check-run/1
+engine: web
+browser: "HeadlessChrome/157.0.0.0"
+time: "2026-11-11 02:53:35"
+checks:
+  - id: boots
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: shot
+    result: pass
+    evidence:
+      - "evidence/play.png"
+  - id: outlines
+    result: pass
+    evidence:
+      - "evidence/figures.png"
+  - id: brief-words
+    result: pass
+    evidence:
+      - "evidence/brief-words.tsv"
+  - id: emoji
+    result: pass
+    evidence:
+      - "evidence/self-check.tsv"
+  - id: nearest-game
+    result: pass
+    evidence:
+      - "evidence/nearest-game.txt"
+brief_checklist:
+  - id: L1
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Look: 픽셀 아트. 램프 하나가 낮게 걸린 어두운 밀실의 둥근 테이블 *(provisional)*. every figure drawn, no emoji, no plain circles."
+  - id: L2
+    result: not_run
+    mark: not assessed
+    why: "the room does fall into dark past the lamp's pool (corners of the shot); whether it reads as held-breath tension is a feel line, for the person's play"
+    evidence: "evidence/play.png"
+    item: "Mood: 숨죽인 뒷방의 긴장, 불빛 밖은 어둠 *(provisional)*"
+  - id: L3
+    result: pass
+    evidence: "index.html:31"
+    item: "Camera and scale: 테이블을 위에서 살짝 비스듬히 내려다보는 고정 화면, 원본 480×270, 정수 배율만 *(provisional)*"
+  - id: L4
+    result: pass
+    evidence: "evidence/figures.png"
+    item: "Shapes: 인물은 각진 어깨의 덩어리 실루엣, 테이블과 실린더는 둥글게 *(guessed)*"
+  - id: L5
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Values: 실린더·얼굴·내 자리 표시가 가장 밝고, 벽과 바닥은 좁은 어두운 범위 *(guessed)*"
+  - id: L6
+    result: pass
+    evidence: "evidence/play.png"
+    item: "Palette: 호박색(램프·내 차례), 진홍(실탄·위험), 청록(빈 약실·안전), 먹남색(배경), 뼈색(글자). 그림자는 푸르게, 빛은 따뜻하게 *(guessed)*"
+  - id: L7
+    result: pass
+    evidence: "evidence/figures.png"
+    item: "Detail: 얼굴·손·약실에 디테일, 배경은 큰 면으로 *(guessed)*"
+  - id: L8
+    result: pass
+    evidence: "index.html:741"
+    item: "Rules: 픽셀 밀도 하나, 1px 어두운 외곽선, 2단 음영 *(guessed)*"
+  - id: L9
+    result: pass
+    evidence: "index.html:715"
+    item: "Signature: 흔들리는 램프의 호박색 디더 광원이 차례인 사람 쪽으로 기운다 *(guessed)*"
+  - id: L10
+    result: pass
+    evidence: "index.html:152"
+    item: "References: 데블스 플랜: 데드 어게인 2일차 감옥 매치 (규칙만 그대로, 겉모습은 가져오지 않음). 룩 참고작은 없음."
+  - id: L11
+    result: pass
+    evidence: "evidence/play.png"
+    item: "View: 2D · Camera: static *(provisional)*"
+  - id: F1
+    result: pass
+    evidence: "index.html:174"
+    item: "문서 규칙 1~9 전부: 크레딧 16, 다섯 행동과 비용, 조작의 비공개 분할 제출, 자동 패스, 3명 소진 종료, 총구 방향부터 시계 방향 격발"
+  - id: F2
+    result: pass
+    evidence: "evidence/play.png"
+    item: "6자리 테이블과 6칸 실린더: 인접한 약실 쌍 고르기, 총구 회전이 눈에 보임 *(provisional)*"
+  - id: F3
+    result: pass
+    evidence: "evidence/title.png"
+    item: "봇 5명: 타이틀에서 수준 선택, 뜸 들인 뒤 행동, 가끔 실수, 이름표에 봇 표시 *(provisional)*"
+  - id: F4
+    result: pass
+    evidence: "evidence/play.png"
+    item: "정보 구분: 모두가 아는 칸, 나만 아는 칸, 모르는 칸과 내 자리 위험 표시"
+  - id: F5
+    result: pass
+    evidence: "evidence/play.png"
+    item: "행동 기록: 누가 무엇을 했는지 한 줄씩, 방금 한 행동은 내 차례까지 표시"
+  - id: F6
+    result: pass
+    evidence: "evidence/volley.png"
+    item: "종료 임박 경고(두 명 소진), 한 발씩 터지는 격발 연출, 결과 화면, R로 새 판"
+  - id: F7
+    result: pass
+    evidence: "evidence/figures.png"
+    item: "픽셀 아트 밀실과 서로 다른 실루엣의 인물 6명, 효과음과 음소거"
+  - id: S1
+    result: pass
+    evidence: "index.html:174"
+    item: "규칙은 그대로 · in the slice"
+  - id: M1
+    result: pass
+    evidence: "evidence/title.png"
+    item: "타이틀에서 봇 수준을 고르고 시작하면 자리 추첨이 돌고 여섯이 앉는다."
+  - id: M2
+    result: pass
+    evidence: "index.html:973"
+    item: "내 자리에 불이 들어오고 크레딧 16이 뜬다."
+  - id: M3
+    result: pass
+    evidence: "evidence/play.png"
+    item: "선 플레이어가 봇이면 잠깐 뜸을 들인 뒤 행동하고, 무엇을 했는지 한 줄로 남는다."
+  - id: M4
+    result: pass
+    evidence: "evidence/play.png"
+    item: "내 차례가 오면 행동 다섯 개와 비용이 보이고, 조사를 골라 인접한 두 칸을 찍으면 결과가 열린다."
+  - id: M5
+    result: pass
+    evidence: "evidence/play.png"
+    item: "약실 내용이 처음 열리는 순간 '내 자리 위험' 표시가 움직이고, 위험하면 3크레딧으로 총구를 돌려 그 약실을 옆자리로 넘길 수 있다 *(guessed)*."
+  - id: C1
+    result: not_run
+    mark: not assessed
+    why: "when the first real trouble comes depends on the play. In the seeded first game a live round faces the person's seat from the start, found on the first look; nobody timed when the first turns of the muzzle came"
+    evidence: "evidence/play.png"
+    item: "첫 고비는 2~3라운드째(약 2~4분)에 온다."
+  - id: C2
+    result: pass
+    evidence: "index.html:301"
+    item: "조사에 쓴 만큼 막판 회전·조작에 쓸 크레딧이 줄고, 봇도 공개된 정보를 보고 총구를 돌린다."
+  - id: C3
+    result: pass
+    evidence: "evidence/volley.png"
+    item: "누가 먼저 바닥나느냐에 따라 판이 갑자기 끝난다."
+  - id: C4
+    result: pass
+    evidence: "evidence/results.png"
+    item: "지면 탈락이고 R 한 번으로 새 판이다."
+  - id: C5
+    result: pass
+    evidence: "index.html:291"
+    item: "보통 수준의 봇은 사람처럼 가끔 실수하고, 수준을 올리면 남의 행동에서 정보를 읽고 종료 시점까지 계산한다 *(provisional)*."
+measures:
+  - id: step-time
+    value: 0.400
+    unit: ms
+    by: browser
+    detail: "mean 0.005 ms, slowest 0.400 ms, 462 steps"

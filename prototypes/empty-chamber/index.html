@@ -1,0 +1,1222 @@
+<!doctype html>
+<!-- PROTOTYPE - NOT FOR PRODUCTION -->
+<!-- Question: 문서 규칙 그대로에 빈칸만 채운 이 판이, 봇 다섯을 상대로도 고민할 거리가 있고 긴장되는가? -->
+<!-- Date: 2026-11-11 -->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Empty Chamber</title>
+<style>
+  @font-face { font-family: 'Galmuri11'; src: url('assets/Galmuri11.woff2') format('woff2'); font-display: block; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { font-variant-numeric: tabular-nums; }
+  canvas { display: block; margin: 0 auto; -webkit-font-smoothing: none; font-smooth: never; touch-action: none; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<script src="vendor/pixelfx.js"></script>
+<script src="config.js"></script>
+<script>
+'use strict';
+// Built on the one-shot's starter. Kept from it: the fixed step, the clock hook, window.game and
+// the play and figures scenes. The file runs in this order: the starter's parts, the rules (pure),
+// the bots (they see only what a seat may know), the table's flow, then the drawing.
+
+// ---- Built to be checked ----------------------------------------------------------------
+const params = new URLSearchParams(location.search);
+const tune = new Proxy({}, { get: (_, k) => CONFIG[k].value }); // live: tune.speed is CONFIG.speed.value
+const STEP = 1 / 60;            // simulation step in seconds; motion is per second, never per frame
+const W = 480, H = 270;         // the pixel look's native size
+const PIXEL = true;             // whole-number scale, no smoothing
+const FONT = 'Galmuri11, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif';
+const TITLE = '빈 약실';
+const CONTROLS = ['1~5: 행동 고르기', '좌우 키: 칸·개수 고르기', 'Enter 확정 · Esc 취소', '마우스 클릭도 됩니다', 'H 규칙 · F 빠르게', 'M 음소거 · R 새 판'];
+const clock = window.GAME_CLOCK || { now: () => performance.now() / 1000 }; // a check may inject one
+const CHEAP = params.get('render') === 'cheap'; // a headless shot or check asks for it; this 2D game draws the same either way
+let seed;
+function rng() { // mulberry32; every gameplay random call reads this, never Math.random
+  seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), seed | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+const events = []; // window.game.events: anything the game wants a run to see
+
+// ---- Screen ---------------------------------------------------------------------------
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+function fit() { // fills the window at any size and pixel ratio
+  const k = Math.min(innerWidth / W, innerHeight / H);
+  const s = PIXEL ? Math.max(1, Math.floor(k)) : k;
+  const r = PIXEL ? 1 : s * (devicePixelRatio || 1);
+  canvas.width = Math.round(W * r); canvas.height = Math.round(H * r);
+  canvas.style.width = Math.round(W * s) + 'px'; canvas.style.height = Math.round(H * s) + 'px';
+  canvas.style.marginTop = Math.max(0, Math.floor((innerHeight - H * s) / 2)) + 'px';
+  canvas.style.imageRendering = PIXEL ? 'pixelated' : 'auto';
+  ctx.setTransform(r, 0, 0, r, 0, 0); ctx.imageSmoothingEnabled = !PIXEL;
+}
+addEventListener('resize', fit); fit();
+
+// ---- Input: keys by position (event.code), OS key repeat ignored; clicks wait for the step ----
+const down = new Set(), hit = new Set();
+const pressed = code => hit.has(code); // true for one step after the key goes down
+const ui = { level: 0, help: false, fast: false, wins: 0, losses: 0, games: 0, mx: -1, my: -1, clicks: [] }; // what outlasts one game
+addEventListener('keydown', e => {
+  startAudio();
+  if (!e.repeat) { down.add(e.code); hit.add(e.code); }
+  if (e.code === 'Space' || e.code.startsWith('Arrow') || e.code === 'Backspace') e.preventDefault();
+});
+addEventListener('keyup', e => down.delete(e.code));
+addEventListener('blur', () => down.clear());
+function toLogical(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: (e.clientX - r.left) * W / (r.width || W), y: (e.clientY - r.top) * H / (r.height || H) };
+}
+addEventListener('pointermove', e => { const p = toLogical(e); ui.mx = p.x; ui.my = p.y; });
+addEventListener('pointerdown', e => { startAudio(); const p = toLogical(e); ui.mx = p.x; ui.my = p.y; ui.clicks.push(p); });
+const inRect = (p, x, y, w, h) => p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
+const clickIn = (x, y, w, h) => ui.clicks.some(p => inRect(p, x, y, w, h));
+const hoverIn = (x, y, w, h) => inRect({ x: ui.mx, y: ui.my }, x, y, w, h);
+
+// ---- Audio: started on first input, mute on M --------------------------------------------
+let audio = null, muted = false;
+function startAudio() {
+  if (!audio) {
+    const ac = window.GAME_AUDIO || new (window.AudioContext || window.webkitAudioContext)(); // a check may inject one
+    const out = ac.createGain(); out.gain.value = muted ? 0 : tune.volume;
+    out.connect(ac.destination); audio = { ac, out };
+  }
+  if (audio.ac.state === 'suspended') audio.ac.resume();
+}
+function setMuted(m) { muted = m; if (audio) audio.out.gain.value = m ? 0 : tune.volume; }
+addEventListener('tune', () => setMuted(muted)); // the tweak panel (an add-on), when added, moved a value: the volume follows
+function tone(freq, dur, type = 'square', vol = 0.3, at = 0, to = 0) { // to: slide the pitch there
+  if (!audio || muted) return;
+  try {
+    const t = audio.ac.currentTime + at, o = audio.ac.createOscillator(), g = audio.ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g).connect(audio.out); o.start(t); o.stop(t + dur);
+  } catch (err) { /* a sound that cannot play is left out */ }
+}
+let hiss = 12345; // the noise's own sequence, apart from the game's rng
+function noise(dur, vol = 0.5, at = 0, lowpass = 2000) {
+  if (!audio || muted) return;
+  try {
+    const ac = audio.ac, n = Math.floor(ac.sampleRate * dur), buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) { hiss = (hiss * 16807) % 2147483647; d[i] = (hiss / 1073741823.5 - 1) * Math.pow(1 - i / n, 2); }
+    const src = ac.createBufferSource(), g = ac.createGain(), f = ac.createBiquadFilter();
+    src.buffer = buf; f.type = 'lowpass'; f.frequency.value = lowpass; g.gain.value = vol;
+    src.connect(f).connect(g).connect(audio.out); src.start(ac.currentTime + at);
+  } catch (err) { /* left out */ }
+}
+const sfx = {
+  move: () => tone(520, 0.04, 'square', 0.1),
+  pick: () => tone(660, 0.06, 'square', 0.14),
+  back: () => tone(300, 0.06, 'square', 0.1),
+  deny: () => tone(150, 0.14, 'sawtooth', 0.16),
+  seat: i => tone(330 + i * 40, 0.05, 'triangle', 0.16),
+  turn: () => { tone(660, 0.07, 'triangle', 0.22); tone(990, 0.13, 'triangle', 0.2, 0.08); },
+  look: () => { tone(420, 0.05, 'square', 0.09); tone(560, 0.05, 'square', 0.09, 0.07); },
+  empty: () => tone(330, 0.2, 'triangle', 0.2, 0.25),
+  live: () => { tone(880, 0.09, 'square', 0.18, 0.25); tone(196, 0.3, 'sawtooth', 0.16, 0.33); },
+  ratchet: n => { for (let i = 0; i < n; i++) tone(1400 - i * 70, 0.03, 'square', 0.1, i * 0.07); },
+  chip: () => { tone(1250, 0.04, 'triangle', 0.18); tone(1650, 0.06, 'triangle', 0.14, 0.05); },
+  earn: () => { tone(520, 0.08, 'square', 0.16); tone(780, 0.08, 'square', 0.16, 0.09); tone(1040, 0.14, 'square', 0.16, 0.18); },
+  swap: () => { tone(300, 0.25, 'sawtooth', 0.14, 0, 900); tone(900, 0.25, 'sawtooth', 0.1, 0.05, 300); },
+  out: () => tone(110, 0.35, 'sine', 0.4),
+  beat: () => { tone(62, 0.12, 'sine', 0.5); tone(58, 0.14, 'sine', 0.4, 0.18); },
+  alarm: () => tone(220, 0.6, 'sawtooth', 0.18, 0, 110),
+  click: () => { tone(2100, 0.02, 'square', 0.22); tone(420, 0.05, 'triangle', 0.18, 0.02); },
+  bang: () => { noise(0.5, 0.9, 0, 2400); tone(140, 0.35, 'sine', 0.6, 0, 40); },
+  win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, 'triangle', 0.2, i * 0.11)),
+  lose: () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.22, 'sawtooth', 0.14, i * 0.16)),
+};
+
+// =========================================================================================
+// RULES. Pure functions over plain data: no canvas, no page, no clock. The table's flow and
+// the bots read a game only through viewFor(), which leaves out what that seat may not know.
+// Rules 1-9 are the source document's; the gaps it leaves are filled as the brief lists them.
+// =========================================================================================
+const N = 6; // seats, and chambers: one chamber faces each seat. The table is drawn for six.
+const LETTERS = 'ABCDEF';
+const mod = j => ((j % N) + N) % N;
+const RC = () => ({ start: tune.start_credits, pub: tune.cost_public, priv: tune.cost_private, rot1: tune.cost_rot1,
+  rot2: tune.cost_rot2, need: tune.tamper_need, tmax: tune.tamper_max, bullets: Math.min(tune.bullets, N - 1), endOut: tune.end_out_count });
+
+// A new game. pids[seat] says who sits where (the seat draw). chambers[j] is the chamber j places
+// clockwise from the muzzle: it faces seat muzzle + j. Turning the muzzle turns the whole cylinder.
+function newGame(cfg, rnd, pids) {
+  const ch = Array(N).fill(0);
+  for (let b = 0; b < cfg.bullets;) { const j = Math.floor(rnd() * N); if (!ch[j]) { ch[j] = 1; b++; } }
+  return {
+    seats: pids.map(pid => ({ pid, credits: cfg.start, pot: 0, out: false, known: 0, subs: 0 })), // known: credits seen spent; subs: tamper deposits made
+    ch, muzzle: 0, round: 0, turn: 0, cur: 0, phase: 'turn', swapSeat: -1, outCount: 0,
+    pub: Array(N).fill(null),                    // what everyone has seen of each chamber
+    priv: pids.map(() => Array(N).fill(null)),   // priv[seat][j]: what that seat alone has seen
+    hist: [],                                    // what everyone saw happen, in order
+  };
+}
+// Seat 1 leads round 1 and the lead moves one seat clockwise each round; a seat with no credits passes.
+function advance(G) {
+  for (let i = 0; i < N * 2; i++) {
+    G.turn++; if (G.turn >= N) { G.turn = 0; G.round++; }
+    G.cur = (G.round + G.turn) % N;
+    if (!G.seats[G.cur].out) return;
+  }
+}
+// One action by seat s. Returns what happened; ev.secret and ev.n are for seat s alone.
+//   {type:'public'|'private', a}  look into chambers a and a+1      {type:'rot', k: 1|2}  turn the muzzle
+//   {type:'tamper', n: 1..tmax}   a hidden deposit towards the swap  {type:'swap', a}      swap chambers a and a+1
+function applyAction(G, s, act, cfg) {
+  const p = G.seats[s], ev = { seat: s, type: act.type, ok: false };
+  if (G.phase === 'swap') {
+    if (act.type !== 'swap' || G.swapSeat !== s) return ev;
+    const a = mod(act.a), b = mod(a + 1);
+    [G.ch[a], G.ch[b]] = [G.ch[b], G.ch[a]];
+    [G.pub[a], G.pub[b]] = [G.pub[b], G.pub[a]];     // what was known of a round goes with the round
+    for (const k of G.priv) [k[a], k[b]] = [k[b], k[a]];
+    G.phase = 'turn'; G.swapSeat = -1; ev.a = a;
+    G.hist.push({ seat: s, type: 'swap', a });
+  } else {
+    if (G.phase !== 'turn' || G.cur !== s || p.out) return ev;
+    if (act.type === 'public' || act.type === 'private') {
+      const open = act.type === 'public', cost = open ? cfg.pub : cfg.priv;
+      if (p.credits < cost) return ev;
+      const a = mod(act.a), b = mod(a + 1);
+      p.credits -= cost; p.known += cost;
+      if (open) { G.pub[a] = G.ch[a]; G.pub[b] = G.ch[b]; ev.seen = [G.ch[a], G.ch[b]]; }
+      else { G.priv[s][a] = G.ch[a]; G.priv[s][b] = G.ch[b]; ev.secret = [G.ch[a], G.ch[b]]; }
+      ev.a = a; G.hist.push({ seat: s, type: act.type, a });
+    } else if (act.type === 'rot') {
+      const k = act.k === 2 ? 2 : 1, cost = k === 2 ? cfg.rot2 : cfg.rot1;
+      if (p.credits < cost) return ev;
+      p.credits -= cost; p.known += cost; G.muzzle = mod(G.muzzle + k); ev.k = k;
+      G.hist.push({ seat: s, type: 'rot', k });
+    } else if (act.type === 'tamper') {
+      const n = Math.floor(act.n);
+      if (!(n >= 1 && n <= cfg.tmax && n <= p.credits)) return ev;
+      p.credits -= n; p.subs++; p.pot += n; ev.n = n;
+      G.hist.push({ seat: s, type: 'tamper' });        // the table sees a deposit, never how much
+      if (p.pot >= cfg.need) { p.pot = 0; G.phase = 'swap'; G.swapSeat = s; ev.earned = true; } // what is over the mark is lost
+    } else return ev;
+  }
+  ev.ok = true;
+  if (p.credits <= 0 && !p.out) { p.out = true; G.outCount++; ev.out = true; }
+  if (G.phase === 'turn') {
+    if (G.outCount >= cfg.endOut) { G.phase = 'ended'; ev.ended = true; }
+    else advance(G);
+  }
+  return ev;
+}
+// The game as seat s may know it: its own credits and deposit, what the table has seen, what it has
+// seen alone, and what follows from counting the rounds. Never another seat's credits or looks.
+function viewFor(G, s, cfg) {
+  const ch = G.pub.map((v, j) => v !== null ? v : G.priv[s][j]);
+  const src = G.pub.map((v, j) => v !== null ? 'pub' : G.priv[s][j] !== null ? 'priv' : null);
+  let b = 0, e = 0;
+  for (const v of ch) { if (v === 1) b++; else if (v === 0) e++; }
+  if (b >= cfg.bullets) ch.forEach((v, j) => { if (v === null) { ch[j] = 0; src[j] = 'inf'; } });
+  else if (e >= N - cfg.bullets) ch.forEach((v, j) => { if (v === null) { ch[j] = 1; src[j] = 'inf'; } });
+  return {
+    me: s, credits: G.seats[s].credits, pot: G.seats[s].pot, muzzle: G.muzzle, round: G.round, cur: G.cur,
+    phase: G.phase, swapSeat: G.swapSeat, outCount: G.outCount, chambers: ch, src,
+    seats: G.seats.map(p => ({ pid: p.pid, out: p.out, // credits left, as far as anyone can count: a deposit hides 1 to tmax
+      maxRem: p.out ? 0 : Math.max(1, cfg.start - p.known - p.subs),
+      minRem: p.out ? 0 : Math.max(1, cfg.start - p.known - p.subs * cfg.tmax) })),
+    hist: G.hist,
+  };
+}
+// The end: from the seat the muzzle points at, clockwise, one chamber for each seat.
+function volley(G) {
+  const shots = [];
+  for (let k = 0; k < N; k++) shots.push({ seat: mod(G.muzzle + k), chamber: k, hit: G.ch[k] === 1 });
+  return shots;
+}
+
+// =========================================================================================
+// BOTS. Each decides from viewFor() of its own seat and nothing else.
+// =========================================================================================
+// What the others' moves suggest about chambers nobody has shown: above 1 leans live, below 1 empty.
+// Only the expert bots read this. A seat that looked into its own chamber alone and then turned the
+// muzzle probably saw a round; one that stayed put probably did not.
+function suspicion(view) {
+  const w = Array(N).fill(1), seen = Array.from({ length: N }, () => new Set());
+  let mz = 0;
+  for (const h of view.hist) {
+    const c = mod(h.seat - mz), mine = h.seat === view.me, knows = seen[h.seat].has(c);
+    if (h.type === 'private') {
+      if (knows && !mine) w[c] *= 0.5;
+      seen[h.seat].add(h.a); seen[h.seat].add(mod(h.a + 1));
+    } else if (h.type === 'public') {
+      if (knows && !mine) w[c] *= 0.5;
+    } else if (h.type === 'rot') {
+      if (!mine) {
+        if (knows) { w[c] *= 3; if (seen[h.seat].has(mod(c - h.k))) w[mod(c - h.k)] *= 0.4; }
+        else w[c] *= 1.3;
+      }
+      mz = mod(mz + h.k);
+    } else if (h.type === 'swap') {
+      const a = h.a, b = mod(a + 1);
+      [w[a], w[b]] = [w[b], w[a]];
+      for (const set of seen) { const ha = set.has(a), hb = set.has(b); if (ha !== hb) { set.delete(ha ? a : b); set.add(ha ? b : a); } }
+      if (!mine && (a === c || b === c)) { w[a === c ? b : a] *= 3; w[c] *= 0.4; }
+    }
+  }
+  return w.map(x => Math.max(0.15, Math.min(6, x)));
+}
+function riskTable(view, w) { // the chance each chamber is live, from this seat's knowledge
+  const v = view.chambers, cfg = RC();
+  let b = 0, sum = 0;
+  v.forEach((x, j) => { if (x === 1) b++; else if (x === null) sum += w[j]; });
+  return v.map((x, j) => x !== null ? x : Math.max(0.02, Math.min(0.98, (cfg.bullets - b) * w[j] / sum)));
+}
+const pairOf = (x, y) => mod(x + 1) === mod(y) ? mod(x) : mod(y); // the pair holding two neighbouring chambers
+function quietPair(view) { // a look that tells the table the least: chambers everyone has already seen
+  let best = [], top = -1;
+  for (let a = 0; a < N; a++) {
+    const s = (view.src[a] === 'pub' ? 1 : 0) + (view.src[mod(a + 1)] === 'pub' ? 1 : 0);
+    if (s > top) { top = s; best = [a]; } else if (s === top) best.push(a);
+  }
+  return best[Math.floor(rng() * best.length)];
+}
+function freshPair(view) { // a pair with something this seat has not seen
+  const open = [];
+  for (let a = 0; a < N; a++) if (view.chambers[a] === null || view.chambers[mod(a + 1)] === null) open.push(a);
+  return open.length ? open[Math.floor(rng() * open.length)] : Math.floor(rng() * N);
+}
+function botSlip(view) { // a move made without thinking
+  const cfg = RC(), cr = view.credits, bag = [];
+  const add = (act, weight) => { for (let i = 0; i < weight; i++) bag.push(act); };
+  if (cr >= cfg.pub) add({ type: 'public', a: Math.floor(rng() * N) }, 6);
+  if (cr >= cfg.priv) add({ type: 'private', a: Math.floor(rng() * N) }, 4);
+  if (cr >= cfg.rot1) add({ type: 'rot', k: 1 }, 2);
+  if (cr >= cfg.rot2) add({ type: 'rot', k: 2 }, 1);
+  add({ type: 'tamper', n: 1 }, 6);
+  return bag[Math.floor(rng() * bag.length)];
+}
+function botAct(view, level) {
+  const cfg = RC(), hard = level === 1, cr = view.credits, pot = view.pot;
+  if (rng() < (hard ? tune.bot_mistake_hard : tune.bot_mistake_normal)) return botSlip(view);
+  const c = mod(view.me - view.muzzle);                       // the chamber facing me
+  const risk = riskTable(view, hard ? suspicion(view) : Array(N).fill(1));
+  const R = d => risk[mod(c + d)];                            // R(0) mine; R(-1) comes to me on a 1 turn, R(-2) on a 2 turn
+  const known = d => view.chambers[mod(c + d)] !== null;
+  const nearEnd = view.outCount >= cfg.endOut - 1;            // the next seat to run dry ends the game
+  let low = 0;
+  view.seats.forEach((s, i) => { if (i !== view.me && !s.out && s.maxRem <= cfg.rot2) low++; });
+  const soonEnd = view.outCount + low >= cfg.endOut - 1;      // it could end within a turn or two
+  const look = (a, alone) => alone && cr >= cfg.priv ? { type: 'private', a: mod(a) } : cr >= cfg.pub ? { type: 'public', a: mod(a) } : { type: 'tamper', n: 1 };
+  const stall = () => hard || rng() < 0.5 ? { type: 'tamper', n: 1 } : look(freshPair(view), false);
+
+  // A move that spends my last credit ends the game on the spot: take one that leaves me safe.
+  if (nearEnd) {
+    const enders = [];
+    if (cr === cfg.rot1) enders.push({ act: { type: 'rot', k: 1 }, r: R(-1) });
+    if (cr === cfg.rot2) enders.push({ act: { type: 'rot', k: 2 }, r: R(-2) });
+    if (cr <= cfg.tmax) enders.push({ act: { type: 'tamper', n: cr }, r: pot + cr >= cfg.need ? Math.min(R(0), R(1), R(-1)) : R(0) });
+    if (cr === cfg.pub) enders.push({ act: { type: 'public', a: quietPair(view) }, r: R(0) });
+    if (cr === cfg.priv) enders.push({ act: { type: 'private', a: mod(c - 1) }, r: R(0) });
+    enders.sort((x, y) => x.r - y.r);
+    if (enders.length && enders[0].r <= 0.12 && (hard || rng() < 0.6)) return enders[0].act;
+  }
+  const r0 = R(0);
+  // I think a round is facing me.
+  if (r0 >= 0.7) {
+    const outs = [];
+    if (cr >= cfg.rot1) outs.push({ act: { type: 'rot', k: 1 }, r: R(-1), cost: cfg.rot1 });
+    if (cr >= cfg.rot2) outs.push({ act: { type: 'rot', k: 2 }, r: R(-2), cost: cfg.rot2 });
+    const short = cfg.need - pot;                             // credits still missing for the swap
+    if (short <= Math.min(cfg.tmax, cr)) outs.push({ act: { type: 'tamper', n: short }, r: Math.min(R(1), R(-1)), cost: short });
+    outs.sort((x, y) => (x.r - y.r) || (x.cost - y.cost));
+    if (!hard || soonEnd || rng() < tune.bot_flee_hard) {     // a normal bot gets rid of it at once; an expert picks its moment, and must once time is short
+      if (outs.length && outs[0].r < r0 - 0.2) return outs[0].act;
+      if (pot + cr >= cfg.need) return { type: 'tamper', n: Math.min(cfg.tmax, cr, short) };
+      if (outs.length && outs[0].r < r0) return outs[0].act;
+      return stall();
+    }
+    if ((!known(-1) || !known(-2)) && cr >= tune.bot_reserve_hard + cfg.priv) return look(c - 2, true); // learn where a turn would take me
+    return { type: 'tamper', n: Math.max(1, Math.min(cfg.tmax, short, cr - tune.bot_reserve_hard)) };    // and build the swap, keeping enough back to turn the muzzle
+  }
+  // I don't know what is facing me.
+  if (r0 > 0.12) {
+    if (soonEnd && r0 >= 0.3) {                               // no time to look: turn to a chamber I know is empty
+      if (cr >= cfg.rot1 && R(-1) <= 0.12) return { type: 'rot', k: 1 };
+      if (cr >= cfg.rot2 && R(-2) <= 0.12) return { type: 'rot', k: 2 };
+    }
+    const other = !known(-1) ? c - 1 : c + 1;
+    return look(pairOf(c, other), hard ? cr >= cfg.priv + 2 : rng() < tune.bot_private_pref);
+  }
+  // I'm safe as things stand.
+  if (nearEnd && cr > cfg.tmax && (hard || rng() < 0.5)) {    // run down to a number I can finish on, or still turn once with
+    const n = Math.min(cfg.tmax, cr - cfg.rot1);
+    if (n >= 1) return { type: 'tamper', n };
+  }
+  const reserve = hard ? tune.bot_reserve_hard : 2;
+  if ((!known(-1) || !known(-2)) && cr >= reserve + cfg.priv) return look(c - 2, hard || rng() < tune.bot_private_pref);
+  // An expert that no turn of one or two could hurt shows the table where the rounds are: it costs what
+  // waiting costs, and whoever is facing one must now spend credits to move it.
+  if (hard && R(-1) <= 0.12 && R(-2) <= 0.12 && cr >= cfg.pub && rng() < tune.bot_stir_hard) {
+    const a = stirPair(view);
+    if (a !== null) return { type: 'public', a };
+  }
+  return stall();
+}
+function stirPair(view) { // a pair that would show the table something new, one I know holds a round first; null when nothing is left to show
+  const cfg = RC();
+  let live = 0, clear = 0;
+  view.src.forEach((s, j) => { if (s === 'pub') view.chambers[j] === 1 ? live++ : clear++; });
+  if (live >= cfg.bullets || clear >= N - cfg.bullets) return null;   // the table can already work out the rest
+  let best = [], top = 0;
+  for (let a = 0; a < N; a++) {
+    const b = mod(a + 1);
+    if (view.src[a] === 'pub' && view.src[b] === 'pub') continue;
+    const s = 1 + (view.src[a] !== 'pub' && view.chambers[a] === 1 ? 2 : 0) + (view.src[b] !== 'pub' && view.chambers[b] === 1 ? 2 : 0);
+    if (s > top) { top = s; best = [a]; } else if (s === top) best.push(a);
+  }
+  return best.length ? best[Math.floor(rng() * best.length)] : null;
+}
+function botSwap(view, level) { // which two chambers to swap, once the deposit reaches the mark
+  const risk = riskTable(view, level === 1 ? suspicion(view) : Array(N).fill(1)), c = mod(view.me - view.muzzle);
+  let best = [], low = Infinity;
+  for (let a = 0; a < N; a++) {
+    const b = mod(a + 1), r = risk.slice();
+    [r[a], r[b]] = [r[b], r[a]];
+    let score = 10 * r[c] + 3 * r[mod(c - 1)] + r[mod(c - 2)];
+    if (a === c || b === c) score += 0.4;                     // touching my own chamber tells the table something
+    if (Math.abs(risk[a] - risk[b]) < 0.01) score -= 0.2;      // like for like changes nothing
+    if (score < low - 1e-9) { low = score; best = [a]; } else if (Math.abs(score - low) < 1e-9) best.push(a);
+  }
+  return best[Math.floor(rng() * best.length)];
+}
+
+// =========================================================================================
+// THE TABLE'S FLOW: one game from the seat draw to the last shot.
+// =========================================================================================
+const TAU = Math.PI * 2;
+const ease = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+const CAST = [ // who sits at the table: the person first, then the five bots
+  { name: '나',   coat: '#44547c', hair: '#3a2c36', skin: '#e6b48c', hat: '#2b3350', acc: '#ffb43c' },
+  { name: '모루', coat: '#8a343a', hair: '#4a3428', skin: '#d9a070', hat: '#4a3428', acc: '#d8c9a0' },
+  { name: '까치', coat: '#343b5c', hair: '#20222e', skin: '#f0c9a4', hat: '#20222e', acc: '#efe6cc' },
+  { name: '은비', coat: '#6a4690', hair: '#8a4a30', skin: '#edc19a', hat: '#8a4a30', acc: '#e08ab4' },
+  { name: '서리', coat: '#8fa3b8', hair: '#8fa3b8', skin: '#e2ac84', hat: '#8fa3b8', acc: '#bfeaff' },
+  { name: '달무', coat: '#566a42', hair: '#cfc8ba', skin: '#e2ac84', hat: '#cfc8ba', acc: '#3fd0b6' },
+];
+let scene, state;
+const nm = s => CAST[state.g.seats[s].pid].name;
+const word = v => v ? '실탄' : '빔';
+function say(text, color) { const S = state; S.log.push({ text, color: color || C.bone }); if (S.log.length > 80) { S.log.shift(); S.logMark = Math.max(0, S.logMark - 1); } }
+
+function reset() {
+  seed = (Number(params.get('seed')) || CONFIG.seed) + ui.games * 7919;
+  const pids = [0, 1, 2, 3, 4, 5];
+  for (let i = N - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [pids[i], pids[j]] = [pids[j], pids[i]]; } // the seat draw
+  const cfg = RC(), g = newGame(cfg, rng, pids), me = pids.indexOf(0);
+  fxList.length = 0;
+  // state.gained: what this run gained, the high the ending shows.
+  state = {
+    t: 0, score: ui.wins, gained: '',
+    g, me, level: ui.level, view: viewFor(g, me, cfg),
+    phase: 'deal', timer: tune.deal_time, dealDur: tune.deal_time, dealShown: 0,
+    sel: null, plan: null, note: '', noteT: 0, log: [], logMark: 0, roundSeen: 0, myTurns: 0,
+    bubbles: Array(N).fill(null), anim: null, fire: null, result: null,
+    fallen: Array(N).fill(false), shown: Array(N).fill(null), pops: [],
+    lean: [0, 0], shake: 0, flick: 0, beat: 0, again: 0,
+  };
+}
+const myChamber = () => mod(state.me - state.g.muzzle);
+
+function goTurn() {
+  const S = state, G = S.g;
+  S.view = viewFor(G, S.me, RC());
+  if (G.cur === S.me) { S.phase = 'human'; S.sel = null; S.myTurns++; sfx.turn(); }
+  else {
+    // The bot settles on its move now and then takes its time: a routine deposit comes quickly, a turn of
+    // the muzzle after a pause. The wait follows the kind of move only, never the hidden size of a deposit.
+    S.plan = botAct(viewFor(G, G.cur, RC()), S.level);
+    const weight = S.plan.type === 'rot' ? 1.35 : S.plan.type === 'tamper' ? 0.5 : 0.75;
+    S.phase = 'bot'; S.timer = tune.bot_think * weight * (0.8 + 0.4 * rng());
+  }
+}
+// Carry out one action at the table: the rules decide, then the log, the icon, the sound and the animation follow.
+function perform(s, act) {
+  const S = state, G = S.g, cfg = RC(), me = S.me, mine = s === me, who = nm(s);
+  const before = S.view;
+  let ev = applyAction(G, s, act, cfg);
+  if (!ev.ok) ev = applyAction(G, s, { type: 'tamper', n: 1 }, cfg); // the rules refused it: the one move that is always open
+  if (!ev.ok) { if (G.phase === 'turn') advance(G); goTurn(); return; }
+  S.view = viewFor(G, me, cfg);
+  let dur = tune.anim_time;
+  const a = ev.a, b = ev.a === undefined ? 0 : mod(ev.a + 1);
+  if (ev.type === 'public') {
+    say(`${who} 공개 조사 ${LETTERS[a]}${word(ev.seen[0])} ${LETTERS[b]}${word(ev.seen[1])}`);
+    S.bubbles[s] = 'public'; sfx.look(); (ev.seen[0] || ev.seen[1]) ? sfx.live() : sfx.empty();
+  } else if (ev.type === 'private') {
+    say(`${who} 비공개 조사 ${LETTERS[a]}·${LETTERS[b]}`);
+    if (mine) { say(`나만: ${LETTERS[a]} ${word(ev.secret[0])}, ${LETTERS[b]} ${word(ev.secret[1])}`, C.amber); (ev.secret[0] || ev.secret[1]) ? sfx.live() : sfx.empty(); }
+    S.bubbles[s] = 'private'; sfx.look();
+  } else if (ev.type === 'rot') {
+    say(`${who} 총구 ${ev.k}칸 회전`);
+    S.bubbles[s] = ev.k === 2 ? 'rot2' : 'rot1'; sfx.ratchet(ev.k * 3); dur *= ev.k === 2 ? 1.5 : 1.1;
+  } else if (ev.type === 'tamper') {
+    say(mine ? `나 조작에 ${ev.n}개 제출` : `${who} 조작에 제출`);
+    S.bubbles[s] = 'tamper'; sfx.chip(); dur *= 0.8;
+    if (ev.earned) say(`${who} 조작권 획득!`, C.amber);
+  } else if (ev.type === 'swap') {
+    say(`${who} 조작: ${LETTERS[a]}·${LETTERS[b]} 맞바꿈`, C.amber);
+    S.bubbles[s] = 'swap'; sfx.swap(); dur *= 1.4;
+  }
+  if (ev.out) {
+    say(`${who} 크레딧 소진`, C.crim); sfx.out(); dur += 0.3;
+    if (G.outCount === cfg.endOut - 1) say('한 명만 더 바닥나면 끝!', C.amber);
+  }
+  events.push({ t: S.t, kind: ev.type, seat: s, round: G.round });
+  S.anim = { type: ev.type, seat: s, a, k: ev.k || 0, t: 0, dur, shown: ev.type === 'public' || mine,
+    prev: a === undefined ? null : [before.chambers[a], before.src[a], before.chambers[b], before.src[b]] };
+  S.phase = 'anim'; S.timer = dur; S.sel = null;
+  if (mine) { S.logMark = S.log.length; for (let i = 0; i < N; i++) if (i !== me) S.bubbles[i] = null; } // what the others do next is news
+}
+function afterAnim() {
+  const S = state, G = S.g, cfg = RC();
+  S.anim = null;
+  if (G.phase === 'swap') {
+    if (G.swapSeat === S.me) { S.phase = 'human'; S.sel = { mode: 'swap', act: 4, pair: swapDefault() }; sfx.earn(); }
+    else perform(G.swapSeat, { type: 'swap', a: botSwap(viewFor(G, G.swapSeat, cfg), S.level) });
+    return;
+  }
+  if (G.phase === 'ended') { startVolley(); return; }
+  if (G.round !== S.roundSeen) { S.roundSeen = G.round; say(`${G.round + 1}라운드 · 선 ${nm(mod(G.round))}`, C.boneD); }
+  goTurn();
+}
+function swapDefault() { // start on my own chamber and its safer-looking neighbour
+  const V = state.view, c = myChamber(), r = j => V.chambers[mod(j)] === null ? 0.5 : V.chambers[mod(j)];
+  return r(c + 1) < r(c - 1) ? c : mod(c - 1);
+}
+function investDefault() { // the first pair near me that still holds something I have not seen
+  const V = state.view, c = myChamber();
+  for (const a of [c - 1, c, c - 2, c + 1, c - 3, c + 2]) if (V.chambers[mod(a)] === null || V.chambers[mod(a + 1)] === null) return mod(a);
+  return mod(c - 1);
+}
+function choose(i) { // the person picks one of the five actions
+  const S = state, cfg = RC(), cost = [cfg.pub, cfg.priv, cfg.rot1, cfg.rot2, 1][i];
+  if (S.view.credits < cost) { S.note = '크레딧이 모자랍니다'; S.noteT = 1.4; sfx.deny(); return; }
+  if (i <= 1) S.sel = { mode: 'pick', act: i, pair: investDefault() };
+  else if (i <= 3) S.sel = { mode: 'confirm', act: i };
+  else S.sel = { mode: 'amount', act: 4, n: 1 };
+  sfx.pick();
+}
+function confirmSel() {
+  const S = state, sel = S.sel;
+  if (sel.mode === 'pick') perform(S.me, { type: sel.act === 0 ? 'public' : 'private', a: sel.pair });
+  else if (sel.mode === 'confirm') perform(S.me, { type: 'rot', k: sel.act === 2 ? 1 : 2 });
+  else if (sel.mode === 'amount') perform(S.me, { type: 'tamper', n: sel.n });
+  else if (sel.mode === 'swap') perform(S.me, { type: 'swap', a: sel.pair });
+}
+function updateHuman() {
+  const S = state, cfg = RC(), sel = S.sel;
+  let pickI;
+  for (let i = 0; i < 5; i++) if (pressed('Digit' + (i + 1)) || pressed('Numpad' + (i + 1)) || clickIn(...btnRect(i))) pickI = i;
+  const left = pressed('ArrowLeft') || pressed('KeyA'), right = pressed('ArrowRight') || pressed('KeyD');
+  if (!sel) { if (pickI !== undefined) choose(pickI); return; }
+  const ok = pressed('Enter') || pressed('NumpadEnter') || pressed('Space') || clickIn(...OK_RECT);
+  if (sel.mode !== 'swap') { // the swap, once earned, has to be made
+    if (pickI !== undefined && pickI !== sel.act) { choose(pickI); return; }
+    if (pressed('Escape') || pressed('Backspace') || clickIn(...NO_RECT)) { S.sel = null; sfx.back(); return; }
+  }
+  if (sel.mode === 'pick' || sel.mode === 'swap') {
+    // the right key moves the pair to the right along the near side of the cylinder, where my chamber is
+    if (left) { sel.pair = mod(sel.pair + 1); sfx.move(); }
+    if (right) { sel.pair = mod(sel.pair - 1); sfx.move(); }
+    for (const p of ui.clicks) { const at = devicePairAt(p.x, p.y); if (at !== null) { if (at === sel.pair) { confirmSel(); return; } sel.pair = at; sfx.move(); } }
+  } else if (sel.mode === 'amount') {
+    const top = Math.min(cfg.tmax, S.view.credits);
+    if (left && sel.n > 1) { sel.n--; sfx.move(); }
+    if (right && sel.n < top) { sel.n++; sfx.move(); }
+  }
+  if (ok) confirmSel();
+}
+// The end: the muzzle goes round the table, one seat at a time, and fires the chamber facing each.
+function startVolley() {
+  const S = state, a0 = seatAngle(S.g.muzzle);
+  S.phase = 'fire'; S.sel = null; S.view = viewFor(S.g, S.me, RC());
+  S.fire = { shots: volley(S.g), k: -1, stage: 'intro', t: 1.6, dur: 1.6, a: a0, from: a0, to: a0, hits: 0 };
+  say('세 명 소진! 격발', C.crim); sfx.alarm();
+  events.push({ t: S.t, kind: 'volley' });
+}
+function updateFire(dt) {
+  const S = state, F = S.fire, cfg = RC();
+  F.t -= dt;
+  if (F.stage === 'aim') F.a = F.from + (F.to - F.from) * ease(1 - Math.max(0, F.t) / F.dur);
+  if (F.t > 0) return;
+  if (F.stage !== 'aim') {
+    F.k++;
+    if (F.k >= N) { finishGame(); return; }
+    const shot = F.shots[F.k], spent = F.hits >= cfg.bullets;   // nothing left to fear: the rest go by fast
+    F.stage = 'aim'; F.from = F.a; F.to = seatAngle(S.g.muzzle) + F.k * TAU / N;
+    F.dur = tune.fire_gap * (spent ? 0.25 : shot.seat === S.me ? 1.5 : 0.75); F.t = F.dur;
+    sfx.ratchet(spent ? 1 : 3);
+  } else {
+    const shot = F.shots[F.k], [x, y] = seatXY(shot.seat);
+    // the word for the shot lands on the table in front of the seat, clear of every name
+    const px0 = I(x + (CX - x) * 0.42) + (shot.seat === S.me ? 28 : 0), py0 = I(y + (CY - y) * 0.42) - 6;
+    F.a = F.to; S.shown[shot.chamber] = shot.hit ? 1 : 0;
+    if (shot.hit) {
+      F.hits++; S.fallen[shot.seat] = true; S.shake = 5; S.flick = 0.5; S.bubbles[shot.seat] = null;
+      say(`탕! ${nm(shot.seat)} 탈락`, C.crim); sfx.bang();
+      S.pops.push({ text: '탕!', x: px0, y: py0, t: 1.1, color: C.crim });
+      muzzleFx(F.a); addFx('poof', { x, y: y + 14, seed: 21 + F.k }, [x - 56, y - 66, 112, 92]);
+    } else {
+      say(`철컥. ${nm(shot.seat)} 생존`, C.teal); sfx.click();
+      S.pops.push({ text: '철컥', x: px0, y: py0, t: 0.8, color: C.teal });
+    }
+    events.push({ t: S.t, kind: 'shot', seat: shot.seat, hit: shot.hit });
+    F.stage = 'hold'; F.t = tune.fire_gap * (shot.hit ? 1.3 : F.hits >= cfg.bullets ? 0.2 : 0.5);
+  }
+}
+function finishGame() {
+  const S = state, live = S.fire.shots.filter(x => x.hit), lost = live.some(x => x.seat === S.me);
+  S.result = { lost, dead: live.map(x => x.seat), bullets: live.map(x => x.chamber) };
+  if (lost) ui.losses++; else ui.wins++;
+  S.score = ui.wins; S.gained = lost ? '탈락' : '생존';
+  events.push({ t: S.t, kind: 'end', lost });
+  if (lost) sfx.lose(); else { sfx.win(); const [x, y] = seatXY(S.me); addFx('confetti', { x, y: y + 16, seed: 11 + ui.games }, [x - 100, y - 110, 200, 140]); }
+  scene = 'results';
+}
+// What moves whether or not it is anyone's turn: the lamp, the smoke, the shake.
+function tickTable(dt) {
+  const S = state, G = S.g;
+  S.t += dt; stepFx(dt);
+  if (S.shake > 0) S.shake = Math.max(0, S.shake - dt * 14);
+  if (S.flick > 0) S.flick = Math.max(0, S.flick - dt);
+  if (S.noteT > 0) S.noteT -= dt;
+  for (let i = S.pops.length - 1; i >= 0; i--) { S.pops[i].t -= dt; if (S.pops[i].t <= 0) S.pops.splice(i, 1); }
+  // the lamp leans to whoever the table is watching
+  let aim = null;
+  if (S.phase === 'fire' && S.fire.k >= 0 && S.fire.k < N) aim = S.fire.shots[S.fire.k].seat;
+  else if (S.phase === 'bot' || S.phase === 'human' || S.phase === 'anim') aim = S.anim ? S.anim.seat : G.cur;
+  else if (S.phase === 'deal' && S.dealShown > S.me) aim = S.me;   // my own seat lights up as I sit down
+  const tx = aim === null ? 0 : (seatXY(aim)[0] - CX) * 0.22, ty = aim === null ? 0 : (seatXY(aim)[1] - CY) * 0.22;
+  S.lean[0] += (tx - S.lean[0]) * Math.min(1, dt * 5); S.lean[1] += (ty - S.lean[1]) * Math.min(1, dt * 5);
+  if (scene === 'play' && S.phase !== 'fire' && S.phase !== 'deal' && G.outCount >= RC().endOut - 1) { // one seat from the end: a pulse
+    S.beat -= dt; if (S.beat <= 0) { S.beat = 1.15; sfx.beat(); }
+  }
+}
+
+// =========================================================================================
+// DRAWING. 480 by 270, one pixel size, dark one-pixel outlines, two tones on every figure.
+// =========================================================================================
+const C = {
+  ink: '#0a0b14', night: '#0d1020', bar: '#0b0d19', wall: '#151a30', wallD: '#0f1326', floor: '#221d2c', floorD: '#1a1623',
+  rug: '#3a1822', rugL: '#52232f', rugD: '#2a1119',
+  wood: '#6b4428', woodH: '#8a5c36', woodD: '#4a2e1b', woodDD: '#2f1c10',
+  steel: '#7c8296', steelH: '#aab0c2', steelD: '#4b5066', steelDD: '#2c3044', hatch: '#353a50',
+  brass: '#d9a441', brassH: '#ffe39a', brassD: '#8c5c1c',
+  amber: '#ffb43c', amberD: '#b8741f', crim: '#e23b4a', crimD: '#8f1f30', teal: '#3fd0b6', tealD: '#1c7d73',
+  bone: '#efe6cc', boneD: '#a8a08a', dim: '#7d7a8c', btn: '#171a2a', btnH: '#262b40',
+};
+const I = Math.round;
+function shadeOf(hex, f) { // the same colour, darker (f under 1) or lighter
+  const n = parseInt(hex.slice(1), 16), ch = s => Math.max(0, Math.min(255, Math.round(((n >> s) & 255) * f)));
+  return '#' + ((1 << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).slice(1);
+}
+function clear(c) { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); }
+function px(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(I(x), I(y), w, h); }
+function ell(cx, cy, rx, ry, c) { // a filled ellipse, a row at a time
+  ctx.fillStyle = c; cx = I(cx); cy = I(cy);
+  for (let dy = -ry; dy <= ry; dy++) {
+    const hw = Math.round(rx * Math.sqrt(Math.max(0, 1 - (dy * dy) / ((ry + 0.5) * (ry + 0.5)))));
+    ctx.fillRect(cx - hw, cy + dy, hw * 2 + 1, 1);
+  }
+}
+function txt(s, x, y, c = C.bone, align = 'left', size = 12) { // y is the top of the line
+  ctx.fillStyle = c; ctx.font = `${size}px ${FONT}`; ctx.textAlign = align; ctx.textBaseline = 'top';
+  ctx.fillText(s, I(x), I(y));
+}
+function tw(s, size = 12) { ctx.font = `${size}px ${FONT}`; return Math.ceil(ctx.measureText(s).width); }
+function bmp(rows, x, y, c) { ctx.fillStyle = c; for (let r = 0; r < rows.length; r++) for (let q = 0; q < rows[r].length; q++) if (rows[r][q] === '#') ctx.fillRect(x + q, y + r, 1, 1); }
+function bar(x0, y0, x1, y1, th, c) { // a thick pixel line
+  ctx.fillStyle = c;
+  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0))), h = (th - 1) / 2;
+  for (let i = 0; i <= n; i++) ctx.fillRect(I(x0 + (x1 - x0) * i / n - h), I(y0 + (y1 - y0) * i / n - h), th, th);
+}
+
+// ---- Where things are -------------------------------------------------------------------
+const SCENE_W = 304, BAR_Y = 222, PANEL_X = 308;
+const CX = 152, CY = 112, SEAT_RX = 104, SEAT_RY = 70, TAB_RX = 78, TAB_RY = 41;
+const RING_RX = 27, RING_RY = 15, HATCH_RX = 7, HATCH_RY = 6, BODY_RX = 38, BODY_RY = 24, TIP_RX = 54, TIP_RY = 34;
+// Places round the table, counted clockwise from the person's own (0, nearest the camera). The three
+// near ones are seen from behind. label and bubble are offsets from the seat.
+const POS = [
+  { back: true,  side: 1,  label: [0, 21, 'center'],  bubble: [24, -12] },
+  { back: true,  side: -1, label: [0, 21, 'center'],  bubble: [0, -28] },
+  { back: false, side: -1, label: [0, -45, 'center'], bubble: [22, -7] },
+  { back: false, side: 1,  label: [16, -16, 'left'],  bubble: [-21, -8] },
+  { back: false, side: 1,  label: [0, -45, 'center'], bubble: [-22, -7] },
+  { back: true,  side: 1,  label: [0, 21, 'center'],  bubble: [0, -28] },
+];
+const posAngle = p => Math.PI / 2 + p * TAU / N;
+const posXY = p => [I(CX + Math.cos(posAngle(p)) * SEAT_RX), I(CY + Math.sin(posAngle(p)) * SEAT_RY)];
+const posOf = s => mod(s - state.me);
+const seatAngle = s => posAngle(posOf(s));
+const seatXY = s => posXY(posOf(s));
+const hatchXY = (j, ringA) => [I(CX + Math.cos(ringA + j * TAU / N) * RING_RX), I(CY + Math.sin(ringA + j * TAU / N) * RING_RY)];
+const tipXY = a => [CX + Math.cos(a) * TIP_RX, CY + Math.sin(a) * TIP_RY];
+const btnRect = i => [4 + i * 95, 240, 92, 28];
+const OK_RECT = [342, 223, 66, 15], NO_RECT = [412, 223, 64, 15];
+function ringAngle() { // the cylinder's turn right now: chamber A sits under the muzzle
+  const S = state, an = S.anim;
+  let a = seatAngle(S.g.muzzle);
+  if (an && an.type === 'rot') a -= an.k * TAU / N * (1 - ease(an.t / an.dur));
+  return a;
+}
+function devicePairAt(x, y) { // the pair of chambers nearest a point on the cylinder, or null off it
+  const dx = (x - CX) / (BODY_RX + 6), dy = (y - CY) / (BODY_RY + 5);
+  if (dx * dx + dy * dy > 1) return null;
+  const a = Math.atan2((y - CY) / RING_RY, (x - CX) / RING_RX), base = ringAngle();
+  let best = 0, gap = 9;
+  for (let j = 0; j < N; j++) {
+    let d = Math.abs(a - (base + (j + 0.5) * TAU / N)) % TAU; if (d > Math.PI) d = TAU - d;
+    if (d < gap) { gap = d; best = j; }
+  }
+  return best;
+}
+
+// ---- The room -----------------------------------------------------------------------------
+function drawRoom() {
+  px(0, 0, SCENE_W, BAR_Y, C.floor);
+  for (let y = 26; y < BAR_Y; y += 11) { px(0, y, SCENE_W, 1, C.floorD); for (let x = (y * 7) % 46; x < SCENE_W; x += 46) px(x, y + 1, 1, 10, C.floorD); }
+  px(0, 0, SCENE_W, 22, C.wall); px(0, 22, SCENE_W, 3, C.wallD); px(0, 25, SCENE_W, 1, C.ink);
+  for (let x = 9; x < SCENE_W; x += 19) px(x, 0, 1, 22, C.wallD);
+  ell(CX, CY + 6, 133, 87, C.rugD); ell(CX, CY + 6, 129, 83, C.rug); ell(CX, CY + 6, 120, 76, C.rugL); ell(CX, CY + 6, 118, 74, C.rug);
+}
+function drawLamp(sway) {
+  const x = CX + I(sway * 0.8);
+  bar(CX, 0, x, 2, 1, C.steelD);
+  px(x - 4, 2, 9, 2, C.ink); px(x - 8, 4, 17, 3, C.ink); px(x - 13, 7, 27, 4, C.ink);   // the shade, cut off by the top of the frame
+  px(x - 3, 2, 7, 2, C.steelD); px(x - 7, 4, 15, 3, C.steelD); px(x - 12, 7, 25, 3, C.steelDD); px(x - 6, 4, 4, 1, C.steelH);
+  px(x - 11, 10, 23, 1, C.amber); px(x - 7, 11, 15, 1, C.brassH); px(x - 4, 12, 9, 1, C.amberD);
+}
+function drawTable() {
+  ell(CX, CY + 10, TAB_RX + 2, TAB_RY + 1, '#0e0a12');
+  ell(CX, CY + 5, TAB_RX, TAB_RY, C.woodDD);
+  ell(CX, CY, TAB_RX, TAB_RY, C.woodD);
+  ell(CX, CY, TAB_RX - 3, TAB_RY - 2, C.wood);
+  ell(CX, CY, 60, 32, C.woodH); ell(CX, CY, 59, 31, C.wood);
+  for (const [x, y, w] of [[-52, -14, 22], [18, -24, 30], [-30, 22, 26], [30, 16, 20], [-64, 4, 12], [44, -6, 16]]) px(CX + x, CY + y, w, 1, C.woodD);
+}
+// The lamp's pool of light: outside it the room falls away in ordered-dither steps.
+const lightCv = document.createElement('canvas'); lightCv.width = SCENE_W; lightCv.height = BAR_Y;
+const lightCtx = lightCv.getContext('2d'), lightImg = lightCtx.createImageData(SCENE_W, BAR_Y);
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+function drawLight(lx, ly, k) { // k: the lamp's strength, 1 as usual
+  const d = lightImg.data, rx = 160 * k, ry = 114 * k;
+  let i = 0;
+  for (let y = 0; y < BAR_Y; y++) {
+    const dy = (y - ly) / ry, dy2 = dy * dy;
+    for (let x = 0; x < SCENE_W; x++) {
+      const dx = (x - lx) / rx, v = Math.sqrt(dx * dx + dy2), f = (v - 0.64) * 2.1, th = (BAYER[((y & 3) << 2) | (x & 3)] + 0.5) / 16;
+      if (f > 0) { // past the pool's edge: night, in four dithered steps
+        let lvl = Math.floor(f * 3 + th); if (lvl > 3) lvl = 3;
+        d[i] = 7; d[i + 1] = 9; d[i + 2] = 24; d[i + 3] = lvl * 56;
+      } else { // inside it: the lamp's amber, strongest under the lamp, dithered out towards the edge
+        const g = (0.56 - v) * 4.2;
+        d[i] = 255; d[i + 1] = 170; d[i + 2] = 50; d[i + 3] = g > 0 ? Math.min(2, Math.floor(g + th)) * 17 : 0;
+      }
+      i += 4;
+    }
+  }
+  lightCtx.putImageData(lightImg, 0, 0); ctx.drawImage(lightCv, 0, 0);
+}
+function lampPos() {
+  const S = state, sway = Math.sin(S.t * 1.3) * tune.lamp_sway;
+  return { sway, x: CX + sway + S.lean[0], y: CY - 4 + S.lean[1], k: 1 - (S.flick > 0 ? 0.3 * (0.5 + 0.5 * Math.sin(S.t * 70)) : 0) };
+}
+
+// ---- The six figures: each its own outline, drawn in code -----------------------------------
+const figCache = new Map();
+function figureRects(kind, back, side) { // rectangles round the middle of the shoulder line
+  const key = kind + (back ? 'b' : 'f') + side;
+  if (figCache.has(key)) return figCache.get(key);
+  const p = CAST[kind], r = [], A = (x, y, w, h, c) => r.push([x, y, w, h, c]);
+  const Sd = (x, y, w, h, c) => side > 0 ? A(x, y, w, h, c) : A(-x - w + 1, y, w, h, c); // on the side away from the lamp
+  const coatD = shadeOf(p.coat, 0.68), coatH = shadeOf(p.coat, 1.28), skinD = shadeOf(p.skin, 0.76), hairD = shadeOf(p.hair, 0.7), hatD = shadeOf(p.hat, 0.7), hatH = shadeOf(p.hat, 1.3);
+  const bw = kind === 1 ? 12 : kind === 2 ? 8 : 10;
+  // the body: squared shoulders, a narrower chest (the hooded one wears a cloak that does not narrow)
+  A(-bw, 0, bw * 2 + 1, 5, p.coat);
+  if (kind === 4) A(-bw - 1, 5, bw * 2 + 3, 9, p.coat); else A(-bw + 2, 5, bw * 2 - 3, 9, p.coat);
+  A(-bw + 1, 0, bw * 2 - 1, 1, coatH);
+  Sd(bw - 2, 1, 3, 4, coatD); Sd(bw - (kind === 4 ? 1 : 4), 5, 3, 9, coatD);
+  if (kind !== 4) A(-2, -2, 5, 2, skinD);
+  if (kind === 0) { // the person: a wide-brimmed hat
+    A(-4, -11, 9, 9, back ? p.hair : p.skin); Sd(3, -11, 2, 9, back ? hairD : skinD);
+    if (!back) { A(-4, -11, 1, 3, p.hair); A(4, -11, 1, 3, p.hair); A(-1, 0, 3, 4, '#d8d2c0'); A(0, 1, 1, 4, p.acc); }
+    else A(-3, 0, 7, 2, coatD);
+    A(-7, -13, 15, 2, p.hat); A(-4, -17, 9, 4, p.hat); A(-3, -17, 7, 1, hatH); A(-4, -14, 9, 1, p.acc); Sd(3, -17, 2, 3, hatD);
+  } else if (kind === 1) { // bald, bearded, the widest shoulders
+    A(-5, -12, 11, 10, p.skin); Sd(4, -12, 2, 10, skinD); A(-6, -8, 1, 3, skinD); A(6, -8, 1, 3, skinD);
+    if (!back) { A(-3, -9, 7, 1, p.hair); A(-4, -5, 9, 4, p.hair); A(-3, -1, 7, 1, p.hair); A(-3, 0, 7, 7, p.acc); A(0, 2, 1, 1, C.ink); A(0, 5, 1, 1, C.ink); }
+    else { A(-3, -4, 7, 1, skinD); A(-1, 0, 3, 14, coatD); }
+  } else if (kind === 2) { // slim, with hair standing in spikes
+    A(-4, -11, 9, 9, back ? p.hair : p.skin); Sd(3, -11, 2, 9, back ? hairD : skinD);
+    A(-5, -13, 11, 4, p.hair); A(-5, -15, 2, 2, p.hair); A(-2, -18, 2, 5, p.hair); A(1, -16, 2, 3, p.hair); A(4, -15, 2, 2, p.hair);
+    if (!back) { A(-5, -9, 1, 3, p.hair); A(5, -9, 1, 3, p.hair); }
+    A(-4, -2, 9, 3, p.acc); A(0, 1, 1, 13, p.acc);
+  } else if (kind === 3) { // long straight hair past the shoulders
+    if (back) { A(-6, -13, 13, 20, p.hair); A(-2, -11, 1, 16, shadeOf(p.hair, 1.3)); Sd(4, -12, 2, 18, hairD); A(-bw, 2, 3, 3, p.acc); A(bw - 2, 2, 3, 3, p.acc); }
+    else { A(-4, -11, 9, 9, p.skin); Sd(3, -11, 2, 9, skinD); A(-bw, 0, bw * 2 + 1, 3, p.acc); A(-5, -13, 11, 4, p.hair); A(-6, -10, 2, 17, p.hair); A(5, -10, 2, 17, p.hair); A(-4, -11, 9, 2, p.hair); A(0, 4, 1, 2, C.brassH); }
+  } else if (kind === 4) { // a pointed hood, the face lost in it
+    A(-6, -13, 13, 13, p.coat); A(-2, -16, 5, 3, p.coat); A(-1, -18, 3, 2, p.coat); A(-5, -13, 11, 1, coatH); Sd(5, -12, 2, 12, coatD);
+    if (!back) { A(-3, -9, 7, 8, '#141726'); A(-2, -6, 1, 2, p.acc); A(2, -6, 1, 2, p.acc); A(0, 0, 1, 2, p.acc); }
+    else A(0, -12, 1, 11, coatD);
+  } else { // hair tied in a bun on top, round glasses, a scarf
+    A(-4, -11, 9, 9, back ? p.hair : p.skin); Sd(3, -11, 2, 9, back ? hairD : skinD);
+    A(-5, -13, 11, 4, p.hair); A(-2, -17, 5, 4, p.hair); A(-1, -17, 3, 1, shadeOf(p.hair, 1.15));
+    if (!back) { A(-5, -9, 1, 4, p.hair); A(5, -9, 1, 4, p.hair); A(-3, -8, 3, 3, '#cfe8ff'); A(1, -8, 3, 3, '#cfe8ff'); A(0, -7, 1, 1, C.ink); A(-2, -7, 1, 1, C.ink); A(2, -7, 1, 1, C.ink); }
+    A(-5, -2, 11, 3, p.acc); A(back ? -4 : 2, 1, 3, 7, p.acc);
+  }
+  if (!back) {
+    if (kind === 0 || kind === 2 || kind === 3) { A(-2, -7, 1, 2, C.ink); A(2, -7, 1, 2, C.ink); A(-1, -4, 3, 1, skinD); } // eyes and mouth
+    if (kind === 1) { A(-2, -8, 1, 2, C.ink); A(2, -8, 1, 2, C.ink); }
+    if (kind === 5) A(-1, -4, 3, 1, skinD);
+    A(-bw + 1, 12, 4, 3, p.skin); A(bw - 4, 12, 4, 3, p.skin); // hands towards the table
+  }
+  figCache.set(key, r);
+  return r;
+}
+function drawRects(rects, x, y) {
+  ctx.fillStyle = C.ink; for (const q of rects) ctx.fillRect(x + q[0] - 1, y + q[1] - 1, q[2] + 2, q[3] + 2);
+  for (const q of rects) { ctx.fillStyle = q[4]; ctx.fillRect(x + q[0], y + q[1], q[2], q[3]); }
+}
+const CHAIR_FAR = [[-8, -5, 17, 10, C.woodD], [-9, -7, 19, 3, C.wood]];
+const CHAIR_NEAR = [[-8, 5, 17, 10, C.wood], [-9, 3, 19, 3, C.woodH], [-8, 15, 2, 4, C.woodD], [7, 15, 2, 4, C.woodD]];
+const CHAIR_SLATS = [[-5, 7, 1, 7], [0, 7, 1, 7], [5, 7, 1, 7]];
+const CHAIR_DOWN = [[-11, 7, 23, 5, C.wood], [-9, 3, 2, 4, C.woodD], [8, 3, 2, 4, C.woodD]];
+function drawFigure(kind, x, y, back, side) {
+  if (!back) drawRects(CHAIR_FAR, x, y);
+  drawRects(figureRects(kind, back, side), x, y);
+  if (back) { drawRects(CHAIR_NEAR, x, y); for (const q of CHAIR_SLATS) px(x + q[0], y + q[1], q[2], q[3], C.woodD); }
+}
+function drawSeat(s) {
+  const S = state, p = posOf(s), [x, y] = seatXY(s);
+  if (S.phase === 'deal' && S.dealShown <= s) { drawRects(POS[p].back ? CHAIR_NEAR : CHAIR_FAR, x, y); return; } // not seated yet
+  if (S.fallen[s]) { drawRects(CHAIR_DOWN, x, y); return; }
+  drawFigure(S.g.seats[s].pid, x, y, POS[p].back, POS[p].side);
+}
+
+// ---- The cylinder on the table ---------------------------------------------------------------
+function drawHatch(x, y, v, src, letter) {
+  ell(x, y, HATCH_RX + 1, HATCH_RY + 1, src === 'pub' ? C.bone : C.ink);   // a pale rim: the whole table has seen it
+  if (v === 1) { ell(x, y, HATCH_RX, HATCH_RY, C.crimD); ell(x, y, HATCH_RX - 2, HATCH_RY - 2, C.brass); txt(letter, x, y - 6, C.ink, 'center'); }
+  else if (v === 0) { ell(x, y, HATCH_RX, HATCH_RY, C.tealD); ell(x, y, HATCH_RX - 2, HATCH_RY - 2, C.ink); txt(letter, x, y - 6, C.teal, 'center'); }
+  else { ell(x, y, HATCH_RX, HATCH_RY, C.steelDD); ell(x, y, HATCH_RX - 1, HATCH_RY - 1, C.hatch); txt(letter, x, y - 6, C.bone, 'center'); }
+  if (src === 'priv' || src === 'inf') { // amber ticks: only I know this one
+    px(x - 1, y - HATCH_RY - 3, 3, 2, C.amber); px(x - 1, y + HATCH_RY + 2, 3, 2, C.amber);
+    px(x - HATCH_RX - 3, y - 1, 2, 3, C.amber); px(x + HATCH_RX + 2, y - 1, 2, 3, C.amber);
+  }
+}
+function drawBarrel(a) {
+  const c = Math.cos(a), s = Math.sin(a), x0 = CX + c * (BODY_RX - 2), y0 = CY + s * (BODY_RY - 2), [x1, y1] = tipXY(a);
+  bar(x0, y0 + 2, x1, y1 + 2, 5, '#1b1410');           // its shadow on the wood
+  bar(x0, y0, x1, y1, 7, C.ink); bar(x0, y0, x1, y1, 5, C.steelD); bar(x0, y0 - 1, x1, y1 - 1, 2, C.steelH);
+  px(x1 - 3, y1 - 3, 7, 7, C.ink); px(x1 - 2, y1 - 2, 5, 5, C.steel); px(x1 - 1, y1 - 1, 3, 3, C.ink);
+}
+function drawDevice(ringA, barrelA, info, hide) { // info(j) -> [what is known, how]; hide: chambers drawn shut for now
+  ell(CX, CY + 4, BODY_RX + 1, BODY_RY, '#1b1410');
+  ell(CX, CY + 3, BODY_RX, BODY_RY, C.ink);
+  ell(CX, CY, BODY_RX, BODY_RY, C.steel); ell(CX, CY, BODY_RX - 2, BODY_RY - 2, C.steelD);
+  ell(CX, CY, 9, 5, C.steelDD); px(CX - 1, CY - 1, 3, 3, C.steelH);
+  drawBarrel(barrelA);
+  for (let j = 0; j < N; j++) {
+    const [x, y] = hatchXY(j, ringA), k = hide && hide.includes(j) ? [null, null] : info(j);
+    drawHatch(x, y, k[0], k[1], LETTERS[j]);
+  }
+}
+function hatchInfo(j) { // what I know of chamber j; a chamber the volley has fired is plain to all
+  const S = state;
+  return S.shown[j] !== null ? [S.shown[j], 'pub'] : [S.view.chambers[j], S.view.src[j]];
+}
+function brackets(x, y, c) { // corner marks round a chamber
+  const rx = HATCH_RX + 3, ry = HATCH_RY + 3;
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { px(x + sx * rx - (sx > 0 ? 2 : 0), y + sy * ry, 3, 1, c); px(x + sx * rx, y + sy * ry - (sy > 0 ? 2 : 0), 1, 3, c); }
+}
+
+// ---- Small icons, drawn a pixel at a time ---------------------------------------------------
+const ICON = {
+  public:  ['.......', '..###..', '.#...#.', '#..#..#', '.#...#.', '..###..', '.......'],
+  private: ['.......', '.......', '#.....#', '.#...#.', '..###..', '.#.#.#.', '.......'],
+  rot1:    ['.......', '..#....', '...#...', '....#..', '...#...', '..#....', '.......'],
+  rot2:    ['.......', '#..#...', '.#..#..', '..#..#.', '.#..#..', '#..#...', '.......'],
+  tamper:  ['.......', '..###..', '.#####.', '.##.##.', '.#####.', '..###..', '.......'],
+  swap:    ['.#.....', '###....', '.#...#.', '.#...#.', '.#...#.', '....###', '.....#.'],
+};
+const ICON_COLOR = { public: C.bone, private: C.amber, rot1: C.steelH, rot2: C.steelH, tamper: C.brass, swap: C.crim };
+function bubbleBox(x, y) { px(x - 7, y - 7, 15, 15, C.ink); px(x - 6, y - 6, 13, 13, C.btnH); }
+
+// ---- Effects from the pixelfx library (vendor/pixelfx.js), drawn at the game's own pixel size ----
+const FXL = window.PIXELFX || null;
+const fxList = [];
+function addFx(name, o, box) { // box: the piece of the screen the effect may draw into
+  if (!FXL) return;
+  try {
+    const [x0, y0, w, h] = box.map(I), cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    fxList.push({ fx: FXL.createFx(FXL.fx[name], o), frame: FXL.createFrame(w, h, x0, y0), cv, c2: cv.getContext('2d'), img: new ImageData(w, h), x0, y0 });
+  } catch (err) { /* the game plays on without the effect */ }
+}
+function muzzleFx(a) { // a flash out of the muzzle along the barrel
+  const [tx, ty] = tipXY(a), h = 5, flip = Math.cos(a) < 0, ang = flip ? a + Math.PI : a;
+  addFx('muzzlePistol', { x: tx - h * Math.sin(ang), y: ty + h * Math.cos(ang), flip, angle: ang, height: h, seed: 3 + state.fire.k }, [tx - 80, ty - 80, 160, 160]);
+}
+function stepFx(dt) { for (let i = fxList.length - 1; i >= 0; i--) { fxList[i].fx.update(dt); if (fxList[i].fx.done()) fxList.splice(i, 1); } }
+function drawFx() {
+  for (const f of fxList) {
+    FXL.clearFrame(f.frame); f.fx.draw(f.frame); FXL.composite(f.frame, f.img.data, null);
+    f.c2.putImageData(f.img, 0, 0); ctx.drawImage(f.cv, f.x0, f.y0);
+  }
+}
+
+// ---- The table during a game ----------------------------------------------------------------
+function drawLabels() {
+  const S = state, G = S.g, V = S.view;
+  for (let s = 0; s < N; s++) {
+    const p = posOf(s), L = POS[p], [x, y] = seatXY(s), seat = G.seats[s], me = s === S.me;
+    if (S.phase === 'deal' && S.dealShown <= s) continue;
+    const turn = (S.phase === 'bot' || S.phase === 'human') && G.cur === s;
+    const name = CAST[seat.pid].name + (me ? '' : '·봇'), lead = S.phase !== 'deal' && S.phase !== 'fire' && scene === 'play' && mod(G.round) === s;
+    const w = tw(name) + (lead ? 17 : 0);
+    const lx = L.label[2] === 'center' ? x + L.label[0] - I(w / 2) : x + L.label[0], ly = y + L.label[1];
+    txt(name, lx, ly, S.fallen[s] ? C.dim : turn || (me && S.phase === 'deal') ? C.amber : C.bone);
+    if (lead) { px(lx + w - 14, ly, 14, 13, C.amberD); px(lx + w - 13, ly + 1, 12, 11, C.ink); txt('선', lx + w - 13, ly + 1, C.amber); } // leads this round
+    if (S.fallen[s]) txt('탈락', me ? lx + w + 5 : lx, me ? ly : ly + 13, C.crim); // my own seat has no room for a second line
+    else if (!me && S.phase !== 'deal') {
+      const info = V.seats[s];
+      if (info.out) txt('소진', lx, ly + 13, C.crim);
+      else if (tune.show_credit_range) { // credits left, as far as the table can count them
+        px(lx, ly + 16, 5, 5, C.brassD); px(lx + 1, ly + 17, 3, 3, C.brass);
+        txt(info.minRem === info.maxRem ? `${info.maxRem}` : `${info.minRem}~${info.maxRem}`, lx + 8, ly + 13, C.boneD);
+      }
+    }
+    // beside the head: the seat number at the draw, dots while a bot thinks, else what the seat last did
+    const bx = x + L.bubble[0], by = y + L.bubble[1];
+    if (S.phase === 'deal') { bubbleBox(bx, by); txt(`${s + 1}`, bx, by - 6, C.amber, 'center'); }
+    else if (S.fallen[s]) continue;
+    else if (S.phase === 'bot' && G.cur === s) { bubbleBox(bx, by); for (let i = 0; i < 3; i++) px(bx - 4 + i * 4, by + (Math.floor(S.t * 6) % 3 === i ? -2 : 0), 2, 2, C.bone); }
+    else if (S.bubbles[s]) { bubbleBox(bx, by); bmp(ICON[S.bubbles[s]], bx - 3, by - 3, ICON_COLOR[S.bubbles[s]]); }
+  }
+}
+function drawOverlays(ringA) { // marks over the cylinder: my chamber, my pick, the move being made
+  const S = state, V = S.view, sel = S.sel, an = S.anim, blink = Math.floor(S.t * 5) % 2 === 0;
+  if (S.phase !== 'deal' && scene === 'play' && S.phase !== 'fire') { // my own chamber, coloured by what I know of it
+    const c = myChamber(), [x, y] = hatchXY(c, ringA), v = V.chambers[c];
+    if (v !== 1 || blink) brackets(x, y, v === 1 ? C.crim : v === 0 ? C.teal : C.boneD);
+  }
+  if (S.phase === 'human' && sel && (sel.mode === 'pick' || sel.mode === 'swap')) {
+    const over = devicePairAt(ui.mx, ui.my);   // the pair under the mouse, before it is clicked
+    if (over !== null && over !== sel.pair) for (const j of [over, mod(over + 1)]) brackets(...hatchXY(j, ringA), C.boneD);
+    for (const j of [sel.pair, mod(sel.pair + 1)]) { const [x, y] = hatchXY(j, ringA); brackets(x, y, blink ? C.amber : C.brassH); px(x - 2, y - HATCH_RY - 6, 5, 2, C.amber); }
+  }
+  if (S.phase === 'human' && sel && sel.mode === 'confirm') { // the chamber a turn would bring me
+    const k = sel.act === 2 ? 1 : 2, [x, y] = hatchXY(mod(myChamber() - k), ringA);
+    brackets(x, y, blink ? C.amber : C.brassH);
+    for (let i = 1; i <= 5; i++) { const a = posAngle(0) - k * TAU / N * (1 - i / 6); px(CX + Math.cos(a) * (RING_RX + 12) - 1, CY + Math.sin(a) * (RING_RY + 9) - 1, 2, 2, C.amber); }
+  }
+  if (an && (an.type === 'public' || an.type === 'private')) { // the two chambers being looked into
+    for (const j of [an.a, mod(an.a + 1)]) { const [x, y] = hatchXY(j, ringA); brackets(x, y, an.type === 'public' ? C.bone : C.amber); }
+  }
+  if (an && an.type === 'tamper') { // a chip slides to the cylinder, face down
+    const [sx, sy] = seatXY(an.seat), u = ease(an.t / (an.dur * 0.8)), x = I(sx + (CX - sx) * u), y = I(sy + (CY - sy) * u);
+    if (an.t < an.dur * 0.8) { px(x - 3, y - 3, 7, 7, C.ink); px(x - 2, y - 2, 5, 5, C.brassD); px(x - 1, y - 1, 3, 3, C.brass); }
+  }
+  if (an && an.type === 'swap') { // two rounds change places, shut
+    const [ax, ay] = hatchXY(an.a, ringA), [bx, by] = hatchXY(mod(an.a + 1), ringA), u = ease(an.t / an.dur), lift = Math.sin(u * Math.PI) * 7;
+    for (const [x0, y0, x1, y1, up] of [[ax, ay, bx, by, 1], [bx, by, ax, ay, -1]]) {
+      const x = I(x0 + (x1 - x0) * u), y = I(y0 + (y1 - y0) * u - lift * up);
+      ell(x, y, 5, 4, C.ink); ell(x, y, 4, 3, C.brass); px(x - 1, y - 1, 2, 2, C.brassH);
+    }
+  }
+  for (const p of S.pops) { // on a dark plate, so it reads over the wood
+    const y = p.y - I((1 - Math.min(1, p.t)) * 6), w = tw(p.text);
+    px(p.x - I(w / 2) - 3, y - 1, w + 6, 15, C.ink); txt(p.text, p.x, y, p.color, 'center');
+  }
+}
+function drawScene() {
+  const S = state, lamp = lampPos(), ringA = ringAngle(), an = S.anim;
+  const sx = S.shake > 0.3 ? I(Math.sin(S.t * 97) * S.shake) : 0, sy = S.shake > 0.3 ? I(Math.cos(S.t * 83) * S.shake * 0.6) : 0;
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, SCENE_W, BAR_Y); ctx.clip(); ctx.translate(sx, sy);
+  drawRoom(); drawLamp(lamp.sway);
+  for (const p of [2, 3, 4]) drawSeat(mod(S.me + p));
+  drawTable();
+  // while a look or a swap plays, the chambers it touches stay as they were until it lands
+  let hide = null, info = hatchInfo;
+  if (an && an.type === 'swap') hide = [an.a, mod(an.a + 1)];
+  if (an && (an.type === 'public' || an.type === 'private') && an.t < an.dur * 0.45 && an.prev) {
+    const a = an.a, b = mod(an.a + 1);
+    info = j => j === a ? [an.prev[0], an.prev[1]] : j === b ? [an.prev[2], an.prev[3]] : hatchInfo(j);
+  }
+  drawDevice(ringA, S.phase === 'fire' || scene === 'results' ? S.fire.a : ringA, info, hide);
+  for (const p of [1, 5, 0]) drawSeat(mod(S.me + p));
+  drawLight(lamp.x, lamp.y, lamp.k);
+  drawFx();
+  drawOverlays(ringA);
+  drawLabels();
+  if (S.phase !== 'deal') {
+    txt(`${S.g.round + 1}라운드`, 5, 3, C.boneD);
+    const cfg = RC(), close = S.g.outCount >= cfg.endOut - 1;
+    txt(`소진 ${S.g.outCount}/${cfg.endOut}`, SCENE_W - 5, 3, close ? C.crim : C.boneD, 'right');
+  }
+  ctx.restore();
+}
+function drawPanel() {
+  const S = state, V = S.view, cfg = RC(), x = PANEL_X;
+  px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night); px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
+  // my credits, which only I can see, and my hidden deposit towards the swap
+  txt('크레딧', x, 3, C.boneD); txt(`${V.credits}`, x + 42, 3, C.amber);
+  const pitch = 168 / cfg.start, pw = Math.max(1, Math.floor(pitch) - 2);
+  for (let i = 0; i < cfg.start; i++) px(x + Math.floor(i * pitch), 17, pw, 5, i < V.credits ? C.brass : C.steelDD);
+  txt('조작함', x, 26, C.boneD);
+  for (let i = 0; i < cfg.need; i++) px(x + 44 + i * 10, 30, 8, 5, i < V.pot ? C.crim : C.steelDD);
+  txt(`${V.pot}/${cfg.need}`, W - 5, 26, C.boneD, 'right');
+  const c = myChamber(), v = V.chambers[c];
+  let left = cfg.bullets, blank = 0;
+  V.chambers.forEach(q => { if (q === 1) left--; else if (q === null) blank++; });
+  const line = v === 1 ? `내 앞 약실 ${LETTERS[c]}: 실탄!` : v === 0 ? `내 앞 약실 ${LETTERS[c]}: 비었음` : `내 앞 약실 ${LETTERS[c]}: 모름 ${Math.round(100 * left / Math.max(1, blank))}%`;
+  if (S.phase !== 'deal') txt(line, x, 40, v === 1 ? C.crim : v === 0 ? C.teal : C.bone);
+  px(x, 55, 168, 1, C.steelDD);
+  ell(x + 5, 64, 4, 3, C.bone); ell(x + 5, 64, 3, 2, C.hatch); txt('모두 앎', x + 13, 58, C.boneD);
+  ell(x + 87, 64, 3, 2, C.hatch); px(x + 86, 59, 3, 1, C.amber); px(x + 86, 69, 3, 1, C.amber); px(x + 81, 63, 1, 3, C.amber); px(x + 93, 63, 1, 3, C.amber);
+  txt('나만 앎', x + 98, 58, C.boneD);
+  px(x, 73, 168, 1, C.steelDD);
+  // what happened, newest at the bottom; a mark on what came since my last move
+  const rows = 10, from = Math.max(0, S.log.length - rows);
+  for (let i = from; i < S.log.length; i++) {
+    const y = 77 + (i - from) * 14, e = S.log[i];
+    if (i >= S.logMark) px(x - 3, y + 1, 1, 11, C.amber);
+    txt(e.text, x, y, i >= S.logMark ? e.color : e.color === C.bone ? C.boneD : e.color);
+  }
+}
+function promptLine() { // [words, colour] for the line above the buttons
+  const S = state, G = S.g, V = S.view, cfg = RC(), sel = S.sel, close = G.outCount >= cfg.endOut - 1;
+  if (S.noteT > 0) return [S.note, C.amber];
+  if (S.phase === 'deal') return ['자리 추첨 중', C.boneD];
+  if (S.phase === 'fire') return ['격발: 총구가 향한 자리부터 시계 방향으로 한 발씩', C.crim];
+  if (S.phase === 'bot') return [V.seats[S.me].out ? `크레딧 소진: 지켜볼 수밖에 없습니다 · ${nm(G.cur)} 차례` : `${nm(G.cur)} 차례`, C.boneD];
+  if (S.phase === 'anim') return [S.log.length ? S.log[S.log.length - 1].text : '', C.boneD];
+  if (!sel) {
+    const v = V.chambers[myChamber()];
+    if (close) return ['내 차례: 누구든 크레딧을 다 쓰면 그 자리에서 격발입니다', C.amber];
+    if (ui.games === 0 && S.myTurns <= 2) { // the first turns of the first game teach by the next thing to do
+      if (v === null) return ['내 차례: 1이나 2로 내 앞 약실부터 조사해 보세요', C.amber];
+      if (v === 1) return ['내 앞이 실탄! 3이나 4로 총구를 돌려 옆자리로 넘기세요', C.crim];
+      return ['내 앞은 비었습니다. 크레딧을 아끼며 다른 자리를 살피세요', C.teal];
+    }
+    return ['내 차례: 행동을 고르세요 (1~5)', C.amber];
+  }
+  const pair = `${LETTERS[sel.pair]}·${LETTERS[mod(sel.pair + 1)]}`;
+  if (sel.mode === 'pick') return [`${sel.act === 0 ? '공개 조사' : '비공개 조사'}: ${pair} 칸 · 좌우 키로 고르기`, C.amber];
+  if (sel.mode === 'swap') return [`조작권! 맞바꿀 두 칸 ${pair} · 좌우 키로 고르기`, C.amber];
+  if (sel.mode === 'amount') return [`조작에 ${sel.n}개 제출 · 좌우 키로 개수 · 모은 ${V.pot}/${cfg.need}`, C.amber];
+  const k = sel.act === 2 ? 1 : 2, j = mod(myChamber() - k), v = V.chambers[j];
+  return [`${k}칸 회전: ${LETTERS[j]} 약실(${v === 1 ? '실탄' : v === 0 ? '빔' : '모름'})이 내 앞으로`, v === 1 ? C.crim : C.amber];
+}
+function smallButton(r, label, strong) {
+  const hov = hoverIn(...r);
+  px(r[0], r[1], r[2], r[3], strong ? C.amberD : C.steelDD); px(r[0] + 1, r[1] + 1, r[2] - 2, r[3] - 2, hov ? C.btnH : C.btn);
+  txt(label, r[0] + I(r[2] / 2), r[1] + 2, strong ? C.amber : C.bone, 'center');
+}
+function drawBar() {
+  const S = state, V = S.view, cfg = RC(), live = S.phase === 'human', sel = S.sel;
+  px(0, BAR_Y, W, H - BAR_Y, C.bar); px(0, BAR_Y, W, 1, C.steelDD);
+  if (scene === 'results') { drawResultsBar(); return; }
+  const [words, color] = promptLine();
+  txt(words, 6, 225, color);
+  if (live && sel) { smallButton(OK_RECT, 'Enter 확정', true); if (sel.mode !== 'swap') smallButton(NO_RECT, 'Esc 취소', false); }
+  else if (S.phase === 'bot' || S.phase === 'anim') txt(ui.fast ? 'F 빠르게: 켬' : 'F 빠르게: 끔', W - 6, 225, ui.fast ? C.amber : C.dim, 'right');
+  const names = ['공개 조사', '비공개 조사', '1칸 회전', '2칸 회전', '조작'], costs = [cfg.pub, cfg.priv, cfg.rot1, cfg.rot2, 1];
+  for (let i = 0; i < 5; i++) {
+    const [x, y, w, h] = btnRect(i), can = live && V.credits >= costs[i] && !(sel && sel.mode === 'swap'), on = live && sel && sel.act === i;
+    px(x, y, w, h, on ? C.amberD : C.steelDD); px(x + 1, y + 1, w - 2, h - 2, on ? '#3a2a12' : can && hoverIn(x, y, w, h) ? C.btnH : C.btn);
+    txt(`${i + 1} ${names[i]}`, x + 5, y + 2, on ? C.amber : can ? C.bone : C.dim);
+    txt(i < 4 ? `크레딧 ${costs[i]}` : `1~${cfg.tmax}개씩 · ${V.pot}/${cfg.need}`, x + 5, y + 14, can || on ? C.boneD : C.dim);
+  }
+}
+function drawResultsBar() {
+  const S = state, R = S.result, lost = R.lost;
+  txt(lost ? '탈락' : '생존!', 10, 234, lost ? C.crim : C.teal, 'left', 24);
+  txt(`실탄은 ${R.bullets.map(j => LETTERS[j]).join('·')} 약실에 있었습니다`, 96, 226, C.bone);
+  txt(`쓰러진 자리: ${R.dead.map(nm).join(', ')}`, 96, 240, C.boneD);
+  txt(`R·Enter: 새 판 · T: 처음 화면 · 전적 ${ui.wins}승 ${ui.losses}패`, 96, 254, C.amber);
+}
+const HELP = [
+  ['빈 약실: 규칙', C.amber],
+  ['약실 여섯 칸 중 두 칸에 실탄이 있습니다. 한 자리에 약실 한 칸이', C.bone],
+  ['마주 보고, 마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.', C.bone],
+  ['', C.bone],
+  ['내 차례에는 다섯 가지 중 하나를 합니다. 크레딧은 16개로 시작합니다.', C.bone],
+  ['1 공개 조사 (1): 이웃한 두 칸이 찼는지 모두에게 공개', C.boneD],
+  ['2 비공개 조사 (2): 이웃한 두 칸을 나만 확인', C.boneD],
+  ['3 1칸 회전 (3) · 4 2칸 회전 (4): 총구와 실린더가 시계 방향으로 돈다.', C.boneD],
+  ['   모든 약실이 그만큼 옆자리로 넘어갑니다.', C.boneD],
+  ['5 조작: 한 번에 1~3개씩 몰래 모아 6이 되면 이웃한 두 칸의 탄을 맞바꿈', C.boneD],
+  ['', C.bone],
+  ['남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없습니다.', C.bone],
+  ['세 명이 크레딧을 다 쓰면 끝. 총구가 향한 자리부터 시계 방향으로', C.bone],
+  ['한 발씩 격발하고, 실탄을 맞은 두 명이 탈락합니다.', C.bone],
+  ['', C.bone],
+  ['H 또는 Esc: 닫기', C.amber],
+];
+function drawHelp() {
+  clear(C.night); px(8, 8, W - 16, H - 16, C.steelDD); px(9, 9, W - 18, H - 18, C.bar);
+  HELP.forEach(([s, c], i) => { if (s) txt(s, 22, 20 + i * 15, c); });
+}
+function drawPlay() {
+  if (ui.help) { drawHelp(); return; }
+  clear(C.night); drawScene(); drawPanel(); drawBar();
+}
+function drawTitle() {
+  if (ui.help) { drawHelp(); return; }
+  const t = state.t;
+  clear(C.night);
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, SCENE_W, BAR_Y); ctx.clip();
+  drawRoom(); drawLamp(Math.sin(t * 1.3) * tune.lamp_sway);
+  for (const p of [2, 3, 4]) drawRects(CHAIR_FAR, ...posXY(p));
+  drawTable(); drawDevice(t * 0.25, t * 0.25, () => [null, null], null);
+  for (const p of [1, 5, 0]) drawRects(CHAIR_NEAR, ...posXY(p));
+  drawLight(CX + Math.sin(t * 1.3) * tune.lamp_sway, CY - 4, 1);
+  ctx.restore();
+  px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night); px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
+  const mx = PANEL_X + 84;
+  txt(TITLE, mx, 12, C.amber, 'center', 24); txt('EMPTY CHAMBER', mx, 42, C.boneD, 'center');
+  px(PANEL_X, 60, 168, 1, C.steelDD);
+  CONTROLS.forEach((c, i) => txt(c, PANEL_X, 66 + i * 14, C.bone));
+  px(PANEL_X, 154, 168, 1, C.steelDD);
+  txt('봇 수준', PANEL_X, 161, C.boneD);
+  const lx = PANEL_X + 112;
+  bmp(['..#', '.##', '###', '.##', '..#'], lx - 34, 165, C.amber); bmp(['#..', '##.', '###', '##.', '#..'], lx + 31, 165, C.amber);
+  txt(ui.level === 1 ? '고수' : '보통', lx, 161, C.amber, 'center');
+  txt('좌우 키로 바꾸기', PANEL_X, 175, C.dim);
+  if (Math.floor(t * 2) % 2 === 0) txt('Enter: 시작', mx, 194, C.amber, 'center');
+  if (ui.wins + ui.losses > 0) txt(`전적 ${ui.wins}승 ${ui.losses}패`, mx, 208, C.boneD, 'center');
+  px(0, BAR_Y, W, H - BAR_Y, C.bar); px(0, BAR_Y, W, 1, C.steelDD);
+  txt('여섯 약실에 실탄 두 발. 마지막 격발 때 내 앞 약실이 비어 있으면 생존.', 6, 228, C.bone);
+  txt('나머지 다섯 자리에는 봇이 앉습니다. 온라인 대전은 아직 없습니다.', 6, 242, C.boneD);
+  txt('H: 규칙 보기', 6, 256, C.amber);
+}
+function drawFigures() { // every figure side by side, named: for the outline check
+  clear(C.floor);
+  txt('앞모습', 8, 6, C.boneD); txt('뒷모습 (가까운 세 자리)', 8, 104, C.boneD); txt('약실', 8, 200, C.boneD);
+  CAST.forEach((c, i) => {
+    const x = 60 + i * 72;
+    drawFigure(i, x, 56, false, 1); txt(c.name + (i ? '·봇' : ''), x, 78, C.bone, 'center');
+    drawFigure(i, x, 150, true, 1); txt(c.name + (i ? '·봇' : ''), x, 174, C.bone, 'center');
+  });
+  const kinds = [[null, null, '모름'], [0, 'pub', '빔 (모두 앎)'], [1, 'pub', '실탄 (모두 앎)'], [0, 'priv', '빔 (나만 앎)'], [1, 'priv', '실탄 (나만 앎)']];
+  kinds.forEach(([v, src, label], i) => { const x = 60 + i * 92; drawHatch(x, 232, v, src, LETTERS[i]); txt(label, x, 246, C.boneD, 'center'); });
+}
+
+// ---- Scenes: title, play, results (a game with an end), and figures for the outline check -------
+const scenes = {
+  figures: { update(dt) { state.t += dt; }, draw() { drawFigures(); } },
+  title: {
+    update(dt) {
+      state.t += dt;
+      if (pressed('KeyH')) ui.help = !ui.help;
+      if (ui.help) { if (pressed('Escape') || pressed('Enter')) ui.help = false; return; }
+      if (pressed('ArrowLeft') || pressed('ArrowRight') || pressed('KeyA') || pressed('KeyD') || clickIn(PANEL_X + 70, 158, 98, 16)) { ui.level = 1 - ui.level; sfx.move(); }
+      if (pressed('Enter') || pressed('NumpadEnter') || pressed('Space') || clickIn(PANEL_X, 190, 168, 16)) { reset(); scene = 'play'; sfx.pick(); }
+    },
+    draw() { drawTitle(); },
+  },
+  play: {
+    update(dt) {
+      const S = state;
+      if (pressed('KeyH')) ui.help = !ui.help;
+      if (ui.help) { if (pressed('Escape') || pressed('Enter')) ui.help = false; return; } // the rules sheet stops the table
+      if (pressed('KeyF')) ui.fast = !ui.fast;
+      if (pressed('KeyR') && S.phase !== 'fire') { // a new game in the middle of one: asked for twice, so a slip of the finger costs nothing
+        if (S.again > 0) { ui.games++; reset(); return; }
+        S.again = 2.5; S.note = 'R을 한 번 더 누르면 이 판을 버리고 새 판을 시작합니다'; S.noteT = 2.5;
+      }
+      if (S.again > 0) S.again -= dt;
+      tickTable(dt);
+      const quick = ui.fast ? tune.fast_mult : 1; // only the waiting on bots goes faster
+      if (S.phase === 'deal') {
+        S.timer -= dt;
+        const n = Math.min(N, Math.floor((1 - S.timer / S.dealDur) * (N + 1)));
+        while (S.dealShown < n) { sfx.seat(S.dealShown); S.dealShown++; }
+        if (S.timer <= 0) {
+          S.dealShown = N;
+          say(`자리 추첨: 나는 ${S.me + 1}번 자리`, C.amber); say(`1라운드 · 선 ${nm(0)}`, C.boneD);
+          S.logMark = S.log.length; goTurn();
+        }
+      } else if (S.phase === 'bot') {
+        S.timer -= dt * quick;
+        if (S.timer <= 0) perform(S.g.cur, S.plan);
+      } else if (S.phase === 'anim') {
+        const step = dt * (S.anim.seat === S.me ? 1 : quick);
+        S.timer -= step; S.anim.t = Math.min(S.anim.dur, S.anim.t + step);
+        if (S.timer <= 0) afterAnim();
+      } else if (S.phase === 'human') updateHuman();
+      else if (S.phase === 'fire') updateFire(dt);
+    },
+    draw() { drawPlay(); },
+  },
+  results: {
+    update(dt) {
+      tickTable(dt);
+      if (pressed('KeyH')) ui.help = !ui.help;
+      if (ui.help) { if (pressed('Escape') || pressed('Enter')) ui.help = false; return; }
+      if (pressed('KeyR') || pressed('Enter') || pressed('NumpadEnter') || clickIn(0, BAR_Y, W, H - BAR_Y)) { ui.games++; reset(); scene = 'play'; }
+      else if (pressed('KeyT') || pressed('Escape')) { ui.games++; reset(); scene = 'title'; }
+    },
+    draw() { drawPlay(); },
+  },
+};
+
+// ---- Loop: fixed step, frame time clamped ---------------------------------------------
+function step() {
+  if (pressed('KeyM')) { setMuted(!muted); hit.delete('KeyM'); }
+  scenes[scene].update(STEP); hit.clear(); ui.clicks.length = 0;
+}
+let last, acc = 0, ALPHA = 1; // ALPHA: how far the frame is between the last two steps
+function tick() {
+  const now = clock.now();
+  acc += Math.min(now - last, 0.25); last = now; // a stall never fast-forwards the game
+  while (acc >= STEP) { step(); acc -= STEP; }
+  ALPHA = acc / STEP; // draw between steps, so the view never judders
+  drawFrame();
+}
+function drawFrame() { scenes[scene].draw(); }
+function frame() { tick(); requestAnimationFrame(frame); }
+// A headless browser on a time budget runs timers but almost no animation frames: a timer
+// ticks when no frame has come for 100 ms on a visible page; a hidden tab stays paused.
+function timer() { if (document.visibilityState === 'visible' && clock.now() - last > 0.1) tick(); }
+
+// ---- What a check can read and drive (?manual=1 stops the loop; players never see it) ----
+window.game = {
+  get scene() { return scene; },
+  get state() { return state; },
+  press(code) { hit.add(code); },
+  hold(code, on) { on ? down.add(code) : down.delete(code); },
+  get events() { return events; }, // the loop steps; a check empties it
+  step(n = 1, draw = true, alpha = 1) {
+    for (let i = 0; i < n; i++) step();
+    if (draw) { ALPHA = alpha; drawFrame(); }
+  },
+};
+
+reset();
+scene = params.get('scene') || 'title';
+if (!scenes[scene]) scene = 'title';
+last = clock.now();
+if (document.fonts && document.fonts.load) { // the pixel font comes from assets/: draw again once it is in
+  Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('24px Galmuri11')]).then(() => drawFrame(), () => {});
+}
+if (params.get('manual') === '1') drawFrame();
+else { requestAnimationFrame(frame); setInterval(timer, 50); }
+</script>
+</body>
+</html>

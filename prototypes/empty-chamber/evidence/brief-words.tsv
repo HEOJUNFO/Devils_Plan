@@ -1,0 +1,6 @@
+픽셀아트	480x270 canvas at whole-number scale with smoothing off; every figure, the room, the cylinder and the icons are drawn a pixel at a time with one-pixel dark outlines and two tones; the Galmuri11 pixel font; pixelfx effects at the same pixel size	evidence/play.png, evidence/figures.png
+러시안룰렛	a six-chamber cylinder with two live rounds on the table, a muzzle that points at a seat, and a volley at the end that fires one chamber at each seat	evidence/play.png
+나무위키문서	the nine rules of the page are the rules section of index.html (newGame, applyAction, viewFor, volley) with their numbers in config.js: 16 credits, costs 1/2/3/4, 6 to tamper in deposits of 1 to 3, two rounds, ends when three seats are out	evidence/play.png
+규칙은 그대로	none of the nine rules is changed; the eleven gaps the page leaves are filled as the brief lists them and nowhere else	evidence/play.png
+웹 멀티	miss: online play needs a server, which a one-shot never builds; five bots sit in the other seats and are labelled as bots (brief, Out of scope)
+시즌3	the game built is the season-3 game the person picked; the other season-3 games are Out of scope: grow it	evidence/play.png

@@ -1,0 +1,86 @@
+time	2026-11-11 02:53:35
+keep	lines	0	pinned	0
+checklist	L1	unlisted	-	Look: 픽셀 아트. 램프 하나가 낮게 걸린 어두운 밀실의 둥근 테이블 *(provisional)*. every figure drawn, no emoji, no plain circles.	
+checklist	L2	unlisted	-	Mood: 숨죽인 뒷방의 긴장, 불빛 밖은 어둠 *(provisional)*	
+checklist	L3	unlisted	-	Camera and scale: 테이블을 위에서 살짝 비스듬히 내려다보는 고정 화면, 원본 480×270, 정수 배율만 *(provisional)*	
+checklist	L4	unlisted	-	Shapes: 인물은 각진 어깨의 덩어리 실루엣, 테이블과 실린더는 둥글게 *(guessed)*	
+checklist	L5	unlisted	-	Values: 실린더·얼굴·내 자리 표시가 가장 밝고, 벽과 바닥은 좁은 어두운 범위 *(guessed)*	
+checklist	L6	unlisted	-	Palette: 호박색(램프·내 차례), 진홍(실탄·위험), 청록(빈 약실·안전), 먹남색(배경), 뼈색(글자). 그림자는 푸르게, 빛은 따뜻하게 *(guessed)*	
+checklist	L7	unlisted	-	Detail: 얼굴·손·약실에 디테일, 배경은 큰 면으로 *(guessed)*	
+checklist	L8	unlisted	-	Rules: 픽셀 밀도 하나, 1px 어두운 외곽선, 2단 음영 *(guessed)*	
+checklist	L9	unlisted	-	Signature: 흔들리는 램프의 호박색 디더 광원이 차례인 사람 쪽으로 기운다 *(guessed)*	
+checklist	L10	unlisted	-	References: 데블스 플랜: 데드 어게인 2일차 감옥 매치 (규칙만 그대로, 겉모습은 가져오지 않음). 룩 참고작은 없음.	
+checklist	L11	unlisted	-	View: 2D · Camera: static *(provisional)*	
+checklist	F1	unlisted	-	문서 규칙 1~9 전부: 크레딧 16, 다섯 행동과 비용, 조작의 비공개 분할 제출, 자동 패스, 3명 소진 종료, 총구 방향부터 시계 방향 격발	
+checklist	F2	unlisted	-	6자리 테이블과 6칸 실린더: 인접한 약실 쌍 고르기, 총구 회전이 눈에 보임 *(provisional)*	
+checklist	F3	unlisted	-	봇 5명: 타이틀에서 수준 선택, 뜸 들인 뒤 행동, 가끔 실수, 이름표에 봇 표시 *(provisional)*	
+checklist	F4	unlisted	-	정보 구분: 모두가 아는 칸, 나만 아는 칸, 모르는 칸과 내 자리 위험 표시	
+checklist	F5	unlisted	-	행동 기록: 누가 무엇을 했는지 한 줄씩, 방금 한 행동은 내 차례까지 표시	
+checklist	F6	unlisted	-	종료 임박 경고(두 명 소진), 한 발씩 터지는 격발 연출, 결과 화면, R로 새 판	
+checklist	F7	unlisted	-	픽셀 아트 밀실과 서로 다른 실루엣의 인물 6명, 효과음과 음소거	
+checklist	S1	unlisted	-	규칙은 그대로 · in the slice	
+checklist	M1	unlisted	-	타이틀에서 봇 수준을 고르고 시작하면 자리 추첨이 돌고 여섯이 앉는다.	
+checklist	M2	unlisted	-	내 자리에 불이 들어오고 크레딧 16이 뜬다.	
+checklist	M3	unlisted	-	선 플레이어가 봇이면 잠깐 뜸을 들인 뒤 행동하고, 무엇을 했는지 한 줄로 남는다.	
+checklist	M4	unlisted	-	내 차례가 오면 행동 다섯 개와 비용이 보이고, 조사를 골라 인접한 두 칸을 찍으면 결과가 열린다.	
+checklist	M5	unlisted	-	약실 내용이 처음 열리는 순간 '내 자리 위험' 표시가 움직이고, 위험하면 3크레딧으로 총구를 돌려 그 약실을 옆자리로 넘길 수 있다 *(guessed)*.	
+checklist	C1	unlisted	-	첫 고비는 2~3라운드째(약 2~4분)에 온다.	
+checklist	C2	unlisted	-	조사에 쓴 만큼 막판 회전·조작에 쓸 크레딧이 줄고, 봇도 공개된 정보를 보고 총구를 돌린다.	
+checklist	C3	unlisted	-	누가 먼저 바닥나느냐에 따라 판이 갑자기 끝난다.	
+checklist	C4	unlisted	-	지면 탈락이고 R 한 번으로 새 판이다.	
+checklist	C5	unlisted	-	보통 수준의 봇은 사람처럼 가끔 실수하고, 수준을 올리면 남의 행동에서 정보를 읽고 종료 시점까지 계산한다 *(provisional)*.	
+browser	HeadlessChrome/157.0.0.0
+scene	play	0	title
+scene	play	1	play
+digits	log	12px Galmuri11, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif	proportional	3.276
+measure	step-time	play	0.005	0.400	462
+lane	play	stop	7.7	77
+uncaught	play	0
+text	play	canvas	502,317,516,339	39.0	10.19	inside	A
+text	play	canvas	456,331,470,353	39.0	8.72	inside	B
+text	play	canvas	409,317,425,339	39.0	8.72	inside	C
+text	play	canvas	410,287,424,309	39.0	10.19	inside	D
+text	play	canvas	457,271,469,293	39.0	10.19	inside	E
+text	play	canvas	503,287,515,309	39.0	10.19	inside	F
+text	play	canvas	586,425,664,447	39.0	13.50	inside	모루·봇
+text	play	canvas	674,427,694,449	39.0	11.06	inside	선
+text	play	canvas	606,451,680,473	39.0	7.17	inside	13~15
+text	play	canvas	452,495,474,517	39.0	15.01	inside	나
+text	play	canvas	244,425,322,447	39.0	13.50	inside	서리·봇
+text	play	canvas	264,451,290,473	39.0	6.95	inside	14
+text	play	canvas	244,153,322,175	39.0	13.81	inside	달무·봇
+text	play	canvas	264,179,290,201	39.0	6.30	inside	15
+text	play	canvas	496,141,574,163	39.0	9.25	inside	은비·봇
+text	play	canvas	516,167,542,189	39.0	6.04	inside	16
+text	play	canvas	604,153,682,175	39.0	13.81	inside	까치·봇
+text	play	canvas	624,179,650,201	39.0	6.60	inside	16
+text	play	canvas	174,95,256,117	39.0	7.30	inside	1라운드
+text	play	canvas	656,95,756,117	39.0	7.30	inside	소진 0/3
+text	play	canvas	776,95,844,117	39.0	7.25	inside	크레딧
+text	play	canvas	864,95,890,117	39.0	10.65	inside	15
+text	play	canvas	776,141,846,163	39.0	7.25	inside	조작함
+text	play	canvas	1066,141,1108,163	39.0	7.25	inside	0/6
+text	play	canvas	776,169,988,191	39.0	4.46	inside	내 앞 약실 B: 실탄!
+text	play	canvas	802,205,882,227	39.0	7.25	inside	모두 앎
+text	play	canvas	972,205,1052,227	39.0	7.25	inside	나만 앎
+text	play	canvas	776,243,1052,265	39.0	10.65	inside	자리 추첨: 나는 2번 자리
+text	play	canvas	780,271,972,293	39.0	7.25	inside	1라운드 · 선 모루
+text	play	canvas	776,299,962,321	39.0	7.25	inside	모루 조작에 제출
+text	play	canvas	776,327,1038,349	39.0	7.25	inside	나 공개 조사 A빔 B실탄
+text	play	canvas	776,355,1014,377	39.0	15.16	inside	서리 비공개 조사 C·D
+text	play	canvas	776,383,1062,405	39.0	15.16	inside	달무 공개 조사 C실탄 D빔
+text	play	canvas	172,539,274,561	39.0	7.42	inside	은비 차례
+text	play	canvas	970,539,1106,561	39.0	4.64	inside	F 빠르게: 끔
+text	play	canvas	182,573,308,595	39.0	4.13	inside	1 공개 조사
+text	play	canvas	178,597,270,619	39.0	4.13	inside	크레딧 1
+text	play	canvas	368,573,522,595	39.0	4.13	inside	2 비공개 조사
+text	play	canvas	368,597,464,619	39.0	4.13	inside	크레딧 2
+text	play	canvas	558,573,678,595	39.0	4.13	inside	3 1칸 회전
+text	play	canvas	558,597,654,619	39.0	4.13	inside	크레딧 3
+text	play	canvas	748,573,868,595	39.0	4.13	inside	4 2칸 회전
+text	play	canvas	748,597,844,619	39.0	4.13	inside	크레딧 4
+text	play	canvas	938,573,1010,595	39.0	4.13	inside	5 조작
+text	play	canvas	942,597,1104,619	39.0	4.13	inside	1~3개씩 · 0/6
+screen	play	drawn
+shot	play	prototypes/empty-chamber/evidence/play.png
+responds	changed	244
