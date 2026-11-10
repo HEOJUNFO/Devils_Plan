@@ -3,9 +3,10 @@
  *
  * Pure functions over plain data, with no server or browser APIs, so the same
  * code is unit-tested directly and run inside the room's Durable Object.
- * Nothing here knows about the game being played; seats at the table are
- * drawn when a game starts, not when players join.
+ * Nothing here knows how a game is played, only which game the room was made
+ * for; seats at the table are drawn when a game starts, not when players join.
  */
+import { DEFAULT_GAME, type GameId } from "./games";
 
 /** Tunable lobby values. Loaded from `room-config.json`. */
 export interface RoomConfig {
@@ -23,6 +24,12 @@ export interface RoomConfig {
   joinTimeoutSeconds: number;
   /** Seconds a player with no live connection has for a move before the room makes it. */
   awayTurnSeconds: number;
+  /**
+   * Seconds a player with no live connection keeps their slot when no game
+   * being played holds it for them: long enough to switch to another app and
+   * come back, short enough that a room does not fill with people who left.
+   */
+  awaySlotSeconds: number;
 }
 
 /** A player as the server stores them. `token` is secret to that player. */
@@ -33,11 +40,23 @@ export interface LobbyPlayer {
   token: string;
   /** Display name. */
   nick: string;
+  /**
+   * When the player's last connection closed, in milliseconds since the
+   * epoch; absent while they are connected.
+   */
+  awaySince?: number;
 }
 
 /** Everything a room remembers about its lobby. */
 export interface LobbyState {
   players: LobbyPlayer[];
+  /** The game the room was made for. Absent in a room stored before rooms had one. */
+  game?: GameId;
+  /**
+   * Whether the room is on the list of rooms anyone can join. Absent in a
+   * room stored before the list existed, which is then not on it.
+   */
+  listed?: boolean;
 }
 
 /** A player as everyone may see them. Carries no token. */
@@ -53,6 +72,10 @@ export interface LobbyView {
   /** The viewer's own slot. */
   you: number;
   maxPlayers: number;
+  /** The game the room was made for. */
+  game: GameId;
+  /** Whether the room is on the list of rooms anyone can join. */
+  listed: boolean;
   players: PublicPlayer[];
 }
 
@@ -66,9 +89,14 @@ export type JoinResult =
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
-/** A new, empty lobby. */
-export function createLobby(): LobbyState {
-  return { players: [] };
+/** A new, empty lobby for `game`, on the list of rooms or reached by its code alone. */
+export function createLobby(game: GameId = DEFAULT_GAME, listed = false): LobbyState {
+  return { players: [], game, listed };
+}
+
+/** The game a room was made for. */
+export function gameOf(state: LobbyState): GameId {
+  return state.game ?? DEFAULT_GAME;
 }
 
 /** Whether `token` has the shape of a player token (16–64 URL-safe characters). */
@@ -128,8 +156,10 @@ export function joinLobby(
 
   const existing = findPlayer(state, request.token);
   if (existing) {
-    const players = state.players.map((p) => (p === existing ? { ...p, nick } : p));
-    return { ok: true, state: { players }, slot: existing.slot, rejoined: true };
+    // back from being away, if they were
+    const back: LobbyPlayer = { slot: existing.slot, token: existing.token, nick };
+    const players = state.players.map((p) => (p === existing ? back : p));
+    return { ok: true, state: { ...state, players }, slot: existing.slot, rejoined: true };
   }
 
   const taken = new Set(state.players.map((p) => p.slot));
@@ -140,7 +170,7 @@ export function joinLobby(
   const players = [...state.players, { slot, token: request.token, nick }].sort(
     (a, b) => a.slot - b.slot,
   );
-  return { ok: true, state: { players }, slot, rejoined: false };
+  return { ok: true, state: { ...state, players }, slot, rejoined: false };
 }
 
 /**
@@ -149,7 +179,68 @@ export function joinLobby(
  */
 export function leaveLobby(state: LobbyState, token: string): LobbyState {
   if (!findPlayer(state, token)) return state;
-  return { players: state.players.filter((p) => p.token !== token) };
+  return { ...state, players: state.players.filter((p) => p.token !== token) };
+}
+
+/**
+ * Notes when each player without a connection went away: `now` for one not
+ * noted yet, and nothing for a player who is connected. Returns the state
+ * unchanged when there is nothing to note. The input state is not modified.
+ */
+export function markAway(state: LobbyState, connectedSlots: ReadonlySet<number>, now: number): LobbyState {
+  let changed = false;
+  const players = state.players.map((p) => {
+    if (connectedSlots.has(p.slot)) {
+      if (p.awaySince === undefined) return p;
+      changed = true;
+      return { slot: p.slot, token: p.token, nick: p.nick };
+    }
+    if (p.awaySince !== undefined) return p;
+    changed = true;
+    return { ...p, awaySince: now };
+  });
+  return changed ? { ...state, players } : state;
+}
+
+/**
+ * The players who are away and whom nothing keeps, longest away first.
+ * `keeps` says whether something holds a player's slot for them: a seat in a
+ * game still being played.
+ */
+export function awayPlayers(state: LobbyState, keeps: (token: string) => boolean): LobbyPlayer[] {
+  return state.players
+    .filter((p) => p.awaySince !== undefined && !keeps(p.token))
+    .sort((a, b) => (a.awaySince ?? 0) - (b.awaySince ?? 0) || a.slot - b.slot);
+}
+
+/** When the away player `player` gives up their slot, in milliseconds since the epoch. */
+export function slotLapsesAt(player: LobbyPlayer, config: RoomConfig): number {
+  return (player.awaySince ?? 0) + config.awaySlotSeconds * 1000;
+}
+
+/**
+ * Removes every away player whose time is up at `now` and whom nothing keeps
+ * (see {@link awayPlayers}). Returns the state unchanged when nobody's is.
+ * The input state is not modified.
+ */
+export function dropLapsed(
+  state: LobbyState,
+  now: number,
+  config: RoomConfig,
+  keeps: (token: string) => boolean,
+): LobbyState {
+  const gone = new Set(
+    awayPlayers(state, keeps)
+      .filter((p) => slotLapsesAt(p, config) <= now)
+      .map((p) => p.token),
+  );
+  if (gone.size === 0) return state;
+  return { ...state, players: state.players.filter((p) => !gone.has(p.token)) };
+}
+
+/** Puts the room on the list of rooms or takes it off. The input state is not modified. */
+export function setListed(state: LobbyState, listed: boolean): LobbyState {
+  return (state.listed === true) === listed ? state : { ...state, listed };
 }
 
 /**
@@ -165,6 +256,8 @@ export function viewLobby(
   return {
     you: viewerSlot,
     maxPlayers: config.maxPlayers,
+    game: gameOf(state),
+    listed: state.listed === true,
     players: state.players.map((p) => ({
       slot: p.slot,
       nick: p.nick,

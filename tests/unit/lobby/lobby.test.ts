@@ -1,12 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_GAME } from "../../../src/shared/games";
 import {
+  awayPlayers,
   createLobby,
+  dropLapsed,
+  gameOf,
   generateRoomCode,
   isValidRoomCode,
   isValidToken,
   joinLobby,
   leaveLobby,
+  markAway,
   normalizeNick,
+  setListed,
+  slotLapsesAt,
   viewLobby,
   type LobbyState,
   type RoomConfig,
@@ -22,6 +29,7 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     emptyRoomTtlMinutes: 10,
     joinTimeoutSeconds: 5,
     awayTurnSeconds: 5,
+    awaySlotSeconds: 60,
     ...overrides,
   };
 }
@@ -171,6 +179,229 @@ describe("viewLobby", () => {
     const view = viewLobby(lobbyWith(2, config), new Set([1]), 1, config);
 
     expect(view).toMatchObject({ you: 1, maxPlayers: config.maxPlayers });
+  });
+
+  it("says which game the room is for and whether it is on the list", () => {
+    const config = testConfig();
+    const joined = joinLobby(createLobby(DEFAULT_GAME, true), { token: tokenFor(0), nick: "ann" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+
+    const view = viewLobby(joined.state, new Set([0]), 0, config);
+
+    expect(view).toMatchObject({ game: DEFAULT_GAME, listed: true });
+  });
+
+  it("shows a room stored before rooms had a game or a listing as the first game, off the list", () => {
+    const config = testConfig();
+    const old: LobbyState = { players: lobbyWith(1, config).players };
+
+    const view = viewLobby(old, new Set([0]), 0, config);
+
+    expect(view).toMatchObject({ game: DEFAULT_GAME, listed: false });
+  });
+
+  it("never says when a player went away", () => {
+    const config = testConfig();
+    const state = markAway(lobbyWith(2, config), new Set([0]), NOW);
+
+    const view = viewLobby(state, new Set([0]), 0, config);
+
+    expect(JSON.stringify(view)).not.toContain("awaySince");
+  });
+});
+
+/** An arbitrary moment the tests call "now", in ms. */
+const NOW = 1_000_000;
+
+describe("a new lobby", () => {
+  it("is off the list unless asked to be on it", () => {
+    expect(createLobby().listed).toBe(false);
+    expect(createLobby(DEFAULT_GAME, true).listed).toBe(true);
+  });
+
+  it("is for the game it was made for", () => {
+    expect(gameOf(createLobby(DEFAULT_GAME))).toBe(DEFAULT_GAME);
+  });
+
+  it("keeps its game and its listing as players come and go", () => {
+    const config = testConfig();
+    let state = createLobby(DEFAULT_GAME, true);
+
+    const joined = joinLobby(state, { token: tokenFor(0), nick: "ann" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+    state = leaveLobby(joined.state, tokenFor(0));
+
+    expect(joined.state).toMatchObject({ game: DEFAULT_GAME, listed: true });
+    expect(state).toMatchObject({ game: DEFAULT_GAME, listed: true, players: [] });
+  });
+});
+
+describe("setListed", () => {
+  it("puts a room on the list and takes it off", () => {
+    const config = testConfig();
+    const state = lobbyWith(1, config);
+
+    const on = setListed(state, true);
+    const off = setListed(on, false);
+
+    expect(on.listed).toBe(true);
+    expect(off.listed).toBe(false);
+    expect(off.players).toEqual(state.players);
+  });
+
+  it("changes nothing when the room already is as asked", () => {
+    const state = createLobby(DEFAULT_GAME, true);
+
+    expect(setListed(state, true)).toBe(state);
+  });
+
+  it("does not change the state it was given", () => {
+    const state = createLobby(DEFAULT_GAME, false);
+
+    setListed(state, true);
+
+    expect(state.listed).toBe(false);
+  });
+});
+
+describe("markAway", () => {
+  it("notes when a player without a connection went away", () => {
+    const config = testConfig();
+
+    const state = markAway(lobbyWith(3, config), new Set([0, 2]), NOW);
+
+    expect(state.players.map((p) => p.awaySince)).toEqual([undefined, NOW, undefined]);
+  });
+
+  it("keeps the first moment a player was found away", () => {
+    const config = testConfig();
+    const first = markAway(lobbyWith(2, config), new Set([0]), NOW);
+
+    const later = markAway(first, new Set([0]), NOW + 5000);
+
+    expect(later.players[1].awaySince).toBe(NOW);
+  });
+
+  it("forgets it once the player is connected again", () => {
+    const config = testConfig();
+    const away = markAway(lobbyWith(2, config), new Set([0]), NOW);
+
+    const back = markAway(away, new Set([0, 1]), NOW + 5000);
+
+    expect(back.players[1]).toEqual({ slot: 1, token: tokenFor(1), nick: "p1" });
+  });
+
+  it("changes nothing when everyone is as noted", () => {
+    const config = testConfig();
+    const state = markAway(lobbyWith(2, config), new Set([0]), NOW);
+
+    expect(markAway(state, new Set([0]), NOW + 5000)).toBe(state);
+  });
+
+  it("does not change the state it was given", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+    const before = JSON.stringify(state);
+
+    markAway(state, new Set(), NOW);
+
+    expect(JSON.stringify(state)).toBe(before);
+  });
+});
+
+describe("a player coming back", () => {
+  it("is no longer away", () => {
+    const config = testConfig();
+    const away = markAway(lobbyWith(2, config), new Set([0]), NOW);
+
+    const result = joinLobby(away, { token: tokenFor(1), nick: "p1" }, config);
+
+    if (!result.ok) throw new Error("rejoin refused");
+    expect(result.state.players[1]).toEqual({ slot: 1, token: tokenFor(1), nick: "p1" });
+  });
+});
+
+describe("awayPlayers", () => {
+  it("lists the players who are away, longest away first", () => {
+    const config = testConfig();
+    let state = markAway(lobbyWith(3, config), new Set([0, 1]), NOW + 2000);
+    state = markAway(state, new Set([0]), NOW + 4000);
+
+    const away = awayPlayers(state, () => false);
+
+    expect(away.map((p) => p.slot)).toEqual([2, 1]);
+  });
+
+  it("leaves out a player whose slot something keeps", () => {
+    const config = testConfig();
+    const state = markAway(lobbyWith(3, config), new Set([0]), NOW);
+
+    const away = awayPlayers(state, (token) => token === tokenFor(1));
+
+    expect(away.map((p) => p.slot)).toEqual([2]);
+  });
+
+  it("lists nobody when everyone is connected", () => {
+    const config = testConfig();
+
+    expect(awayPlayers(lobbyWith(3, config), () => false)).toEqual([]);
+  });
+});
+
+describe("dropLapsed", () => {
+  it("keeps an away player whose time is not up", () => {
+    const config = testConfig();
+    const state = markAway(lobbyWith(2, config), new Set([0]), NOW);
+
+    expect(dropLapsed(state, NOW + config.awaySlotSeconds * 1000 - 1, config, () => false)).toBe(state);
+  });
+
+  it("removes an away player the moment their time is up", () => {
+    const config = testConfig();
+    const state = markAway(lobbyWith(2, config), new Set([0]), NOW);
+    const lapses = slotLapsesAt(state.players[1], config);
+
+    const next = dropLapsed(state, lapses, config, () => false);
+
+    expect(lapses).toBe(NOW + config.awaySlotSeconds * 1000);
+    expect(next.players.map((p) => p.slot)).toEqual([0]);
+  });
+
+  it("removes only those whose time is up", () => {
+    const config = testConfig();
+    let state = markAway(lobbyWith(3, config), new Set([0, 1]), NOW);
+    state = markAway(state, new Set([0]), NOW + 30_000);
+
+    const next = dropLapsed(state, NOW + config.awaySlotSeconds * 1000, config, () => false);
+
+    expect(next.players.map((p) => p.slot)).toEqual([0, 1]);
+  });
+
+  it("keeps a player whose slot something holds, however long they are away", () => {
+    const config = testConfig();
+    const state = markAway(lobbyWith(2, config), new Set([0]), NOW);
+
+    const next = dropLapsed(state, NOW + config.awaySlotSeconds * 1000 * 100, config, (token) => token === tokenFor(1));
+
+    expect(next).toBe(state);
+  });
+
+  it("never removes a player who is connected", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+
+    expect(dropLapsed(state, NOW + config.awaySlotSeconds * 1000 * 100, config, () => false)).toBe(state);
+  });
+
+  it("keeps the room's game and listing", () => {
+    const config = testConfig();
+    const joined = joinLobby(createLobby(DEFAULT_GAME, true), { token: tokenFor(0), nick: "ann" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+    const state = markAway(joined.state, new Set(), NOW);
+
+    const next = dropLapsed(state, NOW + config.awaySlotSeconds * 1000, config, () => false);
+
+    expect(next).toEqual({ players: [], game: DEFAULT_GAME, listed: true });
   });
 });
 

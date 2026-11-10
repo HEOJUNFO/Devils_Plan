@@ -1,0 +1,8 @@
+{
+  "russian-roulette": {
+    "title": "러시안 룰렛",
+    "summary": "실탄이 든 약실을 캐내고 총구를 돌려, 마지막 격발에서 살아남으세요.",
+    "minPlayers": 4,
+    "maxPlayers": 6
+  }
+}

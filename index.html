@@ -3,34 +3,61 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>러시안 룰렛</title>
+    <title>게임 로비</title>
     <link rel="stylesheet" href="/src/client/style.css" />
   </head>
   <body>
     <!-- Everything is laid out on the game's own 480 by 270 pixels and scaled up as one piece. -->
     <div id="frame">
-      <canvas id="scene" aria-hidden="true"></canvas>
+      <!-- The lobby: the rooms anyone can join, of every game. -->
+      <section id="rooms" aria-labelledby="rooms-title">
+        <header>
+          <h2 id="rooms-title">열린 방</h2>
+          <p id="rooms-count"></p>
+        </header>
+        <p id="rooms-note" role="status"></p>
+        <ol id="room-list"></ol>
+      </section>
 
       <main id="entry" class="panel">
-        <h1>러시안 룰렛</h1>
-        <p class="sub">RUSSIAN ROULETTE</p>
+        <h1>게임 로비</h1>
+        <p class="sub">방을 고르거나 만드세요</p>
 
         <label for="nick">닉네임</label>
         <input id="nick" type="text" autocomplete="off" />
         <button id="create" type="button" class="primary wide">방 만들기</button>
 
-        <p class="or">또는 방 코드로 입장</p>
-        <label for="code">방 코드</label>
+        <p class="or">방 코드로 입장</p>
         <div class="row">
-          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="방 코드" />
           <button id="join" type="button">입장</button>
         </div>
 
         <p id="notice" role="alert"></p>
       </main>
 
+      <!-- Making a room: which game, and whether anyone may join. -->
+      <section id="new-room" class="panel" aria-labelledby="new-room-title" hidden>
+        <h2 id="new-room-title">새 방</h2>
+        <p class="label" id="game-label">게임</p>
+        <div id="game-choices" class="choices" role="group" aria-labelledby="game-label"></div>
+        <p id="game-summary"></p>
+        <p class="label" id="listed-label">누가 들어올 수 있나요</p>
+        <div class="row" role="group" aria-labelledby="listed-label">
+          <button id="listed-yes" type="button" class="choice">공개</button>
+          <button id="listed-no" type="button" class="choice">비공개</button>
+        </div>
+        <p id="listed-hint"></p>
+        <div class="row bottom">
+          <button id="create-cancel" type="button">취소</button>
+          <button id="create-go" type="button" class="primary">만들기</button>
+        </div>
+      </section>
+
+      <!-- In a room, before a game: the scene shows who is here. -->
+      <canvas id="scene" aria-hidden="true" hidden></canvas>
       <section id="room" class="panel" hidden>
-        <p class="label">방 코드</p>
+        <p class="label" id="room-game"></p>
         <p class="room-code"><strong id="room-code"></strong></p>
         <button id="copy" type="button" class="wide">초대 링크 복사</button>
         <p id="status" role="status"></p>
@@ -38,13 +65,16 @@
         <p id="count"></p>
         <button id="start" type="button" class="primary wide">게임 시작</button>
         <p id="start-hint"></p>
-        <button id="leave" type="button" class="wide">나가기</button>
+        <div class="row bottom">
+          <button id="leave" type="button">나가기</button>
+          <button id="listing" type="button" hidden></button>
+        </div>
       </section>
 
       <footer id="bar">
-        <p>약실 여섯 칸에 실탄 두 발. 마지막 격발 때 내 앞 약실이 비어 있으면 생존.</p>
-        <p class="dim">친구들과 방 코드로 모여 각자 기기에서 합니다. 4명부터 6명까지.</p>
-        <button id="rules-open" type="button">규칙 보기</button>
+        <p id="bar-1"></p>
+        <p id="bar-2" class="dim"></p>
+        <button id="rules-open" type="button" hidden>규칙 보기</button>
       </footer>
 
       <canvas id="table" hidden></canvas>

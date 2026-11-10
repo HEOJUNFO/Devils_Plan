@@ -2,6 +2,7 @@ import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import rulesConfig from "../../../src/shared/game/rules-config.json";
+import { DEFAULT_GAME } from "../../../src/shared/games";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
 import { PARTY_NAME, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
@@ -13,6 +14,7 @@ type RefusedMessage = Extract<ServerMessage, { type: "refused" }>;
 const SMALLEST = Math.min(...Object.keys(tableSizes).map(Number));
 const LARGEST = Math.max(...Object.keys(tableSizes).map(Number));
 const AWAY_MS = roomConfig.awayTurnSeconds * 1000;
+const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
 
 /** A well-formed token that is different for each `n`. */
 function tokenFor(n: number): string {
@@ -86,7 +88,7 @@ async function open(room: string, player: number, create = false): Promise<TestC
   });
   expect(response.status).toBe(101);
   const client = new TestClient(response.webSocket!);
-  client.send({ type: "join", token: tokenFor(player), nick: `p${player}`, create });
+  client.send({ type: "join", token: tokenFor(player), nick: `p${player}`, create, game: DEFAULT_GAME, listed: false });
   return client;
 }
 
@@ -338,6 +340,80 @@ describe("GameRoom: playing a game", () => {
     expect(game.view.current).toBe(game.view.seat);
     alone.close();
   });
+
+  it("keeps the slot of a seated player who is away, for as long as the game lasts", async () => {
+    const stub = env.GameRoom.getByName("GAAAS");
+    const clients = await table("GAAAS", SMALLEST);
+    const games = await startGame(clients);
+    const resting = (mover(games) + 1) % SMALLEST;
+    const watcher = clients[mover(games)];
+    clients[resting].close();
+    await watcher.gameWhere((game) => !game.players[games[resting].view.seat!].connected);
+    advanceClock(AWAY_SLOT_MS * 10);
+
+    await runDurableObjectAlarm(stub);
+
+    const newcomer = await open("GAAAS", SMALLEST + 1);
+    const lobby = await newcomer.next();
+    expect(lobby.type === "lobby" ? lobby.players : []).toHaveLength(SMALLEST + 1);
+    expect(lobby.type === "lobby" ? lobby.players[resting] : null).toMatchObject({ slot: resting, connected: false });
+    closeAll([...clients.filter((_, n) => n !== resting), newcomer]);
+  });
+
+  it("frees the slot of a spectator who drops during a game once their time is up", async () => {
+    const stub = env.GameRoom.getByName("GAAAT");
+    const clients = await table("GAAAT", SMALLEST);
+    await startGame(clients);
+    const spectator = await open("GAAAT", SMALLEST + 1);
+    await spectator.gameWhere();
+    await clients[0].lobbyOf(SMALLEST + 1);
+    spectator.close();
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_SLOT_MS + 1);
+
+    await runDurableObjectAlarm(stub);
+
+    await clients[0].lobbyOf(SMALLEST);
+    closeAll(clients);
+  });
+
+  it("frees the slot of a seated player who is still away when the game ends", async () => {
+    const stub = env.GameRoom.getByName("GAAAU");
+    const a = await open("GAAAU", 0, true);
+    const b = await open("GAAAU", 1);
+    await Promise.all([a.lobbyOf(2), b.lobbyOf(2)]);
+    a.send({ type: "start", bots: true });
+    let game = await a.gameWhere();
+    await b.gameWhere();
+    b.close();
+    game = await a.gameWhere((seen) => seen.players.some((player) => !player.bot && !player.connected));
+    // The one who is here spends all they have, the room plays for the one
+    // who is away each time their clock runs out, and the bots play on by
+    // themselves, until enough seats are out for the game to end. By then the
+    // clock is far past the time an idle slot is given away.
+    for (let step = 0; game.view.phase !== "ended"; step++) {
+      expect(step).toBeLessThan(200);
+      const seen = game.view.history.length;
+      if (game.view.current === game.view.seat) {
+        a.send({ type: "action", action: { type: "rotate", steps: 2 } });
+      } else {
+        await scheduledAlarm(stub);
+        advanceClock(AWAY_MS + 1);
+        await runDurableObjectAlarm(stub);
+      }
+      game = await a.gameWhere((next) => next.view.history.length > seen);
+    }
+    const away = game.players.find((player) => player.nick === "p1");
+
+    // the end of the game sets this alarm itself: nothing holds the slot any more
+    await scheduledAlarm(stub);
+    await runDurableObjectAlarm(stub);
+
+    // kept while the game lasted, given up once it was over
+    expect(away).toMatchObject({ connected: false, left: false });
+    await a.lobbyOf(1);
+    a.close();
+  }, 20_000);
 
   it("never sends a player anyone's token", async () => {
     const clients = await table("GAAAR", SMALLEST);

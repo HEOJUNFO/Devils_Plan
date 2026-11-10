@@ -1,6 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_GAME } from "../../../src/shared/games";
 import type { LobbyView } from "../../../src/shared/lobby";
 import {
   CLOSE_LEFT,
@@ -74,6 +75,7 @@ interface JoinOptions {
   nick?: string;
   create?: boolean;
   token?: string;
+  listed?: boolean;
 }
 
 /** Opens a WebSocket to `room` through the Worker without joining. */
@@ -94,6 +96,8 @@ async function open(room: string, options: JoinOptions): Promise<TestClient> {
     token: options.token ?? tokenFor(options.player),
     nick: options.nick ?? `p${options.player}`,
     create: options.create ?? false,
+    game: DEFAULT_GAME,
+    listed: options.listed ?? false,
   });
   return client;
 }
@@ -106,6 +110,7 @@ function advanceClock(ms: number): void {
 
 const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
 const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
+const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
 
 /** Waits until the room has scheduled its alarm, then returns when it is due. */
 async function scheduledAlarm(stub: DurableObjectStub): Promise<number> {
@@ -135,6 +140,8 @@ describe("GameRoom", () => {
       room: "AAAAA",
       you: 0,
       maxPlayers: roomConfig.maxPlayers,
+      game: DEFAULT_GAME,
+      listed: false,
       players: [{ slot: 0, nick: "ann", connected: true }],
     });
     a.close();
@@ -182,6 +189,17 @@ describe("GameRoom", () => {
 
     expect(await stranger.next()).toEqual({ type: "error", reason: "code-taken" });
     a.close();
+  });
+
+  it("lets the maker of a room ask to make it again, as a reconnect does", async () => {
+    const a = await open("AAAA7", { player: 0, nick: "ann", create: true });
+    await a.next();
+
+    const again = await open("AAAA7", { player: 0, nick: "ann", create: true });
+
+    expect(await again.next()).toMatchObject({ type: "lobby", you: 0, players: [{ slot: 0, nick: "ann" }] });
+    a.close();
+    again.close();
   });
 
   it("refuses a malformed room code", async () => {
@@ -396,6 +414,150 @@ describe("GameRoom", () => {
     a.close();
   });
 
+  it("keeps the slot of a player who has been away a short while", async () => {
+    const stub = env.GameRoom.getByName("AAAAX");
+    const a = await open("AAAAX", { player: 0, create: true });
+    const b = await open("AAAAX", { player: 1 });
+    await b.next();
+    b.close();
+    await a.lobbyWhere((l) => connectedBySlot(l)[1] === false);
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_SLOT_MS - 1000);
+
+    await runDurableObjectAlarm(stub);
+
+    const c = await open("AAAAX", { player: 2 });
+    expect(await c.next()).toMatchObject({ you: 2, players: [{ slot: 0 }, { slot: 1, connected: false }, { slot: 2 }] });
+    a.close();
+    c.close();
+  });
+
+  it("frees the slot of a player who has been away too long", async () => {
+    const stub = env.GameRoom.getByName("AAAAY");
+    const a = await open("AAAAY", { player: 0, create: true });
+    const b = await open("AAAAY", { player: 1 });
+    await b.next();
+    b.close();
+    await a.lobbyWhere((l) => connectedBySlot(l)[1] === false);
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_SLOT_MS + 1);
+
+    await runDurableObjectAlarm(stub);
+
+    const lobby = await a.lobbyWhere((l) => l.players.length === 1);
+    expect(lobby.players).toEqual([{ slot: 0, nick: "p0", connected: true }]);
+    const c = await open("AAAAY", { player: 2 });
+    expect(await c.next()).toMatchObject({ you: 1 });
+    a.close();
+    c.close();
+  });
+
+  it("gives a player who comes back after losing their slot the next free one", async () => {
+    const stub = env.GameRoom.getByName("AAAAZ");
+    const a = await open("AAAAZ", { player: 0, create: true });
+    const b = await open("AAAAZ", { player: 1 });
+    await b.next();
+    a.close();
+    await b.lobbyWhere((l) => connectedBySlot(l)[0] === false);
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_SLOT_MS + 1);
+    await runDurableObjectAlarm(stub);
+    await b.lobbyWhere((l) => l.players.length === 1);
+
+    const back = await open("AAAAZ", { player: 0 });
+
+    expect(await back.next()).toMatchObject({ you: 0, players: [{ slot: 0, connected: true }, { slot: 1, connected: true }] });
+    b.close();
+    back.close();
+  });
+
+  it("gives the slot of a player who is away to a newcomer when the room is full", async () => {
+    const clients = [await open("AAAA2", { player: 0, create: true })];
+    for (let n = 1; n < roomConfig.maxPlayers; n++) {
+      clients.push(await open("AAAA2", { player: n }));
+    }
+    await clients.at(-1)!.next();
+    clients[2].close();
+    await clients[0].lobbyWhere((l) => connectedBySlot(l)[2] === false);
+
+    const extra = await open("AAAA2", { player: roomConfig.maxPlayers, nick: "new" });
+
+    const lobby = await extra.next();
+    expect(lobby).toMatchObject({ type: "lobby", you: 2 });
+    expect(lobby.type === "lobby" ? lobby.players : []).toHaveLength(roomConfig.maxPlayers);
+    expect(lobby.type === "lobby" ? lobby.players[2] : null).toEqual({ slot: 2, nick: "new", connected: true });
+    for (const c of clients.filter((_, n) => n !== 2)) c.close();
+    extra.close();
+  });
+
+  it("gives the slot of the player away longest to a newcomer first", async () => {
+    const clients = [await open("AAAA3", { player: 0, create: true })];
+    for (let n = 1; n < roomConfig.maxPlayers; n++) {
+      clients.push(await open("AAAA3", { player: n }));
+    }
+    await clients.at(-1)!.next();
+    clients[4].close();
+    await clients[0].lobbyWhere((l) => connectedBySlot(l)[4] === false);
+    advanceClock(2000);
+    clients[1].close();
+    await clients[0].lobbyWhere((l) => connectedBySlot(l)[1] === false);
+
+    const extra = await open("AAAA3", { player: roomConfig.maxPlayers });
+
+    expect(await extra.next()).toMatchObject({ type: "lobby", you: 4 });
+    for (const c of clients.filter((_, n) => n !== 4 && n !== 1)) c.close();
+    extra.close();
+  });
+
+  it("keeps a room everyone has dropped from, empty, for whoever has its code", async () => {
+    const stub = env.GameRoom.getByName("AAAA4");
+    const a = await open("AAAA4", { player: 0, create: true });
+    await a.next();
+    a.close();
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_SLOT_MS + 1);
+    await runDurableObjectAlarm(stub);
+
+    const friend = await open("AAAA4", { player: 1, nick: "friend" });
+
+    expect(await friend.next()).toMatchObject({
+      type: "lobby",
+      you: 0,
+      players: [{ slot: 0, nick: "friend", connected: true }],
+    });
+    friend.close();
+  });
+
+  it("lets a kept room that everyone has dropped from be made again", async () => {
+    const stub = env.GameRoom.getByName("AAAA5");
+    const a = await open("AAAA5", { player: 0, create: true, listed: false });
+    await a.next();
+    a.close();
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_SLOT_MS + 1);
+    await runDurableObjectAlarm(stub);
+
+    const maker = await open("AAAA5", { player: 1, nick: "maker", create: true, listed: true });
+
+    expect(await maker.next()).toMatchObject({
+      type: "lobby",
+      you: 0,
+      listed: true,
+      players: [{ slot: 0, nick: "maker", connected: true }],
+    });
+    maker.close();
+  });
+
+  it("still refuses a stranger who tries to make a room whose player is only away", async () => {
+    const a = await open("AAAA6", { player: 0, create: true });
+    await a.next();
+    a.close();
+
+    const stranger = await open("AAAA6", { player: 1, create: true });
+
+    expect(await stranger.next()).toEqual({ type: "error", reason: "code-taken" });
+  });
+
   it("ignores a second join on a seated connection", async () => {
     const a = await open("AAAAW", { player: 0, nick: "ann", create: true });
     await a.next();
@@ -403,7 +565,7 @@ describe("GameRoom", () => {
     await b.next();
     await a.lobbyWhere((l) => l.players.length === 2);
 
-    a.send({ type: "join", token: tokenFor(5), nick: "imp", create: false });
+    a.send({ type: "join", token: tokenFor(5), nick: "imp", create: false, game: DEFAULT_GAME, listed: false });
     b.send({ type: "leave" });
 
     const lobby = await a.lobbyWhere((l) => l.players.length === 1);

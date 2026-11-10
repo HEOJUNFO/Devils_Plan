@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_GAME } from "../../../src/shared/games";
 import {
   MAX_CLIENT_MESSAGE_LENGTH,
   parseClientMessage,
+  parseDirectoryMessage,
   parseServerMessage,
 } from "../../../src/shared/protocol";
 
@@ -23,7 +25,35 @@ describe("parseClientMessage", () => {
       token: "player-token-0001",
       nick: "ann",
       create: true,
+      game: DEFAULT_GAME,
+      listed: false,
     });
+  });
+
+  it("reads the game and the listing a new room is asked to have", () => {
+    const raw = joinJson({ create: true, game: DEFAULT_GAME, listed: true });
+
+    expect(parseClientMessage(raw)).toMatchObject({ game: DEFAULT_GAME, listed: true });
+  });
+
+  it("gives a join that names no game, or a game nobody has heard of, the first game", () => {
+    expect(parseClientMessage(joinJson())).toMatchObject({ game: DEFAULT_GAME });
+    expect(parseClientMessage(joinJson({ game: "tiddlywinks" }))).toMatchObject({ game: DEFAULT_GAME });
+    expect(parseClientMessage(joinJson({ game: "toString" }))).toMatchObject({ game: DEFAULT_GAME });
+  });
+
+  it("treats any listed value other than true as not listed", () => {
+    expect(parseClientMessage(joinJson({ listed: "yes" }))).toMatchObject({ listed: false });
+  });
+
+  it("reads a change of listing", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "listing", listed: true }))).toEqual({ type: "listing", listed: true });
+    expect(parseClientMessage(JSON.stringify({ type: "listing", listed: false }))).toEqual({ type: "listing", listed: false });
+  });
+
+  it("rejects a change of listing that does not say which way", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "listing" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "listing", listed: "true" }))).toBeNull();
   });
 
   it("treats a join without a create flag as not creating", () => {
@@ -129,5 +159,29 @@ describe("parseServerMessage", () => {
 
   it("rejects a message of an unknown type", () => {
     expect(parseServerMessage(JSON.stringify({ type: "hello" }))).toBeNull();
+  });
+});
+
+describe("parseDirectoryMessage", () => {
+  it("reads the list of rooms", () => {
+    const rooms = [{ code: "ABCDE", game: DEFAULT_GAME, host: "ann", players: 2, maxPlayers: 6, playing: false }];
+
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms }))).toEqual({ type: "rooms", rooms });
+  });
+
+  it("reads an empty list", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [] }))).toEqual({ type: "rooms", rooms: [] });
+  });
+
+  it("rejects a message of another type", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "lobby", rooms: [] }))).toBeNull();
+  });
+
+  it("rejects a list that is not a list", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: "none" }))).toBeNull();
+  });
+
+  it("rejects text that is not JSON", () => {
+    expect(parseDirectoryMessage("rooms")).toBeNull();
   });
 });

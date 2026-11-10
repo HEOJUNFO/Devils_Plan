@@ -54,6 +54,9 @@ body {
   color: var(--bone);
   font: 12px/13px "Galmuri11", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
   -webkit-font-smoothing: none;
+  /* Korean breaks between words, not inside one; a word too long for its line still breaks. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 canvas {
@@ -107,7 +110,103 @@ ul {
 }
 
 .panel[hidden],
+#rooms[hidden],
 #rules[hidden] {
+  display: none;
+}
+
+/* The lobby: the list of rooms, where a room's scene will be. */
+#rooms {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  width: 304px;
+  height: 222px;
+  background: var(--night);
+}
+
+#rooms header {
+  display: flex;
+  flex: none;
+  justify-content: space-between;
+  height: 19px;
+  padding: 3px 6px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bar);
+}
+
+#rooms h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#rooms-count {
+  color: var(--bone-dim);
+}
+
+#room-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-color: var(--edge) var(--ink);
+  scrollbar-width: thin;
+}
+
+/* One room: who made it and how full, over which game and how it stands. */
+.room-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  width: 100%;
+  height: 31px;
+  padding: 2px 6px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+}
+
+.room-row:focus-visible {
+  outline-offset: -1px;
+}
+
+.room-host {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-count {
+  color: var(--amber);
+  text-align: right;
+}
+
+.room-game {
+  color: var(--bone-dim);
+}
+
+.room-state {
+  color: var(--teal);
+  text-align: right;
+}
+
+.room-state.busy,
+.room-row:disabled .room-count,
+.room-row:disabled .room-state {
+  color: var(--dim);
+}
+
+#rooms-note {
+  flex: none;
+  padding: 6px 6px 7px;
+  border-bottom: 1px solid var(--line);
+  color: var(--bone-dim);
+}
+
+#rooms-note:empty {
   display: none;
 }
 
@@ -125,6 +224,14 @@ h1 {
   border-bottom: 1px solid var(--line);
   color: var(--bone-dim);
   text-align: center;
+}
+
+.panel h2 {
+  margin: 2px 0 7px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  color: var(--amber);
+  font-size: 12px;
 }
 
 label,
@@ -191,6 +298,31 @@ button.wide {
   margin-top: 6px;
 }
 
+/* One of a few to pick from: the picked one is lit. */
+button.choice[aria-pressed="true"] {
+  border-color: var(--amber-dim);
+  background: #3a2a12;
+  color: var(--amber);
+}
+
+.choices button.wide:first-child {
+  margin-top: 0;
+}
+
+#game-summary,
+#listed-hint {
+  margin-top: 4px;
+  color: var(--bone-dim);
+}
+
+#game-summary {
+  min-height: 39px;
+}
+
+#listed-hint {
+  min-height: 26px;
+}
+
 .row {
   display: flex;
   gap: 4px;
@@ -201,6 +333,20 @@ button.wide {
   min-width: 0;
   letter-spacing: 2px;
   text-transform: uppercase;
+}
+
+/* A row of buttons that share the width. */
+.row > button.choice,
+.row.bottom > button {
+  flex: 1;
+}
+
+/* The last row of a panel sits at its foot. */
+.row.bottom {
+  position: absolute;
+  right: 8px;
+  bottom: 6px;
+  left: 8px;
 }
 
 .or {

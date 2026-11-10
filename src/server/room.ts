@@ -1,14 +1,20 @@
 import { Server, type Connection, type WSMessage } from "partyserver";
+import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
 import botConfig from "../shared/game/bot-config.json";
 import rulesConfig from "../shared/game/rules-config.json";
 import tableSizes from "../shared/game/table-sizes.json";
 import type { Action } from "../shared/game";
 import {
+  awayPlayers,
   createLobby,
+  dropLapsed,
   findPlayer,
   isValidRoomCode,
   joinLobby,
   leaveLobby,
+  markAway,
+  setListed,
+  slotLapsesAt,
   viewLobby,
   type LobbyState,
   type RoomConfig,
@@ -16,6 +22,7 @@ import {
 import {
   CLOSE_LEFT,
   CLOSE_REJECTED,
+  DIRECTORY_NAME,
   parseClientMessage,
   type ClientMessage,
   type RejectReason,
@@ -63,10 +70,19 @@ type TimerKind =
   /** Nobody is connected; clear the room if that is still true when it fires. */
   | "empty-room"
   /** The move the game is waiting for has run out of time. */
-  | "turn";
+  | "turn"
+  /** A player who went away has been away long enough to lose their slot. */
+  | "slots";
 
 const LOBBY_KEY = "lobby";
 const GAME_KEY = "game";
+/** Whether the directory has this room on its list, as far as the room knows. */
+const LISTED_KEY = "listed";
+
+/** Whether a game is being played: one that has started and not ended. */
+function running(session: Session | null): boolean {
+  return session !== null && session.state.phase !== "ended";
+}
 
 /** Whether this deployment lets bots fill empty seats (wrangler.jsonc: only while developing). */
 function botsAllowed(flag: string | undefined): boolean {
@@ -107,12 +123,40 @@ export class GameRoom extends Server<Env> {
 
   private timers!: Timers<TimerKind>;
 
+  /** How the directory should list this room now; `null` for not at all. */
+  private wanted: RoomListing | null = null;
+  /** What the directory was last told, as sent; unknown since the room last woke. */
+  private told: string | undefined = undefined;
+  /** The reports to the directory, one after another, so the last word is the latest. */
+  private telling: Promise<void> = Promise.resolve();
+
+  /** Whether something holds the slot of `token` while they are away: a seat in a game being played. */
+  private readonly keepsSlot = (token: string): boolean =>
+    running(this.session) && (this.session?.tokens.includes(token) ?? false);
+
   private readonly timerHandlers: Record<TimerKind, () => void | Promise<void>> = {
     "empty-room": async () => {
       // Someone may have come back since the timer was set.
       if (this.connectedSlots().size > 0) return;
       this.saveLobby(null);
       await this.commitSession(null);
+      await this.scheduleSlots();
+      await this.report();
+    },
+    "slots": async () => {
+      const lobby = this.lobby;
+      if (lobby === null) return;
+      const now = Date.now();
+      const next = dropLapsed(markAway(lobby, this.connectedSlots(), now), now, config, this.keepsSlot);
+      if (next !== lobby) {
+        this.saveLobby(next);
+        this.broadcastLobby();
+        // Nobody is left to look at how the last game ended.
+        if (next.players.length === 0 && !running(this.session)) await this.commitSession(null);
+        else await this.presenceChanged();
+        await this.report();
+      }
+      await this.scheduleSlots();
     },
     "turn": async () => {
       const session = this.session;
@@ -156,15 +200,26 @@ export class GameRoom extends Server<Env> {
     if (parsed.type === "leave") await this.handleLeave(state.slot);
     else if (parsed.type === "start") await this.handleStart(connection, state.slot, parsed.bots);
     else if (parsed.type === "action") await this.handleAction(connection, state.slot, parsed.action);
+    else if (parsed.type === "listing") await this.handleListing(connection, state.slot, parsed.listed);
   }
 
-  /** Tells the others a player dropped, and starts the empty-room countdown. */
+  /**
+   * Tells the others a player dropped, and starts two countdowns: the one
+   * after which that player's slot is free again, and, when nobody is left
+   * connected, the one after which the room is cleared.
+   */
   async onClose(connection: Connection<ConnectionState>): Promise<void> {
-    if (this.lobby === null || connection.state?.kind !== "player") return;
+    const lobby = this.lobby;
+    if (lobby === null || connection.state?.kind !== "player") return;
     const gone = new Set([connection.id]);
+    const connected = this.connectedSlots(gone);
+    const noted = markAway(lobby, connected, Date.now());
+    if (noted !== lobby) this.saveLobby(noted);
     this.broadcastLobby(gone);
     await this.presenceChanged(gone);
-    if (this.connectedSlots(gone).size === 0) {
+    await this.scheduleSlots();
+    await this.report(gone);
+    if (connected.size === 0) {
       await this.timers.set("empty-room", Date.now() + config.emptyRoomTtlMinutes * 60_000);
     }
   }
@@ -184,21 +239,36 @@ export class GameRoom extends Server<Env> {
     let lobby = this.lobby;
     if (lobby === null) {
       if (!request.create) return this.reject(connection, "not-found");
-      lobby = createLobby();
+      lobby = createLobby(request.game, request.listed);
+    } else if (request.create && lobby.players.length === 0) {
+      // Everybody who was here has gone and the room was only being kept for
+      // them: it is made again, as its new maker asks.
+      lobby = createLobby(request.game, request.listed);
+      await this.commitSession(null);
     } else if (request.create && !findPlayer(lobby, request.token)) {
       // A reconnect repeats the original request, so the room's own members
       // may "create" it again; anyone else has collided with a code in use.
       return this.reject(connection, "code-taken");
     }
 
-    const result = joinLobby(lobby, { token: request.token, nick: request.nick }, config);
+    const joining = { token: request.token, nick: request.nick };
+    let result = joinLobby(lobby, joining, config);
+    if (!result.ok && result.reason === "full") {
+      // Someone who is away gives their slot to someone who is here, unless a
+      // game holds it for them: the one away longest goes first.
+      const away = awayPlayers(lobby, this.keepsSlot)[0];
+      if (away) result = joinLobby(leaveLobby(lobby, away.token), joining, config);
+    }
     if (!result.ok) return this.reject(connection, result.reason);
 
-    this.saveLobby(result.state);
     connection.setState({ kind: "player", slot: result.slot });
+    // Also notes anyone whose connection ended without the room being told.
+    this.saveLobby(markAway(result.state, this.connectedSlots(), Date.now()));
     this.broadcastLobby();
     // A game may be going on: the newcomer watches it, a returning player takes their seat back.
     await this.presenceChanged();
+    await this.scheduleSlots();
+    await this.report();
   }
 
   private async handleLeave(slot: number): Promise<void> {
@@ -224,6 +294,20 @@ export class GameRoom extends Server<Env> {
 
     // The room is gone; its countdown has nothing left to clear.
     if (emptied) await this.timers.clear("empty-room");
+    await this.scheduleSlots();
+    await this.report(closed);
+  }
+
+  /** Puts the room on the list of rooms or takes it off, if the one asking is the host. */
+  private async handleListing(connection: Connection<ConnectionState>, slot: number, listed: boolean): Promise<void> {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (Math.min(...this.connectedSlots()) !== slot) return this.refuse(connection, "not-host");
+    const next = setListed(lobby, listed);
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
+    await this.report();
   }
 
   /** Starts a game for the players now connected, if the one asking is the host. */
@@ -269,6 +353,7 @@ export class GameRoom extends Server<Env> {
    * clock at its deadline, and sends every seated connection its own view.
    */
   private async commitSession(next: Session | null, except?: ReadonlySet<string>): Promise<void> {
+    const wasRunning = running(this.session);
     if (!sameSession(this.session, next)) this.save(GAME_KEY, next);
     this.session = next;
     const due = next?.deadline ?? null;
@@ -279,6 +364,73 @@ export class GameRoom extends Server<Env> {
       await this.timers.set("turn", due);
     }
     this.broadcastGame(except);
+    if (wasRunning !== running(next)) {
+      // A game starting or ending changes how the room is listed, and whose
+      // slot is kept for them while they are away.
+      await this.scheduleSlots();
+      await this.report(except);
+    }
+  }
+
+  /**
+   * Points the slots timer at the first moment an away player loses their
+   * slot, or clears it when no slot is waiting to lapse.
+   */
+  private async scheduleSlots(): Promise<void> {
+    const lobby = this.lobby;
+    const waiting = lobby === null ? [] : awayPlayers(lobby, this.keepsSlot);
+    const due = waiting.length === 0 ? null : Math.min(...waiting.map((p) => slotLapsesAt(p, config)));
+    const set = this.timers.get("slots");
+    if (due === null) {
+      if (set !== null) await this.timers.clear("slots");
+    } else if (set !== due) {
+      await this.timers.set("slots", due);
+    }
+  }
+
+  /**
+   * Tells the directory how this room stands, if that has changed since it
+   * was last told: its host, how many are connected, whether a game is on, or
+   * that it is not to be listed at all. Reports go one after another and each
+   * sends the latest standing, so a slow one never overwrites a newer one.
+   */
+  private report(except?: ReadonlySet<string>): Promise<void> {
+    const lobby = this.lobby;
+    this.wanted =
+      lobby === null
+        ? null
+        : listingOf(this.name, lobby, this.connectedSlots(except), running(this.session), config);
+    this.telling = this.telling.then(() => this.tellDirectory());
+    return this.telling;
+  }
+
+  private async tellDirectory(): Promise<void> {
+    const wanted = this.wanted;
+    const report: RoomReport = { code: this.name, listing: wanted };
+    const body = JSON.stringify(report);
+    if (this.told === body) return;
+    const listed = this.load<boolean>(LISTED_KEY) === true;
+    if (wanted === null && this.told === undefined && !listed) {
+      // Never on the list: there is nothing to take off it.
+      this.told = body;
+      return;
+    }
+    try {
+      const directory = this.env.RoomDirectory.get(this.env.RoomDirectory.idFromName(DIRECTORY_NAME));
+      const response = await directory.fetch("https://directory.internal/report", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-partykit-room": DIRECTORY_NAME },
+        body,
+      });
+      await response.body?.cancel();
+      if (!response.ok) throw new Error(`the directory answered ${response.status}`);
+      this.told = body;
+      if (listed !== (wanted !== null)) this.save(LISTED_KEY, wanted !== null ? true : null);
+    } catch (error) {
+      // The list is a convenience: the room goes on without it, and tells the
+      // directory again when it next changes.
+      console.error(`room ${this.name} could not report to the directory`, error);
+    }
   }
 
   /**

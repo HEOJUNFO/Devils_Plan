@@ -15,10 +15,19 @@
   },
   // One GameRoom Durable Object per room code. The binding name is what
   // PartyServer kebab-cases into the URL: /parties/game-room/<room code>.
+  // One RoomDirectory for all of them, the list of rooms anyone can join:
+  // /parties/room-directory/main.
   "durable_objects": {
-    "bindings": [{ "name": "GameRoom", "class_name": "GameRoom" }]
+    "bindings": [
+      { "name": "GameRoom", "class_name": "GameRoom" },
+      { "name": "RoomDirectory", "class_name": "RoomDirectory" }
+    ]
   },
   // SQLite storage is the only backend on the Workers Free plan, and it cannot
-  // be switched on after a class has been deployed.
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }]
+  // be switched on after a class has been deployed. A deployed tag is never
+  // edited: a new class gets a new tag.
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["GameRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["RoomDirectory"] }
+  ]
 }
