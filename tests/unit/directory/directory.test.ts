@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  beyondLimit,
   isStale,
   listRooms,
   listingOf,
@@ -9,7 +10,7 @@ import {
   type RoomListing,
 } from "../../../src/shared/directory";
 import { DEFAULT_GAME, GAMES } from "../../../src/shared/games";
-import { createLobby, joinLobby, type LobbyState, type RoomConfig } from "../../../src/shared/lobby";
+import { createLobby, joinLobby, leaveLobby, type LobbyState, type RoomConfig } from "../../../src/shared/lobby";
 
 /** A small room, so the bounds on a report are easy to reach. */
 function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
@@ -22,8 +23,11 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     joinTimeoutSeconds: 5,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
-    messageWindowSeconds: 10,
-    messageLimits: { setting: 3, signal: 20, other: 10 },
+    messageLimits: {
+      setting: { burst: 3, windowSeconds: 30 },
+      signal: { burst: 20, windowSeconds: 10 },
+      other: { burst: 10, windowSeconds: 10 },
+    },
     pingSeconds: 5,
     staleConnectionSeconds: 20,
     pokeSeconds: 15,
@@ -35,7 +39,7 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
 
 /** A short list and a short memory, so both limits are reached with a few entries. */
 function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryConfig {
-  return { maxListed: 3, staleHours: 2, ...overrides };
+  return { maxListed: 3, maxStored: 5, staleHours: 2, ...overrides };
 }
 
 const HOUR = 3_600_000;
@@ -165,11 +169,24 @@ describe("listingOf", () => {
     expect(listed?.players).toBe(2);
   });
 
-  it("names the connected player in the lowest slot as host", () => {
+  it("names as host the connected player who came into the room first", () => {
     const config = roomConfig();
 
     const listed = listingOf("ABCD", listedRoom(3, config), new Set([2, 1]), false, config);
 
+    expect(listed?.host).toBe("p1");
+  });
+
+  it("does not name as host a latecomer who took a lower slot", () => {
+    const config = roomConfig();
+    // p0 leaves, and a newcomer takes the slot p0 held
+    const without = leaveLobby(listedRoom(3, config), tokenFor(0));
+    const joined = joinLobby(without, { token: tokenFor(9), nick: "new" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+
+    const listed = listingOf("ABCD", joined.state, new Set([0, 1, 2]), false, config);
+
+    expect(joined.slot).toBe(0);
     expect(listed?.host).toBe("p1");
   });
 
@@ -202,6 +219,37 @@ describe("isStale", () => {
     const config = directoryConfig();
 
     expect(isStale(NOW - config.staleHours * HOUR - 1, NOW, config)).toBe(true);
+  });
+});
+
+describe("beyondLimit", () => {
+  /** A directory of `count` rooms, the first heard from longest ago. */
+  function directory(count: number): Map<string, DirectoryEntry> {
+    const codes = ["AAAA", "BBBB", "CCCC", "DDDD", "AAAB", "AAAC", "AAAD", "BBBA"].slice(0, count);
+    return new Map(codes.map((code, n) => [code, entry(code, {}, NOW - (count - n) * 1000)]));
+  }
+
+  it("drops nothing while the directory is within its limit", () => {
+    const config = directoryConfig();
+
+    expect(beyondLimit(directory(config.maxStored), config)).toEqual([]);
+    expect(beyondLimit(new Map(), config)).toEqual([]);
+  });
+
+  it("drops the rooms heard from longest ago, as many as are over the limit", () => {
+    const config = directoryConfig();
+
+    expect(beyondLimit(directory(config.maxStored + 2), config)).toEqual(["AAAA", "BBBB"]);
+  });
+
+  it("goes by when a room was heard from, not by where it stands in the directory", () => {
+    const config = directoryConfig({ maxStored: 1 });
+    const entries = new Map([
+      ["AAAA", entry("AAAA", {}, NOW)],
+      ["BBBB", entry("BBBB", {}, NOW - 5000)],
+    ]);
+
+    expect(beyondLimit(entries, config)).toEqual(["BBBB"]);
   });
 });
 

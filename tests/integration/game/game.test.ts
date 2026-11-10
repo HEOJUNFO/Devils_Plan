@@ -13,7 +13,7 @@ import {
   scheduledAlarm,
   tokenFor,
   type MessageOf,
-  type PingRecord,
+  type HeardRecord,
   type TestClient,
 } from "../support";
 
@@ -384,7 +384,7 @@ describe("GameRoom: playing a game", () => {
     const pings: Record<number, number> = {};
     for (let n = 0; n < SMALLEST; n++) pings[n] = n === acting ? Date.now() - STALE_MS - 1 : Date.now() + AWAY_MS * 2;
     await runInDurableObject(stub, (room) => {
-      (room as unknown as PingRecord).lastPingAt = (connection) => {
+      (room as unknown as HeardRecord).lastHeardAt = (connection) => {
         const state = connection.state as { kind?: string; slot?: number } | null;
         return state?.kind === "player" && state.slot !== undefined ? (pings[state.slot] ?? null) : null;
       };

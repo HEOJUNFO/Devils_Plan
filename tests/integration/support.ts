@@ -167,6 +167,8 @@ export interface JoinOptions {
   token?: string;
   listed?: boolean;
   game?: GameId;
+  /** Whether the page says it pings. A test player does not, unless the test is about that. */
+  pings?: boolean;
 }
 
 /** Connects to `room` and sends `join`, as the browser client does. */
@@ -179,6 +181,7 @@ export async function join(room: string, options: JoinOptions): Promise<TestClie
     create: options.create ?? false,
     game: options.game ?? DEFAULT_GAME,
     listed: options.listed ?? false,
+    pings: options.pings ?? false,
   });
   return client;
 }
@@ -213,20 +216,20 @@ export async function scheduledAlarm(stub: DurableObjectStub): Promise<number> {
   });
 }
 
-/** The room's record of when each connection last pinged, which a test can stand in for. */
-export interface PingRecord {
-  lastPingAt(connection: { state: unknown }): number | null;
+/** The room's record of when each connection was last heard from, which a test can stand in for. */
+export interface HeardRecord {
+  lastHeardAt(connection: { state: unknown }): number | null;
 }
 
 /**
- * Makes the room take `bySlot` for its record of pings: when the player in
- * each slot last pinged (ms since the epoch), or `null` for never; a slot not
- * named has never pinged. The platform's own record runs on a clock a test
- * cannot move, so this stands in for it until the room is next evicted.
+ * Makes the room take `bySlot` for its record of when it last heard from the
+ * player in each slot (ms since the epoch); `null`, or a slot not named, is a
+ * page that does not ping. The platform's own record of pings runs on a clock
+ * a test cannot move, so this stands in for it until the room is next evicted.
  */
-export async function pingsWere(stub: DurableObjectStub, bySlot: Record<number, number | null>): Promise<void> {
+export async function heardWere(stub: DurableObjectStub, bySlot: Record<number, number | null>): Promise<void> {
   await runInDurableObject(stub, (room) => {
-    (room as unknown as PingRecord).lastPingAt = (connection) => {
+    (room as unknown as HeardRecord).lastHeardAt = (connection) => {
       const state = connection.state as { kind?: string; slot?: number } | null;
       return state?.kind === "player" && state.slot !== undefined ? (bySlot[state.slot] ?? null) : null;
     };

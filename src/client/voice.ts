@@ -53,7 +53,8 @@ const RETRY_MS = 2000;
 /** Makes the page's part of the voice chat. Nothing is asked of the browser until {@link Voice.join}. */
 export function createVoice(options: {
   config: VoiceConfig;
-  send(message: Outgoing): void;
+  /** Sends the room a message; what it returns is not used here. */
+  send(message: Outgoing): unknown;
   /** Called when what the page shows about voice may have changed. */
   changed(): void;
   /** For development: a quiet tone instead of a microphone, so two tabs can be seen to connect. */
@@ -233,7 +234,12 @@ export function createVoice(options: {
       options.changed();
     },
     announce(): void {
-      if (on) options.send({ type: "voice", on: true, muted });
+      if (!on) return;
+      // To the room this page is a newcomer to voice, and the others have hung
+      // up on its old connections: so does it, and the calls are made afresh
+      // when the room says who is in.
+      for (const slot of [...peers.keys()]) hangUp(slot);
+      options.send({ type: "voice", on: true, muted });
     },
     setMuted(value: boolean): void {
       if (!on || local === null) return;
@@ -250,6 +256,8 @@ export function createVoice(options: {
     },
     signal(from: number, signal: RtcSignal): void {
       if (!on || from === me) return;
+      // only players the room says are in voice are answered
+      if (!known.has(from)) return;
       if (signal.kind === "offer") {
         void answer(from, signal.sdp);
         return;

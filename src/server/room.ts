@@ -12,6 +12,7 @@ import {
   createLobby,
   dropLapsed,
   findPlayer,
+  hostOf,
   isValidRoomCode,
   joinLobby,
   leaveLobby,
@@ -70,15 +71,35 @@ const sessionConfig: SessionConfig = {
 
 /**
  * What a connection remembers about itself. Stored in the WebSocket
- * attachment, so it survives hibernation but not a reconnect.
+ * attachment, so it survives hibernation but not a reconnect. It never leaves
+ * the room.
  */
 type ConnectionState =
   /** Open, but has not sent `join` yet. `since` is when it connected. */
   | { kind: "pending"; since: number }
-  /** Seated in the lobby. `voice` is there while this connection is in the room's voice chat. */
-  | { kind: "player"; slot: number; voice?: { muted: boolean } }
-  /** Ended by the room for having stopped answering; the socket may linger until the platform lets go of it. */
+  | Seat
+  /**
+   * Ended by the room: it left, was refused, or stopped answering. The socket
+   * may stay open at the far end for a while yet; nothing more is read from it.
+   */
   | { kind: "gone" };
+
+/**
+ * A connection that joined as a player. It speaks for `slot` only while that
+ * slot is still held by `token`, the player it joined as: a slot can pass to
+ * someone else while an old connection lingers.
+ */
+interface Seat {
+  kind: "player";
+  slot: number;
+  token: string;
+  /** When it joined, in ms since the epoch. */
+  since: number;
+  /** Whether the page said it pings, so that silence from it means it is gone. */
+  pings: boolean;
+  /** There while this connection is in the room's voice chat. */
+  voice?: { muted: boolean };
+}
 
 /**
  * The room's named timers. They share the object's one alarm through
@@ -99,6 +120,9 @@ const LISTED_KEY = "listed";
 
 /** The least time between two pokes the room acts on, in ms: asking twice in a row finds nothing new. */
 const POKE_GAP_MS = 10_000;
+
+/** The version of a stored game this code can carry on with. */
+const GAME_VERSION = 1;
 
 /** Whether a game is being played: one that has started and not ended. */
 function running(session: Session | null): boolean {
@@ -144,6 +168,12 @@ export class GameRoom extends Server<Env> {
 
   private timers!: Timers<TimerKind>;
 
+  /** Whether the room's tables exist: not before the first start, nor after the room has been wiped. */
+  private stored = false;
+
+  /** Set by the empty-room timer: the room is to be forgotten once the timers due now have all run. */
+  private forgetAfterTimers = false;
+
   /** How the directory should list this room now; `null` for not at all. */
   private wanted: RoomListing | null = null;
   /** What the directory was last told, as sent; unknown since the room last woke. */
@@ -157,7 +187,7 @@ export class GameRoom extends Server<Env> {
    */
   private readonly chatPace = new Map<number, ChatPace>();
 
-  /** When the room last acted on a poke, in ms since the epoch. */
+  /** When the room last acted on a poke, in ms since the epoch. Forgotten when the room sleeps; nothing depends on it. */
   private pokedAt = 0;
 
   /**
@@ -171,13 +201,10 @@ export class GameRoom extends Server<Env> {
     running(this.session) && (this.session?.tokens.includes(token) ?? false);
 
   private readonly timerHandlers: Record<TimerKind, () => void | Promise<void>> = {
-    "empty-room": async () => {
-      // Someone may have come back since the timer was set.
-      if (this.connectedSlots().size > 0) return;
-      this.saveLobby(null);
-      await this.commitSession(null);
-      await this.scheduleSlots();
-      await this.report();
+    "empty-room": () => {
+      // Someone may have come back since the timer was set. The forgetting
+      // itself waits until the timers have finished with their own table.
+      if (this.connectedSlots().size === 0) this.forgetAfterTimers = true;
     },
     "slots": async () => {
       const lobby = this.lobby;
@@ -203,15 +230,30 @@ export class GameRoom extends Server<Env> {
   };
 
   /** Runs on first start and on every wake from hibernation. */
-  onStart(): void {
+  async onStart(): Promise<void> {
+    this.openStorage();
+    // Pings are answered for the room while it sleeps, and the time of each is kept (see `sweep`).
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
+    this.lobby = this.load<LobbyState>(LOBBY_KEY);
+    const session = this.load<Session>(GAME_KEY);
+    // a game stored by a version of the rules this code does not know is not carried on with
+    this.session = session !== null && session.state?.version === GAME_VERSION ? session : null;
+    if (session !== null && this.session === null) this.save(GAME_KEY, null);
+    // A room cut off without a word (a deploy ends every connection and tells
+    // nobody) would otherwise wait for a clearing nobody had set.
+    if (this.lobby !== null && this.connectedSlots().size === 0 && this.timers.get("empty-room") === null) {
+      await this.timers.set("empty-room", Date.now() + config.emptyRoomTtlMinutes * 60_000);
+    }
+  }
+
+  /** Makes sure the room's tables are there: on waking, and when a room is made again after being wiped. */
+  private openStorage(): void {
+    if (this.stored) return;
     this.ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS room_state (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
     );
     this.timers = new Timers<TimerKind>(this.ctx.storage);
-    // Pings are answered for the room while it sleeps, and the time of each is kept (see `sweep`).
-    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
-    this.lobby = this.load<LobbyState>(LOBBY_KEY);
-    this.session = this.load<Session>(GAME_KEY);
+    this.stored = true;
   }
 
   /**
@@ -226,32 +268,40 @@ export class GameRoom extends Server<Env> {
 
   /** Handles a message from a connection. */
   async onMessage(connection: Connection<ConnectionState>, message: WSMessage): Promise<void> {
+    // A connection the room has ended can stay open at the far end and go on sending: none of it is read.
+    if (connection.state?.kind === "gone") return;
     const parsed = parseClientMessage(message);
     if (parsed === null) return;
+    this.openStorage();
     // Whatever was asked is answered as things really stand: without those who have gone silent.
     await this.sweep(Date.now());
-    const state = connection.state;
     if (parsed.type === "join") {
-      // A second `join` on a seated connection is ignored.
-      if (state?.kind !== "player") await this.handleJoin(connection, parsed);
+      // Only a connection that has not joined yet may: a second `join` on a seated connection is ignored.
+      if (connection.state?.kind === "pending") await this.handleJoin(connection, parsed);
       return;
     }
-    if (state?.kind !== "player") return;
+    const seat = this.seatOf(connection);
+    if (seat === null) {
+      // It joined, but the slot it held has since lapsed or gone to someone
+      // else: it speaks for nobody now, and is told so by being closed.
+      if (connection.state?.kind === "player") this.end(connection, CLOSE_LEFT, "left");
+      return;
+    }
     // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
     const sort = parsed.type === "listing" || parsed.type === "clock" ? "setting" : parsed.type === "rtc" ? "signal" : "other";
-    if (parsed.type !== "chat" && parsed.type !== "leave" && !this.withinPace(state.slot, sort)) {
+    if (parsed.type !== "chat" && parsed.type !== "leave" && !this.withinPace(seat.slot, sort)) {
       // a flood of signals is dropped without a word: answering each would be a flood of its own
       if (sort !== "signal") this.refuse(connection, "too-fast");
       return;
     }
-    if (parsed.type === "leave") await this.handleLeave(state.slot);
-    else if (parsed.type === "start") await this.handleStart(connection, state.slot, parsed.bots);
-    else if (parsed.type === "action") await this.handleAction(connection, state.slot, parsed.action);
-    else if (parsed.type === "listing") await this.handleListing(connection, state.slot, parsed.listed);
-    else if (parsed.type === "chat") this.handleChat(connection, state.slot, parsed.text);
-    else if (parsed.type === "clock") this.handleClock(connection, state.slot, parsed.seconds);
-    else if (parsed.type === "voice") this.handleVoice(connection, state.slot, parsed.on, parsed.muted);
-    else if (parsed.type === "rtc") this.handleRtc(connection, state.slot, parsed.to, parsed.signal);
+    if (parsed.type === "leave") await this.handleLeave(seat.slot);
+    else if (parsed.type === "start") await this.handleStart(connection, seat.slot, parsed.bots);
+    else if (parsed.type === "action") await this.handleAction(connection, seat.slot, parsed.action);
+    else if (parsed.type === "listing") await this.handleListing(connection, seat.slot, parsed.listed);
+    else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text);
+    else if (parsed.type === "clock") this.handleClock(connection, seat.slot, parsed.seconds);
+    else if (parsed.type === "voice") this.handleVoice(connection, seat, parsed.on, parsed.muted);
+    else if (parsed.type === "rtc") this.handleRtc(seat, parsed.to, parsed.signal);
     else if (parsed.type === "poke") this.handlePoke();
   }
 
@@ -261,35 +311,42 @@ export class GameRoom extends Server<Env> {
    * connected, the one after which the room is cleared.
    */
   async onClose(connection: Connection<ConnectionState>): Promise<void> {
+    // one the room ended itself has been dealt with where it was ended
     if (connection.state?.kind !== "player") return;
-    await this.dropped(connection.id, connection.state.voice !== undefined);
-  }
-
-  /** The connection `id` of a player has ended, by closing or by going silent: see {@link onClose}. */
-  private async dropped(id: string, hadVoice: boolean): Promise<void> {
-    const lobby = this.lobby;
-    if (lobby === null) return;
-    const gone = new Set([id]);
-    const connected = this.connectedSlots(gone);
-    const noted = markAway(lobby, connected, Date.now());
-    if (noted !== lobby) this.saveLobby(noted);
-    this.broadcastLobby(gone);
-    if (hadVoice) this.broadcastVoice(gone);
-    await this.presenceChanged(gone);
-    await this.scheduleSlots();
-    await this.report(gone);
-    if (connected.size === 0) {
-      await this.timers.set("empty-room", Date.now() + config.emptyRoomTtlMinutes * 60_000);
-    }
+    await this.dropped(connection.state.voice !== undefined);
   }
 
   /**
-   * Ends the connections that have stopped answering: ones that used to ping
-   * and have not for `staleConnectionSeconds`. A page that goes without a
-   * word (a laptop closed, a network gone) leaves its connection looking
-   * open; the room would show that player as here and a game would wait on
-   * them for good. A connection that has never pinged is left alone: it is a
-   * page older than the ping.
+   * A player's connection has ended, by closing or by going silent: see
+   * {@link onClose}. A connection that has ended is no longer among the
+   * room's connections, so everything here is worked out from those that are.
+   */
+  private async dropped(hadVoice: boolean): Promise<void> {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    this.openStorage();
+    const noted = markAway(lobby, this.connectedSlots(), Date.now());
+    if (noted !== lobby) this.saveLobby(noted);
+    this.broadcastLobby();
+    if (hadVoice) this.broadcastVoice();
+    await this.presenceChanged();
+    await this.scheduleSlots();
+    await this.report();
+    await this.armEmptyRoom();
+  }
+
+  /** Starts the countdown to clearing the room, when nobody is connected to it. */
+  private async armEmptyRoom(): Promise<void> {
+    if (this.lobby === null || this.connectedSlots().size > 0) return;
+    await this.timers.set("empty-room", Date.now() + config.emptyRoomTtlMinutes * 60_000);
+  }
+
+  /**
+   * Ends the connections that have stopped answering: ones whose pages ping
+   * and have not been heard from for `staleConnectionSeconds`. A page that
+   * goes without a word (a laptop closed, a network gone) leaves its
+   * connection looking open; the room would show that player as here and a
+   * game would wait on them for good.
    *
    * The room cannot do this on a schedule without staying awake, so it does
    * it whenever something else has woken it: a message (someone coming in
@@ -298,33 +355,36 @@ export class GameRoom extends Server<Env> {
    */
   private async sweep(now: number): Promise<void> {
     const limit = now - config.staleConnectionSeconds * 1000;
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (c.state?.kind !== "player") continue;
-      const last = this.lastPingAt(c);
+    for (const [connection, seat] of this.members()) {
+      const last = this.lastHeardAt(connection);
       if (last === null || last > limit) continue;
-      const hadVoice = c.state.voice !== undefined;
-      c.setState({ kind: "gone" });
-      c.close(CLOSE_STALE, "stale");
-      await this.dropped(c.id, hadVoice);
+      this.end(connection, CLOSE_STALE, "stale");
+      await this.dropped(seat.voice !== undefined);
     }
+  }
+
+  /**
+   * When a connection was last heard from, in ms since the epoch: its latest
+   * ping, which the platform records while the room sleeps, or its joining
+   * if it has not pinged yet. `null` for a page that does not ping (one from
+   * before pings), which is never ended for silence.
+   *
+   * A method of its own so that a test can stand in for the platform's
+   * record: its clock is not one a test can move.
+   */
+  lastHeardAt(connection: Connection<ConnectionState>): number | null {
+    const state = connection.state;
+    if (state?.kind !== "player" || !state.pings) return null;
+    return Math.max(this.ctx.getWebSocketAutoResponseTimestamp(connection)?.getTime() ?? 0, state.since);
   }
 
   /** Counts one message of `sort` from `slot`, and says whether that is still within what a player may send. */
   private withinPace(slot: number, sort: keyof RoomConfig["messageLimits"]): boolean {
     const key = `${slot}:${sort}`;
-    const paced = pace(this.messagePace.get(key), Date.now(), config.messageLimits[sort], config.messageWindowSeconds);
+    const limit = config.messageLimits[sort];
+    const paced = pace(this.messagePace.get(key), Date.now(), limit.burst, limit.windowSeconds);
     this.messagePace.set(key, paced.pace);
     return paced.ok;
-  }
-
-  /**
-   * When a connection last pinged, in ms since the epoch, or `null` if it
-   * never has. The platform keeps this while the room sleeps. A method of its
-   * own so that a test can stand in for the platform's record: its clock is
-   * not one a test can move.
-   */
-  lastPingAt(connection: Connection<ConnectionState>): number | null {
-    return this.ctx.getWebSocketAutoResponseTimestamp(connection)?.getTime() ?? null;
   }
 
   /**
@@ -341,8 +401,13 @@ export class GameRoom extends Server<Env> {
 
   /** Runs every timer that is due. A kind this version does not know is dropped. */
   async onAlarm(): Promise<void> {
+    this.openStorage();
     await this.sweep(Date.now());
     await this.timers.fire(Date.now(), (kind) => this.timerHandlers[kind]?.());
+    if (this.forgetAfterTimers) {
+      this.forgetAfterTimers = false;
+      await this.forget();
+    }
   }
 
   /** Seats the joining player, or refuses the connection with a reason. */
@@ -354,7 +419,12 @@ export class GameRoom extends Server<Env> {
 
     let lobby = this.lobby;
     if (lobby === null) {
-      if (!request.create) return this.reject(connection, "not-found");
+      if (!request.create) {
+        this.reject(connection, "not-found");
+        // Asking after a room that does not exist leaves nothing behind.
+        if (this.connectedSlots().size === 0) await this.forget();
+        return;
+      }
       lobby = createLobby(request.game, request.listed, config);
     } else if (request.create && lobby.players.length === 0) {
       // Everybody who was here has gone and the room was only being kept for
@@ -367,19 +437,24 @@ export class GameRoom extends Server<Env> {
       return this.reject(connection, "code-taken");
     }
 
+    const now = Date.now();
     const joining = { token: request.token, nick: request.nick };
     let result = joinLobby(lobby, joining, config);
     if (!result.ok && result.reason === "full") {
       // Someone who is away gives their slot to someone who is here, unless a
-      // game holds it for them: the one away longest goes first.
-      const away = awayPlayers(lobby, this.keepsSlot)[0];
-      if (away) result = joinLobby(leaveLobby(lobby, away.token), joining, config);
+      // game holds it for them: the one away longest goes first. Who is away
+      // is worked out afresh, from who is connected at this moment.
+      const fresh = markAway(lobby, this.connectedSlots(), now);
+      const away = awayPlayers(fresh, this.keepsSlot)[0];
+      if (away) result = joinLobby(leaveLobby(fresh, away.token), joining, config);
     }
     if (!result.ok) return this.reject(connection, result.reason);
 
-    connection.setState({ kind: "player", slot: result.slot });
+    // The lobby first: a connection is a player's only while the lobby says the slot is that player's.
+    this.saveLobby(result.state);
+    connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings });
     // Also notes anyone whose connection ended without the room being told.
-    this.saveLobby(markAway(result.state, this.connectedSlots(), Date.now()));
+    this.saveLobby(markAway(result.state, this.connectedSlots(), now));
     this.broadcastLobby();
     this.sendVoice(connection);
     // A game may be going on: the newcomer watches it, a returning player takes their seat back.
@@ -394,25 +469,42 @@ export class GameRoom extends Server<Env> {
     const player = lobby.players.find((p) => p.slot === slot);
     if (!player) return;
 
+    // The same player may have the room open in several tabs: all of them end here.
+    const theirs = this.members().filter(([, seat]) => seat.slot === slot);
+    const hadVoice = theirs.some(([, seat]) => seat.voice !== undefined);
     const next = leaveLobby(lobby, player.token);
     const emptied = next.players.length === 0;
     this.saveLobby(emptied ? null : next);
+    for (const [connection] of theirs) this.end(connection, CLOSE_LEFT, "left");
 
-    // The same player may have the room open in several tabs.
-    const closed = new Set<string>();
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (c.state?.kind === "player" && c.state.slot === slot) closed.add(c.id);
+    this.broadcastLobby();
+    if (hadVoice) this.broadcastVoice();
+    if (emptied) {
+      // The last player has left: the room is gone, with everything it stored.
+      await this.forget();
+      return;
     }
-    this.broadcastLobby(closed);
     // A seat at the table whose player has left is played by the room from here on.
-    if (emptied) await this.commitSession(null, closed);
-    else await this.presenceChanged(closed);
-    for (const id of closed) this.getConnection(id)?.close(CLOSE_LEFT, "left");
-
-    // The room is gone; its countdown has nothing left to clear.
-    if (emptied) await this.timers.clear("empty-room");
+    await this.presenceChanged();
     await this.scheduleSlots();
-    await this.report(closed);
+    await this.report();
+    // Those who remain may all be away: then the room starts waiting to be cleared.
+    await this.armEmptyRoom();
+  }
+
+  /**
+   * Forgets the room altogether: off the list, no game, no lobby, nothing
+   * stored and no alarm. A room made again under the same code starts from
+   * nothing.
+   */
+  private async forget(): Promise<void> {
+    this.lobby = null;
+    this.session = null;
+    await this.report();
+    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAll();
+    this.stored = false;
+    this.told = undefined;
   }
 
   /**
@@ -430,9 +522,13 @@ export class GameRoom extends Server<Env> {
     if (!paced.ok) return this.refuse(connection, "chat-too-fast");
     const message: ServerMessage = { type: "chat", room: this.name, from: slot, nick: player.nick, text, at: now };
     const data = JSON.stringify(message);
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (c.state?.kind === "player") c.send(data);
-    }
+    for (const [member] of this.members()) member.send(data);
+  }
+
+  /** The slot of the host: of the players connected, the one who came into the room first. */
+  private hostSlot(): number | null {
+    const lobby = this.lobby;
+    return lobby === null ? null : (hostOf(lobby, this.connectedSlots())?.slot ?? null);
   }
 
   /**
@@ -442,7 +538,7 @@ export class GameRoom extends Server<Env> {
   private handleClock(connection: Connection<ConnectionState>, slot: number, seconds: number): void {
     const lobby = this.lobby;
     if (lobby === null) return;
-    if (Math.min(...this.connectedSlots()) !== slot) return this.refuse(connection, "not-host");
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
     const next = setTurnSeconds(lobby, seconds, config);
     if (next === null) return this.refuse(connection, "bad-setting");
     if (next === lobby) return;
@@ -454,14 +550,14 @@ export class GameRoom extends Server<Env> {
   private async handleListing(connection: Connection<ConnectionState>, slot: number, listed: boolean): Promise<void> {
     const lobby = this.lobby;
     if (lobby === null) return;
-    if (Math.min(...this.connectedSlots()) !== slot) return this.refuse(connection, "not-host");
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
     const next = setListed(lobby, listed);
     if (next === lobby) return;
     this.saveLobby(next);
     if (!this.voiceOffered()) {
       // Strangers may now come in: nobody is left connected directly to anybody.
-      for (const c of this.getConnections<ConnectionState>()) {
-        if (c.state?.kind === "player" && c.state.voice !== undefined) c.setState({ kind: "player", slot: c.state.slot });
+      for (const [member, seat] of this.members()) {
+        if (seat.voice !== undefined) member.setState({ kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings });
       }
     }
     this.broadcastLobby();
@@ -475,9 +571,10 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Brings a connection into the room's voice chat or takes it out, and tells everyone who is in it now. */
-  private handleVoice(connection: Connection<ConnectionState>, slot: number, on: boolean, muted: boolean): void {
+  private handleVoice(connection: Connection<ConnectionState>, seat: Seat, on: boolean, muted: boolean): void {
     if (on && !this.voiceOffered()) return this.refuse(connection, "voice-not-here");
-    connection.setState(on ? { kind: "player", slot, voice: { muted } } : { kind: "player", slot });
+    const plain: Seat = { kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings };
+    connection.setState(on ? { ...plain, voice: { muted } } : plain);
     this.broadcastVoice();
   }
 
@@ -486,35 +583,32 @@ export class GameRoom extends Server<Env> {
    * connect directly. Both must be in voice: nobody is reached who has not
    * come in, and nobody reaches in from outside.
    */
-  private handleRtc(connection: Connection<ConnectionState>, slot: number, to: number, signal: RtcSignal): void {
-    if (!this.voiceOffered() || connection.state?.kind !== "player" || connection.state.voice === undefined) return;
-    if (to === slot) return;
-    const message: ServerMessage = { type: "rtc", from: slot, signal };
+  private handleRtc(from: Seat, to: number, signal: RtcSignal): void {
+    if (!this.voiceOffered() || from.voice === undefined) return;
+    if (to === from.slot) return;
+    const message: ServerMessage = { type: "rtc", from: from.slot, signal };
     const data = JSON.stringify(message);
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (c.state?.kind === "player" && c.state.slot === to && c.state.voice !== undefined) c.send(data);
+    for (const [member, seat] of this.members()) {
+      if (seat.slot === to && seat.voice !== undefined) member.send(data);
     }
   }
 
   /** Who is in the room's voice chat, a slot once however many of its connections are. */
-  private voiceMembers(except?: ReadonlySet<string>): VoiceMember[] {
+  private voiceMembers(): VoiceMember[] {
     const bySlot = new Map<number, boolean>();
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (except?.has(c.id) || c.state?.kind !== "player" || c.state.voice === undefined) continue;
+    for (const [, seat] of this.members()) {
+      if (seat.voice === undefined) continue;
       // with the microphone on in any of a player's connections, the player is not muted
-      bySlot.set(c.state.slot, (bySlot.get(c.state.slot) ?? true) && c.state.voice.muted);
+      bySlot.set(seat.slot, (bySlot.get(seat.slot) ?? true) && seat.voice.muted);
     }
     return [...bySlot].map(([slot, muted]) => ({ slot, muted })).sort((a, b) => a.slot - b.slot);
   }
 
   /** Tells everyone in the room who is in its voice chat. */
-  private broadcastVoice(except?: ReadonlySet<string>): void {
-    const message: ServerMessage = { type: "voice", room: this.name, members: this.voiceMembers(except) };
+  private broadcastVoice(): void {
+    const message: ServerMessage = { type: "voice", room: this.name, members: this.voiceMembers() };
     const data = JSON.stringify(message);
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (except?.has(c.id) || c.state?.kind !== "player") continue;
-      c.send(data);
-    }
+    for (const [member] of this.members()) member.send(data);
   }
 
   /** Tells one connection who is in the room's voice chat. */
@@ -556,17 +650,17 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Someone connected, dropped or left: the game may have moves to make or a clock to move. */
-  private async presenceChanged(except?: ReadonlySet<string>): Promise<void> {
+  private async presenceChanged(): Promise<void> {
     const session = this.session;
     if (session === null) return;
-    await this.commitSession(sessionPresence(session, this.presence(except), Date.now(), sessionConfig), except);
+    await this.commitSession(sessionPresence(session, this.presence(), Date.now(), sessionConfig));
   }
 
   /**
    * Makes `next` the room's game: stores it if it changed, points the turn
    * clock at its deadline, and sends every seated connection its own view.
    */
-  private async commitSession(next: Session | null, except?: ReadonlySet<string>): Promise<void> {
+  private async commitSession(next: Session | null): Promise<void> {
     const wasRunning = running(this.session);
     if (!sameSession(this.session, next)) this.save(GAME_KEY, next);
     this.session = next;
@@ -577,12 +671,12 @@ export class GameRoom extends Server<Env> {
     } else if (set !== due) {
       await this.timers.set("turn", due);
     }
-    this.broadcastGame(except);
+    this.broadcastGame();
     if (wasRunning !== running(next)) {
       // A game starting or ending changes how the room is listed, and whose
       // slot is kept for them while they are away.
       await this.scheduleSlots();
-      await this.report(except);
+      await this.report();
     }
   }
 
@@ -607,29 +701,28 @@ export class GameRoom extends Server<Env> {
    * was last told: its host, how many are connected, whether a game is on, or
    * that it is not to be listed at all. Reports go one after another and each
    * sends the latest standing, so a slow one never overwrites a newer one.
+   * Nothing that goes wrong here stops the room: the list is a convenience.
    */
-  private report(except?: ReadonlySet<string>): Promise<void> {
+  private report(): Promise<void> {
     const lobby = this.lobby;
     this.wanted =
-      lobby === null
-        ? null
-        : listingOf(this.name, lobby, this.connectedSlots(except), running(this.session), config);
-    this.telling = this.telling.then(() => this.tellDirectory());
+      lobby === null ? null : listingOf(this.name, lobby, this.connectedSlots(), running(this.session), config);
+    this.telling = this.telling.then(() => this.tellDirectory()).catch(() => undefined);
     return this.telling;
   }
 
   private async tellDirectory(): Promise<void> {
-    const wanted = this.wanted;
-    const report: RoomReport = { code: this.name, listing: wanted };
-    const body = JSON.stringify(report);
-    if (this.told === body) return;
-    const listed = this.load<boolean>(LISTED_KEY) === true;
-    if (wanted === null && this.told === undefined && !listed) {
-      // Never on the list: there is nothing to take off it.
-      this.told = body;
-      return;
-    }
     try {
+      const wanted = this.wanted;
+      const report: RoomReport = { code: this.name, listing: wanted };
+      const body = JSON.stringify(report);
+      if (this.told === body) return;
+      const listed = this.stored && this.load<boolean>(LISTED_KEY) === true;
+      if (wanted === null && this.told === undefined && !listed) {
+        // Never on the list: there is nothing to take off it.
+        this.told = body;
+        return;
+      }
       const directory = this.env.RoomDirectory.get(this.env.RoomDirectory.idFromName(DIRECTORY_NAME));
       const response = await directory.fetch("https://directory.internal/report", {
         method: "POST",
@@ -639,10 +732,10 @@ export class GameRoom extends Server<Env> {
       await response.body?.cancel();
       if (!response.ok) throw new Error(`the directory answered ${response.status}`);
       this.told = body;
-      if (listed !== (wanted !== null)) this.save(LISTED_KEY, wanted !== null ? true : null);
+      // the room may have been wiped while the directory was answering: then there is nowhere to note it
+      if (this.stored && listed !== (wanted !== null)) this.save(LISTED_KEY, wanted !== null ? true : null);
     } catch (error) {
-      // The list is a convenience: the room goes on without it, and tells the
-      // directory again when it next changes.
+      // The room goes on without the list, and tells the directory again when it next changes.
       console.error(`room ${this.name} could not report to the directory`, error);
     }
   }
@@ -688,21 +781,41 @@ export class GameRoom extends Server<Env> {
     this.lobby = lobby;
   }
 
-  /** Slots that have a live connection, ignoring the connections in `except`. */
-  private connectedSlots(except?: ReadonlySet<string>): Set<number> {
-    const slots = new Set<number>();
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (except?.has(c.id) || c.state?.kind !== "player") continue;
-      slots.add(c.state.slot);
+  /** What `connection` remembers as a player, if it still speaks for one: see {@link members}. */
+  private seatOf(connection: Connection<ConnectionState>): Seat | null {
+    const state = connection.state;
+    if (state?.kind !== "player") return null;
+    const holder = this.lobby?.players.find((p) => p.slot === state.slot);
+    return holder !== undefined && holder.token === state.token ? state : null;
+  }
+
+  /**
+   * The connections that are a player's at this moment, each with what it
+   * remembers: open, joined, not ended by the room, and joined as the player
+   * who holds its slot now. Everything the room sends, counts or obeys goes
+   * through here, so a connection left over from someone who has gone never
+   * stands for whoever holds that slot after them.
+   */
+  private members(): [Connection<ConnectionState>, Seat][] {
+    const found: [Connection<ConnectionState>, Seat][] = [];
+    // the room's connections are the open ones: one that has closed, or that the room has closed, is not among them
+    for (const connection of this.getConnections<ConnectionState>()) {
+      const seat = this.seatOf(connection);
+      if (seat !== null) found.push([connection, seat]);
     }
-    return slots;
+    return found;
+  }
+
+  /** Slots that have a live connection. */
+  private connectedSlots(): Set<number> {
+    return new Set(this.members().map(([, seat]) => seat.slot));
   }
 
   /** Who is around, by token: who holds a slot, and who of them is connected. */
-  private presence(except?: ReadonlySet<string>): Presence {
+  private presence(): Presence {
     const seated = new Set<string>();
     const connected = new Set<string>();
-    const slots = this.connectedSlots(except);
+    const slots = this.connectedSlots();
     for (const p of this.lobby?.players ?? []) {
       seated.add(p.token);
       if (slots.has(p.slot)) connected.add(p.token);
@@ -711,18 +824,18 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Sends every seated connection its own view of the lobby. */
-  private broadcastLobby(except?: ReadonlySet<string>): void {
+  private broadcastLobby(): void {
     const lobby = this.lobby;
     if (lobby === null) return;
-    const connected = this.connectedSlots(except);
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (except?.has(c.id) || c.state?.kind !== "player") continue;
+    const members = this.members();
+    const connected = new Set(members.map(([, seat]) => seat.slot));
+    for (const [member, seat] of members) {
       const message: ServerMessage = {
         type: "lobby",
         room: this.name,
-        ...viewLobby(lobby, connected, c.state.slot, config, this.voiceOffered()),
+        ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered()),
       };
-      c.send(JSON.stringify(message));
+      member.send(JSON.stringify(message));
     }
   }
 
@@ -731,28 +844,31 @@ export class GameRoom extends Server<Env> {
    * view of their seat, or a spectator's for someone not at the table. The
    * state itself is never sent.
    */
-  private broadcastGame(except?: ReadonlySet<string>): void {
-    const lobby = this.lobby;
+  private broadcastGame(): void {
     const session = this.session;
-    if (lobby === null || session === null) return;
-    const presence = this.presence(except);
+    if (this.lobby === null || session === null) return;
+    const presence = this.presence();
     const now = Date.now();
-    const tokenBySlot = new Map(lobby.players.map((p) => [p.slot, p.token]));
-    for (const c of this.getConnections<ConnectionState>()) {
-      if (except?.has(c.id) || c.state?.kind !== "player") continue;
+    for (const [member, seat] of this.members()) {
       const message: ServerMessage = {
         type: "game",
         room: this.name,
-        ...sessionSnapshot(session, tokenBySlot.get(c.state.slot) ?? null, presence, now),
+        ...sessionSnapshot(session, seat.token, presence, now),
       };
-      c.send(JSON.stringify(message));
+      member.send(JSON.stringify(message));
     }
+  }
+
+  /** Ends a connection from the room's side: marked first, so nothing more is read from it. */
+  private end(connection: Connection<ConnectionState>, code: number, reason: string): void {
+    connection.setState({ kind: "gone" });
+    connection.close(code, reason);
   }
 
   private reject(connection: Connection<ConnectionState>, reason: RejectReason): void {
     const message: ServerMessage = { type: "error", reason };
     connection.send(JSON.stringify(message));
-    connection.close(CLOSE_REJECTED, reason);
+    this.end(connection, CLOSE_REJECTED, reason);
   }
 
   /** Tells one connection that what it asked was not accepted. */

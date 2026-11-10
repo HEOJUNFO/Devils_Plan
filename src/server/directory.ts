@@ -1,6 +1,7 @@
 import { Server, type Connection } from "partyserver";
 import directoryConfig from "../shared/directory-config.json";
 import {
+  beyondLimit,
   isStale,
   listRooms,
   parseReport,
@@ -82,6 +83,7 @@ export class RoomDirectory extends Server<Env> {
       );
     }
     this.forgetStale(now);
+    this.forgetBeyondLimit();
     this.broadcast(this.message(now));
     return new Response(null, { status: 204 });
   }
@@ -90,6 +92,14 @@ export class RoomDirectory extends Server<Env> {
   private forgetStale(now: number): void {
     for (const [code, entry] of this.entries) {
       if (!isStale(entry.updatedAt, now, config)) continue;
+      this.entries.delete(code);
+      this.ctx.storage.sql.exec("DELETE FROM rooms WHERE code = ?", code);
+    }
+  }
+
+  /** Keeps no more entries than the limit: past it, the rooms heard from longest ago go. */
+  private forgetBeyondLimit(): void {
+    for (const code of beyondLimit(this.entries, config)) {
       this.entries.delete(code);
       this.ctx.storage.sql.exec("DELETE FROM rooms WHERE code = ?", code);
     }

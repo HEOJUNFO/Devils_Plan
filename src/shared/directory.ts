@@ -9,12 +9,14 @@
  * and run inside the directory's Durable Object.
  */
 import { GAMES, isGameId, type GameId } from "./games";
-import { gameOf, isValidRoomCode, normalizeNick, type LobbyState, type RoomConfig } from "./lobby";
+import { gameOf, hostOf, isValidRoomCode, normalizeNick, type LobbyState, type RoomConfig } from "./lobby";
 
 /** Tunable values of the list. Loaded from `directory-config.json`. */
 export interface DirectoryConfig {
   /** The most rooms the list shows. */
   maxListed: number;
+  /** The most rooms the directory keeps; past this the one heard from longest ago is dropped. */
+  maxStored: number;
   /** Hours an entry is kept without news from its room, in case the room's last word was lost. */
   staleHours: number;
 }
@@ -49,8 +51,8 @@ export interface RoomReport {
 
 /**
  * How a room should be listed, or `null` when it should not be: it is reached
- * by its code alone, or nobody is connected. The host is the connected player
- * in the lowest slot, as in the room itself.
+ * by its code alone, or nobody is connected. The host is the room's own:
+ * of the players connected, the one who came in first.
  */
 export function listingOf(
   code: string,
@@ -61,8 +63,8 @@ export function listingOf(
 ): RoomListing | null {
   if (lobby.listed !== true) return null;
   const connected = lobby.players.filter((p) => connectedSlots.has(p.slot));
-  if (connected.length === 0) return null;
-  const host = connected.reduce((lowest, p) => (p.slot < lowest.slot ? p : lowest));
+  const host = hostOf(lobby, connectedSlots);
+  if (host === undefined) return null;
   const game = gameOf(lobby);
   return {
     code,
@@ -102,6 +104,19 @@ export function parseReport(raw: unknown, config: RoomConfig): RoomReport | null
     code: data.code,
     listing: { code: data.code, game: listing.game, host, players, maxPlayers, playing: listing.playing },
   };
+}
+
+/**
+ * The codes of the rooms to drop so that no more than `config.maxStored`
+ * entries are kept: those heard from longest ago. Empty when within the limit.
+ */
+export function beyondLimit(entries: ReadonlyMap<string, DirectoryEntry>, config: DirectoryConfig): string[] {
+  const over = entries.size - config.maxStored;
+  if (over <= 0) return [];
+  return [...entries]
+    .sort((a, b) => a[1].updatedAt - b[1].updatedAt || (a[0] < b[0] ? -1 : 1))
+    .slice(0, over)
+    .map(([code]) => code);
 }
 
 /** Whether an entry last heard from at `updatedAt` is too old to show at `now`. */

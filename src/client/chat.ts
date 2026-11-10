@@ -36,13 +36,20 @@ export interface Chat {
 const KEEP = 60;
 
 /**
- * Makes the chat out of its elements. `send` is given each line the player
- * types; lines are shown only when they come back from the room, so everyone
- * sees them in the same order.
+ * Makes the chat out of its elements. `options.send` is given each line the
+ * player types; lines are shown only when they come back from the room, so
+ * everyone sees them in the same order.
  */
 export function createChat(
   elements: { log: HTMLOListElement; form: HTMLFormElement; input: HTMLInputElement },
-  options: { maxLength: number; storagePrefix: string; send(text: string): void },
+  options: {
+    maxLength: number;
+    storagePrefix: string;
+    /** Sends a line; says whether it went. */
+    send(text: string): boolean;
+    /** What the chat says when a line could not be sent. */
+    notSent: string;
+  },
 ): Chat {
   const { log, form, input } = elements;
   let lines: Line[] = [];
@@ -88,8 +95,9 @@ export function createChat(
     // syllable still being composed has been finished, so it is sent whole and once.
     event.preventDefault();
     if (input.value.trim() === "") return;
-    options.send(input.value);
-    input.value = "";
+    // a line that did not go stays in the box, to be sent when it can
+    if (options.send(input.value)) input.value = "";
+    else add({ text: options.notSent });
   });
 
   return {

@@ -19,6 +19,8 @@ import {
   type RoomConfig,
 } from "../shared/lobby";
 import {
+  CLOSE_LEFT,
+  CLOSE_REJECTED,
   DIRECTORY_NAME,
   DIRECTORY_PARTY,
   PARTY_NAME,
@@ -224,8 +226,16 @@ function disarmLeave(): void {
   leaveGameButton.textContent = LEAVE_TEXT;
 }
 
-function send(message: ClientMessage): void {
-  socket?.send(JSON.stringify(message));
+/**
+ * Sends the room a message, and says whether it went. While the connection
+ * is down nothing is kept to send later: what would arrive on the new
+ * connection ahead of `join` would not be read, and a move or a line that
+ * turned up a minute late would not be what the player meant any more.
+ */
+function send(message: ClientMessage): boolean {
+  if (socket === null || !online) return false;
+  socket.send(JSON.stringify(message));
+  return true;
 }
 
 /** The room's voice chat, as this page takes part in it. */
@@ -265,6 +275,7 @@ const chat = createChat(
     maxLength: chatConfig.maxLength,
     storagePrefix: storageKey("chat"),
     send: (text) => send({ type: "chat", text }),
+    notSent: "연결이 끊겨 보내지 못했습니다. 다시 연결되면 보내 주세요.",
   },
 );
 
@@ -544,7 +555,7 @@ function renderRoom(code: string, view: LobbyView): void {
   players.replaceChildren(...rows);
 
   const connected = view.players.filter((p) => p.connected);
-  isHost = connected.length > 0 && Math.min(...connected.map((p) => p.slot)) === view.you;
+  isHost = view.host === view.you;
   table?.setHost(isHost);
   renderStatus();
   syncChat();
@@ -597,9 +608,18 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     create,
     game: chosenGame,
     listed: chosenListed,
+    pings: true,
   };
 
-  const current = new PartySocket({ host: location.host, party: PARTY_NAME, room: code });
+  const current = new PartySocket({
+    host: location.host,
+    party: PARTY_NAME,
+    room: code,
+    // nothing is kept to send when the connection comes back: see `send`
+    maxEnqueuedMessages: 0,
+    // a connection the room ended on purpose (this player left, or was refused) is not opened again
+    shouldReconnectOnClose: (event) => event.code !== CLOSE_LEFT && event.code !== CLOSE_REJECTED,
+  });
   socket = current;
 
   current.addEventListener("open", () => {
@@ -610,10 +630,18 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     online = true;
     renderStatus();
   });
-  current.addEventListener("close", () => {
+  current.addEventListener("close", (event) => {
     // PartySocket reconnects by itself unless we closed it.
     if (socket !== current) return;
     online = false;
+    if (event.code === CLOSE_LEFT) {
+      // The room let this player go without this page asking: they left in
+      // another window, or were away so long that their place was given up.
+      disconnect();
+      history.replaceState(null, "", `${location.pathname}${location.search}`);
+      showLobby("방에서 나왔습니다. 다른 창에서 나갔거나 자리를 오래 비웠습니다.");
+      return;
+    }
     renderStatus();
   });
   current.addEventListener("message", (event) => {

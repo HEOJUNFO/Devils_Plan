@@ -30,7 +30,7 @@ describe("normalizeChat", () => {
   });
 
   it("takes out characters that are not for showing", () => {
-    expect(normalizeChat("a\u0000‮b", chatConfig())).toBe("a b");
+    expect(normalizeChat(`a${String.fromCodePoint(0x0000)}${String.fromCodePoint(0x202e)}b`, chatConfig())).toBe("a b");
   });
 });
 

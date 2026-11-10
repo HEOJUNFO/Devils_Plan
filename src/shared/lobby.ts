@@ -31,20 +31,24 @@ export interface RoomConfig {
    * come back, short enough that a room does not fill with people who left.
    */
   awaySlotSeconds: number;
-  /** Seconds in the window over which a player's messages to the room are counted. */
-  messageWindowSeconds: number;
   /**
-   * Messages one player may send the room within a window, by sort. Far above
-   * what a page sends by itself; the limit is for a page that is not ours.
-   * Chat has its own, lower limit (`chat-config.json`).
+   * Messages one player may send the room, by sort: so many (`burst`) within
+   * any window of `windowSeconds`. Far above what a page sends by itself; the
+   * limits are for a page that is not ours. Chat has its own, lower limit
+   * (`chat-config.json`).
    */
   messageLimits: {
-    /** Changes to the room: on the list or off it, the length of a turn. Each is stored and told to everyone. */
-    setting: number;
+    /**
+     * Changes to the room: on the list or off it, the length of a turn. Each
+     * is stored, told to everyone and, for the listing, to the directory and
+     * everyone looking at the list: the dearest message there is, so the
+     * fewest are allowed.
+     */
+    setting: MessageLimit;
     /** Voice signals: a burst of them goes to each other player when someone comes into voice. */
-    signal: number;
+    signal: MessageLimit;
     /** Everything else: starting, moves, coming into voice, pokes. */
-    other: number;
+    other: MessageLimit;
   };
   /**
    * Seconds between the pings by which a page tells its room it is still
@@ -75,6 +79,12 @@ export interface RoomConfig {
   listedTurnSeconds: number;
 }
 
+/** How many messages of one sort a player may send: `burst` within any window of `windowSeconds`. */
+export interface MessageLimit {
+  burst: number;
+  windowSeconds: number;
+}
+
 /** A player as the server stores them. `token` is secret to that player. */
 export interface LobbyPlayer {
   /** 0-based position in the room, stable for as long as the player stays. */
@@ -88,6 +98,12 @@ export interface LobbyPlayer {
    * epoch; absent while they are connected.
    */
   awaySince?: number;
+  /**
+   * The order in which the player came into the room: lower came earlier.
+   * The host is the connected player who came first. Absent for a player
+   * stored before this was kept, who then counts by their slot.
+   */
+  seq?: number;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -102,6 +118,8 @@ export interface LobbyState {
   listed?: boolean;
   /** Seconds a player has for a move in the games started here; 0 or absent for no limit. */
   turnSeconds?: number;
+  /** The `seq` the next player to come in gets. */
+  nextSeq?: number;
 }
 
 /** A player as everyone may see them. Carries no token. */
@@ -125,6 +143,8 @@ export interface LobbyView {
   turnSeconds: number;
   /** Whether the room offers voice chat (see `voice.ts`). */
   voice: boolean;
+  /** The slot of the host, who starts games and sets the room; `null` when nobody is connected. */
+  host: number | null;
   players: PublicPlayer[];
 }
 
@@ -225,7 +245,7 @@ export function joinLobby(
   const existing = findPlayer(state, request.token);
   if (existing) {
     // back from being away, if they were
-    const back: LobbyPlayer = { slot: existing.slot, token: existing.token, nick };
+    const back: LobbyPlayer = { slot: existing.slot, token: existing.token, nick, seq: seqOf(existing) };
     const players = state.players.map((p) => (p === existing ? back : p));
     return { ok: true, state: { ...state, players }, slot: existing.slot, rejoined: true };
   }
@@ -235,10 +255,31 @@ export function joinLobby(
   while (taken.has(slot)) slot++;
   if (slot >= config.maxPlayers) return { ok: false, reason: "full" };
 
-  const players = [...state.players, { slot, token: request.token, nick }].sort(
+  // later than everyone who is or has been here
+  const seq = Math.max(state.nextSeq ?? 0, ...state.players.map((p) => seqOf(p) + 1));
+  const players = [...state.players, { slot, token: request.token, nick, seq }].sort(
     (a, b) => a.slot - b.slot,
   );
-  return { ok: true, state: { ...state, players }, slot, rejoined: false };
+  return { ok: true, state: { ...state, players, nextSeq: seq + 1 }, slot, rejoined: false };
+}
+
+/** The order in which `player` came into the room (see {@link LobbyPlayer.seq}). */
+function seqOf(player: LobbyPlayer): number {
+  return player.seq ?? player.slot;
+}
+
+/**
+ * The host: of the players connected now, the one who came into the room
+ * first. Someone who takes a slot that an earlier host left does not become
+ * host over those already waiting. `undefined` when nobody is connected.
+ */
+export function hostOf(state: LobbyState, connectedSlots: ReadonlySet<number>): LobbyPlayer | undefined {
+  let host: LobbyPlayer | undefined;
+  for (const player of state.players) {
+    if (!connectedSlots.has(player.slot)) continue;
+    if (host === undefined || seqOf(player) < seqOf(host)) host = player;
+  }
+  return host;
 }
 
 /**
@@ -261,7 +302,7 @@ export function markAway(state: LobbyState, connectedSlots: ReadonlySet<number>,
     if (connectedSlots.has(p.slot)) {
       if (p.awaySince === undefined) return p;
       changed = true;
-      return { slot: p.slot, token: p.token, nick: p.nick };
+      return { slot: p.slot, token: p.token, nick: p.nick, seq: seqOf(p) };
     }
     if (p.awaySince !== undefined) return p;
     changed = true;
@@ -329,6 +370,7 @@ export function viewLobby(
     listed: state.listed === true,
     turnSeconds: turnSecondsOf(state),
     voice,
+    host: hostOf(state, connectedSlots)?.slot ?? null,
     players: state.players.map((p) => ({
       slot: p.slot,
       nick: p.nick,

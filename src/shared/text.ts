@@ -1,21 +1,58 @@
 /**
  * Cleaning of text that one player types and others are shown: nicknames and
  * chat lines.
+ *
+ * The characters dealt with here are ones that cannot be seen, so none of
+ * them is written in this file: each is named by its number.
  */
+
+/** The characters from `from` to `to`, as they go inside a regular expression's character class. */
+function span(from: number, to: number = from): string {
+  return from === to ? String.fromCodePoint(from) : `${String.fromCodePoint(from)}-${String.fromCodePoint(to)}`;
+}
 
 /**
  * Characters that do not belong in a line shown to others: control
- * characters, and the marks that flip the direction of the text around them
- * (they can make a line read as something its writer did not write).
+ * characters, the marks that set or flip the direction of the text around
+ * them (they can make a line read as something its writer did not write), and
+ * characters that take up room and show nothing (fillers, blanks, soft
+ * hyphens), which would otherwise pass for a name.
  */
-const UNWANTED = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩﻿]/gu;
+const UNWANTED = new RegExp(
+  `[${[
+    span(0x0000, 0x001f), // controls
+    span(0x007f, 0x009f), // delete and more controls
+    span(0x00ad), // soft hyphen
+    span(0x061c), // Arabic letter mark
+    span(0x115f, 0x1160), // Hangul fillers
+    span(0x180e), // Mongolian vowel separator
+    span(0x200b), // zero width space
+    span(0x200e, 0x200f), // left-to-right and right-to-left marks
+    span(0x202a, 0x202e), // direction embeddings and overrides
+    span(0x2060, 0x2064), // word joiner and invisible operators
+    span(0x2066, 0x2069), // direction isolates
+    span(0x2800), // blank Braille pattern
+    span(0x3164), // Hangul filler
+    span(0xfeff), // byte order mark
+    span(0xffa0), // halfwidth Hangul filler
+    span(0xfff9, 0xfffb), // interlinear annotation marks
+  ].join("")}]`,
+  "gu",
+);
+
+/**
+ * Characters kept because they join or style their neighbours (the joiners
+ * inside an emoji, the selectors after one), but which show nothing alone.
+ */
+const SHOWS_NOTHING_ALONE = new RegExp(`[\\s${span(0x200c, 0x200d)}${span(0xfe00, 0xfe0f)}]`, "gu");
 
 /**
  * One clean line: unwanted characters and runs of whitespace each become one
- * space, and the ends are trimmed. May be empty.
+ * space, and the ends are trimmed. Empty when nothing in it would show.
  */
 export function cleanLine(raw: string): string {
-  return raw.replace(UNWANTED, " ").replace(/\s+/gu, " ").trim();
+  const line = raw.replace(UNWANTED, " ").replace(/\s+/gu, " ").trim();
+  return line.replace(SHOWS_NOTHING_ALONE, "") === "" ? "" : line;
 }
 
 /** `text` cut to at most `max` characters, counting a character as a reader does, not by code unit. */

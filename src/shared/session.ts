@@ -73,6 +73,8 @@ export interface Candidate {
   token: string;
   nick: string;
   slot: number;
+  /** The order in which they came into the room; who came first is host. Absent: by slot. */
+  seq?: number;
 }
 
 /** Why a change to the room's settings was not made. */
@@ -140,6 +142,11 @@ function awaitedSeat(state: GameState): number {
 function settle(session: Session, presence: Presence, now: number, config: SessionConfig, moved: boolean): Session {
   let state = session.state;
   let turnStartedAt = moved ? now : session.turnStartedAt;
+  // While nobody was connected no clock ran (see below): a limit on a turn
+  // starts afresh for whoever is awaited when someone is back, or the time the
+  // room stood empty would be counted against them.
+  const stoodEmpty = session.rules.turnSeconds > 0 && session.deadline === null && state.phase !== "ended";
+  if (stoodEmpty && presence.connected.size > 0) turnStartedAt = now;
   let roomMoved = false;
   for (let i = 0; i < MOVES_GUARD && state.phase !== "ended"; i++) {
     const token = session.tokens[awaitedSeat(state)];
@@ -188,7 +195,9 @@ export function startSession(
 ): { ok: true; session: Session } | { ok: false; reason: StartRefusal } {
   if (current !== null && current.state.phase !== "ended") return { ok: false, reason: "already-playing" };
   const seated = [...players].sort((a, b) => a.slot - b.slot);
-  if (seated.length === 0 || seated[0].token !== request.by) return { ok: false, reason: "not-host" };
+  // the host is whoever of those here came into the room first, as in the lobby's `hostOf`
+  const host = [...seated].sort((a, b) => (a.seq ?? a.slot) - (b.seq ?? b.slot))[0];
+  if (host === undefined || host.token !== request.by) return { ok: false, reason: "not-host" };
   if (request.bots && !options.allowBots) return { ok: false, reason: "bots-not-allowed" };
 
   const largest = Math.max(...Object.keys(config.sizes).map(Number));

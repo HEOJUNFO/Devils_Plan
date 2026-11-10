@@ -824,7 +824,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const ly = at.label.y;
       pen.txt(name, lx, ly, fallen[seat] ? C.dim : waiting === seat || (mine && deal > 0) ? C.amber : C.bone);
       // in the room's voice chat: a mark before the name
-      const voice = info.bot ? "out" : handlers.voice(info.occupant);
+      // a seat whose player has left the room is nobody's: whoever holds that slot now is someone else
+      const voice = info.bot || player.left ? "out" : handlers.voice(info.occupant);
       if (voice !== "out") drawVoiceMark(pen, lx - VOICE_MARK_W, ly, voice, time);
       if (lead) {
         // leads this round
@@ -1256,7 +1257,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     say(slot: number, text: string): void {
       if (latest === null) return;
       // someone watching has no seat to speak from: their line is in the chat alone
-      const seat = latest.view.seats.findIndex((info) => !info.bot && info.occupant === slot);
+      const players = latest.players;
+      const seat = latest.view.seats.findIndex((info, at) => !info.bot && info.occupant === slot && !players[at].left);
       if (seat < 0) return;
       speech = speech.filter((line) => line.seat !== seat);
       speech.push({ seat, lines: speechLines(pen, text), t: speechSeconds(text) });

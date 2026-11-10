@@ -5,7 +5,9 @@ import { DEFAULT_GAME } from "../../../src/shared/games";
 import type { LobbyView } from "../../../src/shared/lobby";
 import { CLOSE_LEFT, CLOSE_REJECTED, CLOSE_STALE } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
-import { advanceClock, connect, join as open, pingsWere, scheduledAlarm, tokenFor, type PingRecord } from "../support";
+import { exports } from "cloudflare:workers";
+import { PARTY_NAME } from "../../../src/shared/protocol";
+import { advanceClock, connect, heardWere, join as open, scheduledAlarm, tokenFor, type HeardRecord } from "../support";
 
 const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
 const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
@@ -35,6 +37,7 @@ describe("GameRoom", () => {
       listed: false,
       turnSeconds: 0,
       voice: true,
+      host: 0,
       players: [{ slot: 0, nick: "ann", connected: true }],
     });
     a.close();
@@ -153,10 +156,18 @@ describe("GameRoom", () => {
     again.close();
   });
 
-  it("refuses a malformed room code", async () => {
-    const a = await open("nope", { player: 0, create: true });
+  it("turns away a connection to a name that cannot be a room, before any room is made for it", async () => {
+    const upgrade = { headers: { Upgrade: "websocket" } };
 
-    expect(await a.next()).toEqual({ type: "error", reason: "bad-room" });
+    const malformed = await exports.default.fetch(`http://example.com/parties/${PARTY_NAME}/nope`, upgrade);
+    const tooLong = await exports.default.fetch(`http://example.com/parties/${PARTY_NAME}/AAAAAA`, upgrade);
+    const otherDirectory = await exports.default.fetch("http://example.com/parties/room-directory/other", upgrade);
+    const noSuchParty = await exports.default.fetch("http://example.com/parties/nothing-here/AAAAA", upgrade);
+
+    expect(malformed.status).toBe(404);
+    expect(tooLong.status).toBe(404);
+    expect(otherDirectory.status).toBe(404);
+    expect(noSuchParty.status).not.toBe(101);
   });
 
   it("refuses a blank nickname", async () => {
@@ -511,7 +522,7 @@ describe("GameRoom", () => {
 
   it("answers a ping, and remembers when", async () => {
     const stub = env.GameRoom.getByName("AAAC2");
-    const a = await open("AAAC2", { player: 0, create: true });
+    const a = await open("AAAC2", { player: 0, create: true, pings: true });
     await a.next();
     const before = Date.now();
 
@@ -519,7 +530,7 @@ describe("GameRoom", () => {
 
     const last = await runInDurableObject(stub, (room) => {
       const [connection] = [...room.getConnections()];
-      return (room as unknown as PingRecord).lastPingAt(connection);
+      return (room as unknown as HeardRecord).lastHeardAt(connection);
     });
     expect(a.pongs).toBe(1);
     expect(last).not.toBeNull();
@@ -528,18 +539,68 @@ describe("GameRoom", () => {
     a.close();
   });
 
-  it("has no record of a ping for a connection that never sent one", async () => {
+  it("takes the joining of a page that pings as the first it heard from it", async () => {
     const stub = env.GameRoom.getByName("AAAC8");
-    const a = await open("AAAC8", { player: 0, create: true });
+    const before = Date.now();
+    const a = await open("AAAC8", { player: 0, create: true, pings: true });
     await a.next();
 
     const last = await runInDurableObject(stub, (room) => {
       const [connection] = [...room.getConnections()];
-      return (room as unknown as PingRecord).lastPingAt(connection);
+      return (room as unknown as HeardRecord).lastHeardAt(connection);
+    });
+
+    expect(last).toBeGreaterThanOrEqual(before);
+    expect(last).toBeLessThanOrEqual(Date.now());
+    a.close();
+  });
+
+  it("keeps no time for a page that does not ping", async () => {
+    const stub = env.GameRoom.getByName("AAAD6");
+    const a = await open("AAAD6", { player: 0, create: true, pings: false });
+    await a.next();
+
+    const last = await runInDurableObject(stub, (room) => {
+      const [connection] = [...room.getConnections()];
+      return (room as unknown as HeardRecord).lastHeardAt(connection);
     });
 
     expect(last).toBeNull();
     a.close();
+  });
+
+  it("ends a connection whose page said it pings and then never did", async () => {
+    const a = await open("AAAD7", { player: 0, create: true });
+    const silent = await open("AAAD7", { player: 1, pings: true });
+    await silent.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+    advanceClock(STALE_MS + 1);
+
+    a.send({ type: "poke" });
+
+    const lobby = await a.lobbyWhere((l) => connectedBySlot(l)[1] === false);
+    expect(connectedBySlot(lobby)).toEqual({ 0: true, 1: false });
+    expect(await silent.closed).toBe(CLOSE_STALE);
+    a.close();
+  });
+
+  it("does not end a page that does not ping, however long it is silent", async () => {
+    const a = await open("AAAD8", { player: 0, create: true });
+    const old = await open("AAAD8", { player: 1, pings: false });
+    await old.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+    advanceClock(STALE_MS * 5);
+
+    a.send({ type: "poke" });
+    const c = await open("AAAD8", { player: 2 });
+
+    expect(await c.next()).toMatchObject({
+      type: "lobby",
+      players: [{ slot: 0, connected: true }, { slot: 1, connected: true }, { slot: 2, connected: true }],
+    });
+    a.close();
+    old.close();
+    c.close();
   });
 
   it("ends a connection that used to ping and has gone silent, when something next wakes the room", async () => {
@@ -548,7 +609,7 @@ describe("GameRoom", () => {
     const b = await open("AAAC3", { player: 1 });
     await b.next();
     await a.lobbyWhere((l) => l.players.length === 2);
-    await pingsWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
+    await heardWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
 
     a.send({ type: "poke" });
 
@@ -564,7 +625,7 @@ describe("GameRoom", () => {
     const b = await open("AAAC4", { player: 1 });
     await b.next();
     await a.lobbyWhere((l) => l.players.length === 2);
-    await pingsWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS + 5000 });
+    await heardWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS + 5000 });
 
     a.send({ type: "poke" });
     const c = await open("AAAC4", { player: 2 });
@@ -578,13 +639,13 @@ describe("GameRoom", () => {
     c.close();
   });
 
-  it("leaves alone a connection that has never pinged: a page older than the ping", async () => {
+  it("leaves alone a connection the room keeps no time for", async () => {
     const stub = env.GameRoom.getByName("AAAC5");
     const a = await open("AAAC5", { player: 0, create: true });
     const old = await open("AAAC5", { player: 1 });
     await old.next();
     await a.lobbyWhere((l) => l.players.length === 2);
-    await pingsWere(stub, { 0: Date.now(), 1: null });
+    await heardWere(stub, { 0: Date.now(), 1: null });
 
     a.send({ type: "poke" });
     const c = await open("AAAC5", { player: 2 });
@@ -604,7 +665,7 @@ describe("GameRoom", () => {
     const b = await open("AAAC6", { player: 1 });
     await b.next();
     await a.lobbyWhere((l) => l.players.length === 2);
-    await pingsWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
+    await heardWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
 
     const c = await open("AAAC6", { player: 2 });
 
@@ -625,7 +686,7 @@ describe("GameRoom", () => {
     c.close();
     await a.lobbyWhere((l) => connectedBySlot(l)[2] === false);
     await scheduledAlarm(stub);
-    await pingsWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
+    await heardWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
 
     await runDurableObjectAlarm(stub);
 
@@ -641,10 +702,10 @@ describe("GameRoom", () => {
     const b = await open("AAAC7", { player: 1 });
     await b.next();
     await a.lobbyWhere((l) => l.players.length === 2);
-    await pingsWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
+    await heardWere(stub, { 0: Date.now(), 1: Date.now() - STALE_MS - 1 });
     a.send({ type: "poke" });
     await b.closed;
-    await pingsWere(stub, { 0: Date.now() });
+    await heardWere(stub, { 0: Date.now() });
 
     const back = await open("AAAC7", { player: 1 });
 
@@ -656,7 +717,7 @@ describe("GameRoom", () => {
   it("refuses a player who changes the room's settings too fast, and keeps what was last accepted", async () => {
     const a = await open("AAAD2", { player: 0, create: true });
     await a.next();
-    const limit = roomConfig.messageLimits.setting;
+    const limit = roomConfig.messageLimits.setting.burst;
 
     for (let n = 0; n <= limit; n++) a.send({ type: "listing", listed: n % 2 === 0 });
 
@@ -676,9 +737,9 @@ describe("GameRoom", () => {
   it("lets a player change settings again once the window has passed", async () => {
     const a = await open("AAAD3", { player: 0, create: true });
     await a.next();
-    for (let n = 0; n <= roomConfig.messageLimits.setting; n++) a.send({ type: "listing", listed: n % 2 === 0 });
+    for (let n = 0; n <= roomConfig.messageLimits.setting.burst; n++) a.send({ type: "listing", listed: n % 2 === 0 });
     for (;;) if ((await a.next()).type === "refused") break;
-    advanceClock(roomConfig.messageWindowSeconds * 1000 + 1);
+    advanceClock(roomConfig.messageLimits.setting.windowSeconds * 1000 + 1);
     const longest = Math.max(...roomConfig.turnSecondsChoices);
 
     a.send({ type: "clock", seconds: longest });
@@ -687,12 +748,32 @@ describe("GameRoom", () => {
     a.close();
   });
 
+  it("goes on refusing changes of setting until the whole window has passed", async () => {
+    const a = await open("AAAG2", { player: 0, create: true });
+    await a.next();
+    const longest = Math.max(...roomConfig.turnSecondsChoices);
+    for (let n = 0; n <= roomConfig.messageLimits.setting.burst; n++) a.send({ type: "listing", listed: n % 2 === 0 });
+    for (;;) if ((await a.next()).type === "refused") break;
+    advanceClock(roomConfig.messageLimits.setting.windowSeconds * 1000 - 1000);
+
+    a.send({ type: "clock", seconds: longest });
+
+    for (;;) {
+      const message = await a.next();
+      if (message.type === "lobby") expect(message.turnSeconds).not.toBe(longest);
+      if (message.type !== "refused") continue;
+      expect(message).toEqual({ type: "refused", reason: "too-fast" });
+      break;
+    }
+    a.close();
+  });
+
   it("counts each player's messages apart", async () => {
     const a = await open("AAAD4", { player: 0, create: true });
     const b = await open("AAAD4", { player: 1 });
     await b.next();
     await a.lobbyWhere((l) => l.players.length === 2);
-    for (let n = 0; n <= roomConfig.messageLimits.setting; n++) a.send({ type: "listing", listed: n % 2 === 0 });
+    for (let n = 0; n <= roomConfig.messageLimits.setting.burst; n++) a.send({ type: "listing", listed: n % 2 === 0 });
     for (;;) if ((await a.next()).type === "refused") break;
 
     b.send({ type: "listing", listed: true });
@@ -713,12 +794,296 @@ describe("GameRoom", () => {
     await a.next();
     const longest = Math.max(...roomConfig.turnSecondsChoices);
     // as many messages of another sort as would use up the settings' own allowance
-    for (let n = 0; n < roomConfig.messageLimits.setting; n++) a.send({ type: "voice", on: false, muted: false });
+    for (let n = 0; n < roomConfig.messageLimits.setting.burst; n++) a.send({ type: "voice", on: false, muted: false });
 
     a.send({ type: "clock", seconds: longest });
 
     expect(await a.lobbyWhere((l) => l.turnSeconds === longest)).toMatchObject({ turnSeconds: longest });
     a.close();
+  });
+
+  it("tells two connections apart even when they come with the same connection id", async () => {
+    const a = await connect("AAAE2", "?_pk=same-id");
+    a.send({ type: "join", token: tokenFor(0), nick: "p0", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+    const b = await connect("AAAE2", "?_pk=same-id");
+    b.send({ type: "join", token: tokenFor(1), nick: "p1", create: false, game: DEFAULT_GAME, listed: false, pings: false });
+    await b.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+
+    b.close();
+
+    const lobby = await a.lobbyWhere((l) => connectedBySlot(l)[1] === false);
+    expect(connectedBySlot(lobby)).toEqual({ 0: true, 1: false });
+    a.close();
+  });
+
+  it("keeps a player connected when an older connection of theirs ends, as after a reconnect", async () => {
+    const a = await open("AAAE3", { player: 0, create: true });
+    await a.next();
+    // a page that reconnects comes back with the connection id it had before
+    const older = await connect("AAAE3", "?_pk=one-page");
+    older.send({ type: "join", token: tokenFor(1), nick: "p1", create: false, game: DEFAULT_GAME, listed: false, pings: false });
+    await older.next();
+    const newer = await connect("AAAE3", "?_pk=one-page");
+    newer.send({ type: "join", token: tokenFor(1), nick: "p1", create: false, game: DEFAULT_GAME, listed: false, pings: false });
+    await newer.next();
+
+    older.close();
+    await older.closed;
+    a.send({ type: "chat", text: "after the older one closed" });
+
+    // nothing the room said between the close and this line may show the player as gone
+    for (;;) {
+      const message = await a.next();
+      if (message.type === "lobby") expect(connectedBySlot(message)).toEqual({ 0: true, 1: true });
+      if (message.type === "chat") break;
+    }
+    a.close();
+    newer.close();
+  });
+
+  it("does not obey a connection whose slot is someone else's now", async () => {
+    const stub = env.GameRoom.getByName("AAAE4");
+    const a = await open("AAAE4", { player: 0, nick: "ann", create: true });
+    const b = await open("AAAE4", { player: 1, nick: "bob" });
+    await b.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+    b.send({ type: "leave" });
+    await b.closed;
+    await a.lobbyWhere((l) => l.players.length === 1);
+    const c = await open("AAAE4", { player: 2, nick: "cat" });
+    expect(await c.next()).toMatchObject({ type: "lobby", you: 1 });
+    // A page can keep its socket open after leaving and go on sending. The
+    // test's own socket cannot, so a spare connection is given what such a
+    // socket remembers: the slot, and whose it was.
+    const stale = await connect("AAAE4");
+    await runInDurableObject(stub, (room) => {
+      for (const connection of room.getConnections<{ kind: string }>()) {
+        if (connection.state?.kind === "pending") {
+          (connection as { setState(state: unknown): void }).setState({
+            kind: "player",
+            slot: 1,
+            token: tokenFor(1),
+            since: Date.now(),
+            pings: false,
+          });
+        }
+      }
+    });
+
+    stale.sendRaw(JSON.stringify({ type: "chat", text: "said through a stale socket" }));
+    stale.sendRaw(JSON.stringify({ type: "leave" }));
+    a.send({ type: "chat", text: "said by ann" });
+
+    for (;;) {
+      const message = await a.next();
+      if (message.type !== "chat") continue;
+      expect(message).toMatchObject({ from: 0, nick: "ann", text: "said by ann" });
+      break;
+    }
+    const d = await open("AAAE4", { player: 3 });
+    const lobby = await d.next();
+    expect(lobby.type === "lobby" ? lobby.players.map((p) => p.nick) : []).toEqual(["ann", "cat", "p3"]);
+    a.close();
+    c.close();
+    d.close();
+    stale.close();
+  });
+
+  it("keeps as host the player who came first when a latecomer takes a lower slot", async () => {
+    const a = await open("AAAF2", { player: 0, nick: "ann", create: true });
+    const b = await open("AAAF2", { player: 1, nick: "bob" });
+    await b.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+    a.send({ type: "leave" });
+    await a.closed;
+    await b.lobbyWhere((l) => l.players.length === 1);
+    const longest = Math.max(...roomConfig.turnSecondsChoices);
+
+    const c = await open("AAAF2", { player: 2, nick: "cat" });
+    const seenByC = await c.next();
+    c.send({ type: "clock", seconds: longest });
+    c.send({ type: "start", bots: true });
+
+    // the newcomer sits where the first host sat, and is not host for it
+    expect(seenByC).toMatchObject({ type: "lobby", you: 0, host: 1 });
+    for (const reason of ["not-host", "not-host"]) {
+      for (;;) {
+        const message = await c.next();
+        if (message.type !== "refused") continue;
+        expect(message).toEqual({ type: "refused", reason });
+        break;
+      }
+    }
+    b.send({ type: "clock", seconds: longest });
+    expect(await b.lobbyWhere((l) => l.turnSeconds === longest)).toMatchObject({ host: 1, turnSeconds: longest });
+    b.close();
+    c.close();
+  });
+
+  it("passes the host on to whoever has been in the room longest when the host drops", async () => {
+    const a = await open("AAAF3", { player: 0, create: true });
+    const b = await open("AAAF3", { player: 1 });
+    await b.next();
+    const c = await open("AAAF3", { player: 2 });
+    await c.next();
+    await a.lobbyWhere((l) => l.players.length === 3);
+
+    a.close();
+
+    expect(await c.lobbyWhere((l) => connectedBySlot(l)[0] === false)).toMatchObject({ host: 1 });
+    b.close();
+    c.close();
+  });
+
+  it("leaves nothing stored and no alarm once the last player has left", async () => {
+    const stub = env.GameRoom.getByName("AAAF4");
+    const a = await open("AAAF4", { player: 0, create: true });
+    await a.next();
+    // a game with a limit on its turns, so the room has something stored and an alarm set
+    a.send({ type: "clock", seconds: Math.min(...roomConfig.turnSecondsChoices.filter((choice) => choice > 0)) });
+    a.send({ type: "start", bots: true });
+    await scheduledAlarm(stub);
+
+    a.send({ type: "leave" });
+    await a.closed;
+
+    const left = await vi.waitFor(async () => {
+      const found = await runInDurableObject(stub, async (_room, state) => ({
+        tables: state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'").toArray().map((row) => row.name),
+        alarm: await state.storage.getAlarm(),
+      }));
+      expect(found.alarm).toBeNull();
+      expect(found.tables.filter((name) => name === "room_state" || name === "timers")).toEqual([]);
+      return found;
+    });
+    expect(left.alarm).toBeNull();
+  });
+
+  it("leaves nothing stored when a room that does not exist is asked for", async () => {
+    const stub = env.GameRoom.getByName("AAAF5");
+
+    const a = await open("AAAF5", { player: 0 });
+    expect(await a.next()).toEqual({ type: "error", reason: "not-found" });
+    await a.closed;
+
+    const tables = await vi.waitFor(async () => {
+      const names = await runInDurableObject(stub, (_room, state) =>
+        state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'").toArray().map((row) => row.name),
+      );
+      expect(names.filter((name) => name === "room_state" || name === "timers")).toEqual([]);
+      return names;
+    });
+    expect(tables).not.toContain("room_state");
+  });
+
+  it("can be made again under the same code after it has been wiped", async () => {
+    const a = await open("AAAF6", { player: 0, create: true });
+    await a.next();
+    a.send({ type: "leave" });
+    await a.closed;
+
+    const again = await open("AAAF6", { player: 1, nick: "new", create: true, listed: true });
+
+    expect(await again.next()).toMatchObject({
+      type: "lobby",
+      you: 0,
+      listed: true,
+      players: [{ slot: 0, nick: "new", connected: true }],
+    });
+    again.close();
+  });
+
+  it("starts waiting to be cleared when the last connected player leaves and only away players remain", async () => {
+    const stub = env.GameRoom.getByName("AAAF7");
+    const a = await open("AAAF7", { player: 0, create: true });
+    const b = await open("AAAF7", { player: 1 });
+    await b.next();
+    b.close();
+    await a.lobbyWhere((l) => connectedBySlot(l)[1] === false);
+
+    a.send({ type: "leave" });
+    await a.closed;
+    advanceClock(EMPTY_ROOM_TTL_MS + 1);
+    await scheduledAlarm(stub);
+    await runDurableObjectAlarm(stub);
+
+    const late = await open("AAAF7", { player: 2 });
+    expect(await late.next()).toEqual({ type: "error", reason: "not-found" });
+  });
+
+  it("starts waiting to be cleared on waking, when it was cut off without being told", async () => {
+    const stub = env.GameRoom.getByName("AAAF8");
+    const a = await open("AAAF8", { player: 0, create: true });
+    await a.next();
+    a.close();
+    await scheduledAlarm(stub);
+    // what a deploy leaves behind: the room and its player stored, every
+    // connection gone, and no countdown to clearing it ever set
+    await runInDurableObject(stub, async (_room, state) => {
+      state.storage.sql.exec("DELETE FROM timers");
+      await state.storage.deleteAlarm();
+    });
+    await evictDurableObject(stub);
+
+    // anything that wakes the room: here, a connection that never joins
+    const probe = await connect("AAAF8");
+
+    const due = await scheduledAlarm(stub);
+    expect(due).toBeGreaterThan(Date.now());
+    advanceClock(EMPTY_ROOM_TTL_MS + 1);
+    probe.close();
+    await runDurableObjectAlarm(stub);
+    const late = await open("AAAF8", { player: 1 });
+    expect(await late.next()).toEqual({ type: "error", reason: "not-found" });
+  });
+
+  it("gives every connection an id of its own, whatever id it came with", async () => {
+    const stub = env.GameRoom.getByName("AAAG3");
+    const a = await connect("AAAG3", "?_pk=chosen-by-the-page");
+    const b = await connect("AAAG3", "?_pk=chosen-by-the-page");
+    a.send({ type: "join", token: tokenFor(0), nick: "p0", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+    await a.next();
+
+    const ids = await runInDurableObject(stub, (room) => [...room.getConnections()].map((connection) => connection.id));
+
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids).not.toContain("chosen-by-the-page");
+    a.close();
+    b.close();
+  });
+
+  it("does not carry on with a stored game it does not know the version of", async () => {
+    const stub = env.GameRoom.getByName("AAAG4");
+    const a = await open("AAAG4", { player: 0, create: true });
+    await a.next();
+    a.send({ type: "start", bots: true });
+    for (;;) if ((await a.next()).type === "game") break;
+    a.close();
+    await a.closed;
+    await runInDurableObject(stub, (_room, state) => {
+      state.storage.sql.exec("UPDATE room_state SET v = json_set(v, '$.state.version', 99) WHERE k = 'game'");
+    });
+    await evictDurableObject(stub);
+
+    const back = await open("AAAG4", { player: 0 });
+    await back.next();
+    back.send({ type: "chat", text: "after coming back" });
+
+    // everything the room said up to the echo of that line: no game among it
+    const types: string[] = [];
+    for (;;) {
+      const message = await back.next();
+      types.push(message.type);
+      if (message.type === "chat") break;
+    }
+    expect(types).not.toContain("game");
+    const stored = await runInDurableObject(stub, (_room, state) =>
+      state.storage.sql.exec<{ k: string }>("SELECT k FROM room_state").toArray().map((row) => row.k),
+    );
+    expect(stored).not.toContain("game");
+    back.close();
   });
 
   it("ignores a second join on a seated connection", async () => {
@@ -728,7 +1093,7 @@ describe("GameRoom", () => {
     await b.next();
     await a.lobbyWhere((l) => l.players.length === 2);
 
-    a.send({ type: "join", token: tokenFor(5), nick: "imp", create: false, game: DEFAULT_GAME, listed: false });
+    a.send({ type: "join", token: tokenFor(5), nick: "imp", create: false, game: DEFAULT_GAME, listed: false, pings: false });
     b.send({ type: "leave" });
 
     const lobby = await a.lobbyWhere((l) => l.players.length === 1);

@@ -29,7 +29,14 @@ describe("parseClientMessage", () => {
       create: true,
       game: DEFAULT_GAME,
       listed: false,
+      pings: false,
     });
+  });
+
+  it("reads whether the page says it pings, and takes anything but yes as no", () => {
+    expect(parseClientMessage(joinJson({ pings: true }))).toMatchObject({ pings: true });
+    expect(parseClientMessage(joinJson({ pings: "true" }))).toMatchObject({ pings: false });
+    expect(parseClientMessage(joinJson())).toMatchObject({ pings: false });
   });
 
   it("reads the game and the listing a new room is asked to have", () => {

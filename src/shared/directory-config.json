@@ -1,4 +1,5 @@
 {
   "maxListed": 30,
-  "staleHours": 6
+  "maxStored": 300,
+  "staleHours": 24
 }

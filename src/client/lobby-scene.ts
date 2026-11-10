@@ -83,8 +83,7 @@ export function createLobbyScene(canvas: HTMLCanvasElement, voice: (slot: number
     light.draw(pen, CX + sway, CY - 4, 1);
 
     if (lobby === null) return;
-    const connected = lobby.players.filter((player) => player.connected);
-    const host = connected.length > 0 ? Math.min(...connected.map((player) => player.slot)) : -1;
+    const host = lobby.host;
     for (const place of places) {
       const player = bySlot.get(place.slot);
       if (!player) continue;

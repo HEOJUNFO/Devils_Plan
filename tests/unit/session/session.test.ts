@@ -121,6 +121,27 @@ describe("startSession", () => {
     expect(result).toEqual({ ok: false, reason: "not-host" });
   });
 
+  it("takes as host whoever came into the room first, not whoever sits in the lowest slot", () => {
+    // player 2 came first; players 0 and 1 took lower slots that others had left
+    const players = candidates(SMALLEST).map((player) => ({ ...player, seq: (player.slot + SMALLEST - 2) % SMALLEST }));
+    const options = { allowBots: false, seed: 7, now: T0 };
+
+    const byLowestSlot = startSession(null, players, { by: tokenOf(0), bots: false }, options, presenceOf(players), CONFIG);
+    const byFirstComer = startSession(null, players, { by: tokenOf(2), bots: false }, options, presenceOf(players), CONFIG);
+
+    expect(byLowestSlot).toEqual({ ok: false, reason: "not-host" });
+    expect(byFirstComer.ok).toBe(true);
+  });
+
+  it("still knows the players at the table by their slots when the host is not in the lowest", () => {
+    const players = candidates(SMALLEST).map((player) => ({ ...player, seq: SMALLEST - player.slot }));
+
+    const result = startSession(null, players, { by: tokenOf(SMALLEST - 1), bots: false }, { allowBots: false, seed: 7, now: T0 }, presenceOf(players), CONFIG);
+
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.session.state.seats.map((seat) => seat.occupant).sort()).toEqual(players.map((player) => player.slot));
+  });
+
   it("refuses a start while a game is being played", () => {
     const players = candidates(SMALLEST);
 
@@ -320,6 +341,63 @@ describe("the away clock", () => {
     const empty = sessionPresence(session, presenceOf(players, everyone), T0 + 1000, CONFIG);
 
     expect(empty.deadline).toBeNull();
+  });
+});
+
+describe("a limit on a turn", () => {
+  const TURN_SECONDS = 60;
+  const TIMED: SessionConfig = { ...CONFIG, rules: { ...RULES, turnSeconds: TURN_SECONDS } };
+  const TURN_MS = TURN_SECONDS * 1000;
+
+  it("runs from the moment a move is awaited", () => {
+    const session = started(SMALLEST, TIMED);
+    const mover = playerIn(session, awaited(session));
+
+    const result = sessionAction(session, tokenOf(mover), WAIT, presenceOf(candidates(SMALLEST)), T0 + 5000, TIMED);
+
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.session.deadline).toBe(T0 + 5000 + TURN_MS);
+  });
+
+  it("is not started again when someone only connects or drops", () => {
+    const players = candidates(SMALLEST);
+    const session = started(SMALLEST, TIMED);
+    const watcher = (playerIn(session, awaited(session)) + 1) % SMALLEST;
+
+    const dropped = sessionPresence(session, presenceOf(players, [watcher]), T0 + 20_000, TIMED);
+    const back = sessionPresence(dropped, presenceOf(players), T0 + 30_000, TIMED);
+
+    expect(dropped.deadline).toBe(T0 + TURN_MS);
+    expect(back.deadline).toBe(T0 + TURN_MS);
+  });
+
+  it("stops while nobody at all is connected, and starts afresh when someone is back", () => {
+    const players = candidates(SMALLEST);
+    const session = started(SMALLEST, TIMED);
+    const everyone = players.map((p) => p.slot);
+    // the room stands empty for far longer than a turn lasts
+    const emptyFor = TURN_MS * 30;
+
+    const empty = sessionPresence(session, presenceOf(players, everyone), T0 + 1000, TIMED);
+    const back = sessionPresence(empty, presenceOf(players), T0 + emptyFor, TIMED);
+
+    expect(empty.deadline).toBeNull();
+    // the time the room stood empty is not counted against whoever is awaited
+    expect(back.deadline).toBe(T0 + emptyFor + TURN_MS);
+    expect(back.state).toBe(session.state);
+  });
+
+  it("does not make a move for anyone the moment the room is entered again", () => {
+    const players = candidates(SMALLEST);
+    const session = started(SMALLEST, TIMED);
+    const everyone = players.map((p) => p.slot);
+    const empty = sessionPresence(session, presenceOf(players, everyone), T0 + 1000, TIMED);
+    const later = T0 + TURN_MS * 30;
+
+    const back = sessionPresence(empty, presenceOf(players), later, TIMED);
+    const checked = sessionTimeout(back, presenceOf(players), later, TIMED);
+
+    expect(checked.state.history).toHaveLength(0);
   });
 });
 

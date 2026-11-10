@@ -114,9 +114,11 @@ export type ClientMessage =
    * player's secret token in the message body so it never appears in a URL,
    * where it would end up in logs and browser history. `game` and `listed`
    * are read only when the room is made: the game it is for, and whether it
-   * goes on the list of rooms.
+   * goes on the list of rooms. `pings` says the page will send `PING` on a
+   * schedule, which lets the room end this connection if the pings stop; a
+   * page from before pings does not say so and is never ended for silence.
    */
-  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean }
+  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean; pings: boolean }
   /** Give up the slot for good (a dropped connection keeps it). */
   | { type: "leave" }
   /**
@@ -175,6 +177,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       create: data.create === true,
       game: isGameId(data.game) ? data.game : DEFAULT_GAME,
       listed: data.listed === true,
+      pings: data.pings === true,
     };
   }
   if (data.type === "listing") {

@@ -5,6 +5,7 @@ import {
   createLobby,
   dropLapsed,
   gameOf,
+  hostOf,
   generateRoomCode,
   isValidRoomCode,
   isValidToken,
@@ -32,8 +33,11 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     joinTimeoutSeconds: 5,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
-    messageWindowSeconds: 10,
-    messageLimits: { setting: 3, signal: 20, other: 10 },
+    messageLimits: {
+      setting: { burst: 3, windowSeconds: 30 },
+      signal: { burst: 20, windowSeconds: 10 },
+      other: { burst: 10, windowSeconds: 10 },
+    },
     pingSeconds: 5,
     staleConnectionSeconds: 20,
     pokeSeconds: 15,
@@ -309,6 +313,66 @@ describe("the length of a turn", () => {
   });
 });
 
+describe("hostOf", () => {
+  it("is the player who came into the room first, of those connected", () => {
+    const config = testConfig();
+    const state = lobbyWith(3, config);
+
+    expect(hostOf(state, new Set([0, 1, 2]))?.slot).toBe(0);
+    expect(hostOf(state, new Set([1, 2]))?.slot).toBe(1);
+    expect(hostOf(state, new Set([2]))?.slot).toBe(2);
+  });
+
+  it("is nobody when nobody is connected", () => {
+    const config = testConfig();
+
+    expect(hostOf(lobbyWith(2, config), new Set())).toBeUndefined();
+  });
+
+  it("is not a latecomer who took the slot an earlier player left", () => {
+    const config = testConfig();
+    const without = leaveLobby(lobbyWith(3, config), tokenFor(0));
+    const joined = joinLobby(without, { token: tokenFor(7), nick: "new" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+
+    expect(joined.slot).toBe(0);
+    expect(hostOf(joined.state, new Set([0, 1, 2]))?.slot).toBe(1);
+    expect(viewLobby(joined.state, new Set([0, 1, 2]), 0, config).host).toBe(1);
+  });
+
+  it("stays the same player when they go away and come back", () => {
+    const config = testConfig();
+    const away = markAway(lobbyWith(2, config), new Set([1]), NOW);
+    const back = joinLobby(away, { token: tokenFor(0), nick: "p0" }, config);
+    if (!back.ok) throw new Error("fixture rejoin refused");
+
+    expect(hostOf(away, new Set([1]))?.slot).toBe(1);
+    expect(hostOf(back.state, new Set([0, 1]))?.slot).toBe(0);
+  });
+
+  it("goes by slot for players stored before the order of coming was kept", () => {
+    const old: LobbyState = {
+      players: [
+        { slot: 0, token: tokenFor(0), nick: "p0" },
+        { slot: 2, token: tokenFor(2), nick: "p2" },
+      ],
+    };
+
+    expect(hostOf(old, new Set([0, 2]))?.slot).toBe(0);
+    expect(hostOf(old, new Set([2]))?.slot).toBe(2);
+  });
+
+  it("gives someone who comes into such a room a later place than everyone already there", () => {
+    const config = testConfig();
+    const old: LobbyState = { players: [{ slot: 2, token: tokenFor(2), nick: "p2" }] };
+    const joined = joinLobby(old, { token: tokenFor(5), nick: "new" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+
+    expect(joined.slot).toBe(0);
+    expect(hostOf(joined.state, new Set([0, 2]))?.slot).toBe(2);
+  });
+});
+
 describe("setListed", () => {
   it("puts a room on the list and takes it off", () => {
     const config = testConfig();
@@ -361,7 +425,7 @@ describe("markAway", () => {
 
     const back = markAway(away, new Set([0, 1]), NOW + 5000);
 
-    expect(back.players[1]).toEqual({ slot: 1, token: tokenFor(1), nick: "p1" });
+    expect(back.players[1]).toEqual({ slot: 1, token: tokenFor(1), nick: "p1", seq: 1 });
   });
 
   it("changes nothing when everyone is as noted", () => {
@@ -390,7 +454,7 @@ describe("a player coming back", () => {
     const result = joinLobby(away, { token: tokenFor(1), nick: "p1" }, config);
 
     if (!result.ok) throw new Error("rejoin refused");
-    expect(result.state.players[1]).toEqual({ slot: 1, token: tokenFor(1), nick: "p1" });
+    expect(result.state.players[1]).toEqual({ slot: 1, token: tokenFor(1), nick: "p1", seq: 1 });
   });
 });
 
@@ -474,7 +538,7 @@ describe("dropLapsed", () => {
 
     const next = dropLapsed(state, NOW + config.awaySlotSeconds * 1000, config, () => false);
 
-    expect(next).toEqual({ players: [], game: DEFAULT_GAME, listed: true, turnSeconds: 0 });
+    expect(next).toEqual({ players: [], game: DEFAULT_GAME, listed: true, turnSeconds: 0, nextSeq: 1 });
   });
 });
 
