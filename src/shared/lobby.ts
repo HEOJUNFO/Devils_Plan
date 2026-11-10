@@ -31,6 +31,21 @@ export interface RoomConfig {
    * come back, short enough that a room does not fill with people who left.
    */
   awaySlotSeconds: number;
+  /** Seconds in the window over which a player's messages to the room are counted. */
+  messageWindowSeconds: number;
+  /**
+   * Messages one player may send the room within a window, by sort. Far above
+   * what a page sends by itself; the limit is for a page that is not ours.
+   * Chat has its own, lower limit (`chat-config.json`).
+   */
+  messageLimits: {
+    /** Changes to the room: on the list or off it, the length of a turn. Each is stored and told to everyone. */
+    setting: number;
+    /** Voice signals: a burst of them goes to each other player when someone comes into voice. */
+    signal: number;
+    /** Everything else: starting, moves, coming into voice, pokes. */
+    other: number;
+  };
   /**
    * Seconds between the pings by which a page tells its room it is still
    * there. The room answers them without waking (`PING`, `PONG`).

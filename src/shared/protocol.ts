@@ -76,7 +76,7 @@ export type ServerMessage =
    */
   | ({ type: "game"; room: string } & GameSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
-  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal }
+  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal | PaceRefusal }
   /**
    * A line someone in the room said, sent to everyone in it, the speaker
    * included. The room keeps no lines: someone who comes in later does not
@@ -93,6 +93,9 @@ export type ChatRefusal = "chat-too-fast";
 
 /** Why voice was not switched on: this room does not offer it. */
 export type VoiceRefusal = "voice-not-here";
+
+/** Why a message was not acted on: the player is sending that sort of message too fast. */
+export type PaceRefusal = "too-fast";
 
 /**
  * Directory → client: the rooms anyone can join, best to join first. Sent on

@@ -7,6 +7,8 @@
   "joinTimeoutSeconds": 10,
   "awayTurnSeconds": 30,
   "awaySlotSeconds": 180,
+  "messageWindowSeconds": 10,
+  "messageLimits": { "setting": 6, "signal": 400, "other": 80 },
   "pingSeconds": 20,
   "staleConnectionSeconds": 90,
   "pokeSeconds": 60,

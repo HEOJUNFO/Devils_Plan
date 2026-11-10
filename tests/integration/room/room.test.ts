@@ -807,6 +807,74 @@ describe("GameRoom", () => {
     back.close();
   });
 
+  it("refuses a player who changes the room's settings too fast, and keeps what was last accepted", async () => {
+    const a = await open("AAAD2", { player: 0, create: true });
+    await a.next();
+    const limit = roomConfig.messageLimits.setting;
+
+    for (let n = 0; n <= limit; n++) a.send({ type: "listing", listed: n % 2 === 0 });
+
+    for (;;) {
+      const message = await a.next();
+      if (message.type !== "refused") continue;
+      expect(message).toEqual({ type: "refused", reason: "too-fast" });
+      break;
+    }
+    const b = await open("AAAD2", { player: 1 });
+    // the last change accepted was the limit-th: put on the list when that count is odd
+    expect(await b.next()).toMatchObject({ type: "lobby", listed: limit % 2 === 1 });
+    a.close();
+    b.close();
+  });
+
+  it("lets a player change settings again once the window has passed", async () => {
+    const a = await open("AAAD3", { player: 0, create: true });
+    await a.next();
+    for (let n = 0; n <= roomConfig.messageLimits.setting; n++) a.send({ type: "listing", listed: n % 2 === 0 });
+    for (;;) if ((await a.next()).type === "refused") break;
+    advanceClock(roomConfig.messageWindowSeconds * 1000 + 1);
+    const longest = Math.max(...roomConfig.turnSecondsChoices);
+
+    a.send({ type: "clock", seconds: longest });
+
+    expect(await a.lobbyWhere((l) => l.turnSeconds === longest)).toMatchObject({ turnSeconds: longest });
+    a.close();
+  });
+
+  it("counts each player's messages apart", async () => {
+    const a = await open("AAAD4", { player: 0, create: true });
+    const b = await open("AAAD4", { player: 1 });
+    await b.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+    for (let n = 0; n <= roomConfig.messageLimits.setting; n++) a.send({ type: "listing", listed: n % 2 === 0 });
+    for (;;) if ((await a.next()).type === "refused") break;
+
+    b.send({ type: "listing", listed: true });
+
+    // the room looked at what was asked and refused it for its own reason: the other player's count is not this one's
+    for (;;) {
+      const message = await b.next();
+      if (message.type !== "refused") continue;
+      expect(message).toEqual({ type: "refused", reason: "not-host" });
+      break;
+    }
+    a.close();
+    b.close();
+  });
+
+  it("counts each sort of message apart", async () => {
+    const a = await open("AAAD5", { player: 0, create: true });
+    await a.next();
+    const longest = Math.max(...roomConfig.turnSecondsChoices);
+    // as many messages of another sort as would use up the settings' own allowance
+    for (let n = 0; n < roomConfig.messageLimits.setting; n++) a.send({ type: "voice", on: false, muted: false });
+
+    a.send({ type: "clock", seconds: longest });
+
+    expect(await a.lobbyWhere((l) => l.turnSeconds === longest)).toMatchObject({ turnSeconds: longest });
+    a.close();
+  });
+
   it("ignores a second join on a seated connection", async () => {
     const a = await open("AAAAW", { player: 0, nick: "ann", create: true });
     await a.next();

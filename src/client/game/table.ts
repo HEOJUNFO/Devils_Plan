@@ -118,6 +118,7 @@ const WAIT_TEXT: Record<string, string> = {
   "bad-player-count": "지금 인원으로는 시작할 수 없습니다 (4~6명)",
   "already-playing": "이미 판이 진행 중입니다",
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
+  "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
 };
 
 interface Selection {

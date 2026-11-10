@@ -1,5 +1,6 @@
 import { Server, type Connection, type WSMessage } from "partyserver";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shared/chat";
+import { pace, type Pace } from "../shared/pace";
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
 import botConfig from "../shared/game/bot-config.json";
@@ -33,6 +34,7 @@ import {
   parseClientMessage,
   type ChatRefusal,
   type ClientMessage,
+  type PaceRefusal,
   type VoiceRefusal,
   type RejectReason,
   type ServerMessage,
@@ -158,6 +160,12 @@ export class GameRoom extends Server<Env> {
   /** When the room last acted on a poke, in ms since the epoch. */
   private pokedAt = 0;
 
+  /**
+   * How many messages of each sort each slot has sent lately, by slot and
+   * sort. Like the chat's: forgotten when the room sleeps.
+   */
+  private readonly messagePace = new Map<string, Pace>();
+
   /** Whether something holds the slot of `token` while they are away: a seat in a game being played. */
   private readonly keepsSlot = (token: string): boolean =>
     running(this.session) && (this.session?.tokens.includes(token) ?? false);
@@ -229,6 +237,13 @@ export class GameRoom extends Server<Env> {
       return;
     }
     if (state?.kind !== "player") return;
+    // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
+    const sort = parsed.type === "listing" || parsed.type === "clock" ? "setting" : parsed.type === "rtc" ? "signal" : "other";
+    if (parsed.type !== "chat" && parsed.type !== "leave" && !this.withinPace(state.slot, sort)) {
+      // a flood of signals is dropped without a word: answering each would be a flood of its own
+      if (sort !== "signal") this.refuse(connection, "too-fast");
+      return;
+    }
     if (parsed.type === "leave") await this.handleLeave(state.slot);
     else if (parsed.type === "start") await this.handleStart(connection, state.slot, parsed.bots);
     else if (parsed.type === "action") await this.handleAction(connection, state.slot, parsed.action);
@@ -292,6 +307,14 @@ export class GameRoom extends Server<Env> {
       c.close(CLOSE_STALE, "stale");
       await this.dropped(c.id, hadVoice);
     }
+  }
+
+  /** Counts one message of `sort` from `slot`, and says whether that is still within what a player may send. */
+  private withinPace(slot: number, sort: keyof RoomConfig["messageLimits"]): boolean {
+    const key = `${slot}:${sort}`;
+    const paced = pace(this.messagePace.get(key), Date.now(), config.messageLimits[sort], config.messageWindowSeconds);
+    this.messagePace.set(key, paced.pace);
+    return paced.ok;
   }
 
   /**
@@ -735,7 +758,7 @@ export class GameRoom extends Server<Env> {
   /** Tells one connection that what it asked was not accepted. */
   private refuse(
     connection: Connection<ConnectionState>,
-    reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal,
+    reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal | PaceRefusal,
   ): void {
     const message: ServerMessage = { type: "refused", reason };
     connection.send(JSON.stringify(message));

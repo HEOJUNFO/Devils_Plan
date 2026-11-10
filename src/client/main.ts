@@ -84,6 +84,7 @@ const REFUSED_TEXT: Record<string, string> = {
   "already-playing": "이미 판이 진행 중입니다.",
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다.",
   "bad-setting": "그 설정은 이 방에서 쓸 수 없습니다.",
+  "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요.",
 };
 
 /** How the length of a turn is said: on the button in the waiting room and when making a room. */

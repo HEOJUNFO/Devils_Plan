@@ -4,6 +4,7 @@
  * The room passes lines on and keeps none: a line reaches whoever is in the
  * room when it is said. Pure functions over plain data.
  */
+import { pace, type Pace } from "./pace";
 import { cleanLine, cutTo } from "./text";
 
 /** Tunable chat values. Loaded from `chat-config.json`. */
@@ -17,11 +18,7 @@ export interface ChatConfig {
 }
 
 /** How much one player has said lately: `count` lines in the window that began at `since`. */
-export interface ChatPace {
-  count: number;
-  /** Milliseconds since the epoch. */
-  since: number;
-}
+export type ChatPace = Pace;
 
 /**
  * Cleans a chat line: one line of text with no control characters, cut to the
@@ -36,10 +33,6 @@ export function normalizeChat(raw: string, config: ChatConfig): string | null {
  * Whether a player whose pace so far is `pace` may say a line at `now`, and
  * their pace afterwards. A line that is refused does not count against them.
  */
-export function paceChat(pace: ChatPace | undefined, now: number, config: ChatConfig): { ok: boolean; pace: ChatPace } {
-  if (pace === undefined || now - pace.since >= config.windowSeconds * 1000 || now < pace.since) {
-    return { ok: true, pace: { count: 1, since: now } };
-  }
-  if (pace.count < config.burst) return { ok: true, pace: { count: pace.count + 1, since: pace.since } };
-  return { ok: false, pace };
+export function paceChat(previous: ChatPace | undefined, now: number, config: ChatConfig): { ok: boolean; pace: ChatPace } {
+  return pace(previous, now, config.burst, config.windowSeconds);
 }

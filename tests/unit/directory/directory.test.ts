@@ -22,6 +22,8 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     joinTimeoutSeconds: 5,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
+    messageWindowSeconds: 10,
+    messageLimits: { setting: 3, signal: 20, other: 10 },
     pingSeconds: 5,
     staleConnectionSeconds: 20,
     pokeSeconds: 15,
