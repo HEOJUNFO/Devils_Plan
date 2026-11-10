@@ -103,8 +103,11 @@ export type RectEvent =
   | { type: "time"; round: number }
   | { type: "all-wrong"; round: number }
   | { type: "won"; round: number; unit: number; place: number }
-  /** `half`: enough units have won. `problems`: the last problem allowed has been played. */
-  | { type: "ended"; round: number; reason: "half" | "problems" };
+  /**
+   * `half`: enough units have won. `problems`: the last problem allowed has
+   * been played. `abandoned`: nobody who could still win is there to go on.
+   */
+  | { type: "ended"; round: number; reason: "half" | "problems" | "abandoned" };
 
 /** A game in progress. Holds the answer to the open problem: send only {@link viewFor} of it. */
 export interface RectState {
@@ -476,6 +479,37 @@ export function applyTimeout(state: RectState, now: number, config: RectConfig):
     open(next, state.round + 1, now, config);
   }
   return next;
+}
+
+/**
+ * The game ended where it stands, because none of the units still racing has
+ * anyone there to go on (who is there is the caller's to know). An open
+ * problem stays unanswered. Returns the state unchanged once the game is
+ * over. The input state is not modified.
+ */
+export function abandon(state: RectState): RectState {
+  if (state.phase === "ended") return state;
+  const next = clone(state);
+  next.phase = "ended";
+  next.floor = null;
+  next.pauseUntil = null;
+  next.history.push({ type: "ended", round: state.round, reason: "abandoned" });
+  return next;
+}
+
+/**
+ * The same game with every clock in it moved on by `by` ms: for a game that
+ * stood still for that long (nobody was there to play it). The input state is
+ * not modified.
+ */
+export function shiftClock(state: RectState, by: number): RectState {
+  if (by === 0) return state;
+  return {
+    ...state,
+    openedAt: state.openedAt + by,
+    floor: state.floor === null ? null : { ...state.floor, until: state.floor.until + by },
+    pauseUntil: state.pauseUntil === null ? null : state.pauseUntil + by,
+  };
 }
 
 /**

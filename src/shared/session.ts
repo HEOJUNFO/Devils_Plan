@@ -24,6 +24,7 @@ import {
   type SeatView,
   type TableSizes,
 } from "./game";
+import type { Candidate, Presence } from "./hosting";
 
 /** What hosting needs to know. The room builds it from the JSON config files. */
 export interface SessionConfig {
@@ -60,22 +61,7 @@ export interface Session {
   deadline: number | null;
 }
 
-/** Who is around, by token. */
-export interface Presence {
-  /** Players with a live connection. */
-  connected: ReadonlySet<string>;
-  /** Players who still hold a slot in the lobby, connected or not. */
-  seated: ReadonlySet<string>;
-}
-
-/** A lobby player who could sit at a new table. */
-export interface Candidate {
-  token: string;
-  nick: string;
-  slot: number;
-  /** The order in which they came into the room; who came first is host. Absent: by slot. */
-  seq?: number;
-}
+export type { Candidate, Presence } from "./hosting";
 
 /** Why a change to the room's settings was not made. */
 export type SettingRefusal =

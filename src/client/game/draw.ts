@@ -462,7 +462,7 @@ export function speechSeconds(text: string): number {
 }
 
 /** A speech bubble over the name of the seat laid out as `at`, kept inside the scene. */
-export function drawSpeech(pen: Pen, at: SeatLayout, lines: readonly string[]): void {
+export function drawSpeech(pen: Pen, at: Pick<SeatLayout, "label">, lines: readonly string[]): void {
   if (lines.length === 0) return;
   const w = Math.max(...lines.map((line) => pen.width(line))) + 8;
   const h = lines.length * 13 + 3;

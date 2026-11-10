@@ -12,12 +12,12 @@ import {
   roomOf as table,
   scheduledAlarm,
   tokenFor,
-  type MessageOf,
   type HeardRecord,
+  type RouletteMessage,
   type TestClient,
 } from "../support";
 
-type GameMessage = MessageOf<"game">;
+type GameMessage = RouletteMessage;
 
 /** The smallest and the largest table offered. */
 const SMALLEST = Math.min(...Object.keys(tableSizes).map(Number));
@@ -133,16 +133,36 @@ describe("GameRoom: playing a game", () => {
     closeAll(clients);
   });
 
-  it("ignores a move that is not one of the game's moves", async () => {
+  it("refuses a move that is not one of the game's moves, and changes nothing", async () => {
     const clients = await table("GAAAH", SMALLEST);
     const games = await startGame(clients);
     const acting = mover(games);
 
-    clients[acting].send({ type: "action", action: { type: "fire" } } as unknown as ClientMessage);
+    clients[acting].send({ type: "action", action: { type: "fire" } });
+    const refusedFire = await clients[acting].refusal();
+    clients[acting].send({ type: "action", action: { type: "tamper", amount: 1.5 } });
+    const refusedFraction = await clients[acting].refusal();
     clients[acting].send({ type: "action", action: { type: "tamper", amount: 1 } });
 
-    // the next thing the room sends is the result of the real move
+    expect(refusedFire).toEqual({ type: "refused", reason: "bad-action" });
+    expect(refusedFraction).toEqual({ type: "refused", reason: "bad-action" });
+    // the next thing the room sends about the game is the result of the real move
     expect((await clients[acting].gameWhere()).view.history).toHaveLength(1);
+    closeAll(clients);
+  });
+
+  it("takes from a move only what the move is made of", async () => {
+    const clients = await table("GAAA2", SMALLEST);
+    const games = await startGame(clients);
+    const acting = mover(games);
+    const before = games[acting].view.credits!;
+
+    // a page that is not ours adds a seat and a number of credits to its move
+    clients[acting].send({ type: "action", action: { type: "tamper", amount: 1, seat: 0, credits: 99, forced: false } });
+
+    const after = await clients[acting].gameWhere((game) => game.view.history.length === 1);
+    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, forced: false });
+    expect(after.view.credits).toBe(before - 1);
     closeAll(clients);
   });
 

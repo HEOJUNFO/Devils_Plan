@@ -16,6 +16,10 @@ export interface GameInfo {
   /** The fewest and the most players a game of it can be started with. */
   minPlayers: number;
   maxPlayers: number;
+  /** How many players make a team, in a game where players may team up before the start; 0 where they may not. */
+  teamSize: number;
+  /** Whether players move in turn: only then does the room's limit on a turn mean anything, and only then is it offered. */
+  turns: boolean;
 }
 
 /** A game's id: its key in `games.json`. Stored with a room and sent on the wire. */

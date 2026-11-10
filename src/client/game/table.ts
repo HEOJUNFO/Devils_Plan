@@ -56,8 +56,8 @@ import { C } from "./palette";
 import * as fxlib from "./pixelfx.js";
 import { isMuted, setMuted, sfx, startAudio } from "./sound";
 
-/** What the room sends about the game. */
-export type GameMessage = Extract<ServerMessage, { type: "game" }>;
+/** What the room sends about a game of Russian Roulette. */
+export type GameMessage = Extract<ServerMessage, { type: "game"; game: "russian-roulette" }>;
 
 /** What the screen asks of whoever owns the connection. */
 export interface TableHandlers {
@@ -69,6 +69,8 @@ export interface TableHandlers {
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
   voice(slot: number): VoiceMark;
+  /** The rules sheet covers the whole screen, or has been put away. */
+  covered(covered: boolean): void;
 }
 
 /** The game screen. */
@@ -214,10 +216,15 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let help = false;
   let note = "";
   let noteT = 0;
-  /** Seconds since the screen was made; drives the lamp, the blinking and the clock. */
+  /** Seconds since the screen was made; drives the lamp and the blinking. It stands still while the tab is hidden. */
   let time = 0;
-  /** `time` when the latest message arrived. */
-  let received = 0;
+  /**
+   * When the latest message arrived, by the browser's own clock in ms. The
+   * room's clock is counted from here in real time: the screen's `time`
+   * stops while the tab is hidden, and a clock counted by it would show more
+   * time than there is when the player comes back.
+   */
+  let receivedAt = 0;
   let deal = 0;
   let fire: Fire | null = null;
   /** The volley of this game has been shown to its end. */
@@ -284,7 +291,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   /** Whole seconds until the room makes the awaited move itself, or `null` while no clock runs. */
   function secondsLeft(): number | null {
     if (latest === null || latest.turnEndsIn === null || latest.view.phase === "ended") return null;
-    return Math.max(0, Math.ceil((latest.turnEndsIn - (time - received) * 1000) / 1000));
+    return Math.max(0, Math.ceil((latest.turnEndsIn - (performance.now() - receivedAt)) / 1000));
   }
 
   function awaited(): number | null {
@@ -383,7 +390,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   function update(message: GameMessage): void {
     if (latest === null || latest.startedAt !== message.startedAt) resetFor(message);
     latest = message;
-    received = time;
+    receivedAt = performance.now();
     pending = false;
     if (message.view.phase !== "ended") before = message.view;
   }
@@ -560,11 +567,12 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.has(code));
     const clicked = (rect: readonly [number, number, number, number]): boolean => clicks.some((p) => inRect(p, rect));
     if (pressed("KeyM")) setMuted(!isMuted());
+    const was = help;
     if (pressed("KeyH")) help = !help;
-    if (help) {
-      if (pressed("Escape", "Enter") || clicks.length > 0) help = false;
-      return;
-    }
+    if (help && (pressed("Escape", "Enter") || clicks.length > 0)) help = false;
+    // the page's own buttons lie over the frame: they give way while the sheet is up
+    if (help !== was) handlers.covered(help);
+    if (help || was) return;
     if (fired && latest.view.phase === "ended") {
       if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT)) {
         handlers.lobby();
@@ -1054,7 +1062,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const who = pen.fit(nickOf(waiting), NAME_WIDTH);
       const player = latest.players[waiting];
       if (latest.turnEndsIn !== null && !player.connected) {
-        const left = Math.max(0, Math.ceil((latest.turnEndsIn - (time - received) * 1000) / 1000));
+        const left = secondsLeft() ?? 0;
         return [`${who} 자리 비움: ${left}초 뒤 자동으로 1크레딧 제출`, C.boneD];
       }
       return [`${who} 차례`, C.boneD];

@@ -181,20 +181,30 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(sloppy)).toEqual({ type: "start", bots: false });
   });
 
-  it("reads a move and keeps only what the move is made of", () => {
-    const raw = JSON.stringify({ type: "action", seat: 3, action: { type: "rotate", steps: 2, credits: 99 } });
+  it("passes on what is asked of the game as it came, for the game itself to check", () => {
+    const raw = JSON.stringify({ type: "action", seat: 3, action: { type: "rotate", steps: 2 } });
 
+    // what a move may be differs from game to game: the game's host reads it, not the wire
     expect(parseClientMessage(raw)).toEqual({ type: "action", action: { type: "rotate", steps: 2 } });
   });
 
-  it("rejects an action that is not one of the game's moves", () => {
-    const unknown = JSON.stringify({ type: "action", action: { type: "fire" } });
-    const missing = JSON.stringify({ type: "action" });
-    const fractional = JSON.stringify({ type: "action", action: { type: "tamper", amount: 1.5 } });
+  it("rejects an action that is not a thing with parts", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "action" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "action", action: "buzz" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "action", action: null }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "action", action: ["buzz"] }))).toBeNull();
+  });
 
-    expect(parseClientMessage(unknown)).toBeNull();
-    expect(parseClientMessage(missing)).toBeNull();
-    expect(parseClientMessage(fractional)).toBeNull();
+  it("reads a choice of team", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "team", team: 2, slot: 5 }))).toEqual({ type: "team", team: 2 });
+    expect(parseClientMessage(JSON.stringify({ type: "team", team: 0 }))).toEqual({ type: "team", team: 0 });
+  });
+
+  it("rejects a team that is not a whole number from 0", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "team" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "team", team: -1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "team", team: 1.5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "team", team: "1" }))).toBeNull();
   });
 });
 

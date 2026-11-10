@@ -5,7 +5,7 @@
  * side that was not updated.
  */
 import type { RoomListing } from "./directory";
-import { parseAction, type Action } from "./game";
+import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
@@ -72,11 +72,13 @@ export type ServerMessage =
   /**
    * The game in the room as this player may see it, sent when a game starts,
    * after every move, when someone connects or drops, and on joining a room
-   * where one is being played. Never another player's secrets.
+   * where one is being played. Never another player's secrets. `game` says
+   * which game it is, and so what else is in the message.
    */
-  | ({ type: "game"; room: string } & GameSnapshot)
+  | ({ type: "game"; room: string; game: "russian-roulette" } & GameSnapshot)
+  | ({ type: "game"; room: string; game: "count-rectangles" } & RectSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
-  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal | PaceRefusal }
+  | { type: "refused"; reason: Refusal }
   /**
    * A line someone in the room said, sent to everyone in it, the speaker
    * included. The room keeps no lines: someone who comes in later does not
@@ -87,6 +89,16 @@ export type ServerMessage =
   | { type: "voice"; room: string; members: VoiceMember[] }
   /** A signal from another player in voice, passed on by the room so the two can connect directly. */
   | { type: "rtc"; from: number; signal: RtcSignal };
+
+/** Every reason the room, or the game it hosts, gives for not doing what was asked. */
+export type Refusal =
+  | StartRefusal
+  | MoveRefusal
+  | RectHostRefusal
+  | ChatRefusal
+  | SettingRefusal
+  | VoiceRefusal
+  | PaceRefusal;
 
 /** Why a chat line was not passed on: the player is sending them too fast. */
 export type ChatRefusal = "chat-too-fast";
@@ -127,8 +139,13 @@ export type ClientMessage =
    * developing.
    */
   | { type: "start"; bots: boolean }
-  /** A move in the game being played. */
-  | { type: "action"; action: Action }
+  /**
+   * Something asked of the game being played: a move, a buzz, an answer. What
+   * it may be is the game's to say, and the game's host checks it.
+   */
+  | { type: "action"; action: unknown }
+  /** Choose a team for the next game, in a game where players may team up; 0 for playing alone. */
+  | { type: "team"; team: number }
   /** Put the room on the list of rooms anyone can join, or take it off; only the host may. */
   | { type: "listing"; listed: boolean }
   /** Say a line to everyone in the room. */
@@ -199,8 +216,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   }
   if (data.type === "start") return { type: "start", bots: data.bots === true };
   if (data.type === "action") {
-    const action = parseAction(data.action);
-    return action === null ? null : { type: "action", action };
+    const action = data.action;
+    return typeof action === "object" && action !== null && !Array.isArray(action) ? { type: "action", action } : null;
+  }
+  if (data.type === "team") {
+    return typeof data.team === "number" && Number.isInteger(data.team) && data.team >= 0 ? { type: "team", team: data.team } : null;
   }
   return null;
 }

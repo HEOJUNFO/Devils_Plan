@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { randomSource } from "../../../src/shared/game/rng";
 import shipped from "../../../src/shared/games/count-rectangles/config.json";
 import {
+  abandon,
   applyAction,
   applyTimeout,
   createGame,
@@ -9,6 +10,7 @@ import {
   drawBoard,
   isValidConfig,
   parseAction,
+  shiftClock,
   solutions,
   unitOf,
   viewFor,
@@ -542,6 +544,106 @@ describe("the clock", () => {
     applyTimeout(state, START + PROBLEM_MS, CONFIG);
 
     expect(JSON.stringify(state)).toBe(before);
+  });
+});
+
+describe("a game that stood still", () => {
+  /** How long the fixtures let a game stand, in ms. */
+  const STOOD = 90_000;
+
+  it("has its open problem's time moved on by as long as it stood", () => {
+    const state = game(alone(2));
+
+    const moved = shiftClock(state, STOOD);
+
+    expect(moved.openedAt).toBe(START + STOOD);
+    expect(deadline(moved, CONFIG)).toBe(START + STOOD + PROBLEM_MS);
+  });
+
+  it("has the time to answer moved on with it", () => {
+    const answering = act(game(alone(2)), 1, { type: "buzz" }, START + 2000);
+
+    const moved = shiftClock(answering, STOOD);
+
+    expect(moved.floor).toEqual({ player: 1, unit: 1, until: START + 2000 + ANSWER_MS + STOOD });
+    expect(deadline(moved, CONFIG)).toBe(START + 2000 + ANSWER_MS + STOOD);
+  });
+
+  it("has the pause before the next problem moved on with it", () => {
+    const closed = solve(game(alone(3)), 0, START + 2000);
+
+    const moved = shiftClock(closed, STOOD);
+
+    expect(moved.pauseUntil).toBe(START + 3000 + PAUSE_MS + STOOD);
+  });
+
+  it("is otherwise the same game, and the one given is not changed", () => {
+    const state = act(game(alone(2)), 0, { type: "buzz" }, START + 2000);
+    const before = structuredClone(state);
+
+    const moved = shiftClock(state, STOOD);
+
+    expect(state).toEqual(before);
+    expect({ ...moved, openedAt: state.openedAt, floor: state.floor }).toEqual(state);
+  });
+
+  it("is the very same state when it did not stand at all", () => {
+    const state = game(alone(2));
+
+    expect(shiftClock(state, 0)).toBe(state);
+  });
+});
+
+describe("a game nobody is left to play", () => {
+  it("ends where it stands, and says why", () => {
+    const state = solve(game(alone(4)), 2, START + 2000);
+
+    const over = abandon(state);
+
+    expect(over.phase).toBe("ended");
+    expect(over.history.at(-1)).toEqual({ type: "ended", round: 1, reason: "abandoned" });
+    expect(over.units).toEqual(state.units);
+    expect(deadline(over, CONFIG)).toBeNull();
+  });
+
+  it("takes the turn to answer from whoever had it", () => {
+    const answering = act(game(alone(2)), 0, { type: "buzz" }, START + 2000);
+
+    const over = abandon(answering);
+
+    expect(over.floor).toBeNull();
+    expect(applyAction(over, 0, { type: "answer", count: answering.answer }, START + 3000, CONFIG)).toEqual({ ok: false, reason: "game-over" });
+  });
+
+  it("leaves an open problem's answer unsaid", () => {
+    const state = game(alone(2));
+
+    const seen = viewFor(abandon(state), 0);
+
+    expect(seen.phase).toBe("ended");
+    expect(seen.answer).toBeNull();
+    expect(seen.solutions).toBeNull();
+  });
+
+  it("keeps the winners it had", () => {
+    let state = game(alone(4));
+    state = solve(state, 1, START + 1000);
+    state = applyTimeout(state, START + 2000 + PAUSE_MS, CONFIG);
+    state = solve(state, 1, START + 3000 + PAUSE_MS);
+
+    const over = abandon(state);
+
+    expect(over.units[1]).toMatchObject({ wins: CONFIG.winsNeeded, place: 1 });
+  });
+
+  it("changes nothing in a game already over, and never the state it was given", () => {
+    const state = game(alone(2));
+    const before = structuredClone(state);
+
+    const over = abandon(state);
+
+    expect(state).toEqual(before);
+    expect(abandon(over)).toBe(over);
   });
 });
 

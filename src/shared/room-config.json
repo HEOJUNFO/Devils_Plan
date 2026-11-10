@@ -10,6 +10,7 @@
   "messageLimits": {
     "setting": { "burst": 4, "windowSeconds": 60 },
     "signal": { "burst": 400, "windowSeconds": 10 },
+    "choice": { "burst": 12, "windowSeconds": 60 },
     "other": { "burst": 80, "windowSeconds": 10 }
   },
   "pingSeconds": 20,

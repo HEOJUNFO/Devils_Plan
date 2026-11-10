@@ -1,23 +1,22 @@
 import { Server, type Connection, type WSMessage } from "partyserver";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shared/chat";
-import { pace, type Pace } from "../shared/pace";
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
-import botConfig from "../shared/game/bot-config.json";
-import rulesConfig from "../shared/game/rules-config.json";
-import tableSizes from "../shared/game/table-sizes.json";
-import type { Action } from "../shared/game";
+import { HOSTS } from "../shared/hosts";
+import type { Presence } from "../shared/hosting";
 import {
   awayPlayers,
   createLobby,
   dropLapsed,
   findPlayer,
+  gameOf,
   hostOf,
   isValidRoomCode,
   joinLobby,
   leaveLobby,
   markAway,
   setListed,
+  setTeam,
   setTurnSeconds,
   slotLapsesAt,
   turnSecondsOf,
@@ -25,6 +24,7 @@ import {
   type LobbyState,
   type RoomConfig,
 } from "../shared/lobby";
+import { pace, type Pace } from "../shared/pace";
 import {
   CLOSE_LEFT,
   CLOSE_REJECTED,
@@ -33,27 +33,12 @@ import {
   PING,
   PONG,
   parseClientMessage,
-  type ChatRefusal,
   type ClientMessage,
-  type PaceRefusal,
-  type VoiceRefusal,
+  type Refusal,
   type RejectReason,
   type ServerMessage,
 } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
-import {
-  sessionAction,
-  sessionPresence,
-  sessionSnapshot,
-  sessionTimeout,
-  startSession,
-  type MoveRefusal,
-  type Presence,
-  type Session,
-  type SessionConfig,
-  type SettingRefusal,
-  type StartRefusal,
-} from "../shared/session";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
 import voiceConfigJson from "../shared/voice-config.json";
 import { Timers } from "./timers";
@@ -61,13 +46,6 @@ import { Timers } from "./timers";
 const config: RoomConfig = roomConfig;
 const chatConfig: ChatConfig = chatConfigJson;
 const voiceConfig: VoiceConfig = voiceConfigJson;
-
-const sessionConfig: SessionConfig = {
-  rules: rulesConfig,
-  sizes: tableSizes,
-  bots: botConfig,
-  awayTurnSeconds: config.awayTurnSeconds,
-};
 
 /**
  * What a connection remembers about itself. Stored in the WebSocket
@@ -108,7 +86,7 @@ interface Seat {
 type TimerKind =
   /** Nobody is connected; clear the room if that is still true when it fires. */
   | "empty-room"
-  /** The move the game is waiting for has run out of time. */
+  /** The game's own clock: whatever the game being played is waiting on has run out of time. */
   | "turn"
   /** A player who went away has been away long enough to lose their slot. */
   | "slots";
@@ -121,28 +99,9 @@ const LISTED_KEY = "listed";
 /** The least time between two pokes the room acts on, in ms: asking twice in a row finds nothing new. */
 const POKE_GAP_MS = 10_000;
 
-/** The version of a stored game this code can carry on with. */
-const GAME_VERSION = 1;
-
-/** Whether a game is being played: one that has started and not ended. */
-function running(session: Session | null): boolean {
-  return session !== null && session.state.phase !== "ended";
-}
-
 /** Whether this deployment lets bots fill empty seats (wrangler.jsonc: only while developing). */
 function botsAllowed(flag: string | undefined): boolean {
   return flag === "true";
-}
-
-/** Whether storing `next` in place of `current` would change anything. */
-function sameSession(current: Session | null, next: Session | null): boolean {
-  if (current === null || next === null) return current === next;
-  return (
-    current.state === next.state &&
-    current.deadline === next.deadline &&
-    current.awaySince === next.awaySince &&
-    current.turnStartedAt === next.turnStartedAt
-  );
 }
 
 /**
@@ -154,8 +113,9 @@ function sameSession(current: Session | null, next: Session | null): boolean {
  * through `timers`, never `setTimeout`, because a pending timer keeps the
  * object awake and billed.
  *
- * The game's rules live in `src/shared/game` and its hosting in
- * `src/shared/session`; this class stores, sends and keeps the clock.
+ * The room knows nothing of how a game is played. Each game brings a host
+ * (`src/shared/hosting.ts`, listed in `hosts.ts`), and the room is made for
+ * one game; this class stores, sends and keeps the clock.
  */
 export class GameRoom extends Server<Env> {
   static options = { hibernate: true };
@@ -163,8 +123,11 @@ export class GameRoom extends Server<Env> {
   /** The lobby, or `null` when no room with this code has been created. */
   private lobby: LobbyState | null = null;
 
-  /** The game being played or just finished, or `null` before the first one. */
-  private session: Session | null = null;
+  /**
+   * The game being played or just finished, as its host gave it to keep, or
+   * `null` before the first one. The room never looks inside.
+   */
+  private session: unknown = null;
 
   private timers!: Timers<TimerKind>;
 
@@ -196,9 +159,9 @@ export class GameRoom extends Server<Env> {
    */
   private readonly messagePace = new Map<string, Pace>();
 
-  /** Whether something holds the slot of `token` while they are away: a seat in a game being played. */
+  /** Whether something holds the slot of `token` while they are away: a place in a game being played. */
   private readonly keepsSlot = (token: string): boolean =>
-    running(this.session) && (this.session?.tokens.includes(token) ?? false);
+    this.playing() && this.host().holdsPlace(this.session, token);
 
   private readonly timerHandlers: Record<TimerKind, () => void | Promise<void>> = {
     "empty-room": () => {
@@ -215,7 +178,7 @@ export class GameRoom extends Server<Env> {
         this.saveLobby(next);
         this.broadcastLobby();
         // Nobody is left to look at how the last game ended.
-        if (next.players.length === 0 && !running(this.session)) await this.commitSession(null);
+        if (next.players.length === 0 && !this.playing()) await this.commitSession(null);
         else await this.presenceChanged();
         await this.report();
       }
@@ -223,9 +186,9 @@ export class GameRoom extends Server<Env> {
     },
     "turn": async () => {
       const session = this.session;
-      if (session === null) return;
+      if (session === null || this.lobby === null) return;
       // Does nothing unless the deadline has passed, so a repeated alarm is harmless.
-      await this.commitSession(sessionTimeout(session, this.presence(), Date.now(), sessionConfig));
+      await this.commitSession(this.host().tick(session, this.presence(), Date.now()));
     },
   };
 
@@ -235,9 +198,9 @@ export class GameRoom extends Server<Env> {
     // Pings are answered for the room while it sleeps, and the time of each is kept (see `sweep`).
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair(PING, PONG));
     this.lobby = this.load<LobbyState>(LOBBY_KEY);
-    const session = this.load<Session>(GAME_KEY);
+    const session = this.load<unknown>(GAME_KEY);
     // a game stored by a version of the rules this code does not know is not carried on with
-    this.session = session !== null && session.state?.version === GAME_VERSION ? session : null;
+    this.session = session !== null && this.lobby !== null && this.host().usable(session) ? session : null;
     if (session !== null && this.session === null) this.save(GAME_KEY, null);
     // A room cut off without a word (a deploy ends every connection and tells
     // nobody) would otherwise wait for a clearing nobody had set.
@@ -288,7 +251,14 @@ export class GameRoom extends Server<Env> {
       return;
     }
     // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
-    const sort = parsed.type === "listing" || parsed.type === "clock" ? "setting" : parsed.type === "rtc" ? "signal" : "other";
+    const sort =
+      parsed.type === "listing" || parsed.type === "clock"
+        ? "setting"
+        : parsed.type === "rtc"
+          ? "signal"
+          : parsed.type === "team"
+            ? "choice"
+            : "other";
     if (parsed.type !== "chat" && parsed.type !== "leave" && !this.withinPace(seat.slot, sort)) {
       // a flood of signals is dropped without a word: answering each would be a flood of its own
       if (sort !== "signal") this.refuse(connection, "too-fast");
@@ -303,6 +273,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "voice") this.handleVoice(connection, seat, parsed.on, parsed.muted);
     else if (parsed.type === "rtc") this.handleRtc(seat, parsed.to, parsed.signal);
     else if (parsed.type === "poke") this.handlePoke();
+    else if (parsed.type === "team") this.handleTeam(connection, seat, parsed.team);
   }
 
   /**
@@ -546,6 +517,17 @@ export class GameRoom extends Server<Env> {
     this.broadcastLobby();
   }
 
+  /** Puts a player in the team they chose for the next game, where the room's game has teams. */
+  private handleTeam(connection: Connection<ConnectionState>, seat: Seat, team: number): void {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    const next = setTeam(lobby, seat.token, team, config);
+    if (next === null) return this.refuse(connection, "bad-setting");
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
+  }
+
   /** Puts the room on the list of rooms or takes it off, if the one asking is the host. */
   private async handleListing(connection: Connection<ConnectionState>, slot: number, listed: boolean): Promise<void> {
     const lobby = this.lobby;
@@ -617,54 +599,68 @@ export class GameRoom extends Server<Env> {
     connection.send(JSON.stringify(message));
   }
 
+  /** The host of the game this room was made for. Only asked for while the room exists. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- the room keeps a game without looking inside (see `hosts.ts`)
+  private host(): (typeof HOSTS)[keyof typeof HOSTS] {
+    return HOSTS[gameOf(this.lobby ?? { players: [] })];
+  }
+
+  /** Whether a game is being played: one that has started and not ended. */
+  private playing(): boolean {
+    return this.session !== null && this.lobby !== null && this.host().running(this.session);
+  }
+
   /** Starts a game for the players now connected, if the one asking is the host. */
   private async handleStart(connection: Connection<ConnectionState>, slot: number, bots: boolean): Promise<void> {
     const lobby = this.lobby;
     const starter = lobby?.players.find((p) => p.slot === slot);
     if (!lobby || !starter) return;
     const presence = this.presence();
-    const result = startSession(
+    const result = this.host().start(
       this.session,
       lobby.players.filter((p) => presence.connected.has(p.token)),
-      { by: starter.token, bots },
       {
+        by: starter.token,
+        bots,
         allowBots: botsAllowed(this.env.ALLOW_BOTS),
         seed: crypto.getRandomValues(new Uint32Array(1))[0],
         now: Date.now(),
+        // the length of a turn is the room's own setting; the rest of the rules are the game's
+        turnSeconds: turnSecondsOf(lobby),
       },
       presence,
-      // the length of a turn is the room's own setting; the rest of the rules are the game's
-      { ...sessionConfig, rules: { ...sessionConfig.rules, turnSeconds: turnSecondsOf(lobby) } },
     );
-    if (!result.ok) return this.refuse(connection, result.reason);
+    if (!result.ok) return this.refuse(connection, result.reason as Refusal);
     await this.commitSession(result.session);
   }
 
-  /** Makes a player's move, or tells that player alone why it was refused. */
-  private async handleAction(connection: Connection<ConnectionState>, slot: number, action: Action): Promise<void> {
+  /** Passes on what a player asked of the game, or tells that player alone why it was refused. */
+  private async handleAction(connection: Connection<ConnectionState>, slot: number, action: unknown): Promise<void> {
     const player = this.lobby?.players.find((p) => p.slot === slot);
     if (!player) return;
-    const result = sessionAction(this.session, player.token, action, this.presence(), Date.now(), sessionConfig);
-    if (!result.ok) return this.refuse(connection, result.reason);
+    const result = this.host().act(this.session, player.token, action, this.presence(), Date.now());
+    if (!result.ok) return this.refuse(connection, result.reason as Refusal);
     await this.commitSession(result.session);
   }
 
   /** Someone connected, dropped or left: the game may have moves to make or a clock to move. */
   private async presenceChanged(): Promise<void> {
     const session = this.session;
-    if (session === null) return;
-    await this.commitSession(sessionPresence(session, this.presence(), Date.now(), sessionConfig));
+    if (session === null || this.lobby === null) return;
+    await this.commitSession(this.host().attend(session, this.presence(), Date.now()));
   }
 
   /**
-   * Makes `next` the room's game: stores it if it changed, points the turn
-   * clock at its deadline, and sends every seated connection its own view.
+   * Makes `next` the room's game: stores it if it changed, points the game's
+   * clock at its deadline, and sends every connection its own view.
    */
-  private async commitSession(next: Session | null): Promise<void> {
-    const wasRunning = running(this.session);
-    if (!sameSession(this.session, next)) this.save(GAME_KEY, next);
+  private async commitSession(next: unknown): Promise<void> {
+    const wasPlaying = this.playing();
+    const current = this.session;
+    const same = current === null || next === null ? current === next : this.host().same(current, next);
+    if (!same) this.save(GAME_KEY, next);
     this.session = next;
-    const due = next?.deadline ?? null;
+    const due = next === null || this.lobby === null ? null : this.host().deadline(next);
     const set = this.timers.get("turn");
     if (due === null) {
       if (set !== null) await this.timers.clear("turn");
@@ -672,7 +668,7 @@ export class GameRoom extends Server<Env> {
       await this.timers.set("turn", due);
     }
     this.broadcastGame();
-    if (wasRunning !== running(next)) {
+    if (wasPlaying !== this.playing()) {
       // A game starting or ending changes how the room is listed, and whose
       // slot is kept for them while they are away.
       await this.scheduleSlots();
@@ -706,7 +702,7 @@ export class GameRoom extends Server<Env> {
   private report(): Promise<void> {
     const lobby = this.lobby;
     this.wanted =
-      lobby === null ? null : listingOf(this.name, lobby, this.connectedSlots(), running(this.session), config);
+      lobby === null ? null : listingOf(this.name, lobby, this.connectedSlots(), this.playing(), config);
     this.telling = this.telling.then(() => this.tellDirectory()).catch(() => undefined);
     return this.telling;
   }
@@ -845,17 +841,16 @@ export class GameRoom extends Server<Env> {
    * state itself is never sent.
    */
   private broadcastGame(): void {
+    const lobby = this.lobby;
     const session = this.session;
-    if (this.lobby === null || session === null) return;
+    if (lobby === null || session === null) return;
     const presence = this.presence();
     const now = Date.now();
+    const host = this.host();
+    const game = gameOf(lobby);
     for (const [member, seat] of this.members()) {
-      const message: ServerMessage = {
-        type: "game",
-        room: this.name,
-        ...sessionSnapshot(session, seat.token, presence, now),
-      };
-      member.send(JSON.stringify(message));
+      // which game it is comes first; the rest is what that game's host says this player may see
+      member.send(JSON.stringify({ type: "game", room: this.name, game, ...host.view(session, seat.token, presence, now) }));
     }
   }
 
@@ -872,10 +867,7 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Tells one connection that what it asked was not accepted. */
-  private refuse(
-    connection: Connection<ConnectionState>,
-    reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal | PaceRefusal,
-  ): void {
+  private refuse(connection: Connection<ConnectionState>, reason: Refusal): void {
     const message: ServerMessage = { type: "refused", reason };
     connection.send(JSON.stringify(message));
   }

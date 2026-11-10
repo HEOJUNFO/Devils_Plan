@@ -16,6 +16,10 @@ import { PARTY_NAME, PING, PONG, type ClientMessage, type ServerMessage } from "
 /** The server message of one type. */
 export type MessageOf<Type extends ServerMessage["type"]> = Extract<ServerMessage, { type: Type }>;
 
+/** What a room sends about a game, by which game it is. */
+export type RouletteMessage = Extract<ServerMessage, { type: "game"; game: "russian-roulette" }>;
+export type RectanglesMessage = Extract<ServerMessage, { type: "game"; game: "count-rectangles" }>;
+
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
   return `player-token-${String(n).padStart(4, "0")}`;
@@ -131,9 +135,20 @@ export class TestClient extends Inbox<ServerMessage> {
     await this.where("lobby", (lobby) => lobby.players.length === count);
   }
 
-  /** Reads forward to the first game message that satisfies `match`. */
-  gameWhere(match: (game: MessageOf<"game">) => boolean = () => true): Promise<MessageOf<"game">> {
-    return this.where("game", match);
+  /** Reads forward to the first message about a game of Russian Roulette that satisfies `match`. */
+  async gameWhere(match: (game: RouletteMessage) => boolean = () => true): Promise<RouletteMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "russian-roulette" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 네모 세기 that satisfies `match`. */
+  async rectWhere(match: (game: RectanglesMessage) => boolean = () => true): Promise<RectanglesMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "count-rectangles" && match(message)) return message;
+    }
   }
 
   /** Reads forward to the first list of who is in voice that satisfies `match`. */

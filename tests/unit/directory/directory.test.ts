@@ -26,6 +26,7 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     messageLimits: {
       setting: { burst: 3, windowSeconds: 30 },
       signal: { burst: 20, windowSeconds: 10 },
+      choice: { burst: 5, windowSeconds: 30 },
       other: { burst: 10, windowSeconds: 10 },
     },
     pingSeconds: 5,

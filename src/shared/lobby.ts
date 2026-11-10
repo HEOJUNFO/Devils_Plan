@@ -6,7 +6,7 @@
  * Nothing here knows how a game is played, only which game the room was made
  * for; seats at the table are drawn when a game starts, not when players join.
  */
-import { DEFAULT_GAME, type GameId } from "./games";
+import { DEFAULT_GAME, GAMES, type GameId } from "./games";
 import { cleanLine, cutTo } from "./text";
 
 /** Tunable lobby values. Loaded from `room-config.json`. */
@@ -47,6 +47,8 @@ export interface RoomConfig {
     setting: MessageLimit;
     /** Voice signals: a burst of them goes to each other player when someone comes into voice. */
     signal: MessageLimit;
+    /** A player's own choices in the waiting room: which team. Each is stored and told to everyone. */
+    choice: MessageLimit;
     /** Everything else: starting, moves, coming into voice, pokes. */
     other: MessageLimit;
   };
@@ -104,6 +106,11 @@ export interface LobbyPlayer {
    * stored before this was kept, who then counts by their slot.
    */
   seq?: number;
+  /**
+   * The team the player has chosen for the next game, in a game where
+   * players may team up: a number from 1, or 0 or absent for playing alone.
+   */
+  team?: number;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -128,6 +135,8 @@ export interface PublicPlayer {
   nick: string;
   /** Whether the player has a live connection right now. */
   connected: boolean;
+  /** The team they have chosen for the next game; 0 for playing alone. */
+  team: number;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -161,10 +170,11 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 /**
  * A new, empty lobby for `game`, on the list of rooms or reached by its code
  * alone. Given `config`, a room on the list starts with the limit on a turn
- * that such rooms have; any other starts with none.
+ * that such rooms have; any other starts with none, and so does a room of a
+ * game that is not played in turns.
  */
 export function createLobby(game: GameId = DEFAULT_GAME, listed = false, config?: RoomConfig): LobbyState {
-  return { players: [], game, listed, turnSeconds: listed && config ? config.listedTurnSeconds : 0 };
+  return { players: [], game, listed, turnSeconds: listed && config && GAMES[game].turns ? config.listedTurnSeconds : 0 };
 }
 
 /** Seconds a player has for a move in the games started in this room; 0 for no limit. */
@@ -174,11 +184,13 @@ export function turnSecondsOf(state: LobbyState): number {
 
 /**
  * Sets the length of a turn for the games started in this room. Returns
- * `null` for a length that is not one of the choices, and the state unchanged
- * when it is already so. The input state is not modified.
+ * `null` for a length that is not one of the choices, or any limit at all in
+ * a game that is not played in turns, and the state unchanged when it is
+ * already so. The input state is not modified.
  */
 export function setTurnSeconds(state: LobbyState, seconds: number, config: RoomConfig): LobbyState | null {
   if (!config.turnSecondsChoices.includes(seconds)) return null;
+  if (seconds !== 0 && !GAMES[gameOf(state)].turns) return null;
   return turnSecondsOf(state) === seconds ? state : { ...state, turnSeconds: seconds };
 }
 
@@ -245,7 +257,8 @@ export function joinLobby(
   const existing = findPlayer(state, request.token);
   if (existing) {
     // back from being away, if they were
-    const back: LobbyPlayer = { slot: existing.slot, token: existing.token, nick, seq: seqOf(existing) };
+    const { awaySince: _away, ...kept } = existing;
+    const back: LobbyPlayer = { ...kept, nick, seq: seqOf(existing) };
     const players = state.players.map((p) => (p === existing ? back : p));
     return { ok: true, state: { ...state, players }, slot: existing.slot, rejoined: true };
   }
@@ -302,7 +315,8 @@ export function markAway(state: LobbyState, connectedSlots: ReadonlySet<number>,
     if (connectedSlots.has(p.slot)) {
       if (p.awaySince === undefined) return p;
       changed = true;
-      return { slot: p.slot, token: p.token, nick: p.nick, seq: seqOf(p) };
+      const { awaySince: _away, ...here } = p;
+      return { ...here, seq: seqOf(p) };
     }
     if (p.awaySince !== undefined) return p;
     changed = true;
@@ -347,6 +361,25 @@ export function dropLapsed(
   return { ...state, players: state.players.filter((p) => !gone.has(p.token)) };
 }
 
+/** How many teams a room of `game` can hold: as many as fit, each of the game's team size; 0 where there are none. */
+export function teamsIn(game: GameId, config: RoomConfig): number {
+  const size = GAMES[game].teamSize;
+  return size > 0 ? Math.floor(Math.min(config.maxPlayers, GAMES[game].maxPlayers) / size) : 0;
+}
+
+/**
+ * Puts the player holding `token` in team `team` for the next game (0: alone).
+ * Returns `null` for a team the room's game does not have, and the state
+ * unchanged when they are already there. The input state is not modified.
+ */
+export function setTeam(state: LobbyState, token: string, team: number, config: RoomConfig): LobbyState | null {
+  if (!Number.isInteger(team) || team < 0 || team > teamsIn(gameOf(state), config)) return null;
+  const player = findPlayer(state, token);
+  if (player === undefined) return null;
+  if ((player.team ?? 0) === team) return state;
+  return { ...state, players: state.players.map((p) => (p === player ? { ...p, team } : p)) };
+}
+
 /** Puts the room on the list of rooms or takes it off. The input state is not modified. */
 export function setListed(state: LobbyState, listed: boolean): LobbyState {
   return (state.listed === true) === listed ? state : { ...state, listed };
@@ -375,6 +408,7 @@ export function viewLobby(
       slot: p.slot,
       nick: p.nick,
       connected: connectedSlots.has(p.slot),
+      team: p.team ?? 0,
     })),
   };
 }

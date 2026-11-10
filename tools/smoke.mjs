@@ -2,8 +2,11 @@
 //
 // Drives a server over its real HTTP and WebSocket addresses, as browsers
 // would: the page loads, the list of rooms answers, four players make and
-// join a room, talk, play a whole game to its end and leave. It observes and
-// reports; it changes nothing but the room it makes, which it leaves.
+// join a room, talk, play a whole game to its end and leave; then two more
+// make a room of the second game, team up and part, and play it to its end.
+// It observes and reports; it changes nothing but the rooms it makes, which
+// it leaves. The second game shows each answer for a few seconds, so the
+// whole check takes about ten seconds longer than the moves do.
 //
 // Usage: npm run dev (in another terminal), then
 //   npm run smoke                      # http://localhost:5273
@@ -14,7 +17,10 @@ const base = (process.argv[2] ?? "http://localhost:5273").replace(/\/$/, "");
 const wsBase = base.replace(/^http/, "ws");
 const GAME = "russian-roulette";
 const PLAYERS = 4;
+const SECOND_GAME = "count-rectangles";
 const STEP_TIMEOUT_MS = 8000;
+/** Long enough for the second game's pause between problems, which the server's own config sets. */
+const PAUSE_TIMEOUT_MS = 30000;
 const MOVE_LIMIT = 600;
 
 const results = [];
@@ -52,8 +58,8 @@ class Client {
   }
 
   /** The latest message that satisfies `match`, waiting for one if none has come. */
-  async until(what, match, from = 0) {
-    const deadline = Date.now() + STEP_TIMEOUT_MS;
+  async until(what, match, from = 0, timeoutMs = STEP_TIMEOUT_MS) {
+    const deadline = Date.now() + timeoutMs;
     for (;;) {
       for (let i = this.messages.length - 1; i >= from; i--) if (match(this.messages[i])) return this.messages[i];
       const left = deadline - Date.now();
@@ -81,6 +87,90 @@ class Client {
 function roomCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 5 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+}
+
+/**
+ * How many rectangles on `board` add up to its target: what a player of the
+ * second game has to count. Worked out here from what the server shows, as a
+ * player would, and not from anything the server knows.
+ */
+function countRectangles(board) {
+  let found = 0;
+  for (let top = 0; top < board.rows; top++) {
+    for (let bottom = top; bottom < board.rows; bottom++) {
+      for (let left = 0; left < board.cols; left++) {
+        for (let right = left; right < board.cols; right++) {
+          let sum = 0;
+          let any = false;
+          for (let row = top; row <= bottom; row++) {
+            for (let col = left; col <= right; col++) {
+              const cell = board.cells[row * board.cols + col];
+              if (cell === null) continue;
+              sum += cell;
+              any = true;
+            }
+          }
+          // a rectangle with no number in it is not one
+          if (any && sum === board.target) found++;
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/** The second game, in a room of its own: two players, off the list. */
+async function secondGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 2; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `rect${n}`, create: n === 0, game: SECOND_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  check("a room is made for the second game", lobby.game === SECOND_GAME, lobby.game);
+
+  // a team of one is not a team: the game does not start until they part
+  players[1].send({ type: "team", team: 1 });
+  const teamed = await players[0].until("the team to be told", (m) => m.type === "lobby" && m.players[1]?.team === 1);
+  check("a player's choice of team is told to the room", teamed.players.map((p) => p.team).join() === "0,1");
+  players[0].send({ type: "start", bots: false });
+  const broken = await players[0].until("the refusal to start", (m) => m.type === "refused");
+  check("a game does not start with a team that is not full", broken.reason === "bad-teams", broken.reason);
+  players[1].send({ type: "team", team: 0 });
+  await players[0].until("the team to be undone", (m) => m.type === "lobby" && m.players[1]?.team === 0, players[0].messages.indexOf(teamed) + 1);
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the second game to start", (m) => m.type === "game")));
+  check("the second game starts, each player a unit of their own", games.every((g, n) => g.game === SECOND_GAME && g.view.you?.player === n && g.view.units.length === 2));
+
+  // player 1 is right twice: half the units have won, and the game is over
+  let right = 0;
+  for (let round = 1; round <= 2; round++) {
+    const open = await players[1].until(`problem ${round}`, (m) => m.type === "game" && m.view.round === round && m.view.phase === "problem", 0, PAUSE_TIMEOUT_MS);
+    const count = countRectangles(open.view.board);
+    players[1].send({ type: "action", action: { type: "buzz" } });
+    await players[0].until("the buzz", (m) => m.type === "game" && m.view.round === round && m.view.floor?.player === 1);
+    players[1].send({ type: "action", action: { type: "answer", count } });
+    const closed = await players[0].until("the answer", (m) => m.type === "game" && m.view.round === round && m.view.outcome !== null);
+    if (closed.view.outcome.kind === "right" && closed.view.answer === count) right++;
+  }
+  check("an answer counted from the board is right, both times", right === 2, `${right} of 2`);
+  const hidden = players
+    .flatMap((p) => p.messages)
+    .filter((m) => m.type === "game" && m.view.outcome === null)
+    .every((m) => m.view.answer === null && m.view.solutions === null);
+  check("the answer is not sent while a problem is open", hidden);
+  const ends = await Promise.all(players.map((p) => p.until("the second game to end", (m) => m.type === "game" && m.view.phase === "ended")));
+  check("the second game ends when half have won twice", ends.every((g) => g.view.units[1].place === 1 && g.view.units[0].place === 0));
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in the second game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
 }
 
 async function main() {
@@ -186,6 +276,9 @@ async function main() {
   check("the room leaves the list when everyone has left", true);
   for (const p of players) p.close();
   viewer.close();
+
+  // 12. the second game
+  await secondGame();
 }
 
 try {

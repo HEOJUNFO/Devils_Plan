@@ -24,6 +24,16 @@ describe("the games a room can be made for", () => {
     expect(GAMES[id].maxPlayers).toBeLessThanOrEqual(roomConfig.maxPlayers);
   });
 
+  it.each(GAME_IDS)("says of %s whether it is played in turns and how many make a team", (id) => {
+    const game = GAMES[id];
+
+    expect(typeof game.turns).toBe("boolean");
+    expect(Number.isInteger(game.teamSize)).toBe(true);
+    expect(game.teamSize).toBeGreaterThanOrEqual(0);
+    // a team must fit in a game, with someone left to play against
+    expect(game.teamSize).toBeLessThan(game.maxPlayers);
+  });
+
   it("says of the first game what its tables say", () => {
     const sizes = Object.keys(tableSizes).map(Number);
 

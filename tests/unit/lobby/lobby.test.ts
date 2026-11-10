@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_GAME } from "../../../src/shared/games";
+import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
 import {
   awayPlayers,
   createLobby,
@@ -14,8 +14,10 @@ import {
   markAway,
   normalizeNick,
   setListed,
+  setTeam,
   setTurnSeconds,
   slotLapsesAt,
+  teamsIn,
   turnSecondsOf,
   viewLobby,
   type LobbyState,
@@ -36,6 +38,7 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     messageLimits: {
       setting: { burst: 3, windowSeconds: 30 },
       signal: { burst: 20, windowSeconds: 10 },
+      choice: { burst: 5, windowSeconds: 30 },
       other: { burst: 10, windowSeconds: 10 },
     },
     pingSeconds: 5,
@@ -46,6 +49,11 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     ...overrides,
   };
 }
+
+/** A game in which players may team up before the start, and one in which they may not. */
+const TEAM_GAME: GameId = "count-rectangles";
+const SOLO_GAME: GameId = "russian-roulette";
+const TEAM_SIZE = GAMES[TEAM_GAME].teamSize;
 
 /** A well-formed token that is different for each `n`. */
 function tokenFor(n: number): string {
@@ -258,6 +266,22 @@ describe("the length of a turn", () => {
     const config = testConfig();
 
     expect(turnSecondsOf(createLobby(DEFAULT_GAME, true, config))).toBe(config.listedTurnSeconds);
+  });
+
+  it("has no limit in a room of a game that is not played in turns, on the list or not", () => {
+    const config = testConfig();
+
+    expect(GAMES[TEAM_GAME].turns).toBe(false);
+    expect(turnSecondsOf(createLobby(TEAM_GAME, true, config))).toBe(0);
+    expect(turnSecondsOf(createLobby(TEAM_GAME, false, config))).toBe(0);
+  });
+
+  it("cannot be given a limit in such a room, and can be told to have none", () => {
+    const config = testConfig();
+    const state = createLobby(TEAM_GAME, true, config);
+
+    expect(setTurnSeconds(state, config.listedTurnSeconds, config)).toBeNull();
+    expect(setTurnSeconds(state, 0, config)).toBe(state);
   });
 
   it("has no limit in a room stored before rooms had one", () => {
@@ -539,6 +563,134 @@ describe("dropLapsed", () => {
     const next = dropLapsed(state, NOW + config.awaySlotSeconds * 1000, config, () => false);
 
     expect(next).toEqual({ players: [], game: DEFAULT_GAME, listed: true, turnSeconds: 0, nextSeq: 1 });
+  });
+});
+
+/** A room of `game` holding players 0..count-1. */
+function roomOf(game: GameId, count: number, config: RoomConfig): LobbyState {
+  let state = createLobby(game);
+  for (let n = 0; n < count; n++) {
+    const result = joinLobby(state, { token: tokenFor(n), nick: `p${n}` }, config);
+    if (!result.ok) throw new Error(`fixture join ${n} refused: ${result.reason}`);
+    state = result.state;
+  }
+  return state;
+}
+
+describe("teamsIn", () => {
+  it("is as many teams of the game's size as fit in the room", () => {
+    expect(teamsIn(TEAM_GAME, testConfig({ maxPlayers: TEAM_SIZE * 2 }))).toBe(2);
+    expect(teamsIn(TEAM_GAME, testConfig({ maxPlayers: TEAM_SIZE * 2 - 1 }))).toBe(1);
+    expect(teamsIn(TEAM_GAME, testConfig({ maxPlayers: TEAM_SIZE - 1 }))).toBe(0);
+  });
+
+  it("counts no more players than the game itself takes", () => {
+    const most = GAMES[TEAM_GAME].maxPlayers;
+
+    expect(teamsIn(TEAM_GAME, testConfig({ maxPlayers: most * 4 }))).toBe(Math.floor(most / TEAM_SIZE));
+  });
+
+  it("is none in a game everyone plays alone", () => {
+    expect(GAMES[SOLO_GAME].teamSize).toBe(0);
+    expect(teamsIn(SOLO_GAME, testConfig({ maxPlayers: 6 }))).toBe(0);
+  });
+});
+
+describe("setTeam", () => {
+  const config = testConfig({ maxPlayers: TEAM_SIZE * 2 });
+
+  it("puts a player in a team for the next game, and nobody else", () => {
+    const state = roomOf(TEAM_GAME, 3, config);
+
+    const next = setTeam(state, tokenFor(1), 2, config);
+
+    expect(next?.players.map((player) => player.team ?? 0)).toEqual([0, 2, 0]);
+  });
+
+  it("lets a player go back to playing alone", () => {
+    const teamed = setTeam(roomOf(TEAM_GAME, 2, config), tokenFor(0), 1, config)!;
+
+    const alone = setTeam(teamed, tokenFor(0), 0, config);
+
+    expect(alone?.players[0].team).toBe(0);
+  });
+
+  it("takes the last team the room has, and refuses the one after it", () => {
+    const state = roomOf(TEAM_GAME, 1, config);
+    const last = teamsIn(TEAM_GAME, config);
+
+    expect(setTeam(state, tokenFor(0), last, config)?.players[0].team).toBe(last);
+    expect(setTeam(state, tokenFor(0), last + 1, config)).toBeNull();
+  });
+
+  it("refuses every team in a game everyone plays alone, and takes playing alone", () => {
+    const state = roomOf(SOLO_GAME, 1, config);
+
+    expect(setTeam(state, tokenFor(0), 1, config)).toBeNull();
+    expect(setTeam(state, tokenFor(0), 0, config)).toBe(state);
+  });
+
+  it.each([-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY])("refuses %s, which is not a team", (team) => {
+    const state = roomOf(TEAM_GAME, 1, config);
+
+    expect(setTeam(state, tokenFor(0), team, config)).toBeNull();
+  });
+
+  it("refuses someone who is not in the room", () => {
+    const state = roomOf(TEAM_GAME, 1, config);
+
+    expect(setTeam(state, tokenFor(7), 1, config)).toBeNull();
+  });
+
+  it("changes nothing when the player is already there", () => {
+    const state = roomOf(TEAM_GAME, 2, config);
+    const teamed = setTeam(state, tokenFor(1), 1, config)!;
+
+    expect(setTeam(state, tokenFor(1), 0, config)).toBe(state);
+    expect(setTeam(teamed, tokenFor(1), 1, config)).toBe(teamed);
+  });
+
+  it("does not change the state it was given", () => {
+    const state = roomOf(TEAM_GAME, 2, config);
+    const before = structuredClone(state);
+
+    setTeam(state, tokenFor(0), 1, config);
+
+    expect(state).toEqual(before);
+  });
+
+  it("is told to everyone in the room, and is alone for someone who has not chosen", () => {
+    const state = setTeam(roomOf(TEAM_GAME, 3, config), tokenFor(2), 1, config)!;
+
+    const seen = viewLobby(state, new Set([0, 1, 2]), 0, config);
+
+    expect(seen.players.map((player) => [player.slot, player.team])).toEqual([
+      [0, 0],
+      [1, 0],
+      [2, 1],
+    ]);
+  });
+
+  it("is kept for a player who goes away and comes back", () => {
+    const teamed = setTeam(roomOf(TEAM_GAME, 2, config), tokenFor(1), 2, config)!;
+    const away = markAway(teamed, new Set([0]), 1000);
+
+    const back = joinLobby(away, { token: tokenFor(1), nick: "p1" }, config);
+
+    if (!back.ok) throw new Error(`fixture rejoin refused: ${back.reason}`);
+    expect(back.state.players[1]).toMatchObject({ slot: 1, team: 2 });
+    expect(back.state.players[1].awaySince).toBeUndefined();
+  });
+
+  it("is not passed on to whoever takes the slot of a player who left", () => {
+    const teamed = setTeam(roomOf(TEAM_GAME, 2, config), tokenFor(1), 2, config)!;
+    const left = leaveLobby(teamed, tokenFor(1));
+
+    const taken = joinLobby(left, { token: tokenFor(5), nick: "new" }, config);
+
+    if (!taken.ok) throw new Error(`fixture join refused: ${taken.reason}`);
+    expect(taken.slot).toBe(1);
+    expect(taken.state.players[1].team ?? 0).toBe(0);
   });
 });
 

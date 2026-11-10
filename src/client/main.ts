@@ -2,8 +2,8 @@
  * The browser client: the lobby (the rooms anyone can join, of every game),
  * making a room, the room before a game, and the game. Everything sits in one
  * frame the size of the game's screen, scaled up as one piece: the lobby and
- * the waiting room are markup, and the game is a canvas (`game/table`) that
- * covers the frame while a game is on.
+ * the waiting room are markup, and the game is a canvas that covers the frame
+ * while a game is on. Which game's screen that is comes from `games/index`.
  *
  * To act as several players in one browser, open each tab with a different
  * `?profile=<name>`; each profile keeps its own token and nickname.
@@ -15,6 +15,7 @@ import {
   generateRoomCode,
   isValidRoomCode,
   normalizeNick,
+  teamsIn,
   type LobbyView,
   type RoomConfig,
 } from "../shared/lobby";
@@ -34,9 +35,8 @@ import chatConfig from "../shared/chat-config.json";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
-import { createTable, type Table } from "./game/table";
+import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { drawLobbyArt } from "./lobby-art";
-import { createLobbyScene } from "./lobby-scene";
 import { createVoice } from "./voice";
 
 const config: RoomConfig = roomConfig;
@@ -84,6 +84,8 @@ const REJECT_TEXT: Record<RejectReason, string> = {
 const REFUSED_TEXT: Record<string, string> = {
   "not-host": "방장만 할 수 있습니다.",
   "bad-player-count": "지금 인원으로는 시작할 수 없습니다.",
+  "bad-teams": "팀 인원이 맞지 않아 시작할 수 없습니다.",
+  "too-few": "두 팀(혼자도 한 팀) 이상이 모여야 시작할 수 있습니다.",
   "already-playing": "이미 판이 진행 중입니다.",
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다.",
   "bad-setting": "그 설정은 이 방에서 쓸 수 없습니다.",
@@ -112,7 +114,6 @@ const roomsNote = el<HTMLElement>("rooms-note");
 const entry = el<HTMLElement>("entry");
 const newRoom = el<HTMLElement>("new-room");
 const gameChoices = el<HTMLElement>("game-choices");
-const gameSummary = el<HTMLElement>("game-summary");
 const listedYes = el<HTMLButtonElement>("listed-yes");
 const listedNo = el<HTMLButtonElement>("listed-no");
 const listedHint = el<HTMLElement>("listed-hint");
@@ -131,6 +132,7 @@ const players = el<HTMLOListElement>("players");
 const startButton = el<HTMLButtonElement>("start");
 const copyButton = el<HTMLButtonElement>("copy");
 const clockButton = el<HTMLButtonElement>("clock");
+const teamButton = el<HTMLButtonElement>("team");
 const chatBox = el<HTMLElement>("chat");
 const chatInput = el<HTMLInputElement>("chat-input");
 const voiceBox = el<HTMLElement>("voice");
@@ -192,7 +194,12 @@ let currentCode = "";
 /** The room as last sent, while this page is in one. */
 let currentView: LobbyView | null = null;
 /** The game screen, while a game is on in the room this page is in. */
-let table: Table | null = null;
+let table: GameScreen | null = null;
+/** Which game that screen is of. */
+let tableGame: GameId | null = null;
+/** The picture of the room this page is in, and which game it is the picture for. */
+let scene: WaitingScene | null = null;
+let sceneGame: GameId | null = null;
 /** Whether this player may start a game: the connected player in the lowest slot. */
 let isHost = false;
 /** When the game on show started; a room's games are told apart by it. */
@@ -249,7 +256,6 @@ const voice = createVoice({
 // For development, with the tone in place of the microphone: lets a test read how the voice chat stands.
 if (fakeMic) (window as unknown as { voiceForTests: typeof voice }).voiceForTests = voice;
 
-const scene = createLobbyScene(sceneCanvas, (slot) => voice.mark(slot));
 
 /** Draws the voice controls as things stand: where the screen has room for them, and what they offer. */
 function renderVoice(): void {
@@ -316,13 +322,30 @@ function setBar(first: string, second: string, withRules: boolean): void {
 function syncScene(): void {
   const seen = currentCode !== "" && table === null;
   sceneCanvas.hidden = currentCode === "";
-  scene.setRunning(seen);
+  scene?.setRunning(seen);
 }
 
-/** Shows the game screen over the frame, making it on first use. */
-function showTable(): Table {
+/** Shows the room `view` in the picture of its game, making that picture when the game is another. */
+function showScene(view: LobbyView | null): void {
+  const game = view !== null && isGameId(view.game) ? view.game : null;
+  if (game !== sceneGame) {
+    scene?.setRunning(false);
+    scene = game === null ? null : CLIENTS[game].scene(sceneCanvas, (slot) => voice.mark(slot));
+    sceneGame = game;
+  }
+  scene?.show(view);
+}
+
+/** Shows the screen of `game` over the frame, making it on first use. */
+function showTable(game: GameId): GameScreen {
+  if (table !== null && tableGame !== game) {
+    table.destroy();
+    table = null;
+    frame.classList.remove("covered");
+  }
   if (table === null) {
-    table = createTable(tableCanvas, {
+    tableGame = game;
+    table = CLIENTS[game].screen(tableCanvas, {
       act: (action) => send({ type: "action", action }),
       again: () => send({ type: "start", bots: wantBots }),
       lobby: () => {
@@ -331,6 +354,7 @@ function showTable(): Table {
         hideTable();
       },
       voice: (slot) => voice.mark(slot),
+      covered: (covered) => frame.classList.toggle("covered", covered),
     });
     table.setHost(isHost);
   }
@@ -347,6 +371,8 @@ function showTable(): Table {
 function hideTable(): void {
   table?.destroy();
   table = null;
+  tableGame = null;
+  frame.classList.remove("covered");
   tableCanvas.hidden = true;
   leaveGameButton.hidden = true;
   disarmLeave();
@@ -443,7 +469,7 @@ function showLobby(message = ""): void {
   roomsPanel.hidden = false;
   rules.hidden = true;
   notice.textContent = message;
-  scene.show(null);
+  showScene(null);
   syncScene();
   setBar(LOBBY_BAR[0], LOBBY_BAR[1], false);
   document.title = SITE_TITLE;
@@ -457,7 +483,7 @@ function renderNewRoom(): void {
   const choices = GAME_IDS.map((id) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "choice wide";
+    button.className = "choice";
     button.textContent = GAMES[id].title;
     button.setAttribute("aria-pressed", String(id === chosenGame));
     button.addEventListener("click", () => {
@@ -468,13 +494,13 @@ function renderNewRoom(): void {
   });
   gameChoices.replaceChildren(...choices);
   const game = GAMES[chosenGame];
-  gameSummary.textContent = `${game.minPlayers}~${game.maxPlayers}명. ${game.summary}`;
   listedYes.setAttribute("aria-pressed", String(chosenListed));
   listedNo.setAttribute("aria-pressed", String(!chosenListed));
-  // the length of a turn a room starts with goes with who can come in; the host can change it in the room
-  listedHint.textContent = chosenListed
-    ? `목록에 보여 누구나 들어옵니다. ${clockText(config.listedTurnSeconds)}로 시작.`
-    : `링크나 코드를 아는 사람만 들어옵니다. ${clockText(0)}으로 시작.`;
+  // The length of a turn a room starts with goes with who can come in; the host can change it in the
+  // room. A game without turns has none to speak of.
+  const who = chosenListed ? "목록에 보여 누구나 들어옵니다." : "링크나 코드를 아는 사람만 들어옵니다.";
+  const clock = chosenListed ? `${clockText(config.listedTurnSeconds)}로 시작.` : `${clockText(0)}으로 시작.`;
+  listedHint.textContent = game.turns ? `${who} ${clock}` : who;
   setBar(game.summary, `${game.minPlayers}명부터 ${game.maxPlayers}명까지 함께 합니다.`, true);
 }
 
@@ -538,7 +564,7 @@ function renderRoom(code: string, view: LobbyView): void {
   newRoom.hidden = true;
   room.hidden = false;
   roomCode.textContent = code;
-  scene.show(view);
+  showScene(view);
   syncScene();
 
   // The picture shows who is here; this list says the same in words for a screen reader.
@@ -578,13 +604,33 @@ function renderRoom(code: string, view: LobbyView): void {
     renderRoomBar();
     return;
   }
-  const enough = wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
+  // The same place holds what this game has to set before it starts: the length of a turn, or a team to choose.
+  const teams = game.teamSize > 0;
+  clockButton.hidden = !game.turns;
+  teamButton.hidden = !teams;
+  const myTeam = view.players.find((p) => p.slot === view.you)?.team ?? 0;
+  teamButton.textContent = myTeam === 0 ? "혼자 하기" : `팀 ${myTeam}`;
+  teamButton.title = `누르면 바뀝니다: 혼자, 또는 ${game.teamSize}명이 한 팀`;
+
+  // who would play: everyone connected, a team counting once
+  const sizes = new Map<number, number>();
+  for (const p of connected) if (p.team > 0) sizes.set(p.team, (sizes.get(p.team) ?? 0) + 1);
+  const broken = [...sizes].find(([, size]) => size !== game.teamSize);
+  const units = connected.filter((p) => p.team === 0).length + sizes.size;
+  const enough = teams
+    ? broken === undefined && (wantBots || units >= 2) && connected.length <= game.maxPlayers
+    : wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
   startButton.disabled = !isHost || !enough;
-  hint = !enough
-    ? `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
-    : isHost
-      ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}준비되면 시작하세요.`
-      : "방장이 시작하기를 기다리는 중입니다.";
+  hint =
+    broken !== undefined
+      ? `팀 ${broken[0]}이 ${broken[1]}명입니다. 팀은 정확히 ${game.teamSize}명이어야 합니다.`
+      : !enough
+        ? teams
+          ? "두 팀(혼자도 한 팀) 이상이 모이면 방장이 시작할 수 있습니다."
+          : `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
+        : isHost
+          ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}준비되면 시작하세요.`
+          : "방장이 시작하기를 기다리는 중입니다.";
   renderRoomBar();
 }
 
@@ -665,7 +711,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       gameOn = !over;
       if (over && (table === null || dismissedGame === message.startedAt)) return;
       shownGame = message.startedAt;
-      showTable().update(message);
+      showTable(message.game).update(message);
       return;
     }
     if (message.type === "refused") {
@@ -698,7 +744,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       if (!mine) {
         // over the speaker's seat too, so a line is seen without the chat on show
         if (table !== null) table.say(message.from, message.text);
-        else scene.say(message.from, message.text);
+        else scene?.say(message.from, message.text);
         if (table !== null && !chatOpen) {
           unread++;
           syncChat();
@@ -793,6 +839,13 @@ startButton.addEventListener("click", () => send({ type: "start", bots: wantBots
 listingButton.addEventListener("click", () => {
   if (currentView !== null) send({ type: "listing", listed: !currentView.listed });
 });
+teamButton.addEventListener("click", () => {
+  // each press moves on: alone, then each team the game has room for, and round again
+  const view = currentView;
+  if (view === null || !isGameId(view.game)) return;
+  const mine = view.players.find((p) => p.slot === view.you)?.team ?? 0;
+  send({ type: "team", team: (mine + 1) % (teamsIn(view.game, config) + 1) });
+});
 clockButton.addEventListener("click", () => {
   // each press moves to the next length the room offers, round to the first
   if (currentView === null) return;
@@ -871,6 +924,9 @@ addEventListener("keydown", (event) => {
 
 // The rules sheet of the game chosen or being waited for. During a game the table has its own (H).
 rulesOpen.addEventListener("click", () => {
+  // the sheet of the game being waited for, or of the one chosen for a new room
+  const game = currentView !== null && isGameId(currentView.game) ? currentView.game : chosenGame;
+  for (const sheet of rules.querySelectorAll<HTMLElement>("[data-game]")) sheet.hidden = sheet.dataset.game !== game;
   rules.hidden = false;
   el<HTMLButtonElement>("rules-close").focus();
 });

@@ -344,22 +344,23 @@ button.choice[aria-pressed="true"] {
   color: var(--amber);
 }
 
-.choices button.wide:first-child {
-  margin-top: 0;
+/* The games to pick from, two to a row: the list grows downwards as games are added. */
+#game-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
 }
 
-#game-summary,
+#game-choices button {
+  padding: 0 2px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 #listed-hint {
+  min-height: 39px;
   margin-top: 4px;
   color: var(--bone-dim);
-}
-
-#game-summary {
-  min-height: 39px;
-}
-
-#listed-hint {
-  min-height: 39px;
 }
 
 .row {
@@ -650,4 +651,12 @@ button.choice[aria-pressed="true"] {
   position: absolute;
   right: 14px;
   bottom: 10px;
+}
+
+/* A game's rules sheet covers the whole frame: what the page itself lays over the game gives way to it. */
+#frame.covered #leave-game,
+#frame.covered #tabs,
+#frame.covered #chat,
+#frame.covered #voice {
+  visibility: hidden;
 }

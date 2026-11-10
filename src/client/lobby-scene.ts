@@ -41,12 +41,20 @@ export interface LobbyScene {
 
 /** The widest a name is drawn beside a seat, in pixels. */
 const NAME_WIDTH = 66;
+/** What each team's tag is written in. */
+const TEAM_COLOURS = [C.teal, C.crim];
 
 /**
  * Draws the lobby's picture on `canvas`, which must be the size of the game's
- * scene. `voice` says how the player in a slot stands in the room's voice chat.
+ * scene. `voice` says how the player in a slot stands in the room's voice
+ * chat. `look.device` puts Russian Roulette's cylinder on the table; a game
+ * without it has a bare table.
  */
-export function createLobbyScene(canvas: HTMLCanvasElement, voice: (slot: number) => VoiceMark): LobbyScene {
+export function createLobbyScene(
+  canvas: HTMLCanvasElement,
+  voice: (slot: number) => VoiceMark,
+  look: { device: boolean },
+): LobbyScene {
   canvas.width = SCENE_W;
   canvas.height = BAR_Y;
   const context = canvas.getContext("2d");
@@ -78,7 +86,7 @@ export function createLobbyScene(canvas: HTMLCanvasElement, voice: (slot: number
     };
     for (const place of places) if (!place.at.back) seat(place);
     drawTable(pen);
-    drawDevice(pen, seats, time * 0.25, time * 0.25, () => [null, null]);
+    if (look.device) drawDevice(pen, seats, time * 0.25, time * 0.25, () => [null, null]);
     for (const place of places) if (place.at.back) seat(place);
     light.draw(pen, CX + sway, CY - 4, 1);
 
@@ -102,6 +110,13 @@ export function createLobbyScene(canvas: HTMLCanvasElement, voice: (slot: number
         pen.txt("방장", x + width - 25, y + 1, C.amber);
       }
       if (!player.connected) pen.txt("끊김", place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
+      else if (player.team > 0) {
+        // the team chosen for the next game, each team in its own colour
+        const tag = `팀 ${player.team}`;
+        const tx = place.slot === me ? x + width + 5 : x;
+        const ty = place.slot === me ? y : y + 13;
+        pen.txt(tag, tx, ty, TEAM_COLOURS[(player.team - 1) % TEAM_COLOURS.length]);
+      }
     }
     for (const place of places) {
       const line = speech.get(place.slot);

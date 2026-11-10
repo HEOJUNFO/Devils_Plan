@@ -3,6 +3,16 @@
     "title": "러시안 룰렛",
     "summary": "실탄이 든 약실을 캐내고 총구를 돌려, 마지막 격발에서 살아남으세요.",
     "minPlayers": 4,
-    "maxPlayers": 6
+    "maxPlayers": 6,
+    "teamSize": 0,
+    "turns": true
+  },
+  "count-rectangles": {
+    "title": "네모 세기",
+    "summary": "숫자를 더해 타깃이 되는 네모를 먼저 세어 버저를 누르세요. 두 번 맞히면 승리.",
+    "minPlayers": 2,
+    "maxPlayers": 6,
+    "teamSize": 3,
+    "turns": false
   }
 }
