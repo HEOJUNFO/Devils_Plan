@@ -16,7 +16,6 @@ import {
   type RoomConfig,
 } from "../shared/lobby";
 import {
-  JOIN_PARAMS,
   PARTY_NAME,
   parseServerMessage,
   type ClientMessage,
@@ -36,6 +35,7 @@ const REJECT_TEXT: Record<RejectReason, string> = {
   "bad-room": "방 코드 형식이 올바르지 않습니다.",
   "not-found": "그런 방이 없습니다.",
   "code-taken": "방을 만들지 못했습니다. 다시 시도해 주세요.",
+  "join-timeout": "연결이 너무 오래 걸렸습니다. 다시 시도해 주세요.",
 };
 
 function el<T extends HTMLElement>(id: string): T {
@@ -114,16 +114,16 @@ function disconnect(): void {
  */
 function connect(code: string, create: boolean, nick: string, attemptsLeft = 0): void {
   disconnect();
-  const query: Record<string, string> = {
-    [JOIN_PARAMS.token]: loadToken(),
-    [JOIN_PARAMS.nick]: nick,
-  };
-  if (create) query[JOIN_PARAMS.create] = "1";
+  // The token goes in the first message, never in the address, so it stays
+  // out of server logs and browser history.
+  const join: ClientMessage = { type: "join", token: loadToken(), nick, create };
 
-  const current = new PartySocket({ host: location.host, party: PARTY_NAME, room: code, query });
+  const current = new PartySocket({ host: location.host, party: PARTY_NAME, room: code });
   socket = current;
 
   current.addEventListener("open", () => {
+    // Fires again on every reconnect; the server expects `join` each time.
+    current.send(JSON.stringify(join));
     status.textContent = "연결됨";
   });
   current.addEventListener("close", () => {

@@ -1,11 +1,10 @@
 import { env, exports } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LobbyView } from "../../../src/shared/lobby";
 import {
   CLOSE_LEFT,
   CLOSE_REJECTED,
-  JOIN_PARAMS,
   PARTY_NAME,
   type ClientMessage,
   type ServerMessage,
@@ -35,6 +34,11 @@ class TestClient {
       ws.addEventListener("close", (event) => resolve(event.code), { once: true });
     });
     ws.accept();
+  }
+
+  /** How many messages have arrived and not been read. */
+  get unreadCount(): number {
+    return this.unread.length;
   }
 
   /** The next message not yet read. */
@@ -72,20 +76,49 @@ interface JoinOptions {
   token?: string;
 }
 
-/** Opens a WebSocket to `room` through the Worker, as a browser would. */
-async function open(room: string, options: JoinOptions): Promise<TestClient> {
-  const query = new URLSearchParams({
-    [JOIN_PARAMS.token]: options.token ?? tokenFor(options.player),
-    [JOIN_PARAMS.nick]: options.nick ?? `p${options.player}`,
-  });
-  if (options.create) query.set(JOIN_PARAMS.create, "1");
+/** Opens a WebSocket to `room` through the Worker without joining. */
+async function connect(room: string, query = ""): Promise<TestClient> {
   const response = await exports.default.fetch(
-    `http://example.com/parties/${PARTY_NAME}/${room}?${query}`,
+    `http://example.com/parties/${PARTY_NAME}/${room}${query}`,
     { headers: { Upgrade: "websocket" } },
   );
   expect(response.status).toBe(101);
   return new TestClient(response.webSocket!);
 }
+
+/** Connects to `room` and sends `join`, as the browser client does. */
+async function open(room: string, options: JoinOptions): Promise<TestClient> {
+  const client = await connect(room);
+  client.send({
+    type: "join",
+    token: options.token ?? tokenFor(options.player),
+    nick: options.nick ?? `p${options.player}`,
+    create: options.create ?? false,
+  });
+  return client;
+}
+
+/** Moves the clock forward. Only `Date` is faked; restored after each test. */
+function advanceClock(ms: number): void {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(Date.now() + ms);
+}
+
+const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
+const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
+
+/** Waits until the room has scheduled its alarm, then returns when it is due. */
+async function scheduledAlarm(stub: DurableObjectStub): Promise<number> {
+  return vi.waitFor(async () => {
+    const alarm = await runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
+    expect(alarm).not.toBeNull();
+    return alarm!;
+  });
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function connectedBySlot(lobby: LobbyView): Record<number, boolean> {
   return Object.fromEntries(lobby.players.map((p) => [p.slot, p.connected]));
@@ -251,15 +284,13 @@ describe("GameRoom", () => {
     expect(await b.next()).toEqual({ type: "error", reason: "not-found" });
   });
 
-  it("clears an abandoned room when its alarm fires", async () => {
+  it("clears an abandoned room once its countdown has run out", async () => {
     const stub = env.GameRoom.getByName("AAAAN");
     const a = await open("AAAAN", { player: 0, create: true });
     await a.next();
     a.close();
-    await vi.waitFor(async () => {
-      const alarm = await runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
-      expect(alarm).not.toBeNull();
-    });
+    await scheduledAlarm(stub);
+    advanceClock(EMPTY_ROOM_TTL_MS + 1);
 
     const ran = await runDurableObjectAlarm(stub);
 
@@ -268,17 +299,31 @@ describe("GameRoom", () => {
     expect(await b.next()).toEqual({ type: "error", reason: "not-found" });
   });
 
-  it("keeps a room whose alarm fires after someone came back", async () => {
+  it("keeps an abandoned room when the alarm fires before the countdown ends", async () => {
+    const stub = env.GameRoom.getByName("AAAAQ");
+    const a = await open("AAAAQ", { player: 0, create: true });
+    await a.next();
+    a.close();
+    const due = await scheduledAlarm(stub);
+
+    await runDurableObjectAlarm(stub);
+
+    const rearmed = await runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
+    expect(rearmed).toBe(due);
+    const b = await open("AAAAQ", { player: 1 });
+    expect(await b.next()).toMatchObject({ type: "lobby", you: 1 });
+    b.close();
+  });
+
+  it("keeps a room whose countdown runs out after someone came back", async () => {
     const stub = env.GameRoom.getByName("AAAAP");
     const a = await open("AAAAP", { player: 0, create: true });
     await a.next();
     a.close();
-    await vi.waitFor(async () => {
-      const alarm = await runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
-      expect(alarm).not.toBeNull();
-    });
+    await scheduledAlarm(stub);
     const back = await open("AAAAP", { player: 0 });
     await back.next();
+    advanceClock(EMPTY_ROOM_TTL_MS + 1);
 
     await runDurableObjectAlarm(stub);
 
@@ -286,5 +331,83 @@ describe("GameRoom", () => {
     expect(await b.next()).toMatchObject({ type: "lobby", you: 1 });
     back.close();
     b.close();
+  });
+
+  it("ignores credentials placed in the address", async () => {
+    const query = `?token=${tokenFor(0)}&nick=ann&create=1`;
+    const viaAddress = await connect("AAAAR", query);
+
+    const b = await open("AAAAR", { player: 1 });
+
+    expect(await b.next()).toEqual({ type: "error", reason: "not-found" });
+    expect(viaAddress.unreadCount).toBe(0);
+    viaAddress.close();
+  });
+
+  it("sends nothing to a connection that has not joined", async () => {
+    const a = await open("AAAAS", { player: 0, create: true });
+    await a.next();
+    const watcher = await connect("AAAAS");
+
+    const b = await open("AAAAS", { player: 1 });
+    await b.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+
+    expect(watcher.unreadCount).toBe(0);
+    a.close();
+    b.close();
+    watcher.close();
+  });
+
+  it("does not count a connection that has not joined as a player", async () => {
+    const a = await open("AAAAT", { player: 0, create: true });
+    await a.next();
+    const watcher = await connect("AAAAT");
+
+    const b = await open("AAAAT", { player: 1 });
+
+    expect(await b.next()).toMatchObject({ you: 1, players: [{ slot: 0 }, { slot: 1 }] });
+    a.close();
+    b.close();
+    watcher.close();
+  });
+
+  it("closes a connection that never joined when the next one arrives after the deadline", async () => {
+    const idle = await connect("AAAAU");
+    advanceClock(JOIN_TIMEOUT_MS + 1);
+
+    const a = await open("AAAAU", { player: 0, create: true });
+    await a.next();
+
+    expect(await idle.next()).toEqual({ type: "error", reason: "join-timeout" });
+    expect(await idle.closed).toBe(CLOSE_REJECTED);
+    a.close();
+  });
+
+  it("leaves a connection that has not joined alone before the deadline", async () => {
+    const idle = await connect("AAAAV");
+    advanceClock(JOIN_TIMEOUT_MS - 1000);
+
+    const a = await open("AAAAV", { player: 0, create: true });
+    await a.next();
+
+    expect(idle.unreadCount).toBe(0);
+    idle.close();
+    a.close();
+  });
+
+  it("ignores a second join on a seated connection", async () => {
+    const a = await open("AAAAW", { player: 0, nick: "ann", create: true });
+    await a.next();
+    const b = await open("AAAAW", { player: 1 });
+    await b.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+
+    a.send({ type: "join", token: tokenFor(5), nick: "imp", create: false });
+    b.send({ type: "leave" });
+
+    const lobby = await a.lobbyWhere((l) => l.players.length === 1);
+    expect(lobby.players).toEqual([{ slot: 0, nick: "ann", connected: true }]);
+    a.close();
   });
 });

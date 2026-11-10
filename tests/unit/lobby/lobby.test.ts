@@ -20,6 +20,7 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     roomCodeAlphabet: "ABCD",
     nickMaxLength: 6,
     emptyRoomTtlMinutes: 10,
+    joinTimeoutSeconds: 5,
     ...overrides,
   };
 }

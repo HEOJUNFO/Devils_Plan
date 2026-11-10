@@ -19,6 +19,8 @@ export interface RoomConfig {
   nickMaxLength: number;
   /** Minutes a room with nobody connected is kept before it is cleared. */
   emptyRoomTtlMinutes: number;
+  /** Seconds a new connection has to send `join` before it may be closed. */
+  joinTimeoutSeconds: number;
 }
 
 /** A player as the server stores them. `token` is secret to that player. */
