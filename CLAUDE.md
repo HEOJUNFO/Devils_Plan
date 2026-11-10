@@ -14,6 +14,19 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 > **Note**: Engine-specialist agents exist for Godot, Unity, and Unreal with
 > dedicated sub-specialists. Use the set matching your engine.
 
+## Project Rules (Devils_Plan)
+
+Rules the user set for this project. Where they differ from the framework's
+defaults in this file, these win.
+
+- **Multiplayer is the product; bots are a test aid.** Real users are only ever
+  offered games against other people. Build bots and single-player only as far
+  as tests and development need: one basic bot per game that makes legal moves
+  and can finish a game. No skill levels, no opponent reading or bluffing, no
+  bot personalities, no big tuning tables, no single-player screens or polish.
+  Bots that seem dull or weak are not a defect: leave them and spend the time
+  on multiplayer. Full rule and its reason: `.claude/rules/bots.md`.
+
 ## Project Structure
 
 @.claude/docs/directory-structure.md
