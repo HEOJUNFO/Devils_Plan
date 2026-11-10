@@ -75,6 +75,11 @@ export interface Candidate {
   slot: number;
 }
 
+/** Why a change to the room's settings was not made. */
+export type SettingRefusal =
+  /** The value asked for is not one the room offers. */
+  "bad-setting";
+
 /** Why a game was not started. */
 export type StartRefusal =
   /** A game is being played. */

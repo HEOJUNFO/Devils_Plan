@@ -16,7 +16,9 @@ import {
   leaveLobby,
   markAway,
   setListed,
+  setTurnSeconds,
   slotLapsesAt,
+  turnSecondsOf,
   viewLobby,
   type LobbyState,
   type RoomConfig,
@@ -42,6 +44,7 @@ import {
   type Presence,
   type Session,
   type SessionConfig,
+  type SettingRefusal,
   type StartRefusal,
 } from "../shared/session";
 import { Timers } from "./timers";
@@ -212,6 +215,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "action") await this.handleAction(connection, state.slot, parsed.action);
     else if (parsed.type === "listing") await this.handleListing(connection, state.slot, parsed.listed);
     else if (parsed.type === "chat") this.handleChat(connection, state.slot, parsed.text);
+    else if (parsed.type === "clock") this.handleClock(connection, state.slot, parsed.seconds);
   }
 
   /**
@@ -250,11 +254,11 @@ export class GameRoom extends Server<Env> {
     let lobby = this.lobby;
     if (lobby === null) {
       if (!request.create) return this.reject(connection, "not-found");
-      lobby = createLobby(request.game, request.listed);
+      lobby = createLobby(request.game, request.listed, config);
     } else if (request.create && lobby.players.length === 0) {
       // Everybody who was here has gone and the room was only being kept for
       // them: it is made again, as its new maker asks.
-      lobby = createLobby(request.game, request.listed);
+      lobby = createLobby(request.game, request.listed, config);
       await this.commitSession(null);
     } else if (request.create && !findPlayer(lobby, request.token)) {
       // A reconnect repeats the original request, so the room's own members
@@ -329,6 +333,21 @@ export class GameRoom extends Server<Env> {
     }
   }
 
+  /**
+   * Sets how long a turn lasts in the games started here, if the one asking
+   * is the host. A game being played keeps the length it started with.
+   */
+  private handleClock(connection: Connection<ConnectionState>, slot: number, seconds: number): void {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (Math.min(...this.connectedSlots()) !== slot) return this.refuse(connection, "not-host");
+    const next = setTurnSeconds(lobby, seconds, config);
+    if (next === null) return this.refuse(connection, "bad-setting");
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
+  }
+
   /** Puts the room on the list of rooms or takes it off, if the one asking is the host. */
   private async handleListing(connection: Connection<ConnectionState>, slot: number, listed: boolean): Promise<void> {
     const lobby = this.lobby;
@@ -357,7 +376,8 @@ export class GameRoom extends Server<Env> {
         now: Date.now(),
       },
       presence,
-      sessionConfig,
+      // the length of a turn is the room's own setting; the rest of the rules are the game's
+      { ...sessionConfig, rules: { ...sessionConfig.rules, turnSeconds: turnSecondsOf(lobby) } },
     );
     if (!result.ok) return this.refuse(connection, result.reason);
     await this.commitSession(result.session);
@@ -573,7 +593,10 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Tells one connection that what it asked was not accepted. */
-  private refuse(connection: Connection<ConnectionState>, reason: StartRefusal | MoveRefusal | ChatRefusal): void {
+  private refuse(
+    connection: Connection<ConnectionState>,
+    reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal,
+  ): void {
     const message: ServerMessage = { type: "refused", reason };
     connection.send(JSON.stringify(message));
   }

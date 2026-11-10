@@ -61,6 +61,17 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "chat", text: ["hi"] }))).toBeNull();
   });
 
+  it("reads a change of the length of a turn", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "clock", seconds: 60 }))).toEqual({ type: "clock", seconds: 60 });
+    expect(parseClientMessage(JSON.stringify({ type: "clock", seconds: 0 }))).toEqual({ type: "clock", seconds: 0 });
+  });
+
+  it("rejects a length of a turn that is not a number", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "clock" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "clock", seconds: "60" }))).toBeNull();
+    expect(parseClientMessage('{"type":"clock","seconds":1e999}')).toBeNull();
+  });
+
   it("rejects a change of listing that does not say which way", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: "true" }))).toBeNull();

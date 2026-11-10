@@ -8,7 +8,7 @@ import type { RoomListing } from "./directory";
 import { parseAction, type Action } from "./game";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import type { JoinRejection, LobbyView } from "./lobby";
-import type { GameSnapshot, MoveRefusal, StartRefusal } from "./session";
+import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
 
 /**
  * URL segment PartyServer derives from the `GameRoom` Durable Object binding.
@@ -57,7 +57,7 @@ export type ServerMessage =
    */
   | ({ type: "game"; room: string } & GameSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
-  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal }
+  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal }
   /**
    * A line someone in the room said, sent to everyone in it, the speaker
    * included. The room keeps no lines: someone who comes in later does not
@@ -101,7 +101,13 @@ export type ClientMessage =
   /** Put the room on the list of rooms anyone can join, or take it off; only the host may. */
   | { type: "listing"; listed: boolean }
   /** Say a line to everyone in the room. */
-  | { type: "chat"; text: string };
+  | { type: "chat"; text: string }
+  /**
+   * Set how long a player has for a move in the games started in this room,
+   * in seconds (0 for no limit); only the host may, and only one of the
+   * lengths the room offers.
+   */
+  | { type: "clock"; seconds: number };
 
 function parseObject(raw: unknown, maxLength: number): Record<string, unknown> | null {
   if (typeof raw !== "string" || raw.length > maxLength) return null;
@@ -136,6 +142,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   }
   if (data.type === "chat") {
     return typeof data.text === "string" ? { type: "chat", text: data.text } : null;
+  }
+  if (data.type === "clock") {
+    return typeof data.seconds === "number" && Number.isFinite(data.seconds) ? { type: "clock", seconds: data.seconds } : null;
   }
   if (data.type === "start") return { type: "start", bots: data.bots === true };
   if (data.type === "action") {

@@ -72,7 +72,13 @@ const REFUSED_TEXT: Record<string, string> = {
   "bad-player-count": "지금 인원으로는 시작할 수 없습니다.",
   "already-playing": "이미 판이 진행 중입니다.",
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다.",
+  "bad-setting": "그 설정은 이 방에서 쓸 수 없습니다.",
 };
+
+/** How the length of a turn is said: on the button in the waiting room and when making a room. */
+function clockText(seconds: number): string {
+  return seconds > 0 ? `차례 ${seconds}초` : "차례 무제한";
+}
 
 /** Said in the chat to a player whose lines come too fast for the room to pass on. */
 const CHAT_TOO_FAST_TEXT = "너무 빨리 보내고 있습니다. 잠시 뒤에 다시 보내세요.";
@@ -109,6 +115,7 @@ const status = el<HTMLElement>("status");
 const players = el<HTMLOListElement>("players");
 const startButton = el<HTMLButtonElement>("start");
 const copyButton = el<HTMLButtonElement>("copy");
+const clockButton = el<HTMLButtonElement>("clock");
 const chatBox = el<HTMLElement>("chat");
 const chatInput = el<HTMLInputElement>("chat-input");
 const tabs = el<HTMLElement>("tabs");
@@ -397,7 +404,10 @@ function renderNewRoom(): void {
   gameSummary.textContent = `${game.minPlayers}~${game.maxPlayers}명. ${game.summary}`;
   listedYes.setAttribute("aria-pressed", String(chosenListed));
   listedNo.setAttribute("aria-pressed", String(!chosenListed));
-  listedHint.textContent = chosenListed ? "로비의 방 목록에 보여 누구나 들어옵니다." : "초대 링크나 방 코드를 아는 사람만 들어옵니다.";
+  // the length of a turn a room starts with goes with who can come in; the host can change it in the room
+  listedHint.textContent = chosenListed
+    ? `목록에 보여 누구나 들어옵니다. ${clockText(config.listedTurnSeconds)}로 시작.`
+    : `링크나 코드를 아는 사람만 들어옵니다. ${clockText(0)}으로 시작.`;
   setBar(game.summary, `${game.minPlayers}명부터 ${game.maxPlayers}명까지 함께 합니다.`, true);
 }
 
@@ -484,6 +494,9 @@ function renderRoom(code: string, view: LobbyView): void {
   document.title = `${game?.title ?? SITE_TITLE} · ${code}`;
   listingButton.hidden = !isHost;
   listingButton.textContent = view.listed ? "비공개로" : "공개로";
+  clockButton.textContent = clockText(view.turnSeconds);
+  clockButton.disabled = !isHost;
+  clockButton.title = isHost ? "누르면 차례 제한 시간을 바꿉니다" : "차례 제한 시간은 방장이 정합니다";
   if (game === null) {
     startButton.disabled = true;
     hint = "새로고침하면 이 게임을 할 수 있습니다.";
@@ -656,16 +669,27 @@ el<HTMLButtonElement>("join").addEventListener("click", joinFromInput);
 nickInput.addEventListener("keydown", (event) => {
   // Enter in the nickname box does what the box below it is ready for.
   if (event.key !== "Enter" || event.isComposing) return;
+  // the same press must not also press the button the form puts the cursor on
+  event.preventDefault();
   if (codeInput.value.trim() !== "") joinFromInput();
   else showNewRoom();
 });
 codeInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter" && !event.isComposing) joinFromInput();
+  if (event.key !== "Enter" || event.isComposing) return;
+  event.preventDefault();
+  joinFromInput();
 });
 el<HTMLButtonElement>("leave").addEventListener("click", leaveRoom);
 startButton.addEventListener("click", () => send({ type: "start", bots: wantBots }));
 listingButton.addEventListener("click", () => {
   if (currentView !== null) send({ type: "listing", listed: !currentView.listed });
+});
+clockButton.addEventListener("click", () => {
+  // each press moves to the next length the room offers, round to the first
+  if (currentView === null) return;
+  const choices = config.turnSecondsChoices;
+  const at = choices.indexOf(currentView.turnSeconds);
+  send({ type: "clock", seconds: choices[(at + 1) % choices.length] });
 });
 
 // Leaving a game hands the seat to the room, so it takes a second press: the

@@ -320,7 +320,7 @@ button.choice[aria-pressed="true"] {
 }
 
 #listed-hint {
-  min-height: 26px;
+  min-height: 39px;
 }
 
 .row {
@@ -351,6 +351,11 @@ button.choice[aria-pressed="true"] {
 
 .row.bottom.second {
   bottom: 27px;
+}
+
+/* How long a turn lasts: the host's to change, everyone's to read. */
+#clock:disabled {
+  color: var(--bone-dim);
 }
 
 .or {

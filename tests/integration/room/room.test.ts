@@ -142,8 +142,61 @@ describe("GameRoom", () => {
       maxPlayers: roomConfig.maxPlayers,
       game: DEFAULT_GAME,
       listed: false,
+      turnSeconds: 0,
       players: [{ slot: 0, nick: "ann", connected: true }],
     });
+    a.close();
+  });
+
+  it("starts a room on the list with the limit on a turn such rooms have", async () => {
+    const a = await open("AAAA8", { player: 0, create: true, listed: true });
+
+    expect(await a.next()).toMatchObject({ type: "lobby", listed: true, turnSeconds: roomConfig.listedTurnSeconds });
+    a.close();
+  });
+
+  it("lets the host set how long a turn lasts, and tells everyone", async () => {
+    const a = await open("AAAA9", { player: 0, create: true });
+    const b = await open("AAAA9", { player: 1 });
+    await b.next();
+    const longest = Math.max(...roomConfig.turnSecondsChoices);
+
+    a.send({ type: "clock", seconds: longest });
+
+    expect(await a.lobbyWhere((l) => l.turnSeconds === longest)).toMatchObject({ turnSeconds: longest });
+    expect(await b.lobbyWhere((l) => l.turnSeconds === longest)).toMatchObject({ turnSeconds: longest });
+    a.close();
+    b.close();
+  });
+
+  it("refuses a length of turn from someone who is not the host", async () => {
+    const a = await open("AAAB2", { player: 0, create: true });
+    const b = await open("AAAB2", { player: 1 });
+    await b.next();
+
+    b.send({ type: "clock", seconds: Math.max(...roomConfig.turnSecondsChoices) });
+
+    for (;;) {
+      const message = await b.next();
+      if (message.type === "refused") {
+        expect(message).toEqual({ type: "refused", reason: "not-host" });
+        break;
+      }
+    }
+    const c = await open("AAAB2", { player: 2 });
+    expect(await c.next()).toMatchObject({ type: "lobby", turnSeconds: 0 });
+    a.close();
+    b.close();
+    c.close();
+  });
+
+  it("refuses a length of turn the room does not offer", async () => {
+    const a = await open("AAAB3", { player: 0, create: true });
+    await a.next();
+
+    a.send({ type: "clock", seconds: Math.max(...roomConfig.turnSecondsChoices) + 1 });
+
+    expect(await a.next()).toEqual({ type: "refused", reason: "bad-setting" });
     a.close();
   });
 

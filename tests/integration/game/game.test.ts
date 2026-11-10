@@ -415,6 +415,53 @@ describe("GameRoom: playing a game", () => {
     a.close();
   }, 20_000);
 
+  it("runs no clock for a player who is here, unless the room has set one", async () => {
+    const clients = await table("GAAAV", SMALLEST);
+
+    const games = await startGame(clients);
+
+    for (const game of games) expect(game).toMatchObject({ turnEndsIn: null, rules: { turnSeconds: 0 } });
+    closeAll(clients);
+  });
+
+  it("gives every move the length of turn the host has set, and makes the move itself when it runs out", async () => {
+    const stub = env.GameRoom.getByName("GAAAW");
+    const clients = await table("GAAAW", SMALLEST);
+    const seconds = Math.min(...roomConfig.turnSecondsChoices.filter((choice) => choice > 0));
+    clients[0].send({ type: "clock", seconds });
+    const games = await startGame(clients);
+    const acting = mover(games);
+    await scheduledAlarm(stub);
+    advanceClock(seconds * 1000 + 1);
+
+    await runDurableObjectAlarm(stub);
+
+    const after = await clients[acting].gameWhere((game) => game.view.history.length === 1);
+    expect(games[acting].rules.turnSeconds).toBe(seconds);
+    expect(games[acting].turnEndsIn).toBeGreaterThan(0);
+    expect(games[acting].turnEndsIn).toBeLessThanOrEqual(seconds * 1000);
+    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, amount: 1, forced: true });
+    expect(after.players[games[acting].view.seat!]).toMatchObject({ connected: true, left: false });
+    // the next player's own time starts when the move is made
+    expect(after.turnEndsIn).toBeGreaterThan(seconds * 1000 - 1000);
+    closeAll(clients);
+  });
+
+  it("keeps the length of turn a game started with when the host changes it during the game", async () => {
+    const clients = await table("GAAAX", SMALLEST);
+    const [short, long] = roomConfig.turnSecondsChoices.filter((choice) => choice > 0);
+    clients[0].send({ type: "clock", seconds: short });
+    const games = await startGame(clients);
+    const acting = mover(games);
+
+    clients[0].send({ type: "clock", seconds: long });
+    clients[acting].send({ type: "action", action: { type: "tamper", amount: 1 } });
+
+    const after = await clients[acting].gameWhere((game) => game.view.history.length === 1);
+    expect(after.rules.turnSeconds).toBe(short);
+    closeAll(clients);
+  });
+
   it("never sends a player anyone's token", async () => {
     const clients = await table("GAAAR", SMALLEST);
     const games = await startGame(clients);

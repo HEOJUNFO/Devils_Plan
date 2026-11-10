@@ -6,5 +6,7 @@
   "emptyRoomTtlMinutes": 1440,
   "joinTimeoutSeconds": 10,
   "awayTurnSeconds": 30,
-  "awaySlotSeconds": 180
+  "awaySlotSeconds": 180,
+  "turnSecondsChoices": [0, 60, 120],
+  "listedTurnSeconds": 60
 }

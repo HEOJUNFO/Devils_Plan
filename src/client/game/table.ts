@@ -92,6 +92,8 @@ const HURRY_AFTER = 3;
 const HURRY = 0.4;
 /** Seconds between shots of the final volley. */
 const FIRE_GAP = 0.9;
+/** With this many seconds or fewer left on a turn, the count turns red and the player's own is ticked aloud. */
+const TICK_FROM = 10;
 /** The widest a name is drawn beside a seat, and in the log, in pixels. */
 const NAME_WIDTH = 66;
 const LOG_NAME_WIDTH = 52;
@@ -224,6 +226,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   const lean: [number, number] = [0, 0];
   /** Whether the player could act at the last step; a change to yes is announced. */
   let couldAct = false;
+  /** The last second of the player's own turn that was ticked aloud. */
+  let ticked = -1;
   const playing: PlayingFx[] = [];
 
   const keys = new Set<string>();
@@ -271,6 +275,12 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   }
 
   /** The seat whose move the table is waiting for, once everything has been shown. */
+  /** Whole seconds until the room makes the awaited move itself, or `null` while no clock runs. */
+  function secondsLeft(): number | null {
+    if (latest === null || latest.turnEndsIn === null || latest.view.phase === "ended") return null;
+    return Math.max(0, Math.ceil((latest.turnEndsIn - (time - received) * 1000) / 1000));
+  }
+
   function awaited(): number | null {
     if (latest === null || latest.view.phase === "ended") return null;
     const view = latest.view;
@@ -680,6 +690,14 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       lean[0] += (tx - lean[0]) * Math.min(1, dt * 5);
       lean[1] += (ty - lean[1]) * Math.min(1, dt * 5);
 
+      // my own time is nearly up: a tick a second
+      const left = settled() && awaited() === latest.view.seat ? secondsLeft() : null;
+      if (left === null || left > TICK_FROM) ticked = -1;
+      else if (left !== ticked) {
+        ticked = left;
+        if (left > 0) sfx.move();
+      }
+
       // one seat from the end: a pulse
       if (latest.view.phase !== "ended" && latest.view.outCount >= latest.rules.endWhenOut - 1) {
         beat -= dt;
@@ -823,11 +841,19 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const bx = at.bubble.x;
       const by = at.bubble.y;
       const act = acts[seat];
+      const left = waiting === seat ? secondsLeft() : null;
       if (deal > 0) {
         bubbleBox(pen, bx, by);
         pen.txt(`${seat + 1}`, bx, by - 6, C.amber, "center");
       } else if (fallen[seat]) {
         // nothing
+      } else if (left !== null) {
+        // a clock runs on this seat: the seconds until the room moves for it
+        const text = `${left}`;
+        const half = Math.max(7, Math.ceil(pen.width(text) / 2) + 3);
+        pen.px(bx - half, by - 7, half * 2 + 1, 15, C.ink);
+        pen.px(bx - half + 1, by - 6, half * 2 - 1, 13, C.btnH);
+        pen.txt(text, bx + 1, by - 6, left <= TICK_FROM ? C.crim : C.amber, "center");
       } else if (waiting === seat && !mine) {
         bubbleBox(pen, bx, by);
         for (let i = 0; i < 3; i++) pen.px(bx - 4 + i * 4, by + (Math.floor(time * 6) % 3 === i ? -2 : 0), 2, 2, C.bone);
@@ -1123,7 +1149,12 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       ["남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없습니다.", C.bone],
       [`${rules.endWhenOut}명이 크레딧을 다 쓰면 끝. 총구가 향한 자리부터 시계 방향으로`, C.bone],
       ["한 발씩 격발하고, 실탄을 맞은 사람이 탈락합니다.", C.bone],
-      ["접속이 끊긴 사람의 차례는 잠시 뒤 자동으로 1크레딧 제출로 넘어갑니다.", C.boneD],
+      [
+        rules.turnSeconds > 0
+          ? `이 방은 차례마다 ${rules.turnSeconds}초: 넘기면 자동으로 1크레딧 제출 (접속이 끊기면 더 빨리).`
+          : "접속이 끊긴 사람의 차례는 잠시 뒤 자동으로 1크레딧 제출로 넘어갑니다.",
+        C.boneD,
+      ],
       ["H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", C.amber],
     ];
     pen.clear(C.night);

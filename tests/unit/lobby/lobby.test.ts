@@ -13,7 +13,9 @@ import {
   markAway,
   normalizeNick,
   setListed,
+  setTurnSeconds,
   slotLapsesAt,
+  turnSecondsOf,
   viewLobby,
   type LobbyState,
   type RoomConfig,
@@ -30,6 +32,8 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     joinTimeoutSeconds: 5,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
+    turnSecondsChoices: [0, 20, 40],
+    listedTurnSeconds: 20,
     ...overrides,
   };
 }
@@ -236,6 +240,70 @@ describe("a new lobby", () => {
   });
 });
 
+describe("the length of a turn", () => {
+  it("has no limit in a room reached by its code alone, as the game is documented", () => {
+    expect(turnSecondsOf(createLobby(DEFAULT_GAME, false, testConfig()))).toBe(0);
+  });
+
+  it("starts at the limit rooms on the list have, in a room on the list", () => {
+    const config = testConfig();
+
+    expect(turnSecondsOf(createLobby(DEFAULT_GAME, true, config))).toBe(config.listedTurnSeconds);
+  });
+
+  it("has no limit in a room stored before rooms had one", () => {
+    const config = testConfig();
+    const old: LobbyState = { players: lobbyWith(1, config).players };
+
+    expect(turnSecondsOf(old)).toBe(0);
+    expect(viewLobby(old, new Set([0]), 0, config).turnSeconds).toBe(0);
+  });
+
+  it("can be set to any of the lengths the room offers", () => {
+    const config = testConfig();
+    const state = lobbyWith(1, config);
+
+    for (const seconds of config.turnSecondsChoices) {
+      const next = setTurnSeconds(state, seconds, config);
+      expect(next === null ? null : turnSecondsOf(next)).toBe(seconds);
+    }
+  });
+
+  it.each([["a length between the choices", 30], ["a negative length", -20], ["a fraction", 20.5], ["not a number", Number.NaN]])(
+    "cannot be set to %s",
+    (_what, seconds) => {
+      const config = testConfig();
+
+      expect(setTurnSeconds(lobbyWith(1, config), seconds, config)).toBeNull();
+    },
+  );
+
+  it("changes nothing when it is already so", () => {
+    const config = testConfig();
+    const state = createLobby(DEFAULT_GAME, true, config);
+
+    expect(setTurnSeconds(state, config.listedTurnSeconds, config)).toBe(state);
+  });
+
+  it("is shown to everyone in the room", () => {
+    const config = testConfig();
+    const state = setTurnSeconds(lobbyWith(2, config), 40, config);
+    if (state === null) throw new Error("fixture setting refused");
+
+    expect(viewLobby(state, new Set([0, 1]), 1, config).turnSeconds).toBe(40);
+  });
+
+  it("stays as it is while players come and go", () => {
+    const config = testConfig();
+    const set = setTurnSeconds(lobbyWith(2, config), 40, config);
+    if (set === null) throw new Error("fixture setting refused");
+
+    const next = leaveLobby(set, tokenFor(1));
+
+    expect(turnSecondsOf(next)).toBe(40);
+  });
+});
+
 describe("setListed", () => {
   it("puts a room on the list and takes it off", () => {
     const config = testConfig();
@@ -401,7 +469,7 @@ describe("dropLapsed", () => {
 
     const next = dropLapsed(state, NOW + config.awaySlotSeconds * 1000, config, () => false);
 
-    expect(next).toEqual({ players: [], game: DEFAULT_GAME, listed: true });
+    expect(next).toEqual({ players: [], game: DEFAULT_GAME, listed: true, turnSeconds: 0 });
   });
 });
 

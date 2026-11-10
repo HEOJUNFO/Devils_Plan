@@ -31,6 +31,15 @@ export interface RoomConfig {
    * come back, short enough that a room does not fill with people who left.
    */
   awaySlotSeconds: number;
+  /**
+   * The lengths of turn a host may choose from, in seconds; 0 is no limit,
+   * which is how the game is documented. A limit is a matter of hosting, not
+   * of the rules: among strangers, one player who walks away from the screen
+   * would otherwise hold the table for good.
+   */
+  turnSecondsChoices: number[];
+  /** The length of turn a room on the list starts with. A room off it starts with no limit. */
+  listedTurnSeconds: number;
 }
 
 /** A player as the server stores them. `token` is secret to that player. */
@@ -58,6 +67,8 @@ export interface LobbyState {
    * room stored before the list existed, which is then not on it.
    */
   listed?: boolean;
+  /** Seconds a player has for a move in the games started here; 0 or absent for no limit. */
+  turnSeconds?: number;
 }
 
 /** A player as everyone may see them. Carries no token. */
@@ -77,6 +88,8 @@ export interface LobbyView {
   game: GameId;
   /** Whether the room is on the list of rooms anyone can join. */
   listed: boolean;
+  /** Seconds a player has for a move in the next game started here; 0 for no limit. */
+  turnSeconds: number;
   players: PublicPlayer[];
 }
 
@@ -90,9 +103,28 @@ export type JoinResult =
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 
-/** A new, empty lobby for `game`, on the list of rooms or reached by its code alone. */
-export function createLobby(game: GameId = DEFAULT_GAME, listed = false): LobbyState {
-  return { players: [], game, listed };
+/**
+ * A new, empty lobby for `game`, on the list of rooms or reached by its code
+ * alone. Given `config`, a room on the list starts with the limit on a turn
+ * that such rooms have; any other starts with none.
+ */
+export function createLobby(game: GameId = DEFAULT_GAME, listed = false, config?: RoomConfig): LobbyState {
+  return { players: [], game, listed, turnSeconds: listed && config ? config.listedTurnSeconds : 0 };
+}
+
+/** Seconds a player has for a move in the games started in this room; 0 for no limit. */
+export function turnSecondsOf(state: LobbyState): number {
+  return state.turnSeconds ?? 0;
+}
+
+/**
+ * Sets the length of a turn for the games started in this room. Returns
+ * `null` for a length that is not one of the choices, and the state unchanged
+ * when it is already so. The input state is not modified.
+ */
+export function setTurnSeconds(state: LobbyState, seconds: number, config: RoomConfig): LobbyState | null {
+  if (!config.turnSecondsChoices.includes(seconds)) return null;
+  return turnSecondsOf(state) === seconds ? state : { ...state, turnSeconds: seconds };
 }
 
 /** The game a room was made for. */
@@ -259,6 +291,7 @@ export function viewLobby(
     maxPlayers: config.maxPlayers,
     game: gameOf(state),
     listed: state.listed === true,
+    turnSeconds: turnSecondsOf(state),
     players: state.players.map((p) => ({
       slot: p.slot,
       nick: p.nick,

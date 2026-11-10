@@ -22,6 +22,8 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     joinTimeoutSeconds: 5,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
+    turnSecondsChoices: [0, 20, 40],
+    listedTurnSeconds: 20,
     ...overrides,
   };
 }
