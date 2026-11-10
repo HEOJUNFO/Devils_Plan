@@ -153,6 +153,18 @@ ul {
   background: var(--night);
 }
 
+/* The corridor behind the list; rows are laid over it from the top. */
+#lobby-art {
+  width: 304px;
+  height: 222px;
+}
+
+#rooms header,
+#rooms-note,
+#room-list {
+  position: relative;
+}
+
 #rooms header {
   display: flex;
   flex: none;
@@ -173,7 +185,7 @@ ul {
 }
 
 #room-list {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   list-style: none;
@@ -191,7 +203,7 @@ ul {
   padding: 2px 6px 0;
   border: 0;
   border-bottom: 1px solid var(--line);
-  background: transparent;
+  background: var(--night);
   text-align: left;
 }
 
@@ -229,6 +241,7 @@ ul {
   flex: none;
   padding: 6px 6px 7px;
   border-bottom: 1px solid var(--line);
+  background: var(--night);
   color: var(--bone-dim);
 }
 

@@ -33,6 +33,7 @@ import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
 import { createTable, type Table } from "./game/table";
+import { drawLobbyArt } from "./lobby-art";
 import { createLobbyScene } from "./lobby-scene";
 import { createVoice } from "./voice";
 
@@ -144,6 +145,8 @@ const leaveGameButton = el<HTMLButtonElement>("leave-game");
 
 /** What the page is called while no room is open. */
 const SITE_TITLE = document.title;
+
+drawLobbyArt(el<HTMLCanvasElement>("lobby-art"));
 
 const profile = new URLSearchParams(location.search).get("profile") ?? "";
 const storageKey = (name: string) => `empty-chamber.${name}${profile ? `.${profile}` : ""}`;
