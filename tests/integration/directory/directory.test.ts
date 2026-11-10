@@ -2,54 +2,12 @@ import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import type { RoomListing } from "../../../src/shared/directory";
 import { DEFAULT_GAME, GAMES } from "../../../src/shared/games";
-import {
-  DIRECTORY_NAME,
-  DIRECTORY_PARTY,
-  PARTY_NAME,
-  type ClientMessage,
-  type DirectoryMessage,
-  type ServerMessage,
-} from "../../../src/shared/protocol";
+import { DIRECTORY_NAME, DIRECTORY_PARTY, PARTY_NAME, type DirectoryMessage } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
-
-type LobbyMessage = Extract<ServerMessage, { type: "lobby" }>;
+import { Inbox, join as open, socket, type TestClient } from "../support";
 
 /** The most players the list says a room of the first game can have. */
 const MOST = Math.min(roomConfig.maxPlayers, GAMES[DEFAULT_GAME].maxPlayers);
-
-/** A well-formed token that is different for each `n`. */
-function tokenFor(n: number): string {
-  return `player-token-${String(n).padStart(4, "0")}`;
-}
-
-/** A socket that records what it is sent, read one message at a time. */
-class Inbox<Message> {
-  private readonly unread: Message[] = [];
-  private waiting: (() => void) | null = null;
-
-  constructor(protected readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) => {
-      this.unread.push(JSON.parse(event.data as string) as Message);
-      this.waiting?.();
-    });
-    ws.accept();
-  }
-
-  /** The next message not yet read. */
-  async next(): Promise<Message> {
-    while (this.unread.length === 0) {
-      await new Promise<void>((resolve) => {
-        this.waiting = resolve;
-      });
-      this.waiting = null;
-    }
-    return this.unread.shift()!;
-  }
-
-  close(): void {
-    this.ws.close(1000, "test done");
-  }
-}
 
 /** Someone looking at the list of rooms. */
 class Viewer extends Inbox<DirectoryMessage> {
@@ -65,75 +23,18 @@ class Viewer extends Inbox<DirectoryMessage> {
       if (match(room)) return room;
     }
   }
-
-  /** Sends text the directory is not meant to read. */
-  sendRaw(text: string): void {
-    this.ws.send(text);
-  }
-}
-
-/** A player in a room. */
-class Player extends Inbox<ServerMessage> {
-  send(message: ClientMessage): void {
-    this.ws.send(JSON.stringify(message));
-  }
-
-  /** Reads forward to the first lobby message that satisfies `match`. */
-  async lobbyWhere(match: (lobby: LobbyMessage) => boolean = () => true): Promise<LobbyMessage> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === "lobby" && match(message)) return message;
-    }
-  }
-
-  /** Reads forward to the next message of `type`. */
-  async nextOf<Type extends ServerMessage["type"]>(type: Type): Promise<Extract<ServerMessage, { type: Type }>> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === type) return message as Extract<ServerMessage, { type: Type }>;
-    }
-  }
 }
 
 /** Starts looking at the list of rooms, as the lobby screen does. */
 async function watch(): Promise<Viewer> {
-  const response = await exports.default.fetch(`http://example.com/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`, {
-    headers: { Upgrade: "websocket" },
-  });
-  expect(response.status).toBe(101);
-  return new Viewer(response.webSocket!);
-}
-
-interface JoinOptions {
-  player: number;
-  nick?: string;
-  create?: boolean;
-  listed?: boolean;
-}
-
-/** Connects to `room` and sends `join`, as the browser client does. */
-async function open(room: string, options: JoinOptions): Promise<Player> {
-  const response = await exports.default.fetch(`http://example.com/parties/${PARTY_NAME}/${room}`, {
-    headers: { Upgrade: "websocket" },
-  });
-  expect(response.status).toBe(101);
-  const player = new Player(response.webSocket!);
-  player.send({
-    type: "join",
-    token: tokenFor(options.player),
-    nick: options.nick ?? `p${options.player}`,
-    create: options.create ?? false,
-    game: DEFAULT_GAME,
-    listed: options.listed ?? false,
-  });
-  return player;
+  return new Viewer(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
 }
 
 /**
  * Makes a listed room and waits until the list shows it: whatever was said to
  * the directory before this returns has been dealt with, in order.
  */
-async function marker(viewer: Viewer, code: string): Promise<Player> {
+async function marker(viewer: Viewer, code: string): Promise<TestClient> {
   const player = await open(code, { player: 90, create: true, listed: true });
   await viewer.roomWhere(code, (room) => room !== undefined);
   return player;

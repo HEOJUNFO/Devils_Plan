@@ -1,14 +1,23 @@
-import { env, exports } from "cloudflare:workers";
+import { env } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import rulesConfig from "../../../src/shared/game/rules-config.json";
-import { DEFAULT_GAME } from "../../../src/shared/games";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
-import { PARTY_NAME, PING, PONG, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
+import type { ClientMessage } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
+import {
+  advanceClock,
+  closeAll,
+  join,
+  roomOf as table,
+  scheduledAlarm,
+  tokenFor,
+  type MessageOf,
+  type PingRecord,
+  type TestClient,
+} from "../support";
 
-type GameMessage = Extract<ServerMessage, { type: "game" }>;
-type RefusedMessage = Extract<ServerMessage, { type: "refused" }>;
+type GameMessage = MessageOf<"game">;
 
 /** The smallest and the largest table offered. */
 const SMALLEST = Math.min(...Object.keys(tableSizes).map(Number));
@@ -17,113 +26,9 @@ const AWAY_MS = roomConfig.awayTurnSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
 const STALE_MS = roomConfig.staleConnectionSeconds * 1000;
 
-/** The room's record of when each connection last pinged, which a test can stand in for. */
-interface PingRecord {
-  lastPingAt(connection: { state: unknown }): number | null;
-}
-
-/** A well-formed token that is different for each `n`. */
-function tokenFor(n: number): string {
-  return `player-token-${String(n).padStart(4, "0")}`;
-}
-
-/** One connected test player: records what the room sends it. */
-class TestClient {
-  private readonly unread: ServerMessage[] = [];
-  private waiting: (() => void) | null = null;
-  /** Everything the room has sent this connection, as text. */
-  readonly raw: string[] = [];
-
-  private pongs = 0;
-  private pongWaiting: (() => void) | null = null;
-
-  constructor(private readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) => {
-      if (event.data === PONG) {
-        this.pongs++;
-        this.pongWaiting?.();
-        return;
-      }
-      this.raw.push(event.data as string);
-      this.unread.push(JSON.parse(event.data as string) as ServerMessage);
-      this.waiting?.();
-    });
-    ws.accept();
-  }
-
-  /** Pings the room as a page does, and waits for the answer. */
-  async ping(): Promise<void> {
-    const before = this.pongs;
-    this.ws.send(PING);
-    while (this.pongs === before) {
-      await new Promise<void>((resolve) => {
-        this.pongWaiting = resolve;
-      });
-      this.pongWaiting = null;
-    }
-  }
-
-  /** The next message not yet read. */
-  async next(): Promise<ServerMessage> {
-    while (this.unread.length === 0) {
-      await new Promise<void>((resolve) => {
-        this.waiting = resolve;
-      });
-      this.waiting = null;
-    }
-    return this.unread.shift()!;
-  }
-
-  /** Reads forward to the first game message that satisfies `match`. */
-  async gameWhere(match: (game: GameMessage) => boolean = () => true): Promise<GameMessage> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === "game" && match(message)) return message;
-    }
-  }
-
-  /** Reads forward to the next refusal. */
-  async refusal(): Promise<RefusedMessage> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === "refused") return message;
-    }
-  }
-
-  /** Reads forward to the lobby message that shows `count` players. */
-  async lobbyOf(count: number): Promise<void> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === "lobby" && message.players.length === count) return;
-    }
-  }
-
-  send(message: ClientMessage): void {
-    this.ws.send(JSON.stringify(message));
-  }
-
-  close(): void {
-    this.ws.close(1000, "test done");
-  }
-}
-
-/** Connects to `room` and sends `join`, as the browser client does. */
-async function open(room: string, player: number, create = false): Promise<TestClient> {
-  const response = await exports.default.fetch(`http://example.com/parties/${PARTY_NAME}/${room}`, {
-    headers: { Upgrade: "websocket" },
-  });
-  expect(response.status).toBe(101);
-  const client = new TestClient(response.webSocket!);
-  client.send({ type: "join", token: tokenFor(player), nick: `p${player}`, create, game: DEFAULT_GAME, listed: false });
-  return client;
-}
-
-/** Opens `room` with players 0..count-1, player 0 creating it, and waits until all see each other. */
-async function table(room: string, count: number): Promise<TestClient[]> {
-  const clients: TestClient[] = [];
-  for (let n = 0; n < count; n++) clients.push(await open(room, n, n === 0));
-  await Promise.all(clients.map((client) => client.lobbyOf(count)));
-  return clients;
+/** Connects to `room` and joins as player `player`. */
+function open(room: string, player: number, create = false): Promise<TestClient> {
+  return join(room, { player, create });
 }
 
 /** Starts a game at `clients` and returns each client's first view of it, in client order. */
@@ -135,25 +40,6 @@ async function startGame(clients: TestClient[]): Promise<GameMessage[]> {
 /** The index in `games` of the client whose seat is to move. */
 function mover(games: GameMessage[]): number {
   return games.findIndex((game) => game.view.seat === game.view.current);
-}
-
-/** Moves the clock forward. Only `Date` is faked; restored after each test. */
-function advanceClock(ms: number): void {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(Date.now() + ms);
-}
-
-/** Waits until the room has an alarm set, then returns when it is due. */
-async function scheduledAlarm(stub: DurableObjectStub): Promise<number> {
-  return vi.waitFor(async () => {
-    const alarm = await runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
-    expect(alarm).not.toBeNull();
-    return alarm!;
-  });
-}
-
-function closeAll(clients: TestClient[]): void {
-  for (const client of clients) client.close();
 }
 
 afterEach(() => {

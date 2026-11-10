@@ -1,105 +1,13 @@
-import { env, exports } from "cloudflare:workers";
+import { env } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import chatConfig from "../../../src/shared/chat-config.json";
-import { DEFAULT_GAME } from "../../../src/shared/games";
-import { PARTY_NAME, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
+import type { ClientMessage } from "../../../src/shared/protocol";
+import { advanceClock, closeAll, connect, join, roomOf, type TestClient } from "../support";
 
-type ChatMessage = Extract<ServerMessage, { type: "chat" }>;
-
-/** A well-formed token that is different for each `n`. */
-function tokenFor(n: number): string {
-  return `player-token-${String(n).padStart(4, "0")}`;
-}
-
-/** One connected test player: records what the room sends it. */
-class TestClient {
-  private readonly unread: ServerMessage[] = [];
-  private waiting: (() => void) | null = null;
-  /** Everything the room has sent this connection, as text. */
-  readonly raw: string[] = [];
-
-  constructor(private readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) => {
-      this.raw.push(event.data as string);
-      this.unread.push(JSON.parse(event.data as string) as ServerMessage);
-      this.waiting?.();
-    });
-    ws.accept();
-  }
-
-  /** The next message not yet read. */
-  async next(): Promise<ServerMessage> {
-    while (this.unread.length === 0) {
-      await new Promise<void>((resolve) => {
-        this.waiting = resolve;
-      });
-      this.waiting = null;
-    }
-    return this.unread.shift()!;
-  }
-
-  /** Reads forward to the next message of `type`. */
-  async nextOf<Type extends ServerMessage["type"]>(type: Type): Promise<Extract<ServerMessage, { type: Type }>> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === type) return message as Extract<ServerMessage, { type: Type }>;
-    }
-  }
-
-  /** Reads forward to the lobby message that shows `count` players. */
-  async lobbyOf(count: number): Promise<void> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === "lobby" && message.players.length === count) return;
-    }
-  }
-
-  send(message: ClientMessage): void {
-    this.ws.send(JSON.stringify(message));
-  }
-
-  say(text: string): void {
-    this.send({ type: "chat", text });
-  }
-
-  close(): void {
-    this.ws.close(1000, "test done");
-  }
-}
-
-/** Opens a WebSocket to `room` without joining. */
-async function connect(room: string): Promise<TestClient> {
-  const response = await exports.default.fetch(`http://example.com/parties/${PARTY_NAME}/${room}`, {
-    headers: { Upgrade: "websocket" },
-  });
-  expect(response.status).toBe(101);
-  return new TestClient(response.webSocket!);
-}
-
-/** Connects to `room` and sends `join`, as the browser client does. */
-async function open(room: string, player: number, create = false): Promise<TestClient> {
-  const client = await connect(room);
-  client.send({ type: "join", token: tokenFor(player), nick: `p${player}`, create, game: DEFAULT_GAME, listed: false });
-  return client;
-}
-
-/** Opens `room` with players 0..count-1, player 0 creating it, and waits until all see each other. */
-async function roomOf(room: string, count: number): Promise<TestClient[]> {
-  const clients: TestClient[] = [];
-  for (let n = 0; n < count; n++) clients.push(await open(room, n, n === 0));
-  await Promise.all(clients.map((client) => client.lobbyOf(count)));
-  return clients;
-}
-
-/** Moves the clock forward. Only `Date` is faked; restored after each test. */
-function advanceClock(ms: number): void {
-  vi.useFakeTimers({ toFake: ["Date"] });
-  vi.setSystemTime(Date.now() + ms);
-}
-
-function closeAll(clients: TestClient[]): void {
-  for (const client of clients) client.close();
+/** Connects to `room` and joins as player `player`. */
+function open(room: string, player: number, create = false): Promise<TestClient> {
+  return join(room, { player, create });
 }
 
 afterEach(() => {

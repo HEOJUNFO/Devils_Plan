@@ -1,113 +1,24 @@
-import { exports } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_GAME } from "../../../src/shared/games";
-import { PARTY_NAME, type ClientMessage, type ServerMessage } from "../../../src/shared/protocol";
 import type { RtcSignal } from "../../../src/shared/voice";
 import voiceConfig from "../../../src/shared/voice-config.json";
+import { closeAll, join, roomOf, type MessageOf, type TestClient } from "../support";
 
-type VoiceMessage = Extract<ServerMessage, { type: "voice" }>;
-
-/** A well-formed token that is different for each `n`. */
-function tokenFor(n: number): string {
-  return `player-token-${String(n).padStart(4, "0")}`;
-}
+type VoiceMessage = MessageOf<"voice">;
 
 /** A signal the size of a real one's first line; the room does not read what is in it. */
 const OFFER: RtcSignal = { kind: "offer", sdp: "v=0 an offer" };
 const ANSWER: RtcSignal = { kind: "answer", sdp: "v=0 an answer" };
 const CANDIDATE: RtcSignal = { kind: "ice", candidate: "candidate:1 1 udp 1 192.0.2.1 9 typ host", mid: "0", line: 0 };
 
-/** One connected test player: records what the room sends it. */
-class TestClient {
-  private readonly unread: ServerMessage[] = [];
-  private waiting: (() => void) | null = null;
-  /** Everything the room has sent this connection, as text. */
-  readonly raw: string[] = [];
-
-  constructor(private readonly ws: WebSocket) {
-    ws.addEventListener("message", (event) => {
-      this.raw.push(event.data as string);
-      this.unread.push(JSON.parse(event.data as string) as ServerMessage);
-      this.waiting?.();
-    });
-    ws.accept();
-  }
-
-  /** The next message not yet read. */
-  async next(): Promise<ServerMessage> {
-    while (this.unread.length === 0) {
-      await new Promise<void>((resolve) => {
-        this.waiting = resolve;
-      });
-      this.waiting = null;
-    }
-    return this.unread.shift()!;
-  }
-
-  /** Reads forward to the next message of `type`. */
-  async nextOf<Type extends ServerMessage["type"]>(type: Type): Promise<Extract<ServerMessage, { type: Type }>> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === type) return message as Extract<ServerMessage, { type: Type }>;
-    }
-  }
-
-  /** Reads forward to the first list of who is in voice that satisfies `match`. */
-  async voiceWhere(match: (voice: VoiceMessage) => boolean): Promise<VoiceMessage> {
-    for (;;) {
-      const message = await this.nextOf("voice");
-      if (match(message)) return message;
-    }
-  }
-
-  /** Reads forward to the lobby message that shows `count` players. */
-  async lobbyOf(count: number): Promise<void> {
-    for (;;) {
-      const message = await this.next();
-      if (message.type === "lobby" && message.players.length === count) return;
-    }
-  }
-
-  send(message: ClientMessage): void {
-    this.ws.send(JSON.stringify(message));
-  }
-
-  sendRaw(text: string): void {
-    this.ws.send(text);
-  }
-
-  close(): void {
-    this.ws.close(1000, "test done");
-  }
-}
-
-/** Connects to `room` and sends `join`, as the browser client does. */
-async function open(room: string, player: number, create = false, listed = false): Promise<TestClient> {
-  const response = await exports.default.fetch(`http://example.com/parties/${PARTY_NAME}/${room}`, {
-    headers: { Upgrade: "websocket" },
-  });
-  expect(response.status).toBe(101);
-  const client = new TestClient(response.webSocket!);
-  client.send({ type: "join", token: tokenFor(player), nick: `p${player}`, create, game: DEFAULT_GAME, listed });
-  return client;
-}
-
-/** Opens `room` with players 0..count-1, player 0 creating it, and waits until all see each other. */
-async function roomOf(room: string, count: number, listed = false): Promise<TestClient[]> {
-  const clients: TestClient[] = [];
-  for (let n = 0; n < count; n++) clients.push(await open(room, n, n === 0, listed));
-  await Promise.all(clients.map((client) => client.lobbyOf(count)));
-  return clients;
+/** Connects to `room` and joins as player `player`. */
+function open(room: string, player: number, create = false, listed = false): Promise<TestClient> {
+  return join(room, { player, create, listed });
 }
 
 /** Brings players into voice one after another and waits until everyone has the list of them. */
 async function intoVoice(clients: TestClient[], who: number[]): Promise<void> {
   for (const n of who) clients[n].send({ type: "voice", on: true, muted: false });
   await Promise.all(clients.map((client) => client.voiceWhere((voice) => voice.members.length === who.length)));
-}
-
-function closeAll(clients: TestClient[]): void {
-  for (const client of clients) client.close();
 }
 
 const slots = (voice: VoiceMessage): number[] => voice.members.map((member) => member.slot);
