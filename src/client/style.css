@@ -41,6 +41,32 @@ body {
   background: #000;
 }
 
+/*
+ * The frame is wider than it is tall. On a narrow screen held upright it
+ * would be drawn at well under its own size, too small to read or to press,
+ * so the page asks to be turned instead.
+ */
+#turn-device {
+  display: none;
+}
+
+@media (orientation: portrait) and (max-width: 640px) {
+  #turn-device {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+    padding: 24px;
+    background: #0d1020;
+    color: #efe6cc;
+    font: 20px/1.4 "Galmuri11", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    text-align: center;
+  }
+}
+
 #frame {
   position: fixed;
   left: var(--left, 0);
