@@ -84,6 +84,21 @@ describe("startSession", () => {
     expect(session.nicks).toEqual(session.tokens.map((token) => players.find((p) => p.token === token)?.nick));
   });
 
+  it("knows each player at the table by the lobby slot they hold", () => {
+    // slots 1 and 4 are empty: the four players are not in slots 0 to 3
+    const slots = [0, 2, 3, 5];
+    const players = slots.map((slot, n) => ({ token: tokenOf(n), nick: `p${n}`, slot }));
+
+    const result = startSession(null, players, { by: tokenOf(0), bots: false }, { allowBots: false, seed: 7, now: T0 }, presenceOf(players), CONFIG);
+
+    if (!result.ok) throw new Error(result.reason);
+    const session = result.session;
+    session.state.seats.forEach((seat, i) => {
+      expect(players.find((p) => p.slot === seat.occupant)?.token).toBe(session.tokens[i]);
+    });
+    expect(session.state.seats.map((seat) => seat.occupant).sort()).toEqual(slots);
+  });
+
   it("plays the documented table when six players start", () => {
     const session = started(LARGEST);
 

@@ -29,9 +29,13 @@
         <p class="room-code">방 코드 <strong id="room-code"></strong></p>
         <p id="status" role="status"></p>
         <ol id="players"></ol>
+        <button id="start" type="button">게임 시작</button>
+        <p id="start-hint"></p>
         <button id="leave" type="button">나가기</button>
       </section>
     </main>
+    <canvas id="table" hidden></canvas>
+    <button id="leave-game" type="button" hidden>나가기</button>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

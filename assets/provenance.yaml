@@ -1,0 +1,23 @@
+# Where each file in assets/ came from, one entry per file.
+# - path: assets/hit.wav      # relative to the project root
+#   origin: ai                # ai | bought | cc0 | you | outsourced | template | plugin | licensed | code | unknown
+#   tool: "what made or fetched it: the generator, or the script for code"
+#   model: "the model ID, when a model made it or an AI wrote its code"
+#   source: {vendor: "who made or sold it", product: "its name", url: "where from"}   # a download
+#   licence: {id: CC0-1.0}    # a download: the SPDX id where one exists
+#   date: 2026-01-31
+#   ships: true               # false for a file only the build uses
+- path: assets/fonts/Galmuri11.woff2
+  origin: licensed
+  tool: "curl from the npm package's CDN copy, unchanged (the same file as prototypes/empty-chamber/assets/Galmuri11.woff2)"
+  source: {vendor: "Lee Minseo (quiple)", product: "Galmuri11, from the galmuri npm package 2.40.3", url: "https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/Galmuri11.woff2"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-11
+  ships: true
+- path: assets/fonts/Galmuri11-LICENSE.txt
+  origin: licensed
+  tool: "curl from the npm package's CDN copy, unchanged; the font's licence text, which must travel with the font"
+  source: {vendor: "Lee Minseo (quiple)", product: "Galmuri licence (SIL Open Font License 1.1)", url: "https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/LICENSE.txt"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-11
+  ships: true

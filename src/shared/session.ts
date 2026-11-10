@@ -50,6 +50,8 @@ export interface Session {
   tokens: (string | null)[];
   /** By seat: the name shown at the table. */
   nicks: string[];
+  /** When the game started, in ms since the epoch. Tells one game in a room from the next. */
+  startedAt: number;
   /** When the move now awaited began to be awaited, in ms since the epoch. */
   turnStartedAt: number;
   /** Since when the player now awaited has had no live connection; `null` while connected. */
@@ -104,6 +106,10 @@ export interface TablePlayer {
 
 /** What one player is sent about the game. */
 export interface GameSnapshot {
+  /** When this game started, in ms since the epoch: different for each game played in the room. */
+  startedAt: number;
+  /** The rules of this table: what each move costs, how many rounds are loaded, when it ends. */
+  rules: RulesConfig;
   /** The game as that player's seat may see it; a spectator's view for anyone not at the table. */
   view: SeatView;
   /** By seat. */
@@ -185,15 +191,23 @@ export function startSession(
   const rules = rulesForPlayers(config.rules, seats, config.sizes);
   if (rules === null) return { ok: false, reason: "bad-player-count" };
 
-  const occupants = Array.from({ length: seats }, (_, id) => ({ id, bot: id >= seated.length }));
+  // A player is known at the table by their lobby slot, so the figure they had in the room is the one
+  // they play as. Bots take the slots nobody holds.
+  const bySlot = new Map(seated.map((player) => [player.slot, player]));
+  const free: number[] = [];
+  for (let slot = 0; free.length < seats - seated.length; slot++) {
+    if (!bySlot.has(slot)) free.push(slot);
+  }
+  const occupants = [...seated.map((player) => ({ id: player.slot, bot: false })), ...free.map((id) => ({ id, bot: true }))];
   const created = createGame({ occupants, seed: options.seed }, rules);
   if (!created.ok) return { ok: false, reason: "bad-player-count" };
   const state = created.state;
   const session: Session = {
     rules,
     state,
-    tokens: state.seats.map((seat) => (seat.bot ? null : seated[seat.occupant].token)),
-    nicks: state.seats.map((seat) => (seat.bot ? `봇 ${seat.occupant - seated.length + 1}` : seated[seat.occupant].nick)),
+    tokens: state.seats.map((seat) => bySlot.get(seat.occupant)?.token ?? null),
+    nicks: state.seats.map((seat) => bySlot.get(seat.occupant)?.nick ?? `봇 ${free.indexOf(seat.occupant) + 1}`),
+    startedAt: options.now,
     turnStartedAt: options.now,
     awaySince: null,
     deadline: null,
@@ -248,6 +262,8 @@ export function sessionPresence(session: Session, presence: Presence, now: numbe
 export function sessionSnapshot(session: Session, viewer: string | null, presence: Presence, now: number): GameSnapshot {
   const seat = viewer === null ? -1 : session.tokens.indexOf(viewer);
   return {
+    startedAt: session.startedAt,
+    rules: session.rules,
     view: viewFor(session.state, seat < 0 ? null : seat, session.rules),
     players: session.tokens.map((token, i) => ({
       nick: session.nicks[i],
