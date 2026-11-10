@@ -409,6 +409,49 @@ export const ICON_COLOUR: Record<IconName, string> = {
 };
 
 /** The small dark box an icon sits in, beside a figure's head. */
+/** The widest a line of a speech bubble is, in pixels, and the most lines one has. */
+const SPEECH_W = 104;
+const SPEECH_LINES = 2;
+
+/** `text` broken into the lines of a speech bubble. What does not fit ends in an ellipsis. */
+export function speechLines(pen: Pen, text: string): string[] {
+  const lines: string[] = [];
+  let rest = text;
+  while (rest !== "") {
+    if (lines.length === SPEECH_LINES - 1 || pen.width(rest) <= SPEECH_W) {
+      lines.push(pen.fit(rest, SPEECH_W));
+      break;
+    }
+    // as many characters as fit, back to the last space if there is one
+    const chars = Array.from(rest);
+    let count = 1;
+    while (count < chars.length && pen.width(chars.slice(0, count + 1).join("")) <= SPEECH_W) count++;
+    const space = chars.slice(0, count).lastIndexOf(" ");
+    const cut = space > 0 ? space : count;
+    lines.push(chars.slice(0, cut).join(""));
+    rest = chars.slice(cut).join("").trimStart();
+  }
+  return lines;
+}
+
+/** How long a line stays over its speaker's seat, in seconds: longer for more to read. */
+export function speechSeconds(text: string): number {
+  return Math.min(7, 2.5 + Array.from(text).length * 0.08);
+}
+
+/** A speech bubble over the name of the seat laid out as `at`, kept inside the scene. */
+export function drawSpeech(pen: Pen, at: SeatLayout, lines: readonly string[]): void {
+  if (lines.length === 0) return;
+  const w = Math.max(...lines.map((line) => pen.width(line))) + 8;
+  const h = lines.length * 13 + 3;
+  const left = at.label.align === "center" ? at.label.x - Math.round(w / 2) : at.label.x - 4;
+  const x = Math.max(2, Math.min(SCENE_W - 2 - w, left));
+  const y = Math.max(2, Math.min(BAR_Y - 3 - h, at.label.y - 1));
+  pen.px(x - 1, y - 1, w + 2, h + 2, C.ink);
+  pen.px(x, y, w, h, C.bone);
+  lines.forEach((line, i) => pen.txt(line, x + 4, y + 1 + i * 13, C.ink));
+}
+
 export function bubbleBox(pen: Pen, x: number, y: number): void {
   pen.px(x - 7, y - 7, 15, 15, C.ink);
   pen.px(x - 6, y - 6, 13, 13, C.btnH);

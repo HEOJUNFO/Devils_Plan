@@ -56,8 +56,17 @@ export type ServerMessage =
    * where one is being played. Never another player's secrets.
    */
   | ({ type: "game"; room: string } & GameSnapshot)
-  /** A start or a move was not accepted. Nothing changed; the connection stays open. */
-  | { type: "refused"; reason: StartRefusal | MoveRefusal };
+  /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
+  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal }
+  /**
+   * A line someone in the room said, sent to everyone in it, the speaker
+   * included. The room keeps no lines: someone who comes in later does not
+   * get what was said before.
+   */
+  | { type: "chat"; room: string; from: number; nick: string; text: string; at: number };
+
+/** Why a chat line was not passed on: the player is sending them too fast. */
+export type ChatRefusal = "chat-too-fast";
 
 /**
  * Directory → client: the rooms anyone can join, best to join first. Sent on
@@ -90,7 +99,9 @@ export type ClientMessage =
   /** A move in the game being played. */
   | { type: "action"; action: Action }
   /** Put the room on the list of rooms anyone can join, or take it off; only the host may. */
-  | { type: "listing"; listed: boolean };
+  | { type: "listing"; listed: boolean }
+  /** Say a line to everyone in the room. */
+  | { type: "chat"; text: string };
 
 function parseObject(raw: unknown, maxLength: number): Record<string, unknown> | null {
   if (typeof raw !== "string" || raw.length > maxLength) return null;
@@ -123,6 +134,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "listing") {
     return typeof data.listed === "boolean" ? { type: "listing", listed: data.listed } : null;
   }
+  if (data.type === "chat") {
+    return typeof data.text === "string" ? { type: "chat", text: data.text } : null;
+  }
   if (data.type === "start") return { type: "start", bots: data.bots === true };
   if (data.type === "action") {
     const action = parseAction(data.action);
@@ -135,7 +149,13 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
 export function parseServerMessage(raw: unknown): ServerMessage | null {
   const data = parseObject(raw, Number.POSITIVE_INFINITY);
   if (data === null) return null;
-  if (data.type === "lobby" || data.type === "error" || data.type === "game" || data.type === "refused") {
+  if (
+    data.type === "lobby" ||
+    data.type === "error" ||
+    data.type === "game" ||
+    data.type === "refused" ||
+    data.type === "chat"
+  ) {
     return data as ServerMessage;
   }
   return null;

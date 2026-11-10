@@ -1,4 +1,6 @@
 import { Server, type Connection, type WSMessage } from "partyserver";
+import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shared/chat";
+import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
 import botConfig from "../shared/game/bot-config.json";
 import rulesConfig from "../shared/game/rules-config.json";
@@ -24,6 +26,7 @@ import {
   CLOSE_REJECTED,
   DIRECTORY_NAME,
   parseClientMessage,
+  type ChatRefusal,
   type ClientMessage,
   type RejectReason,
   type ServerMessage,
@@ -44,6 +47,7 @@ import {
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
+const chatConfig: ChatConfig = chatConfigJson;
 
 const sessionConfig: SessionConfig = {
   rules: rulesConfig,
@@ -130,6 +134,12 @@ export class GameRoom extends Server<Env> {
   /** The reports to the directory, one after another, so the last word is the latest. */
   private telling: Promise<void> = Promise.resolve();
 
+  /**
+   * How much each slot has said lately. Forgotten when the room sleeps, which
+   * only ever lets someone speak sooner.
+   */
+  private readonly chatPace = new Map<number, ChatPace>();
+
   /** Whether something holds the slot of `token` while they are away: a seat in a game being played. */
   private readonly keepsSlot = (token: string): boolean =>
     running(this.session) && (this.session?.tokens.includes(token) ?? false);
@@ -201,6 +211,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "start") await this.handleStart(connection, state.slot, parsed.bots);
     else if (parsed.type === "action") await this.handleAction(connection, state.slot, parsed.action);
     else if (parsed.type === "listing") await this.handleListing(connection, state.slot, parsed.listed);
+    else if (parsed.type === "chat") this.handleChat(connection, state.slot, parsed.text);
   }
 
   /**
@@ -296,6 +307,26 @@ export class GameRoom extends Server<Env> {
     if (emptied) await this.timers.clear("empty-room");
     await this.scheduleSlots();
     await this.report(closed);
+  }
+
+  /**
+   * Passes a line on to everyone in the room, the speaker included. Nothing
+   * is stored: chat costs the room no writes, and a line is gone once sent.
+   */
+  private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string): void {
+    const player = this.lobby?.players.find((p) => p.slot === slot);
+    if (!player) return;
+    const text = normalizeChat(raw, chatConfig);
+    if (text === null) return;
+    const now = Date.now();
+    const paced = paceChat(this.chatPace.get(slot), now, chatConfig);
+    this.chatPace.set(slot, paced.pace);
+    if (!paced.ok) return this.refuse(connection, "chat-too-fast");
+    const message: ServerMessage = { type: "chat", room: this.name, from: slot, nick: player.nick, text, at: now };
+    const data = JSON.stringify(message);
+    for (const c of this.getConnections<ConnectionState>()) {
+      if (c.state?.kind === "player") c.send(data);
+    }
   }
 
   /** Puts the room on the list of rooms or takes it off, if the one asking is the host. */
@@ -541,8 +572,8 @@ export class GameRoom extends Server<Env> {
     connection.close(CLOSE_REJECTED, reason);
   }
 
-  /** Tells one connection its start or move was not accepted. */
-  private refuse(connection: Connection<ConnectionState>, reason: StartRefusal | MoveRefusal): void {
+  /** Tells one connection that what it asked was not accepted. */
+  private refuse(connection: Connection<ConnectionState>, reason: StartRefusal | MoveRefusal | ChatRefusal): void {
     const message: ServerMessage = { type: "refused", reason };
     connection.send(JSON.stringify(message));
   }

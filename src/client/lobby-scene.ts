@@ -17,8 +17,11 @@ import {
   drawFigure,
   drawLamp,
   drawRoom,
+  drawSpeech,
   drawTable,
   seatLayout,
+  speechLines,
+  speechSeconds,
 } from "./game/draw";
 import { FIGURE_COUNT } from "./game/figures";
 import { C } from "./game/palette";
@@ -29,6 +32,8 @@ export interface LobbyScene {
   show(view: LobbyView | null): void;
   /** Starts or stops drawing; a hidden picture costs nothing. */
   setRunning(running: boolean): void;
+  /** The player in `slot` said a line: it shows over their seat for a moment. */
+  say(slot: number, text: string): void;
 }
 
 /** The widest a name is drawn beside a seat, in pixels. */
@@ -47,6 +52,8 @@ export function createLobbyScene(canvas: HTMLCanvasElement): LobbyScene {
   let lobby: LobbyView | null = null;
   let running = false;
   let started = performance.now() / 1000;
+  /** By slot: the line over that seat, and when it goes, in the picture's own seconds. */
+  const speech = new Map<number, { lines: string[]; until: number }>();
 
   function draw(): void {
     const time = performance.now() / 1000 - started;
@@ -89,6 +96,12 @@ export function createLobbyScene(canvas: HTMLCanvasElement): LobbyScene {
       }
       if (!player.connected) pen.txt("끊김", place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
     }
+    for (const place of places) {
+      const line = speech.get(place.slot);
+      if (line === undefined) continue;
+      if (line.until <= time || !bySlot.has(place.slot)) speech.delete(place.slot);
+      else drawSpeech(pen, place.at, line.lines);
+    }
   }
 
   function frame(): void {
@@ -109,8 +122,14 @@ export function createLobbyScene(canvas: HTMLCanvasElement): LobbyScene {
       running = value;
       if (running) {
         started = performance.now() / 1000;
+        speech.clear();
         requestAnimationFrame(frame);
       }
+    },
+    say(slot: number, text: string): void {
+      if (!running) return;
+      const now = performance.now() / 1000 - started;
+      speech.set(slot, { lines: speechLines(pen, text), until: now + speechSeconds(text) });
     },
   };
 }

@@ -58,13 +58,16 @@
       <canvas id="scene" aria-hidden="true" hidden></canvas>
       <section id="room" class="panel" hidden>
         <p class="label" id="room-game"></p>
-        <p class="room-code"><strong id="room-code"></strong></p>
-        <button id="copy" type="button" class="wide">초대 링크 복사</button>
+        <div class="code-row">
+          <p class="room-code"><strong id="room-code"></strong></p>
+          <button id="copy" type="button">링크 복사</button>
+        </div>
         <p id="status" role="status"></p>
         <ol id="players" class="sr-only"></ol>
-        <p id="count"></p>
-        <button id="start" type="button" class="primary wide">게임 시작</button>
-        <p id="start-hint"></p>
+        <!-- The chat (#chat, below) is laid over the gap left here. -->
+        <div class="row bottom second">
+          <button id="start" type="button" class="primary">게임 시작</button>
+        </div>
         <div class="row bottom">
           <button id="leave" type="button">나가기</button>
           <button id="listing" type="button" hidden></button>
@@ -79,6 +82,21 @@
 
       <canvas id="table" hidden></canvas>
       <button id="leave-game" type="button" hidden>나가기</button>
+
+      <!-- During a game the right-hand column shows the moves or the chat. -->
+      <div id="tabs" role="group" aria-label="오른쪽 칸에 보일 것" hidden>
+        <button id="tab-log" type="button" class="choice" aria-pressed="true">기록</button>
+        <button id="tab-chat" type="button" class="choice" aria-pressed="false">채팅</button>
+      </div>
+
+      <!-- The room's chat: in the waiting room's column, and during a game in place of the moves. -->
+      <section id="chat" aria-label="채팅" hidden>
+        <ol id="chat-log" aria-live="polite"></ol>
+        <form id="chat-form">
+          <input id="chat-input" type="text" autocomplete="off" aria-label="할 말" placeholder="할 말" />
+          <button type="submit">전송</button>
+        </form>
+      </section>
 
       <section id="rules" hidden>
         <h2>러시안 룰렛: 규칙</h2>

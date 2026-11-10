@@ -1,0 +1,5 @@
+{
+  "maxLength": 120,
+  "burst": 5,
+  "windowSeconds": 6
+}

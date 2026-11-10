@@ -35,11 +35,14 @@ import {
   drawFigure,
   drawLamp,
   drawRoom,
+  drawSpeech,
   drawTable,
   hatchXY,
   pairAt,
   posAngle,
   seatLayout,
+  speechLines,
+  speechSeconds,
   tipXY,
   type HatchInfo,
   type IconName,
@@ -71,6 +74,8 @@ export interface Table {
   refused(reason: string): void;
   /** Whether this player is the host, who starts the next game. */
   setHost(host: boolean): void;
+  /** The player in lobby slot `slot` said a line: it shows over their seat for a moment. */
+  say(slot: number, text: string): void;
   /** Stops drawing and listening. */
   destroy(): void;
 }
@@ -90,8 +95,9 @@ const FIRE_GAP = 0.9;
 /** The widest a name is drawn beside a seat, and in the log, in pixels. */
 const NAME_WIDTH = 66;
 const LOG_NAME_WIDTH = 52;
-/** Rows of the log on screen. */
-const LOG_ROWS = 9;
+/** The log on screen: where it starts, under the row the page keeps for its tabs, and its rows. */
+const LOG_TOP = 106;
+const LOG_ROWS = 8;
 
 const WAIT_TEXT: Record<string, string> = {
   "not-your-turn": "지금은 내 차례가 아닙니다",
@@ -145,6 +151,13 @@ interface LogLine {
   colour: string;
   /** Came after this player's own last move. */
   fresh: boolean;
+}
+
+interface Speech {
+  seat: number;
+  lines: string[];
+  /** Seconds left on show. */
+  t: number;
 }
 
 interface PlayingFx {
@@ -204,6 +217,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let fallen: boolean[] = [];
   let revealed: (0 | 1 | null)[] = [];
   let pops: Pop[] = [];
+  let speech: Speech[] = [];
   let shake = 0;
   let flick = 0;
   let beat = 0;
@@ -332,6 +346,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     sel = null;
     fire = null;
     pops = [];
+    speech = [];
     playing.length = 0;
     shake = 0;
     flick = 0;
@@ -629,6 +644,10 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       pops[i].t -= dt;
       if (pops[i].t <= 0) pops.splice(i, 1);
     }
+    for (let i = speech.length - 1; i >= 0; i--) {
+      speech[i].t -= dt;
+      if (speech[i].t <= 0) speech.splice(i, 1);
+    }
     if (latest !== null) {
       if (deal > 0) {
         const n = seats();
@@ -918,6 +937,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     drawFx();
     drawOverlays(ringA);
     drawLabels();
+    for (const line of speech) if (line.seat < n) drawSpeech(pen, layoutOf(line.seat), line.lines);
     ctx.restore();
   }
 
@@ -973,7 +993,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const lines = logLines();
     const from = Math.max(0, lines.length - LOG_ROWS);
     for (let i = from; i < lines.length; i++) {
-      const y = 91 + (i - from) * 14;
+      const y = LOG_TOP + (i - from) * 14;
       const line = lines[i];
       if (line.fresh) pen.px(x - 3, y + 1, 1, 11, C.amber);
       pen.txt(line.text, x, y, line.fresh || line.colour !== C.bone ? line.colour : C.boneD);
@@ -1104,7 +1124,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       [`${rules.endWhenOut}명이 크레딧을 다 쓰면 끝. 총구가 향한 자리부터 시계 방향으로`, C.bone],
       ["한 발씩 격발하고, 실탄을 맞은 사람이 탈락합니다.", C.bone],
       ["접속이 끊긴 사람의 차례는 잠시 뒤 자동으로 1크레딧 제출로 넘어갑니다.", C.boneD],
-      ["H 또는 Esc: 닫기 · M: 음소거", C.amber],
+      ["H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", C.amber],
     ];
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
@@ -1192,6 +1212,14 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     },
     setHost(value: boolean): void {
       host = value;
+    },
+    say(slot: number, text: string): void {
+      if (latest === null) return;
+      // someone watching has no seat to speak from: their line is in the chat alone
+      const seat = latest.view.seats.findIndex((info) => !info.bot && info.occupant === slot);
+      if (seat < 0) return;
+      speech = speech.filter((line) => line.seat !== seat);
+      speech.push({ seat, lines: speechLines(pen, text), t: speechSeconds(text) });
     },
     destroy(): void {
       stopped = true;

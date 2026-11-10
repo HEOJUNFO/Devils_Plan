@@ -7,6 +7,7 @@
  * for; seats at the table are drawn when a game starts, not when players join.
  */
 import { DEFAULT_GAME, type GameId } from "./games";
+import { cleanLine, cutTo } from "./text";
 
 /** Tunable lobby values. Loaded from `room-config.json`. */
 export interface RoomConfig {
@@ -105,12 +106,12 @@ export function isValidToken(token: string): boolean {
 }
 
 /**
- * Cleans a nickname: trims it, collapses runs of whitespace, and cuts it to
- * the configured length. Returns `null` when nothing printable is left.
+ * Cleans a nickname: one line with no control characters, runs of whitespace
+ * collapsed, cut to the configured length. Returns `null` when nothing
+ * printable is left.
  */
 export function normalizeNick(raw: string, config: RoomConfig): string | null {
-  const collapsed = raw.replace(/\s+/gu, " ").trim();
-  const cut = Array.from(collapsed).slice(0, config.nickMaxLength).join("").trim();
+  const cut = cutTo(cleanLine(raw), config.nickMaxLength);
   return cut.length > 0 ? cut : null;
 }
 

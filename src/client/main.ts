@@ -27,7 +27,9 @@ import {
   type ClientMessage,
   type RejectReason,
 } from "../shared/protocol";
+import chatConfig from "../shared/chat-config.json";
 import roomConfig from "../shared/room-config.json";
+import { createChat } from "./chat";
 import { createTable, type Table } from "./game/table";
 import { createLobbyScene } from "./lobby-scene";
 
@@ -72,6 +74,9 @@ const REFUSED_TEXT: Record<string, string> = {
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다.",
 };
 
+/** Said in the chat to a player whose lines come too fast for the room to pass on. */
+const CHAT_TOO_FAST_TEXT = "너무 빨리 보내고 있습니다. 잠시 뒤에 다시 보내세요.";
+
 function el<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) throw new Error(`missing element #${id}`);
@@ -102,10 +107,13 @@ const notice = el<HTMLElement>("notice");
 const roomCode = el<HTMLElement>("room-code");
 const status = el<HTMLElement>("status");
 const players = el<HTMLOListElement>("players");
-const count = el<HTMLElement>("count");
 const startButton = el<HTMLButtonElement>("start");
-const startHint = el<HTMLElement>("start-hint");
 const copyButton = el<HTMLButtonElement>("copy");
+const chatBox = el<HTMLElement>("chat");
+const chatInput = el<HTMLInputElement>("chat-input");
+const tabs = el<HTMLElement>("tabs");
+const tabLog = el<HTMLButtonElement>("tab-log");
+const tabChat = el<HTMLButtonElement>("tab-chat");
 const listingButton = el<HTMLButtonElement>("listing");
 const sceneCanvas = el<HTMLCanvasElement>("scene");
 const tableCanvas = el<HTMLCanvasElement>("table");
@@ -167,6 +175,14 @@ let shownGame: number | null = null;
 let dismissedGame: number | null = null;
 /** Set while the way out of a game waits for its second press. */
 let leaveArmed: ReturnType<typeof setTimeout> | null = null;
+/** Whether the connection to the room is up; the waiting room says so when it is not. */
+let online = false;
+/** What the waiting room says under the scene about starting, or about what was just refused. */
+let hint = "";
+/** During a game: whether the right-hand column shows the chat rather than the moves. */
+let chatOpen = false;
+/** Lines others said during a game while the chat was not on show. */
+let unread = 0;
 
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
@@ -182,6 +198,41 @@ function disarmLeave(): void {
 
 function send(message: ClientMessage): void {
   socket?.send(JSON.stringify(message));
+}
+
+const chat = createChat(
+  { log: el<HTMLOListElement>("chat-log"), form: el<HTMLFormElement>("chat-form"), input: chatInput },
+  {
+    maxLength: chatConfig.maxLength,
+    storagePrefix: storageKey("chat"),
+    send: (text) => send({ type: "chat", text }),
+  },
+);
+
+/**
+ * Puts the chat where the screen has room for it: in the waiting room's
+ * column, or during a game in place of the moves when its tab is chosen.
+ */
+function syncChat(): void {
+  const inGame = table !== null;
+  tabs.hidden = !inGame;
+  chatBox.hidden = currentCode === "" || (inGame && !chatOpen);
+  chatBox.classList.toggle("in-game", inGame);
+  tabLog.setAttribute("aria-pressed", String(!chatOpen));
+  tabChat.setAttribute("aria-pressed", String(chatOpen));
+  tabChat.classList.toggle("unread", unread > 0);
+  tabChat.textContent = unread > 0 ? `채팅 ${unread}` : "채팅";
+  // an hour in a tab, the chat comes back at its last line
+  if (!chatBox.hidden) chat.toEnd();
+}
+
+/** During a game: shows the chat or the moves in the right-hand column. */
+function openChat(open: boolean): void {
+  chatOpen = open;
+  if (open) unread = 0;
+  syncChat();
+  if (open) chat.focus();
+  else chatInput.blur();
 }
 
 /** The words under the scene, and whether the rules can be opened from there. */
@@ -216,6 +267,7 @@ function showTable(): Table {
   leaveGameButton.hidden = false;
   rules.hidden = true;
   syncScene();
+  syncChat();
   return table;
 }
 
@@ -226,7 +278,10 @@ function hideTable(): void {
   tableCanvas.hidden = true;
   leaveGameButton.hidden = true;
   disarmLeave();
+  chatOpen = false;
+  unread = 0;
   syncScene();
+  syncChat();
 }
 
 // ---- The lobby: the rooms anyone can join -------------------------------------------------------
@@ -304,9 +359,10 @@ function unwatchRooms(): void {
 
 /** The lobby: the rooms anyone can join, a nickname, and a room to make or enter by code. */
 function showLobby(message = ""): void {
-  hideTable();
   currentCode = "";
   currentView = null;
+  hideTable();
+  chat.close();
   room.hidden = true;
   newRoom.hidden = true;
   entry.hidden = false;
@@ -364,8 +420,34 @@ function closeNewRoom(): void {
 
 // ---- A room, before a game ---------------------------------------------------------------------------
 
-/** The room before a game: who is here, the code to share, and the start. */
+/** What the waiting room says under its picture: the game, and whether it can start. */
+function renderRoomBar(): void {
+  const view = currentView;
+  if (view === null) return;
+  const game = isGameId(view.game) ? GAMES[view.game] : null;
+  setBar(game?.summary ?? "", hint, game !== null);
+}
+
+/** The line under the room's code: who is here, or that the connection is down. */
+function renderStatus(): void {
+  const view = currentView;
+  if (!online) status.textContent = "연결이 끊겼습니다. 다시 연결하는 중";
+  else if (view !== null) status.textContent = `${view.players.filter((p) => p.connected).length}명 접속 · 최대 ${view.maxPlayers}명`;
+  else status.textContent = "";
+}
+
+/** Says in the chat who has come into the room and who has gone since it was last sent. */
+function noteComings(before: LobbyView, after: LobbyView): void {
+  const was = new Map(before.players.map((p) => [p.slot, p.nick]));
+  const is = new Map(after.players.map((p) => [p.slot, p.nick]));
+  for (const [slot, nick] of is) if (!was.has(slot)) chat.note(`${nick} 님이 들어왔습니다`);
+  for (const [slot, nick] of was) if (!is.has(slot)) chat.note(`${nick} 님이 나갔습니다`);
+}
+
+/** The room before a game: who is here, the code to share, the chat, and the start. */
 function renderRoom(code: string, view: LobbyView): void {
+  if (currentCode !== code) chat.open(code);
+  else if (currentView !== null) noteComings(currentView, view);
   currentCode = code;
   currentView = view;
   unwatchRooms();
@@ -393,7 +475,8 @@ function renderRoom(code: string, view: LobbyView): void {
   const connected = view.players.filter((p) => p.connected);
   isHost = connected.length > 0 && Math.min(...connected.map((p) => p.slot)) === view.you;
   table?.setHost(isHost);
-  count.textContent = `${connected.length}명 접속 · 최대 ${view.maxPlayers}명`;
+  renderStatus();
+  syncChat();
 
   // A room made by a newer server may be for a game this page has not heard of.
   const game = isGameId(view.game) ? GAMES[view.game] : null;
@@ -403,18 +486,18 @@ function renderRoom(code: string, view: LobbyView): void {
   listingButton.textContent = view.listed ? "비공개로" : "공개로";
   if (game === null) {
     startButton.disabled = true;
-    startHint.textContent = "새로고침하면 이 게임을 할 수 있습니다.";
-    setBar("", "", false);
+    hint = "새로고침하면 이 게임을 할 수 있습니다.";
+    renderRoomBar();
     return;
   }
   const enough = wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
   startButton.disabled = !isHost || !enough;
-  startHint.textContent = !enough
-    ? `${game.minPlayers}명부터 시작할 수 있습니다.`
+  hint = !enough
+    ? `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
     : isHost
       ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}준비되면 시작하세요.`
       : "방장이 시작하기를 기다리는 중입니다.";
-  setBar(game.summary, `${game.minPlayers}명부터 ${game.maxPlayers}명까지 함께 합니다.`, true);
+  renderRoomBar();
 }
 
 function disconnect(): void {
@@ -445,11 +528,14 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
   current.addEventListener("open", () => {
     // Fires again on every reconnect; the server expects `join` each time.
     current.send(JSON.stringify(join));
-    status.textContent = "연결됨";
+    online = true;
+    renderStatus();
   });
   current.addEventListener("close", () => {
     // PartySocket reconnects by itself unless we closed it.
-    if (socket === current) status.textContent = "연결이 끊겼습니다. 다시 연결하는 중";
+    if (socket !== current) return;
+    online = false;
+    renderStatus();
   });
   current.addEventListener("message", (event) => {
     const message = parseServerMessage(event.data);
@@ -475,8 +561,28 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     }
     if (message.type === "refused") {
       // Something asked of the room was not accepted; the connection is fine.
-      if (table !== null) table.refused(message.reason);
-      else startHint.textContent = REFUSED_TEXT[message.reason] ?? "지금은 할 수 없습니다.";
+      if (message.reason === "chat-too-fast") {
+        chat.note(CHAT_TOO_FAST_TEXT);
+      } else if (table !== null) {
+        table.refused(message.reason);
+      } else {
+        hint = REFUSED_TEXT[message.reason] ?? "지금은 할 수 없습니다.";
+        renderRoomBar();
+      }
+      return;
+    }
+    if (message.type === "chat") {
+      const mine = currentView !== null && message.from === currentView.you;
+      chat.said(message.nick, message.text, mine);
+      if (!mine) {
+        // over the speaker's seat too, so a line is seen without the chat on show
+        if (table !== null) table.say(message.from, message.text);
+        else scene.say(message.from, message.text);
+        if (table !== null && !chatOpen) {
+          unread++;
+          syncChat();
+        }
+      }
       return;
     }
     disconnect();
@@ -579,13 +685,38 @@ copyButton.addEventListener("click", () => {
   const done = (text: string): void => {
     copyButton.textContent = text;
     setTimeout(() => {
-      copyButton.textContent = "초대 링크 복사";
+      copyButton.textContent = "링크 복사";
     }, 1500);
   };
   navigator.clipboard.writeText(link).then(
-    () => done("복사했습니다"),
-    () => done(`코드 ${currentCode}를 알려 주세요`),
+    () => done("복사됨"),
+    () => {
+      // no clipboard here (an old browser, or a page not served securely): the code is on screen to read out
+      done("복사 실패");
+      hint = `링크를 복사하지 못했습니다. 방 코드 ${currentCode}를 알려 주세요.`;
+      renderRoomBar();
+    },
   );
+});
+
+// During a game: the tabs over the right-hand column, and T for the chat.
+tabLog.addEventListener("click", () => openChat(false));
+tabChat.addEventListener("click", () => openChat(true));
+chatInput.addEventListener("keydown", (event) => {
+  // Esc gives the keys back to the game
+  if (event.key !== "Escape" || event.isComposing) return;
+  event.stopPropagation();
+  if (table !== null) openChat(false);
+  else chatInput.blur();
+});
+addEventListener("keydown", (event) => {
+  if (event.code !== "KeyT" || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+  if (currentCode === "") return;
+  // the key that opens the box is not typed into it
+  event.preventDefault();
+  if (table !== null) openChat(true);
+  else chat.focus();
 });
 
 // The rules sheet of the game chosen or being waited for. During a game the table has its own (H).

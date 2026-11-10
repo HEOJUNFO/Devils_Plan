@@ -51,6 +51,16 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: false }))).toEqual({ type: "listing", listed: false });
   });
 
+  it("reads a chat line as it was typed", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "  hi  " }))).toEqual({ type: "chat", text: "  hi  " });
+  });
+
+  it("rejects a chat line that is not text", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "chat" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: 5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: ["hi"] }))).toBeNull();
+  });
+
   it("rejects a change of listing that does not say which way", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: "true" }))).toBeNull();

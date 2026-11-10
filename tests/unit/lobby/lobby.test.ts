@@ -417,6 +417,11 @@ describe("normalizeNick", () => {
   it("returns null when nothing is left", () => {
     expect(normalizeNick(" \t\n ", testConfig())).toBeNull();
   });
+
+  it("takes out characters that are not for showing", () => {
+    expect(normalizeNick("a\u0000\u202eb", testConfig())).toBe("a b");
+    expect(normalizeNick("\u202e\u0007", testConfig())).toBeNull();
+  });
 });
 
 describe("room codes", () => {
