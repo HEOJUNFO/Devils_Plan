@@ -3,6 +3,11 @@
   "name": "empty-chamber",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-11-10",
+  // Bots fill empty seats only while developing: players are offered games
+  // against other people and nothing else (.claude/rules/bots.md). "false"
+  // here is what the deployed Worker gets; `npm run dev` reads `.dev.vars`
+  // (not committed), where ALLOW_BOTS=true turns them on for local play.
+  "vars": { "ALLOW_BOTS": "false" },
   // The browser client is built by Vite; the Cloudflare Vite plugin points the
   // assets directory at that build. Room traffic must reach the Worker first.
   "assets": {

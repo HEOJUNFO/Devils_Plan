@@ -80,6 +80,32 @@ describe("parseClientMessage", () => {
 
     expect(parseClientMessage(raw)).toBeNull();
   });
+
+  it("reads a start, asking for bots only when it says so plainly", () => {
+    const plain = JSON.stringify({ type: "start" });
+    const withBots = JSON.stringify({ type: "start", bots: true });
+    const sloppy = JSON.stringify({ type: "start", bots: "yes" });
+
+    expect(parseClientMessage(plain)).toEqual({ type: "start", bots: false });
+    expect(parseClientMessage(withBots)).toEqual({ type: "start", bots: true });
+    expect(parseClientMessage(sloppy)).toEqual({ type: "start", bots: false });
+  });
+
+  it("reads a move and keeps only what the move is made of", () => {
+    const raw = JSON.stringify({ type: "action", seat: 3, action: { type: "rotate", steps: 2, credits: 99 } });
+
+    expect(parseClientMessage(raw)).toEqual({ type: "action", action: { type: "rotate", steps: 2 } });
+  });
+
+  it("rejects an action that is not one of the game's moves", () => {
+    const unknown = JSON.stringify({ type: "action", action: { type: "fire" } });
+    const missing = JSON.stringify({ type: "action" });
+    const fractional = JSON.stringify({ type: "action", action: { type: "tamper", amount: 1.5 } });
+
+    expect(parseClientMessage(unknown)).toBeNull();
+    expect(parseClientMessage(missing)).toBeNull();
+    expect(parseClientMessage(fractional)).toBeNull();
+  });
 });
 
 describe("parseServerMessage", () => {
@@ -87,6 +113,18 @@ describe("parseServerMessage", () => {
     const raw = JSON.stringify({ type: "error", reason: "full" });
 
     expect(parseServerMessage(raw)).toEqual({ type: "error", reason: "full" });
+  });
+
+  it("reads a refusal with its reason", () => {
+    const raw = JSON.stringify({ type: "refused", reason: "not-your-turn" });
+
+    expect(parseServerMessage(raw)).toEqual({ type: "refused", reason: "not-your-turn" });
+  });
+
+  it("reads a game message", () => {
+    const raw = JSON.stringify({ type: "game", room: "AAAAA", players: [], turnEndsIn: null, view: { seat: null } });
+
+    expect(parseServerMessage(raw)).toMatchObject({ type: "game", room: "AAAAA", turnEndsIn: null });
   });
 
   it("rejects a message of an unknown type", () => {

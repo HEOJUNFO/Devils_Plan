@@ -138,6 +138,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       renderLobby(code, message);
       return;
     }
+    // The game screen is not built yet: a game in the room does not change this page.
+    if (message.type === "game" || message.type === "refused") return;
     disconnect();
     if (message.reason === "code-taken" && create && attemptsLeft > 0) {
       connect(generateRoomCode(Math.random, config), true, nick, attemptsLeft - 1);

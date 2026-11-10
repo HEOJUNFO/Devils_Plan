@@ -4,5 +4,6 @@
   "roomCodeAlphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
   "nickMaxLength": 12,
   "emptyRoomTtlMinutes": 1440,
-  "joinTimeoutSeconds": 10
+  "joinTimeoutSeconds": 10,
+  "awayTurnSeconds": 30
 }

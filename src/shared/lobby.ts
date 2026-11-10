@@ -21,6 +21,8 @@ export interface RoomConfig {
   emptyRoomTtlMinutes: number;
   /** Seconds a new connection has to send `join` before it may be closed. */
   joinTimeoutSeconds: number;
+  /** Seconds a player with no live connection has for a move before the room makes it. */
+  awayTurnSeconds: number;
 }
 
 /** A player as the server stores them. `token` is secret to that player. */

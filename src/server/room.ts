@@ -1,4 +1,8 @@
 import { Server, type Connection, type WSMessage } from "partyserver";
+import botConfig from "../shared/game/bot-config.json";
+import rulesConfig from "../shared/game/rules-config.json";
+import tableSizes from "../shared/game/table-sizes.json";
+import type { Action } from "../shared/game";
 import {
   createLobby,
   findPlayer,
@@ -18,9 +22,28 @@ import {
   type ServerMessage,
 } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
+import {
+  sessionAction,
+  sessionPresence,
+  sessionSnapshot,
+  sessionTimeout,
+  startSession,
+  type MoveRefusal,
+  type Presence,
+  type Session,
+  type SessionConfig,
+  type StartRefusal,
+} from "../shared/session";
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
+
+const sessionConfig: SessionConfig = {
+  rules: rulesConfig,
+  sizes: tableSizes,
+  bots: botConfig,
+  awayTurnSeconds: config.awayTurnSeconds,
+};
 
 /**
  * What a connection remembers about itself. Stored in the WebSocket
@@ -38,17 +61,40 @@ type ConnectionState =
  */
 type TimerKind =
   /** Nobody is connected; clear the room if that is still true when it fires. */
-  "empty-room";
+  | "empty-room"
+  /** The move the game is waiting for has run out of time. */
+  | "turn";
 
 const LOBBY_KEY = "lobby";
+const GAME_KEY = "game";
+
+/** Whether this deployment lets bots fill empty seats (wrangler.jsonc: only while developing). */
+function botsAllowed(flag: string | undefined): boolean {
+  return flag === "true";
+}
+
+/** Whether storing `next` in place of `current` would change anything. */
+function sameSession(current: Session | null, next: Session | null): boolean {
+  if (current === null || next === null) return current === next;
+  return (
+    current.state === next.state &&
+    current.deadline === next.deadline &&
+    current.awaySince === next.awaySince &&
+    current.turnStartedAt === next.turnStartedAt
+  );
+}
 
 /**
  * One room: the Durable Object named after the room code.
  *
  * The room hibernates between messages, which discards every instance field.
- * The lobby is therefore written to SQLite before it is cached in memory, and
- * `onStart` reloads it on each wake. Timed work goes through `timers`, never
- * `setTimeout`, because a pending timer keeps the object awake and billed.
+ * The lobby and the game are therefore written to SQLite before they are
+ * cached in memory, and `onStart` reloads them on each wake. Timed work goes
+ * through `timers`, never `setTimeout`, because a pending timer keeps the
+ * object awake and billed.
+ *
+ * The game's rules live in `src/shared/game` and its hosting in
+ * `src/shared/session`; this class stores, sends and keeps the clock.
  */
 export class GameRoom extends Server<Env> {
   static options = { hibernate: true };
@@ -56,12 +102,23 @@ export class GameRoom extends Server<Env> {
   /** The lobby, or `null` when no room with this code has been created. */
   private lobby: LobbyState | null = null;
 
+  /** The game being played or just finished, or `null` before the first one. */
+  private session: Session | null = null;
+
   private timers!: Timers<TimerKind>;
 
   private readonly timerHandlers: Record<TimerKind, () => void | Promise<void>> = {
-    "empty-room": () => {
+    "empty-room": async () => {
       // Someone may have come back since the timer was set.
-      if (this.connectedSlots().size === 0) this.save(null);
+      if (this.connectedSlots().size > 0) return;
+      this.saveLobby(null);
+      await this.commitSession(null);
+    },
+    "turn": async () => {
+      const session = this.session;
+      if (session === null) return;
+      // Does nothing unless the deadline has passed, so a repeated alarm is harmless.
+      await this.commitSession(sessionTimeout(session, this.presence(), Date.now(), sessionConfig));
     },
   };
 
@@ -71,11 +128,8 @@ export class GameRoom extends Server<Env> {
       "CREATE TABLE IF NOT EXISTS room_state (k TEXT PRIMARY KEY, v TEXT NOT NULL)",
     );
     this.timers = new Timers<TimerKind>(this.ctx.storage);
-    const rows = this.ctx.storage.sql
-      .exec<{ v: string }>("SELECT v FROM room_state WHERE k = ?", LOBBY_KEY)
-      .toArray();
-    const row = rows[0];
-    this.lobby = row ? (JSON.parse(row.v) as LobbyState) : null;
+    this.lobby = this.load<LobbyState>(LOBBY_KEY);
+    this.session = this.load<Session>(GAME_KEY);
   }
 
   /**
@@ -95,11 +149,13 @@ export class GameRoom extends Server<Env> {
     const state = connection.state;
     if (parsed.type === "join") {
       // A second `join` on a seated connection is ignored.
-      if (state?.kind !== "player") this.handleJoin(connection, parsed);
+      if (state?.kind !== "player") await this.handleJoin(connection, parsed);
       return;
     }
     if (state?.kind !== "player") return;
     if (parsed.type === "leave") await this.handleLeave(state.slot);
+    else if (parsed.type === "start") await this.handleStart(connection, state.slot, parsed.bots);
+    else if (parsed.type === "action") await this.handleAction(connection, state.slot, parsed.action);
   }
 
   /** Tells the others a player dropped, and starts the empty-room countdown. */
@@ -107,6 +163,7 @@ export class GameRoom extends Server<Env> {
     if (this.lobby === null || connection.state?.kind !== "player") return;
     const gone = new Set([connection.id]);
     this.broadcastLobby(gone);
+    await this.presenceChanged(gone);
     if (this.connectedSlots(gone).size === 0) {
       await this.timers.set("empty-room", Date.now() + config.emptyRoomTtlMinutes * 60_000);
     }
@@ -118,10 +175,10 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Seats the joining player, or refuses the connection with a reason. */
-  private handleJoin(
+  private async handleJoin(
     connection: Connection<ConnectionState>,
     request: Extract<ClientMessage, { type: "join" }>,
-  ): void {
+  ): Promise<void> {
     if (!isValidRoomCode(this.name, config)) return this.reject(connection, "bad-room");
 
     let lobby = this.lobby;
@@ -137,9 +194,11 @@ export class GameRoom extends Server<Env> {
     const result = joinLobby(lobby, { token: request.token, nick: request.nick }, config);
     if (!result.ok) return this.reject(connection, result.reason);
 
-    this.save(result.state);
+    this.saveLobby(result.state);
     connection.setState({ kind: "player", slot: result.slot });
     this.broadcastLobby();
+    // A game may be going on: the newcomer watches it, a returning player takes their seat back.
+    await this.presenceChanged();
   }
 
   private async handleLeave(slot: number): Promise<void> {
@@ -150,7 +209,7 @@ export class GameRoom extends Server<Env> {
 
     const next = leaveLobby(lobby, player.token);
     const emptied = next.players.length === 0;
-    this.save(emptied ? null : next);
+    this.saveLobby(emptied ? null : next);
 
     // The same player may have the room open in several tabs.
     const closed = new Set<string>();
@@ -158,10 +217,68 @@ export class GameRoom extends Server<Env> {
       if (c.state?.kind === "player" && c.state.slot === slot) closed.add(c.id);
     }
     this.broadcastLobby(closed);
+    // A seat at the table whose player has left is played by the room from here on.
+    if (emptied) await this.commitSession(null, closed);
+    else await this.presenceChanged(closed);
     for (const id of closed) this.getConnection(id)?.close(CLOSE_LEFT, "left");
 
     // The room is gone; its countdown has nothing left to clear.
     if (emptied) await this.timers.clear("empty-room");
+  }
+
+  /** Starts a game for the players now connected, if the one asking is the host. */
+  private async handleStart(connection: Connection<ConnectionState>, slot: number, bots: boolean): Promise<void> {
+    const lobby = this.lobby;
+    const starter = lobby?.players.find((p) => p.slot === slot);
+    if (!lobby || !starter) return;
+    const presence = this.presence();
+    const result = startSession(
+      this.session,
+      lobby.players.filter((p) => presence.connected.has(p.token)),
+      { by: starter.token, bots },
+      {
+        allowBots: botsAllowed(this.env.ALLOW_BOTS),
+        seed: crypto.getRandomValues(new Uint32Array(1))[0],
+        now: Date.now(),
+      },
+      presence,
+      sessionConfig,
+    );
+    if (!result.ok) return this.refuse(connection, result.reason);
+    await this.commitSession(result.session);
+  }
+
+  /** Makes a player's move, or tells that player alone why it was refused. */
+  private async handleAction(connection: Connection<ConnectionState>, slot: number, action: Action): Promise<void> {
+    const player = this.lobby?.players.find((p) => p.slot === slot);
+    if (!player) return;
+    const result = sessionAction(this.session, player.token, action, this.presence(), Date.now(), sessionConfig);
+    if (!result.ok) return this.refuse(connection, result.reason);
+    await this.commitSession(result.session);
+  }
+
+  /** Someone connected, dropped or left: the game may have moves to make or a clock to move. */
+  private async presenceChanged(except?: ReadonlySet<string>): Promise<void> {
+    const session = this.session;
+    if (session === null) return;
+    await this.commitSession(sessionPresence(session, this.presence(except), Date.now(), sessionConfig), except);
+  }
+
+  /**
+   * Makes `next` the room's game: stores it if it changed, points the turn
+   * clock at its deadline, and sends every seated connection its own view.
+   */
+  private async commitSession(next: Session | null, except?: ReadonlySet<string>): Promise<void> {
+    if (!sameSession(this.session, next)) this.save(GAME_KEY, next);
+    this.session = next;
+    const due = next?.deadline ?? null;
+    const set = this.timers.get("turn");
+    if (due === null) {
+      if (set !== null) await this.timers.clear("turn");
+    } else if (set !== due) {
+      await this.timers.set("turn", due);
+    }
+    this.broadcastGame(except);
   }
 
   /**
@@ -177,17 +294,31 @@ export class GameRoom extends Server<Env> {
     }
   }
 
-  /** Persists the lobby, then caches it. `null` removes the room. */
-  private save(lobby: LobbyState | null): void {
-    if (lobby === null) {
-      this.ctx.storage.sql.exec("DELETE FROM room_state WHERE k = ?", LOBBY_KEY);
+  /** Reads one stored value, or `null` when there is none. */
+  private load<T>(key: string): T | null {
+    const rows = this.ctx.storage.sql
+      .exec<{ v: string }>("SELECT v FROM room_state WHERE k = ?", key)
+      .toArray();
+    const row = rows[0];
+    return row ? (JSON.parse(row.v) as T) : null;
+  }
+
+  /** Stores one value as JSON; `null` removes it. */
+  private save(key: string, value: unknown): void {
+    if (value === null) {
+      this.ctx.storage.sql.exec("DELETE FROM room_state WHERE k = ?", key);
     } else {
       this.ctx.storage.sql.exec(
         "INSERT INTO room_state (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
-        LOBBY_KEY,
-        JSON.stringify(lobby),
+        key,
+        JSON.stringify(value),
       );
     }
+  }
+
+  /** Persists the lobby, then caches it. `null` removes the room. */
+  private saveLobby(lobby: LobbyState | null): void {
+    this.save(LOBBY_KEY, lobby);
     this.lobby = lobby;
   }
 
@@ -199,6 +330,18 @@ export class GameRoom extends Server<Env> {
       slots.add(c.state.slot);
     }
     return slots;
+  }
+
+  /** Who is around, by token: who holds a slot, and who of them is connected. */
+  private presence(except?: ReadonlySet<string>): Presence {
+    const seated = new Set<string>();
+    const connected = new Set<string>();
+    const slots = this.connectedSlots(except);
+    for (const p of this.lobby?.players ?? []) {
+      seated.add(p.token);
+      if (slots.has(p.slot)) connected.add(p.token);
+    }
+    return { connected, seated };
   }
 
   /** Sends every seated connection its own view of the lobby. */
@@ -217,9 +360,38 @@ export class GameRoom extends Server<Env> {
     }
   }
 
+  /**
+   * Sends every seated connection the game as its own player may see it: the
+   * view of their seat, or a spectator's for someone not at the table. The
+   * state itself is never sent.
+   */
+  private broadcastGame(except?: ReadonlySet<string>): void {
+    const lobby = this.lobby;
+    const session = this.session;
+    if (lobby === null || session === null) return;
+    const presence = this.presence(except);
+    const now = Date.now();
+    const tokenBySlot = new Map(lobby.players.map((p) => [p.slot, p.token]));
+    for (const c of this.getConnections<ConnectionState>()) {
+      if (except?.has(c.id) || c.state?.kind !== "player") continue;
+      const message: ServerMessage = {
+        type: "game",
+        room: this.name,
+        ...sessionSnapshot(session, tokenBySlot.get(c.state.slot) ?? null, presence, now),
+      };
+      c.send(JSON.stringify(message));
+    }
+  }
+
   private reject(connection: Connection<ConnectionState>, reason: RejectReason): void {
     const message: ServerMessage = { type: "error", reason };
     connection.send(JSON.stringify(message));
     connection.close(CLOSE_REJECTED, reason);
+  }
+
+  /** Tells one connection its start or move was not accepted. */
+  private refuse(connection: Connection<ConnectionState>, reason: StartRefusal | MoveRefusal): void {
+    const message: ServerMessage = { type: "refused", reason };
+    connection.send(JSON.stringify(message));
   }
 }

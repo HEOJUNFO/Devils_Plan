@@ -1,0 +1,13 @@
+{
+  "seats": 6,
+  "startCredits": 16,
+  "costPublic": 1,
+  "costPrivate": 2,
+  "costRotate1": 3,
+  "costRotate2": 4,
+  "tamperNeed": 6,
+  "tamperMaxPerTurn": 3,
+  "bullets": 2,
+  "endWhenOut": 3,
+  "turnSeconds": 0
+}

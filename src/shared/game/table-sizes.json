@@ -1,0 +1,5 @@
+{
+  "4": { "bullets": 1, "endWhenOut": 2 },
+  "5": { "bullets": 2, "endWhenOut": 2 },
+  "6": { "bullets": 2, "endWhenOut": 3 }
+}
