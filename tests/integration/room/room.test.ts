@@ -143,6 +143,7 @@ describe("GameRoom", () => {
       game: DEFAULT_GAME,
       listed: false,
       turnSeconds: 0,
+      voice: true,
       players: [{ slot: 0, nick: "ann", connected: true }],
     });
     a.close();
@@ -196,7 +197,13 @@ describe("GameRoom", () => {
 
     a.send({ type: "clock", seconds: Math.max(...roomConfig.turnSecondsChoices) + 1 });
 
-    expect(await a.next()).toEqual({ type: "refused", reason: "bad-setting" });
+    for (;;) {
+      const message = await a.next();
+      // the room also says who is in voice when someone comes in; the answer to the setting is the refusal
+      if (message.type !== "refused") continue;
+      expect(message).toEqual({ type: "refused", reason: "bad-setting" });
+      break;
+    }
     a.close();
   });
 

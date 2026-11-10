@@ -5,6 +5,7 @@
  * starts.
  */
 import type { LobbyView } from "../shared/lobby";
+import type { VoiceMark } from "../shared/voice";
 import {
   BAR_Y,
   CX,
@@ -19,9 +20,11 @@ import {
   drawRoom,
   drawSpeech,
   drawTable,
+  drawVoiceMark,
   seatLayout,
   speechLines,
   speechSeconds,
+  VOICE_MARK_W,
 } from "./game/draw";
 import { FIGURE_COUNT } from "./game/figures";
 import { C } from "./game/palette";
@@ -39,8 +42,11 @@ export interface LobbyScene {
 /** The widest a name is drawn beside a seat, in pixels. */
 const NAME_WIDTH = 66;
 
-/** Draws the lobby's picture on `canvas`, which must be the size of the game's scene. */
-export function createLobbyScene(canvas: HTMLCanvasElement): LobbyScene {
+/**
+ * Draws the lobby's picture on `canvas`, which must be the size of the game's
+ * scene. `voice` says how the player in a slot stands in the room's voice chat.
+ */
+export function createLobbyScene(canvas: HTMLCanvasElement, voice: (slot: number) => VoiceMark): LobbyScene {
   canvas.width = SCENE_W;
   canvas.height = BAR_Y;
   const context = canvas.getContext("2d");
@@ -88,6 +94,8 @@ export function createLobbyScene(canvas: HTMLCanvasElement): LobbyScene {
       const x = place.at.label.align === "center" ? place.at.label.x - Math.round(width / 2) : place.at.label.x;
       const y = place.at.label.y;
       pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
+      const mark = voice(place.slot);
+      if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
       if (lead) {
         // the host starts the game
         pen.px(x + width - 26, y, 26, 13, C.amberD);

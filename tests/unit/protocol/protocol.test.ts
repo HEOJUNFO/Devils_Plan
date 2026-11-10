@@ -72,6 +72,27 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage('{"type":"clock","seconds":1e999}')).toBeNull();
   });
 
+  it("reads coming into voice and going out of it", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "voice", on: true, muted: true }))).toEqual({ type: "voice", on: true, muted: true });
+    expect(parseClientMessage(JSON.stringify({ type: "voice" }))).toEqual({ type: "voice", on: false, muted: false });
+  });
+
+  it("reads a voice signal for another player", () => {
+    const signal = { kind: "offer", sdp: "v=0" };
+
+    expect(parseClientMessage(JSON.stringify({ type: "rtc", to: 2, signal }))).toEqual({ type: "rtc", to: 2, signal });
+  });
+
+  it("rejects a voice signal that is for nobody, or is no signal", () => {
+    const signal = { kind: "offer", sdp: "v=0" };
+
+    expect(parseClientMessage(JSON.stringify({ type: "rtc", signal }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "rtc", to: -1, signal }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "rtc", to: 1.5, signal }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "rtc", to: 1, signal: { kind: "bye" } }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "rtc", to: 1 }))).toBeNull();
+  });
+
   it("rejects a change of listing that does not say which way", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: "true" }))).toBeNull();

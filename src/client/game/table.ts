@@ -12,6 +12,7 @@
  */
 import type { Action, RulesConfig, SeatEvent, SeatView } from "../../shared/game";
 import type { ServerMessage } from "../../shared/protocol";
+import type { VoiceMark } from "../../shared/voice";
 import {
   BAR_Y,
   CX,
@@ -37,6 +38,7 @@ import {
   drawRoom,
   drawSpeech,
   drawTable,
+  drawVoiceMark,
   hatchXY,
   pairAt,
   posAngle,
@@ -45,6 +47,7 @@ import {
   speechSeconds,
   tipXY,
   type HatchInfo,
+  VOICE_MARK_W,
   type IconName,
   type SeatLayout,
 } from "./draw";
@@ -64,6 +67,8 @@ export interface TableHandlers {
   again(): void;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
+  /** How the player in lobby slot `slot` stands in the room's voice chat. */
+  voice(slot: number): VoiceMark;
 }
 
 /** The game screen. */
@@ -817,6 +822,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const lx = at.label.align === "center" ? at.label.x - Math.round(width / 2) : at.label.x;
       const ly = at.label.y;
       pen.txt(name, lx, ly, fallen[seat] ? C.dim : waiting === seat || (mine && deal > 0) ? C.amber : C.bone);
+      // in the room's voice chat: a mark before the name
+      const voice = info.bot ? "out" : handlers.voice(info.occupant);
+      if (voice !== "out") drawVoiceMark(pen, lx - VOICE_MARK_W, ly, voice, time);
       if (lead) {
         // leads this round
         pen.px(lx + width - 14, ly, 14, 13, C.amberD);

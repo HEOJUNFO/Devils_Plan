@@ -29,9 +29,11 @@ import {
 } from "../shared/protocol";
 import chatConfig from "../shared/chat-config.json";
 import roomConfig from "../shared/room-config.json";
+import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
 import { createTable, type Table } from "./game/table";
 import { createLobbyScene } from "./lobby-scene";
+import { createVoice } from "./voice";
 
 const config: RoomConfig = roomConfig;
 
@@ -44,6 +46,14 @@ const FRAME_H = 270;
  * development grants it; the deployed one refuses.
  */
 const wantBots = new URLSearchParams(location.search).get("bots") === "1";
+
+/**
+ * `?fakemic=1`, on a development host only, puts a tone in place of the
+ * microphone, so two tabs of one browser can be seen to connect in voice
+ * without the browser asking for a microphone.
+ */
+const fakeMic =
+  new URLSearchParams(location.search).get("fakemic") === "1" && ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
 
 /** How many fresh codes to try when a newly made code is already in use. */
 const CREATE_ATTEMPTS = 3;
@@ -118,6 +128,10 @@ const copyButton = el<HTMLButtonElement>("copy");
 const clockButton = el<HTMLButtonElement>("clock");
 const chatBox = el<HTMLElement>("chat");
 const chatInput = el<HTMLInputElement>("chat-input");
+const voiceBox = el<HTMLElement>("voice");
+const voiceMic = el<HTMLButtonElement>("voice-mic");
+const voiceToggle = el<HTMLButtonElement>("voice-toggle");
+const voiceNote = el<HTMLElement>("voice-note");
 const tabs = el<HTMLElement>("tabs");
 const tabLog = el<HTMLButtonElement>("tab-log");
 const tabChat = el<HTMLButtonElement>("tab-chat");
@@ -128,8 +142,6 @@ const leaveGameButton = el<HTMLButtonElement>("leave-game");
 
 /** What the page is called while no room is open. */
 const SITE_TITLE = document.title;
-
-const scene = createLobbyScene(sceneCanvas);
 
 const profile = new URLSearchParams(location.search).get("profile") ?? "";
 const storageKey = (name: string) => `empty-chamber.${name}${profile ? `.${profile}` : ""}`;
@@ -207,6 +219,37 @@ function send(message: ClientMessage): void {
   socket?.send(JSON.stringify(message));
 }
 
+/** The room's voice chat, as this page takes part in it. */
+const voice = createVoice({
+  config: voiceConfig,
+  send,
+  changed: () => renderVoice(),
+  fakeMic,
+});
+
+// For development, with the tone in place of the microphone: lets a test read how the voice chat stands.
+if (fakeMic) (window as unknown as { voiceForTests: typeof voice }).voiceForTests = voice;
+
+const scene = createLobbyScene(sceneCanvas, (slot) => voice.mark(slot));
+
+/** Draws the voice controls as things stand: where the screen has room for them, and what they offer. */
+function renderVoice(): void {
+  const view = currentView;
+  const inGame = table !== null;
+  const offered = view?.voice === true;
+  // during a game there is no room to say that a room has no voice: the controls are just not there
+  voiceBox.hidden = currentCode === "" || view === null || (inGame && !offered);
+  voiceBox.classList.toggle("in-game", inGame);
+  voiceNote.hidden = offered;
+  voiceNote.textContent = "음성 채팅은 비공개 방에서만";
+  voiceToggle.hidden = !offered;
+  voiceToggle.textContent = voice.on ? "음성 나가기" : inGame ? "음성 켜기" : "음성 채팅 켜기";
+  voiceMic.hidden = !offered || !voice.on;
+  voiceMic.disabled = !voice.hasMic;
+  voiceMic.textContent = !voice.hasMic ? "마이크 없음" : voice.muted ? "마이크 끔" : "마이크 켬";
+  voiceMic.setAttribute("aria-pressed", String(voice.on && !voice.muted));
+}
+
 const chat = createChat(
   { log: el<HTMLOListElement>("chat-log"), form: el<HTMLFormElement>("chat-form"), input: chatInput },
   {
@@ -267,6 +310,7 @@ function showTable(): Table {
         dismissedGame = shownGame;
         hideTable();
       },
+      voice: (slot) => voice.mark(slot),
     });
     table.setHost(isHost);
   }
@@ -275,6 +319,7 @@ function showTable(): Table {
   rules.hidden = true;
   syncScene();
   syncChat();
+  renderVoice();
   return table;
 }
 
@@ -289,6 +334,7 @@ function hideTable(): void {
   unread = 0;
   syncScene();
   syncChat();
+  renderVoice();
 }
 
 // ---- The lobby: the rooms anyone can join -------------------------------------------------------
@@ -366,6 +412,7 @@ function unwatchRooms(): void {
 
 /** The lobby: the rooms anyone can join, a nickname, and a room to make or enter by code. */
 function showLobby(message = ""): void {
+  voice.leave();
   currentCode = "";
   currentView = null;
   hideTable();
@@ -438,12 +485,17 @@ function renderRoomBar(): void {
   setBar(game?.summary ?? "", hint, game !== null);
 }
 
-/** The line under the room's code: who is here, or that the connection is down. */
+/** The line over the room's code: the game, who can come in and how many are here, or that the connection is down. */
 function renderStatus(): void {
   const view = currentView;
-  if (!online) status.textContent = "연결이 끊겼습니다. 다시 연결하는 중";
-  else if (view !== null) status.textContent = `${view.players.filter((p) => p.connected).length}명 접속 · 최대 ${view.maxPlayers}명`;
-  else status.textContent = "";
+  if (view === null) return;
+  const here = view.players.filter((p) => p.connected).length;
+  const game = isGameId(view.game) ? GAMES[view.game].title : "새 게임";
+  roomGame.textContent = online
+    ? `${game} · ${view.listed ? "공개" : "비공개"} · ${here}/${view.maxPlayers}`
+    : "연결이 끊겼습니다. 다시 연결하는 중";
+  // said aloud to a screen reader when it changes
+  status.textContent = online ? `${here}명 접속, 최대 ${view.maxPlayers}명` : "연결이 끊겼습니다. 다시 연결하는 중";
 }
 
 /** Says in the chat who has come into the room and who has gone since it was last sent. */
@@ -488,9 +540,12 @@ function renderRoom(code: string, view: LobbyView): void {
   renderStatus();
   syncChat();
 
+  // The room is on the list now, where strangers come in: nobody stays connected directly to anybody.
+  if (!view.voice) voice.leave();
+  renderVoice();
+
   // A room made by a newer server may be for a game this page has not heard of.
   const game = isGameId(view.game) ? GAMES[view.game] : null;
-  roomGame.textContent = `${game?.title ?? "새 게임"} · ${view.listed ? "공개 방" : "비공개 방"}`;
   document.title = `${game?.title ?? SITE_TITLE} · ${code}`;
   listingButton.hidden = !isHost;
   listingButton.textContent = view.listed ? "비공개로" : "공개로";
@@ -541,6 +596,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
   current.addEventListener("open", () => {
     // Fires again on every reconnect; the server expects `join` each time.
     current.send(JSON.stringify(join));
+    // a connection that came back is a new one to the room: say again that this page is in voice
+    voice.announce();
     online = true;
     renderStatus();
   });
@@ -576,12 +633,24 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // Something asked of the room was not accepted; the connection is fine.
       if (message.reason === "chat-too-fast") {
         chat.note(CHAT_TOO_FAST_TEXT);
+      } else if (message.reason === "voice-not-here") {
+        // the room went on the list between the button being shown and pressed
+        voice.leave();
+        chat.note("이 방에서는 음성 채팅을 쓸 수 없습니다.");
       } else if (table !== null) {
         table.refused(message.reason);
       } else {
         hint = REFUSED_TEXT[message.reason] ?? "지금은 할 수 없습니다.";
         renderRoomBar();
       }
+      return;
+    }
+    if (message.type === "voice") {
+      if (currentView !== null) voice.members(message.members, currentView.you);
+      return;
+    }
+    if (message.type === "rtc") {
+      voice.signal(message.from, message.signal);
       return;
     }
     if (message.type === "chat") {
@@ -647,6 +716,7 @@ function joinFromInput(): void {
 }
 
 function leaveRoom(): void {
+  voice.leave();
   send({ type: "leave" });
   disconnect();
   history.replaceState(null, "", `${location.pathname}${location.search}`);
@@ -723,6 +793,23 @@ copyButton.addEventListener("click", () => {
   );
 });
 
+// The voice chat: in and out, and the microphone on and off.
+voiceToggle.addEventListener("click", () => {
+  if (voice.on) {
+    voice.leave();
+    return;
+  }
+  void voice.join().then(() => {
+    if (!voice.on) return;
+    chat.note(
+      voice.hasMic
+        ? "음성 채팅에 들어왔습니다. 음성은 방 사람들의 기기와 직접 주고받습니다."
+        : "마이크를 쓸 수 없어 듣기만 합니다. 브라우저의 마이크 권한을 확인해 주세요.",
+    );
+  });
+});
+voiceMic.addEventListener("click", () => voice.setMuted(!voice.muted));
+
 // During a game: the tabs over the right-hand column, and T for the chat.
 tabLog.addEventListener("click", () => openChat(false));
 tabChat.addEventListener("click", () => openChat(true));
@@ -772,6 +859,7 @@ function followAddress(): void {
   }
   if (socket !== null) {
     // an invitation opened from inside another room: that room is left
+    voice.leave();
     send({ type: "leave" });
     disconnect();
     showLobby();
@@ -784,6 +872,21 @@ function followAddress(): void {
 // An invitation opened in a tab that already shows this page changes only the
 // part after `#`, which loads nothing.
 addEventListener("hashchange", followAddress);
+
+// A page the browser has moved away from may be kept, frozen, in case the
+// player comes back to it: its connections would stay open and the room would
+// go on showing someone who is not there. They are closed when the page is
+// put away and opened again if it is brought back.
+addEventListener("pagehide", () => {
+  voice.leave();
+  socket?.close();
+  listSocket?.close();
+});
+addEventListener("pageshow", (event) => {
+  if (!event.persisted) return;
+  socket?.reconnect();
+  listSocket?.reconnect();
+});
 
 // Restore the last nickname, and rejoin the room named in the address if any.
 nickInput.maxLength = config.nickMaxLength;

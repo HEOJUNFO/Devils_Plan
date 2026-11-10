@@ -30,6 +30,7 @@ import {
   parseClientMessage,
   type ChatRefusal,
   type ClientMessage,
+  type VoiceRefusal,
   type RejectReason,
   type ServerMessage,
 } from "../shared/protocol";
@@ -47,10 +48,13 @@ import {
   type SettingRefusal,
   type StartRefusal,
 } from "../shared/session";
+import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
+import voiceConfigJson from "../shared/voice-config.json";
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
 const chatConfig: ChatConfig = chatConfigJson;
+const voiceConfig: VoiceConfig = voiceConfigJson;
 
 const sessionConfig: SessionConfig = {
   rules: rulesConfig,
@@ -66,8 +70,8 @@ const sessionConfig: SessionConfig = {
 type ConnectionState =
   /** Open, but has not sent `join` yet. `since` is when it connected. */
   | { kind: "pending"; since: number }
-  /** Seated in the lobby. */
-  | { kind: "player"; slot: number };
+  /** Seated in the lobby. `voice` is there while this connection is in the room's voice chat. */
+  | { kind: "player"; slot: number; voice?: { muted: boolean } };
 
 /**
  * The room's named timers. They share the object's one alarm through
@@ -216,6 +220,8 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "listing") await this.handleListing(connection, state.slot, parsed.listed);
     else if (parsed.type === "chat") this.handleChat(connection, state.slot, parsed.text);
     else if (parsed.type === "clock") this.handleClock(connection, state.slot, parsed.seconds);
+    else if (parsed.type === "voice") this.handleVoice(connection, state.slot, parsed.on, parsed.muted);
+    else if (parsed.type === "rtc") this.handleRtc(connection, state.slot, parsed.to, parsed.signal);
   }
 
   /**
@@ -231,6 +237,7 @@ export class GameRoom extends Server<Env> {
     const noted = markAway(lobby, connected, Date.now());
     if (noted !== lobby) this.saveLobby(noted);
     this.broadcastLobby(gone);
+    if (connection.state.voice !== undefined) this.broadcastVoice(gone);
     await this.presenceChanged(gone);
     await this.scheduleSlots();
     await this.report(gone);
@@ -280,6 +287,7 @@ export class GameRoom extends Server<Env> {
     // Also notes anyone whose connection ended without the room being told.
     this.saveLobby(markAway(result.state, this.connectedSlots(), Date.now()));
     this.broadcastLobby();
+    this.sendVoice(connection);
     // A game may be going on: the newcomer watches it, a returning player takes their seat back.
     await this.presenceChanged();
     await this.scheduleSlots();
@@ -356,8 +364,69 @@ export class GameRoom extends Server<Env> {
     const next = setListed(lobby, listed);
     if (next === lobby) return;
     this.saveLobby(next);
+    if (!this.voiceOffered()) {
+      // Strangers may now come in: nobody is left connected directly to anybody.
+      for (const c of this.getConnections<ConnectionState>()) {
+        if (c.state?.kind === "player" && c.state.voice !== undefined) c.setState({ kind: "player", slot: c.state.slot });
+      }
+    }
     this.broadcastLobby();
+    this.broadcastVoice();
     await this.report();
+  }
+
+  /** Whether this room offers voice chat. */
+  private voiceOffered(): boolean {
+    return voiceOffered(this.lobby?.listed === true, voiceConfig);
+  }
+
+  /** Brings a connection into the room's voice chat or takes it out, and tells everyone who is in it now. */
+  private handleVoice(connection: Connection<ConnectionState>, slot: number, on: boolean, muted: boolean): void {
+    if (on && !this.voiceOffered()) return this.refuse(connection, "voice-not-here");
+    connection.setState(on ? { kind: "player", slot, voice: { muted } } : { kind: "player", slot });
+    this.broadcastVoice();
+  }
+
+  /**
+   * Passes a signal from one player in voice to another, so the two can
+   * connect directly. Both must be in voice: nobody is reached who has not
+   * come in, and nobody reaches in from outside.
+   */
+  private handleRtc(connection: Connection<ConnectionState>, slot: number, to: number, signal: RtcSignal): void {
+    if (!this.voiceOffered() || connection.state?.kind !== "player" || connection.state.voice === undefined) return;
+    if (to === slot) return;
+    const message: ServerMessage = { type: "rtc", from: slot, signal };
+    const data = JSON.stringify(message);
+    for (const c of this.getConnections<ConnectionState>()) {
+      if (c.state?.kind === "player" && c.state.slot === to && c.state.voice !== undefined) c.send(data);
+    }
+  }
+
+  /** Who is in the room's voice chat, a slot once however many of its connections are. */
+  private voiceMembers(except?: ReadonlySet<string>): VoiceMember[] {
+    const bySlot = new Map<number, boolean>();
+    for (const c of this.getConnections<ConnectionState>()) {
+      if (except?.has(c.id) || c.state?.kind !== "player" || c.state.voice === undefined) continue;
+      // with the microphone on in any of a player's connections, the player is not muted
+      bySlot.set(c.state.slot, (bySlot.get(c.state.slot) ?? true) && c.state.voice.muted);
+    }
+    return [...bySlot].map(([slot, muted]) => ({ slot, muted })).sort((a, b) => a.slot - b.slot);
+  }
+
+  /** Tells everyone in the room who is in its voice chat. */
+  private broadcastVoice(except?: ReadonlySet<string>): void {
+    const message: ServerMessage = { type: "voice", room: this.name, members: this.voiceMembers(except) };
+    const data = JSON.stringify(message);
+    for (const c of this.getConnections<ConnectionState>()) {
+      if (except?.has(c.id) || c.state?.kind !== "player") continue;
+      c.send(data);
+    }
+  }
+
+  /** Tells one connection who is in the room's voice chat. */
+  private sendVoice(connection: Connection<ConnectionState>): void {
+    const message: ServerMessage = { type: "voice", room: this.name, members: this.voiceMembers() };
+    connection.send(JSON.stringify(message));
   }
 
   /** Starts a game for the players now connected, if the one asking is the host. */
@@ -557,7 +626,7 @@ export class GameRoom extends Server<Env> {
       const message: ServerMessage = {
         type: "lobby",
         room: this.name,
-        ...viewLobby(lobby, connected, c.state.slot, config),
+        ...viewLobby(lobby, connected, c.state.slot, config, this.voiceOffered()),
       };
       c.send(JSON.stringify(message));
     }
@@ -595,7 +664,7 @@ export class GameRoom extends Server<Env> {
   /** Tells one connection that what it asked was not accepted. */
   private refuse(
     connection: Connection<ConnectionState>,
-    reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal,
+    reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal,
   ): void {
     const message: ServerMessage = { type: "refused", reason };
     connection.send(JSON.stringify(message));

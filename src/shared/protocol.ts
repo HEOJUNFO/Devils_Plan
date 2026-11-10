@@ -9,6 +9,10 @@ import { parseAction, type Action } from "./game";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
+import { parseRtcSignal, type RtcSignal, type VoiceConfig, type VoiceMember } from "./voice";
+import voiceConfigJson from "./voice-config.json";
+
+const voiceConfig: VoiceConfig = voiceConfigJson;
 
 /**
  * URL segment PartyServer derives from the `GameRoom` Durable Object binding.
@@ -41,8 +45,12 @@ export const CLOSE_REJECTED = 4000;
 /** WebSocket close code the server uses when a player leaves on purpose. */
 export const CLOSE_LEFT = 4001;
 
-/** Longest client message the server reads, in characters. Longer ones are ignored. */
-export const MAX_CLIENT_MESSAGE_LENGTH = 1024;
+/**
+ * Longest client message the server reads, in characters. Longer ones are
+ * ignored. Everything but a voice signal is far shorter; a signal carries a
+ * session description, which has its own, lower limit (`voice-config.json`).
+ */
+export const MAX_CLIENT_MESSAGE_LENGTH = 8192;
 
 /** Server → client. */
 export type ServerMessage =
@@ -57,16 +65,23 @@ export type ServerMessage =
    */
   | ({ type: "game"; room: string } & GameSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
-  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal }
+  | { type: "refused"; reason: StartRefusal | MoveRefusal | ChatRefusal | SettingRefusal | VoiceRefusal }
   /**
    * A line someone in the room said, sent to everyone in it, the speaker
    * included. The room keeps no lines: someone who comes in later does not
    * get what was said before.
    */
-  | { type: "chat"; room: string; from: number; nick: string; text: string; at: number };
+  | { type: "chat"; room: string; from: number; nick: string; text: string; at: number }
+  /** Who is in the room's voice chat, sent to everyone in the room on joining and whenever it changes. */
+  | { type: "voice"; room: string; members: VoiceMember[] }
+  /** A signal from another player in voice, passed on by the room so the two can connect directly. */
+  | { type: "rtc"; from: number; signal: RtcSignal };
 
 /** Why a chat line was not passed on: the player is sending them too fast. */
 export type ChatRefusal = "chat-too-fast";
+
+/** Why voice was not switched on: this room does not offer it. */
+export type VoiceRefusal = "voice-not-here";
 
 /**
  * Directory → client: the rooms anyone can join, best to join first. Sent on
@@ -107,7 +122,11 @@ export type ClientMessage =
    * in seconds (0 for no limit); only the host may, and only one of the
    * lengths the room offers.
    */
-  | { type: "clock"; seconds: number };
+  | { type: "clock"; seconds: number }
+  /** Come into the room's voice chat or go out of it, and say whether the microphone is off. */
+  | { type: "voice"; on: boolean; muted: boolean }
+  /** A signal for the player in slot `to`, who is also in voice: see {@link RtcSignal}. */
+  | { type: "rtc"; to: number; signal: RtcSignal };
 
 function parseObject(raw: unknown, maxLength: number): Record<string, unknown> | null {
   if (typeof raw !== "string" || raw.length > maxLength) return null;
@@ -146,6 +165,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "clock") {
     return typeof data.seconds === "number" && Number.isFinite(data.seconds) ? { type: "clock", seconds: data.seconds } : null;
   }
+  if (data.type === "voice") {
+    return { type: "voice", on: data.on === true, muted: data.muted === true };
+  }
+  if (data.type === "rtc") {
+    if (typeof data.to !== "number" || !Number.isInteger(data.to) || data.to < 0) return null;
+    const signal = parseRtcSignal(data.signal, voiceConfig);
+    return signal === null ? null : { type: "rtc", to: data.to, signal };
+  }
   if (data.type === "start") return { type: "start", bots: data.bots === true };
   if (data.type === "action") {
     const action = parseAction(data.action);
@@ -163,7 +190,9 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     data.type === "error" ||
     data.type === "game" ||
     data.type === "refused" ||
-    data.type === "chat"
+    data.type === "chat" ||
+    data.type === "voice" ||
+    data.type === "rtc"
   ) {
     return data as ServerMessage;
   }

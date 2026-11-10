@@ -339,6 +339,14 @@ button.choice[aria-pressed="true"] {
 .row > button.choice,
 .row.bottom > button {
   flex: 1;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+/* The line over the room's code never runs to a second line. */
+#room-game {
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* The last row of a panel sits at its foot, and the one before it above that. */
@@ -391,13 +399,59 @@ button.choice[aria-pressed="true"] {
   white-space: nowrap;
 }
 
-#status {
-  height: 13px;
-  margin-top: 2px;
-  overflow: hidden;
-  color: var(--bone-dim);
+/*
+ * The voice controls. In the waiting room they sit under the room's code; during
+ * a game, beside the way out, over the wall at the top left.
+ */
+#voice {
+  position: absolute;
+  left: 312px;
+  top: 54px;
+  display: flex;
+  gap: 4px;
+  width: 160px;
+}
+
+#voice[hidden],
+#voice [hidden] {
+  display: none;
+}
+
+#voice button {
+  flex: 1;
+  padding: 0 2px;
   white-space: nowrap;
 }
+
+#voice.in-game {
+  left: 50px;
+  top: 3px;
+  width: auto;
+  opacity: 0.6;
+}
+
+#voice.in-game:hover,
+#voice.in-game:focus-within {
+  opacity: 1;
+}
+
+#voice.in-game button {
+  flex: none;
+  padding: 0 5px;
+}
+
+#voice-note {
+  color: var(--dim);
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+/* The microphone is on: the button that switches it off is lit. */
+#voice-mic[aria-pressed="true"] {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
 
 /*
  * The chat. In the waiting room it fills the column between the room's code
@@ -407,12 +461,12 @@ button.choice[aria-pressed="true"] {
 #chat {
   position: absolute;
   left: 312px;
-  top: 70px;
+  top: 75px;
   display: flex;
   flex-direction: column;
   gap: 2px;
   width: 160px;
-  height: 104px;
+  height: 99px;
 }
 
 /* Over the moves, marks in the margin included, from the tabs down to the bar. */

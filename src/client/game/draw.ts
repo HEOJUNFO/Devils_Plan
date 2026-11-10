@@ -409,6 +409,28 @@ export const ICON_COLOUR: Record<IconName, string> = {
 };
 
 /** The small dark box an icon sits in, beside a figure's head. */
+/** How wide the mark of the voice chat is beside a name, with the gap after it. */
+export const VOICE_MARK_W = 7;
+
+/**
+ * The mark of the voice chat beside a name, its top left at `x`, `y` (the top
+ * of the name's line): three bars that move while the player speaks and stand
+ * still while they are quiet, and a cross for a microphone switched off.
+ */
+export function drawVoiceMark(pen: Pen, x: number, y: number, mark: "in" | "muted" | "speaking", time: number): void {
+  if (mark === "muted") {
+    for (let i = 0; i < 5; i++) {
+      pen.px(x + i, y + 4 + i, 1, 1, C.dim);
+      pen.px(x + 4 - i, y + 4 + i, 1, 1, C.dim);
+    }
+    return;
+  }
+  for (let bar = 0; bar < 3; bar++) {
+    const height = mark === "speaking" ? 2 + Math.round(2.5 + 2.5 * Math.sin(time * 14 + bar * 2.1)) : 2 + (bar === 1 ? 2 : 0);
+    pen.px(x + bar * 2, y + 10 - height, 1, height, mark === "speaking" ? C.teal : C.dim);
+  }
+}
+
 /** The widest a line of a speech bubble is, in pixels, and the most lines one has. */
 const SPEECH_W = 104;
 const SPEECH_LINES = 2;

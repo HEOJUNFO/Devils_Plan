@@ -62,9 +62,9 @@
           <p class="room-code"><strong id="room-code"></strong></p>
           <button id="copy" type="button">링크 복사</button>
         </div>
-        <p id="status" role="status"></p>
+        <p id="status" role="status" class="sr-only"></p>
         <ol id="players" class="sr-only"></ol>
-        <!-- The chat (#chat, below) is laid over the gap left here. -->
+        <!-- The voice controls (#voice) and the chat (#chat), below, are laid over the gap left here. -->
         <div class="row bottom second">
           <button id="start" type="button" class="primary">게임 시작</button>
           <button id="clock" type="button"></button>
@@ -83,6 +83,13 @@
 
       <canvas id="table" hidden></canvas>
       <button id="leave-game" type="button" hidden>나가기</button>
+
+      <!-- The room's voice chat: under the room's code in the waiting room, beside the way out during a game. -->
+      <div id="voice" role="group" aria-label="음성 채팅" hidden>
+        <button id="voice-mic" type="button" hidden></button>
+        <button id="voice-toggle" type="button"></button>
+        <p id="voice-note" hidden></p>
+      </div>
 
       <!-- During a game the right-hand column shows the moves or the chat. -->
       <div id="tabs" role="group" aria-label="오른쪽 칸에 보일 것" hidden>

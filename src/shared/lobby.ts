@@ -90,6 +90,8 @@ export interface LobbyView {
   listed: boolean;
   /** Seconds a player has for a move in the next game started here; 0 for no limit. */
   turnSeconds: number;
+  /** Whether the room offers voice chat (see `voice.ts`). */
+  voice: boolean;
   players: PublicPlayer[];
 }
 
@@ -285,6 +287,7 @@ export function viewLobby(
   connectedSlots: ReadonlySet<number>,
   viewerSlot: number,
   config: RoomConfig,
+  voice = false,
 ): LobbyView {
   return {
     you: viewerSlot,
@@ -292,6 +295,7 @@ export function viewLobby(
     game: gameOf(state),
     listed: state.listed === true,
     turnSeconds: turnSecondsOf(state),
+    voice,
     players: state.players.map((p) => ({
       slot: p.slot,
       nick: p.nick,
