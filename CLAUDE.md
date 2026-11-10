@@ -26,6 +26,24 @@ defaults in this file, these win.
   bot personalities, no big tuning tables, no single-player screens or polish.
   Bots that seem dull or weak are not a defect: leave them and spend the time
   on multiplayer. Full rule and its reason: `.claude/rules/bots.md`.
+- **A game is shown under the name the show gives it.** Players see each game
+  by the name it has in the show: "러시안 룰렛", not a name made up here (the
+  first builds were titled "빈 약실 / Empty Chamber", which the user replaced).
+  The user set this on 2026-11-11: "게임이름자체는 데블스플랜이랑 동일하게하자
+  그래두 규칙에추가해". It is about the game's name. The rest of what was
+  agreed stays: the rules are used exactly as documented, and the show's own
+  title, logo, cast, set and screen layout are not used.
+  *Assistant's own limit, not the user's rule:* a name that is an everyday term
+  ("러시안 룰렛", "양자택일") is used as it is; a name the show coined for its
+  game ("무거운 13", "미스터리 거래소") is not copied by the assistant, which
+  gives a plain name instead and says so in its report.
+  Code names are not shown to players and stay as they are (`empty-chamber` in
+  `wrangler.jsonc`, `package.json` and the browser's storage keys): the
+  deployed Worker and its address go by that name.
+- **The lobby is a list of rooms.** Before making a room a player sees the
+  open rooms and can join one, make one, or enter a code. The user, on
+  2026-11-11: "내가말한로비는 여러방리스트가 있는 로비말한거야". A screen with
+  only a nickname and a code is not the lobby.
 
 ## Project Structure
 

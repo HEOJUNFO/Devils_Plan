@@ -59,6 +59,8 @@ export interface TableHandlers {
   act(action: Action): void;
   /** The host asked for the next game. */
   again(): void;
+  /** The game is over and the player wants the waiting room back. */
+  lobby(): void;
 }
 
 /** The game screen. */
@@ -166,7 +168,9 @@ const inRect = (p: { x: number; y: number }, r: readonly [number, number, number
 const buttonRect = (i: number): [number, number, number, number] => [4 + i * 95, 240, 92, 28];
 const OK_RECT: [number, number, number, number] = [342, 223, 66, 15];
 const NO_RECT: [number, number, number, number] = [412, 223, 64, 15];
-const BAR_RECT: [number, number, number, number] = [0, BAR_Y, W, H - BAR_Y];
+/** The two buttons under the results: the next game (the host's) and the way back to the waiting room. */
+const AGAIN_RECT: [number, number, number, number] = [386, 225, 90, 15];
+const LOBBY_RECT: [number, number, number, number] = [386, 250, 90, 15];
 
 /** Makes `canvas` the game screen. Nothing is drawn until the first {@link Table.update}. */
 export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers): Table {
@@ -531,7 +535,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       return;
     }
     if (fired && latest.view.phase === "ended") {
-      if (pressed("Enter", "NumpadEnter", "KeyR") || clicked(BAR_RECT)) {
+      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT)) {
+        handlers.lobby();
+      } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT))) {
         if (host) handlers.again();
         else say(WAIT_TEXT["not-host"]);
       }
@@ -1038,7 +1044,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(`실탄은 ${live.join("·")} 약실에 있었습니다`, 96, 226, C.bone);
     pen.txt(`쓰러진 자리: ${result.hitSeats.map((seat) => pen.fit(nickOf(seat), LOG_NAME_WIDTH)).join(", ")}`, 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? "Enter: 같은 방에서 새 판 시작" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, host ? C.amber : C.boneD);
+    else pen.txt(host ? "같은 사람들과 한 판 더 하거나 대기실로" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
+    if (host) smallButton(AGAIN_RECT, "Enter 새 판", true);
+    smallButton(LOBBY_RECT, "Esc 대기실로", false);
   }
 
   function drawBar(): void {
@@ -1081,7 +1089,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const rules = latest.rules;
     const n = seats();
     const lines: [string, string][] = [
-      ["빈 약실: 규칙", C.amber],
+      ["러시안 룰렛: 규칙", C.amber],
       [`약실 ${n}칸 중 ${rules.bullets}칸에 실탄이 있습니다. 한 자리에 약실 한 칸이 마주`, C.bone],
       ["보고, 마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.", C.bone],
       ["", C.bone],
@@ -1122,14 +1130,10 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   }
 
   // ---- The screen, the loop and the listeners -------------------------------------------------------
-  function fit(): void {
-    const scale = Math.max(1, Math.floor(Math.min(innerWidth / W, innerHeight / H)));
-    canvas.width = W;
-    canvas.height = H;
-    canvas.style.width = `${W * scale}px`;
-    canvas.style.height = `${H * scale}px`;
-    ctx.imageSmoothingEnabled = false;
-  }
+  // The page scales the canvas with the frame it sits in; here it is always its own 480 by 270.
+  canvas.width = W;
+  canvas.height = H;
+  ctx.imageSmoothingEnabled = false;
 
   function toScreen(event: PointerEvent): { x: number; y: number } {
     const rect = canvas.getBoundingClientRect();
@@ -1138,6 +1142,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
+    // a key typed into a text box (the chat) is not a move
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
     startAudio();
     if (!event.repeat) keys.add(event.code);
     if (event.code === "Space" || event.code.startsWith("Arrow") || event.code === "Backspace") event.preventDefault();
@@ -1154,11 +1160,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     mouse.y = p.y;
     clicks.push(p);
   };
-  addEventListener("resize", fit);
   addEventListener("keydown", onKeyDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerdown", onPointerDown);
-  fit();
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -1191,7 +1195,6 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     },
     destroy(): void {
       stopped = true;
-      removeEventListener("resize", fit);
       removeEventListener("keydown", onKeyDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerdown", onPointerDown);

@@ -1,5 +1,5 @@
 /**
- * A basic bot for Empty Chamber.
+ * A basic bot for Russian Roulette.
  *
  * It exists for tests and for filling seats while developing. Players are
  * only ever offered games against other people, so this is not a feature and

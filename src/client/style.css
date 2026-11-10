@@ -1,13 +1,31 @@
-/* Functional lobby page for checking the room server. Not the game's art. */
+/*
+ * The whole client lives in one frame of 480 by 270 pixels, the game's own
+ * size, scaled up as one piece (main.ts sets --scale). Markup and canvases sit
+ * on the same pixel grid, so the lobby and the table read as one thing.
+ * Colours are the table's (game/palette.ts).
+ */
+@font-face {
+  font-family: "Galmuri11";
+  src: url("../../assets/fonts/Galmuri11.woff2") format("woff2");
+  font-display: block;
+}
+
 :root {
-  --ink: #12141f;
-  --panel: #1c2030;
-  --line: #343a52;
-  --bone: #e8e2d0;
-  --dim: #8d93a8;
-  --amber: #e8a33d;
-  --teal: #4fb3a5;
-  --crimson: #c8434b;
+  --ink: #0a0b14;
+  --night: #0d1020;
+  --bar: #0b0d19;
+  --line: #2c3044;
+  --edge: #4b5066;
+  --button: #171a2a;
+  --button-hover: #262b40;
+  --bone: #efe6cc;
+  --bone-dim: #a8a08a;
+  --dim: #7d7a8c;
+  --amber: #ffb43c;
+  --amber-dim: #b8741f;
+  --teal: #3fd0b6;
+  --crimson: #e23b4a;
+  --scale: 2;
   color-scheme: dark;
 }
 
@@ -15,189 +33,277 @@
   box-sizing: border-box;
 }
 
+html,
 body {
+  height: 100%;
   margin: 0;
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  background: var(--ink);
+  overflow: hidden;
+  background: #000;
+}
+
+#frame {
+  position: fixed;
+  left: var(--left, 0);
+  top: var(--top, 0);
+  width: 480px;
+  height: 270px;
+  overflow: hidden;
+  transform-origin: 0 0;
+  transform: scale(var(--scale));
+  background: var(--night);
   color: var(--bone);
-  font: 16px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font: 12px/13px "Galmuri11", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  -webkit-font-smoothing: none;
 }
 
-main {
-  width: min(92vw, 420px);
-  padding: 24px;
-  background: var(--panel);
-  border: 2px solid var(--line);
+canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  image-rendering: pixelated;
 }
 
-h1 {
-  margin: 0 0 20px;
-  font-size: 24px;
-  color: var(--amber);
+#scene {
+  width: 304px;
+  height: 222px;
 }
 
-section {
-  display: grid;
-  gap: 10px;
+#table {
+  width: 480px;
+  height: 270px;
+  touch-action: none;
 }
 
-section[hidden] {
+p,
+h1,
+h2,
+ol,
+ul {
+  margin: 0;
+  padding: 0;
+  font-weight: normal;
+}
+
+/* Said for a screen reader, not shown: the scene's picture carries the same for the eye. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The panel to the right of the scene. */
+.panel {
+  position: absolute;
+  left: 304px;
+  top: 0;
+  width: 176px;
+  height: 222px;
+  padding: 6px 8px 0;
+  border-left: 1px solid var(--line);
+  background: var(--night);
+}
+
+.panel[hidden],
+#rules[hidden] {
   display: none;
 }
 
-label {
-  color: var(--dim);
-  font-size: 13px;
+h1 {
+  margin-top: 4px;
+  color: var(--amber);
+  font-size: 24px;
+  line-height: 26px;
+  text-align: center;
 }
 
-input,
-button {
-  font: inherit;
-  padding: 8px 10px;
-  color: var(--bone);
+.sub {
+  margin-bottom: 9px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+  color: var(--bone-dim);
+  text-align: center;
+}
+
+label,
+.label {
+  display: block;
+  margin: 5px 0 2px;
+  color: var(--bone-dim);
+}
+
+input {
+  width: 100%;
+  height: 17px;
+  padding: 1px 4px;
+  border: 1px solid var(--edge);
+  border-radius: 0;
+  outline: none;
   background: var(--ink);
-  border: 2px solid var(--line);
+  color: var(--bone);
+  font: inherit;
 }
 
-input:focus-visible,
-button:focus-visible {
-  outline: 2px solid var(--amber);
-  outline-offset: 1px;
+input:focus {
+  border-color: var(--amber);
 }
 
 button {
+  height: 17px;
+  padding: 0 6px;
+  border: 1px solid var(--edge);
+  border-radius: 0;
+  background: var(--button);
+  color: var(--bone);
+  font: inherit;
   cursor: pointer;
 }
 
-button:hover {
-  border-color: var(--amber);
+button:hover:not(:disabled) {
+  background: var(--button-hover);
 }
 
-#create {
-  background: var(--amber);
-  border-color: var(--amber);
-  color: var(--ink);
-  font-weight: 700;
+button:focus-visible {
+  outline: 1px solid var(--amber);
+  outline-offset: 1px;
 }
 
-.join {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px 8px;
-  margin-top: 10px;
-  padding-top: 14px;
-  border-top: 2px solid var(--line);
+button:disabled {
+  color: var(--dim);
+  cursor: default;
 }
 
-.join label {
-  grid-column: 1 / -1;
+button.primary {
+  border-color: var(--amber-dim);
+  color: var(--amber);
 }
 
-#code {
+button.primary:disabled {
+  border-color: var(--edge);
+  color: var(--dim);
+}
+
+button.wide {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.row {
+  display: flex;
+  gap: 4px;
+}
+
+.row input {
+  flex: 1;
+  min-width: 0;
+  letter-spacing: 2px;
   text-transform: uppercase;
-  letter-spacing: 0.2em;
+}
+
+.or {
+  margin: 10px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--dim);
 }
 
 #notice {
-  min-height: 1.5em;
-  margin: 0;
+  min-height: 26px;
+  margin-top: 6px;
   color: var(--crimson);
 }
 
 .room-code {
-  margin: 0;
-  color: var(--dim);
-}
-
-#room-code {
-  color: var(--bone);
-  font-size: 22px;
-  letter-spacing: 0.2em;
+  color: var(--amber);
+  font-size: 24px;
+  line-height: 26px;
+  letter-spacing: 3px;
 }
 
 #status {
-  margin: 0;
-  color: var(--dim);
-  font-size: 13px;
+  min-height: 13px;
+  margin-top: 6px;
+  color: var(--bone-dim);
 }
 
-#players {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 6px;
+#count {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
 }
 
-#players li {
-  display: grid;
-  grid-template-columns: 1.5em 1fr auto;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 2px solid var(--line);
+#start-hint {
+  min-height: 26px;
+  margin-top: 4px;
+  color: var(--bone-dim);
 }
 
-#players li.empty {
-  color: var(--dim);
-  border-style: dashed;
+/* The bar under both. */
+#bar {
+  position: absolute;
+  left: 0;
+  top: 222px;
+  width: 480px;
+  height: 48px;
+  padding: 3px 6px 0;
+  border-top: 1px solid var(--line);
+  background: var(--bar);
 }
 
-#players li.me {
-  border-color: var(--amber);
+#bar .dim {
+  color: var(--bone-dim);
 }
 
-#players .state.on {
-  color: var(--teal);
+#rules-open {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
 }
 
-#players .state.off {
-  color: var(--crimson);
-}
-
-/* The game screen: a 480 by 270 canvas shown at a whole-number scale. */
-@font-face {
-  font-family: "Galmuri11";
-  src: url("../../assets/fonts/Galmuri11.woff2") format("woff2");
-  font-display: block;
-}
-
-body.playing {
-  background: #000;
-}
-
-body.playing main {
-  display: none;
-}
-
-#table {
-  position: fixed;
-  inset: 0;
-  margin: auto;
-  image-rendering: pixelated;
-  -webkit-font-smoothing: none;
-  touch-action: none;
-}
-
+/* The way out of a game sits over the wall at the top left, clear of the panel. */
 #leave-game {
-  position: fixed;
-  top: 8px;
-  left: 8px;
-  width: auto;
-  margin: 0;
-  padding: 4px 10px;
-  font-size: 13px;
-  opacity: 0.7;
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  opacity: 0.6;
 }
 
 #leave-game:hover {
   opacity: 1;
 }
 
-#start-hint {
-  min-height: 1.5em;
-  margin: 6px 0 12px;
-  color: var(--dim);
-  font-size: 14px;
+#rules {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 464px;
+  height: 254px;
+  padding: 10px 14px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#rules h2 {
+  margin-bottom: 6px;
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#rules p {
+  margin-bottom: 6px;
+}
+
+#rules ul {
+  margin: 0 0 6px 12px;
+  color: var(--bone-dim);
+}
+
+#rules-close {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
 }

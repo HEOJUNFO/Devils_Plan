@@ -1,5 +1,5 @@
 /**
- * Empty Chamber's game module: the rules, the per-seat view and the bots.
+ * Russian Roulette's game module: the rules, the per-seat view and the bots.
  *
  * Everything exported here is a pure function over plain JSON. A room hosts a
  * game by keeping a {@link GameState}, calling {@link applyAction} with what

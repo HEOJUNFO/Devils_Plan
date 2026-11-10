@@ -1,5 +1,5 @@
 /**
- * Empty Chamber: the rules of one game, as pure functions over plain JSON.
+ * Russian Roulette: the rules of one game, as pure functions over plain JSON.
  *
  * Design: design/game-brief.md (Core loop). The nine rules of the source
  * document are kept as written. The gaps it leaves are filled as the brief
