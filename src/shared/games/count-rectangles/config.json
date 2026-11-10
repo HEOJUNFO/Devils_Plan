@@ -1,0 +1,20 @@
+{
+  "teamSize": 3,
+  "winsNeeded": 2,
+  "answerSeconds": 10,
+  "problemSeconds": 300,
+  "pauseSeconds": 8,
+  "maxProblems": 20,
+  "boards": [
+    { "rows": 3, "cols": 3 },
+    { "rows": 3, "cols": 4 },
+    { "rows": 3, "cols": 4 },
+    { "rows": 4, "cols": 4 }
+  ],
+  "maxNumber": 9,
+  "blankPercent": 15,
+  "minAnswer": 4,
+  "maxAnswer": 12,
+  "maxTarget": 6,
+  "maxSaid": 99
+}
