@@ -10,7 +10,8 @@
     "types": "wrangler types",
     "typecheck": "wrangler types && tsc -p tsconfig.json && tsc -p src/client/tsconfig.json && tsc -p tests/tsconfig.json",
     "test": "vitest run",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "smoke": "node tools/smoke.mjs"
   },
   "dependencies": {
     "partyserver": "^0.5.10",
