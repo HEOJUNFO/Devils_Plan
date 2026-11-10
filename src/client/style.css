@@ -1,0 +1,157 @@
+/* Functional lobby page for checking the room server. Not the game's art. */
+:root {
+  --ink: #12141f;
+  --panel: #1c2030;
+  --line: #343a52;
+  --bone: #e8e2d0;
+  --dim: #8d93a8;
+  --amber: #e8a33d;
+  --teal: #4fb3a5;
+  --crimson: #c8434b;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  color: var(--bone);
+  font: 16px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+main {
+  width: min(92vw, 420px);
+  padding: 24px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+}
+
+h1 {
+  margin: 0 0 20px;
+  font-size: 24px;
+  color: var(--amber);
+}
+
+section {
+  display: grid;
+  gap: 10px;
+}
+
+section[hidden] {
+  display: none;
+}
+
+label {
+  color: var(--dim);
+  font-size: 13px;
+}
+
+input,
+button {
+  font: inherit;
+  padding: 8px 10px;
+  color: var(--bone);
+  background: var(--ink);
+  border: 2px solid var(--line);
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 1px;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--amber);
+}
+
+#create {
+  background: var(--amber);
+  border-color: var(--amber);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.join {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 8px;
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 2px solid var(--line);
+}
+
+.join label {
+  grid-column: 1 / -1;
+}
+
+#code {
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
+
+#notice {
+  min-height: 1.5em;
+  margin: 0;
+  color: var(--crimson);
+}
+
+.room-code {
+  margin: 0;
+  color: var(--dim);
+}
+
+#room-code {
+  color: var(--bone);
+  font-size: 22px;
+  letter-spacing: 0.2em;
+}
+
+#status {
+  margin: 0;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+#players {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+#players li {
+  display: grid;
+  grid-template-columns: 1.5em 1fr auto;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 2px solid var(--line);
+}
+
+#players li.empty {
+  color: var(--dim);
+  border-style: dashed;
+}
+
+#players li.me {
+  border-color: var(--amber);
+}
+
+#players .state.on {
+  color: var(--teal);
+}
+
+#players .state.off {
+  color: var(--crimson);
+}

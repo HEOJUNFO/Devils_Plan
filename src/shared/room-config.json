@@ -1,0 +1,7 @@
+{
+  "maxPlayers": 6,
+  "roomCodeLength": 5,
+  "roomCodeAlphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
+  "nickMaxLength": 12,
+  "emptyRoomTtlMinutes": 1440
+}

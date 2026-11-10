@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>빈 약실</title>
+    <link rel="stylesheet" href="/src/client/style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>빈 약실</h1>
+
+      <section id="entry">
+        <label for="nick">닉네임</label>
+        <input id="nick" type="text" autocomplete="off" />
+
+        <button id="create" type="button">방 만들기</button>
+
+        <div class="join">
+          <label for="code">방 코드</label>
+          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+          <button id="join" type="button">입장</button>
+        </div>
+
+        <p id="notice" role="alert"></p>
+      </section>
+
+      <section id="room" hidden>
+        <p class="room-code">방 코드 <strong id="room-code"></strong></p>
+        <p id="status" role="status"></p>
+        <ol id="players"></ol>
+        <button id="leave" type="button">나가기</button>
+      </section>
+    </main>
+    <script type="module" src="/src/client/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "empty-chamber",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-11-10",
+  // The browser client is built by Vite; the Cloudflare Vite plugin points the
+  // assets directory at that build. Room traffic must reach the Worker first.
+  "assets": {
+    "run_worker_first": ["/parties/*"]
+  },
+  // One GameRoom Durable Object per room code. The binding name is what
+  // PartyServer kebab-cases into the URL: /parties/game-room/<room code>.
+  "durable_objects": {
+    "bindings": [{ "name": "GameRoom", "class_name": "GameRoom" }]
+  },
+  // SQLite storage is the only backend on the Workers Free plan, and it cannot
+  // be switched on after a class has been deployed.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["GameRoom"] }]
+}

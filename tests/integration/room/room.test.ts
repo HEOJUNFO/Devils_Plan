@@ -1,0 +1,290 @@
+import { env, exports } from "cloudflare:workers";
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
+import { describe, expect, it, vi } from "vitest";
+import type { LobbyView } from "../../../src/shared/lobby";
+import {
+  CLOSE_LEFT,
+  CLOSE_REJECTED,
+  JOIN_PARAMS,
+  PARTY_NAME,
+  type ClientMessage,
+  type ServerMessage,
+} from "../../../src/shared/protocol";
+import roomConfig from "../../../src/shared/room-config.json";
+
+type LobbyMessage = Extract<ServerMessage, { type: "lobby" }>;
+
+/** A well-formed token that is different for each `n`. */
+function tokenFor(n: number): string {
+  return `player-token-${String(n).padStart(4, "0")}`;
+}
+
+/** One connected test player: records what the room sends it. */
+class TestClient {
+  private readonly unread: ServerMessage[] = [];
+  private waiting: (() => void) | null = null;
+  /** Resolves with the close code when the room closes the socket. */
+  readonly closed: Promise<number>;
+
+  constructor(private readonly ws: WebSocket) {
+    ws.addEventListener("message", (event) => {
+      this.unread.push(JSON.parse(event.data as string) as ServerMessage);
+      this.waiting?.();
+    });
+    this.closed = new Promise((resolve) => {
+      ws.addEventListener("close", (event) => resolve(event.code), { once: true });
+    });
+    ws.accept();
+  }
+
+  /** The next message not yet read. */
+  async next(): Promise<ServerMessage> {
+    while (this.unread.length === 0) {
+      await new Promise<void>((resolve) => {
+        this.waiting = resolve;
+      });
+      this.waiting = null;
+    }
+    return this.unread.shift()!;
+  }
+
+  /** Reads forward to the first lobby message that satisfies `match`. */
+  async lobbyWhere(match: (lobby: LobbyMessage) => boolean): Promise<LobbyMessage> {
+    for (;;) {
+      const message = await this.next();
+      if (message.type === "lobby" && match(message)) return message;
+    }
+  }
+
+  send(message: ClientMessage): void {
+    this.ws.send(JSON.stringify(message));
+  }
+
+  close(): void {
+    this.ws.close(1000, "test done");
+  }
+}
+
+interface JoinOptions {
+  player: number;
+  nick?: string;
+  create?: boolean;
+  token?: string;
+}
+
+/** Opens a WebSocket to `room` through the Worker, as a browser would. */
+async function open(room: string, options: JoinOptions): Promise<TestClient> {
+  const query = new URLSearchParams({
+    [JOIN_PARAMS.token]: options.token ?? tokenFor(options.player),
+    [JOIN_PARAMS.nick]: options.nick ?? `p${options.player}`,
+  });
+  if (options.create) query.set(JOIN_PARAMS.create, "1");
+  const response = await exports.default.fetch(
+    `http://example.com/parties/${PARTY_NAME}/${room}?${query}`,
+    { headers: { Upgrade: "websocket" } },
+  );
+  expect(response.status).toBe(101);
+  return new TestClient(response.webSocket!);
+}
+
+function connectedBySlot(lobby: LobbyView): Record<number, boolean> {
+  return Object.fromEntries(lobby.players.map((p) => [p.slot, p.connected]));
+}
+
+describe("GameRoom", () => {
+  it("seats the creator in slot 0", async () => {
+    const a = await open("AAAAA", { player: 0, nick: "ann", create: true });
+
+    const lobby = await a.next();
+
+    expect(lobby).toEqual({
+      type: "lobby",
+      room: "AAAAA",
+      you: 0,
+      maxPlayers: roomConfig.maxPlayers,
+      players: [{ slot: 0, nick: "ann", connected: true }],
+    });
+    a.close();
+  });
+
+  it("shows a second player to both players", async () => {
+    const a = await open("AAAAB", { player: 0, create: true });
+    await a.next();
+
+    const b = await open("AAAAB", { player: 1 });
+
+    const seenByB = await b.next();
+    const seenByA = await a.lobbyWhere((l) => l.players.length === 2);
+    expect(seenByB).toMatchObject({ you: 1 });
+    expect(seenByA).toMatchObject({ you: 0 });
+    expect(seenByA.players).toEqual(seenByB.type === "lobby" ? seenByB.players : null);
+    a.close();
+    b.close();
+  });
+
+  it("never sends one player's token to another", async () => {
+    const a = await open("AAAAC", { player: 0, create: true });
+    const b = await open("AAAAC", { player: 1 });
+
+    const seenByB = await b.next();
+    const seenByA = await a.lobbyWhere((l) => l.players.length === 2);
+
+    expect(JSON.stringify([seenByA, seenByB])).not.toContain("player-token");
+    a.close();
+    b.close();
+  });
+
+  it("refuses to join a room nobody created", async () => {
+    const a = await open("AAAAD", { player: 0 });
+
+    expect(await a.next()).toEqual({ type: "error", reason: "not-found" });
+    expect(await a.closed).toBe(CLOSE_REJECTED);
+  });
+
+  it("refuses a stranger who tries to create a code already in use", async () => {
+    const a = await open("AAAAE", { player: 0, create: true });
+    await a.next();
+
+    const stranger = await open("AAAAE", { player: 1, create: true });
+
+    expect(await stranger.next()).toEqual({ type: "error", reason: "code-taken" });
+    a.close();
+  });
+
+  it("refuses a malformed room code", async () => {
+    const a = await open("nope", { player: 0, create: true });
+
+    expect(await a.next()).toEqual({ type: "error", reason: "bad-room" });
+  });
+
+  it("refuses a blank nickname", async () => {
+    const a = await open("AAAAF", { player: 0, nick: "  ", create: true });
+
+    expect(await a.next()).toEqual({ type: "error", reason: "bad-nick" });
+  });
+
+  it("refuses the player after the room is full", async () => {
+    const clients = [await open("AAAAG", { player: 0, create: true })];
+    for (let n = 1; n < roomConfig.maxPlayers; n++) {
+      clients.push(await open("AAAAG", { player: n }));
+    }
+    await clients.at(-1)!.next();
+
+    const extra = await open("AAAAG", { player: roomConfig.maxPlayers });
+
+    expect(await extra.next()).toEqual({ type: "error", reason: "full" });
+    for (const c of clients) c.close();
+  });
+
+  it("marks a dropped player as disconnected and keeps their slot", async () => {
+    const a = await open("AAAAH", { player: 0, create: true });
+    const b = await open("AAAAH", { player: 1 });
+    await b.next();
+
+    b.close();
+
+    const lobby = await a.lobbyWhere((l) => connectedBySlot(l)[1] === false);
+    expect(connectedBySlot(lobby)).toEqual({ 0: true, 1: false });
+    a.close();
+  });
+
+  it("returns a reconnecting player to the same slot", async () => {
+    const a = await open("AAAAJ", { player: 0, create: true });
+    const b = await open("AAAAJ", { player: 1 });
+    await b.next();
+    b.close();
+    await a.lobbyWhere((l) => connectedBySlot(l)[1] === false);
+
+    const back = await open("AAAAJ", { player: 1 });
+
+    expect(await back.next()).toMatchObject({ you: 1 });
+    const lobby = await a.lobbyWhere((l) => connectedBySlot(l)[1] === true);
+    expect(lobby.players).toHaveLength(2);
+    a.close();
+    back.close();
+  });
+
+  it("keeps the lobby and live connections across hibernation", async () => {
+    const a = await open("AAAAK", { player: 0, nick: "ann", create: true });
+    await a.next();
+    await evictDurableObject(env.GameRoom.getByName("AAAAK"));
+
+    const b = await open("AAAAK", { player: 1, nick: "bob" });
+
+    const seenByB = await b.next();
+    expect(seenByB).toMatchObject({
+      you: 1,
+      players: [
+        { slot: 0, nick: "ann", connected: true },
+        { slot: 1, nick: "bob", connected: true },
+      ],
+    });
+    expect(await a.lobbyWhere((l) => l.players.length === 2)).toMatchObject({ you: 0 });
+    a.close();
+    b.close();
+  });
+
+  it("frees the slot of a player who leaves", async () => {
+    const a = await open("AAAAL", { player: 0, create: true });
+    const b = await open("AAAAL", { player: 1 });
+    await b.next();
+    await a.lobbyWhere((l) => l.players.length === 2);
+
+    b.send({ type: "leave" });
+
+    expect(await b.closed).toBe(CLOSE_LEFT);
+    await a.lobbyWhere((l) => l.players.length === 1);
+    const c = await open("AAAAL", { player: 2 });
+    expect(await c.next()).toMatchObject({ you: 1 });
+    a.close();
+    c.close();
+  });
+
+  it("removes the room when the last player leaves", async () => {
+    const a = await open("AAAAM", { player: 0, create: true });
+    await a.next();
+
+    a.send({ type: "leave" });
+    await a.closed;
+
+    const b = await open("AAAAM", { player: 1 });
+    expect(await b.next()).toEqual({ type: "error", reason: "not-found" });
+  });
+
+  it("clears an abandoned room when its alarm fires", async () => {
+    const stub = env.GameRoom.getByName("AAAAN");
+    const a = await open("AAAAN", { player: 0, create: true });
+    await a.next();
+    a.close();
+    await vi.waitFor(async () => {
+      const alarm = await runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
+      expect(alarm).not.toBeNull();
+    });
+
+    const ran = await runDurableObjectAlarm(stub);
+
+    expect(ran).toBe(true);
+    const b = await open("AAAAN", { player: 1 });
+    expect(await b.next()).toEqual({ type: "error", reason: "not-found" });
+  });
+
+  it("keeps a room whose alarm fires after someone came back", async () => {
+    const stub = env.GameRoom.getByName("AAAAP");
+    const a = await open("AAAAP", { player: 0, create: true });
+    await a.next();
+    a.close();
+    await vi.waitFor(async () => {
+      const alarm = await runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
+      expect(alarm).not.toBeNull();
+    });
+    const back = await open("AAAAP", { player: 0 });
+    await back.next();
+
+    await runDurableObjectAlarm(stub);
+
+    const b = await open("AAAAP", { player: 1 });
+    expect(await b.next()).toMatchObject({ type: "lobby", you: 1 });
+    back.close();
+    b.close();
+  });
+});
