@@ -1,0 +1,6 @@
+Source: https://github.com/patch-gg/pixelfx
+Commit: 044e12a45dc9cc312cec50ee606dfc98afe5adc2 (2026-11-09)
+Version: 0.3.1
+Copied: src/, tools/, docs/CATALOG.md, package.json, LICENSE, NOTICE.md, README.md
+Left out: gallery/ (its font is not MIT-licensed), docs/ images, .claude-plugin/
+To update: re-copy the same paths from a newer commit and change the commit above.
