@@ -16,7 +16,8 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Project Rules (Devils_Plan)
 
-Rules the user set for this project, all on 2026-11-11. Where they differ from
+Rules the user set for this project, on 2026-11-11 unless a rule gives another
+date. Where they differ from
 the framework's defaults in this file, these win. The rule file named under a
 rule has the user's own words, the history, and the detail. A part marked
 *reading* is the assistant's reading, not the user's words.
@@ -55,6 +56,18 @@ rule has the user's own words, the history, and the detail. A part marked
   file, this wins. *Reading:* the type check stays (one command of a few
   seconds that cannot be pointed at a part), and CI still runs the whole suite
   on every push. What was not checked is said in the commit and in the report.
+- **A screen is looked at with ego-browser or browser-skill.** Browser checks
+  (a changed screen, a phone's size, touch) are done with the `ego-browser`
+  skill or the `browser-skill` skill (`bsk`). The user, 2026-11-12, when the
+  assistant was setting up another browser tool for phone checks: "우리
+  에고브라우저랑 브라우저스킬있는데 그거사용하면되지않나? 맞으면
+  룰에추가해". It was right: both were tried on the local server that day and
+  both stand in for a phone (750 by 340 at 3x, touch, `pointer: coarse`).
+  *Reading:* ego-browser first, as its own guide asks; another browser tool
+  only for what neither can do, and the report says which tool produced the
+  evidence. Neither is a phone: what only a real one shows (Safari, fingers,
+  the on-screen keyboard) is reported as not checked. Detail:
+  `.claude/rules/browser-checks.md`.
 
 ## Project Structure
 
