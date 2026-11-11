@@ -31,13 +31,18 @@
 | **러시안 룰렛** | 4~6명 | 실탄이 든 약실을 캐내고 총구를 돌려, 마지막 격발에서 살아남으세요. |
 | **네모 세기** | 2~6명 (3인 팀 가능) | 숫자를 더해 타깃이 되는 네모를 먼저 세어 버저를 누르세요. 두 번 맞히면 승리. |
 | **잔디 깔기** | 2~6명 | 공원에 잔디 타일을 놓으면 번호만큼 승점. 큰 번호일수록 늦게 놓습니다. |
+| **큐브 세기** | 2~6명 | 쌓인 큐브가 몇 개인지 먼저 세어 답하세요. 틀리면 20초 동안 잠깁니다. |
 
-네모 세기와 잔디 깔기는 시즌 첫 메인 매치 "양자택일" 안의 미니게임으로,
-하나씩 따로 만들고 있습니다.
+큐브 세기, 네모 세기, 잔디 깔기는 시즌 첫 메인 매치 "양자택일" 안의
+미니게임으로, 하나씩 따로 만들고 있습니다.
 
-| 러시안 룰렛 | 네모 세기 | 잔디 깔기 |
-|---|---|---|
-| ![러시안 룰렛 테이블](production/qa/evidence/game-2026-11-11-table-host-view.jpg) | ![네모 세기 정답 화면](production/qa/evidence/rectangles-2026-11-11-right-answer.jpg) | ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-four-players-lay.jpg) |
+| 러시안 룰렛 | 네모 세기 |
+|---|---|
+| ![러시안 룰렛 테이블](production/qa/evidence/game-2026-11-11-table-host-view.jpg) | ![네모 세기 정답 화면](production/qa/evidence/rectangles-2026-11-11-right-answer.jpg) |
+
+| 잔디 깔기 | 큐브 세기 |
+|---|---|
+| ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-four-players-lay.jpg) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-problem-and-keypad.png) |
 
 규칙은 나무위키의 일차별 문서에 적힌 그대로이고, 문서가 말하지 않는 부분은
 방송 화면으로 확인하거나 임시로 채웠습니다. 무엇을 문서에서 가져왔고 무엇을
@@ -46,6 +51,7 @@
 - 러시안 룰렛: [`design/game-brief.md`](design/game-brief.md) (방송은 6인, 4·5인 탁자는 이 프로젝트가 줄인 것)
 - 네모 세기: [`design/games/count-rectangles.md`](design/games/count-rectangles.md)
 - 잔디 깔기: [`design/games/lay-the-grass.md`](design/games/lay-the-grass.md)
+- 큐브 세기: [`design/games/count-cubes.md`](design/games/count-cubes.md) (문제의 그림은 문서에 없어 이 프로젝트가 채운 것)
 
 ## 방에서 되는 것
 
@@ -114,7 +120,7 @@ src/
     games.json            #   게임 목록: 이름, 설명, 인원
     hosts.ts              #   게임 id → 그 게임을 진행하는 호스트
     game/                 #   러시안 룰렛 규칙, 기본 봇
-    games/<게임 id>/       #   네모 세기, 잔디 깔기의 규칙과 설정
+    games/<게임 id>/       #   네모 세기, 잔디 깔기, 큐브 세기의 규칙과 설정
     protocol.ts           #   소켓 메시지
     *-config.json         #   방, 채팅, 음성, 방 목록의 설정값
   client/                 # 브라우저: 로비, 대기실, 채팅, 음성

@@ -9,6 +9,7 @@ import type { ServerMessage } from "../../shared/protocol";
 import type { VoiceMark } from "../../shared/voice";
 import { createTable } from "../game/table";
 import { createLobbyScene } from "../lobby-scene";
+import { createCubesScreen } from "./count-cubes/screen";
 import { createRectScreen } from "./count-rectangles/screen";
 import { createGrassScreen } from "./lay-the-grass/screen";
 
@@ -102,6 +103,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
         ...screen,
         update(message) {
           if (message.game === "lay-the-grass") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+  },
+  "count-cubes": {
+    screen(canvas, handlers) {
+      const screen = createCubesScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "count-cubes") screen.update(message);
         },
       };
     },

@@ -1,0 +1,13 @@
+{
+  "lockSeconds": 20,
+  "problemSeconds": 300,
+  "minSide": 5,
+  "maxSide": 9,
+  "minHeight": 3,
+  "maxHeight": 6,
+  "minCuts": 3,
+  "maxCuts": 6,
+  "minAnswer": 40,
+  "maxAnswer": 400,
+  "maxSaid": 999
+}

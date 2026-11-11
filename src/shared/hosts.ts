@@ -3,6 +3,7 @@
  */
 import { rouletteHost } from "./game/host";
 import type { GameId } from "./games";
+import { cubesHost } from "./games/count-cubes/host";
 import { rectanglesHost } from "./games/count-rectangles/host";
 import { grassHost } from "./games/lay-the-grass/host";
 import type { GameHost } from "./hosting";
@@ -16,4 +17,5 @@ export const HOSTS: Record<GameId, GameHost<any>> = {
   "russian-roulette": rouletteHost,
   "count-rectangles": rectanglesHost,
   "lay-the-grass": grassHost,
+  "count-cubes": cubesHost,
 };

@@ -22,5 +22,13 @@
     "maxPlayers": 6,
     "teamSize": 0,
     "turns": false
+  },
+  "count-cubes": {
+    "title": "큐브 세기",
+    "summary": "쌓인 큐브가 몇 개인지 먼저 세어 답하세요. 틀리면 20초 동안 잠깁니다.",
+    "minPlayers": 2,
+    "maxPlayers": 6,
+    "teamSize": 0,
+    "turns": false
   }
 }
