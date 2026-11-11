@@ -1,0 +1,11 @@
+{
+  "rounds": 5,
+  "rows": 4,
+  "cols": 4,
+  "shared": 3,
+  "picks": 2,
+  "memoriseSeconds": 20,
+  "chooseSeconds": 60,
+  "revealSeconds": 12,
+  "sharedFromStart": false
+}

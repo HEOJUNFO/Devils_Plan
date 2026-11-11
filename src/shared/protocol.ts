@@ -8,6 +8,7 @@ import type { RoomListing } from "./directory";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
+import type { PokerHostRefusal, PokerSnapshot } from "./games/memory-poker/host";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
@@ -81,6 +82,7 @@ export type ServerMessage =
   | ({ type: "game"; room: string; game: "count-rectangles" } & RectSnapshot)
   | ({ type: "game"; room: string; game: "lay-the-grass" } & GrassSnapshot)
   | ({ type: "game"; room: string; game: "count-cubes" } & CubesSnapshot)
+  | ({ type: "game"; room: string; game: "memory-poker" } & PokerSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**
@@ -101,6 +103,7 @@ export type Refusal =
   | RectHostRefusal
   | GrassHostRefusal
   | CubesHostRefusal
+  | PokerHostRefusal
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal

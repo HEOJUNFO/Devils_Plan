@@ -54,5 +54,19 @@
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false
+  },
+  "memory-poker": {
+    "title": {
+      "ko": "기억 포커",
+      "en": "Memory Poker"
+    },
+    "summary": {
+      "ko": "카드 16장을 외워 두 장을 고르세요. 공유 카드와 만든 족보가 높으면 승리.",
+      "en": "Learn 16 cards, pick two. Best hand with the 3 shared cards wins."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 16,
+    "teamSize": 0,
+    "turns": false
   }
 }

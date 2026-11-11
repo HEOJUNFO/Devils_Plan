@@ -17,6 +17,8 @@ import { createRectScreen } from "./count-rectangles/screen";
 import { WORDS as RECT_WORDS } from "./count-rectangles/words";
 import { createGrassScreen } from "./lay-the-grass/screen";
 import { WORDS as GRASS_WORDS } from "./lay-the-grass/words";
+import { createPokerScreen } from "./memory-poker/screen";
+import { WORDS as POKER_WORDS } from "./memory-poker/words";
 
 /** What a room sends about the game being played in it, whichever game that is. */
 export type GameMessage = Extract<ServerMessage, { type: "game" }>;
@@ -136,5 +138,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: CUBES_WORDS.sheet,
+  },
+  "memory-poker": {
+    screen(canvas, handlers) {
+      const screen = createPokerScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "memory-poker") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: POKER_WORDS.sheet,
   },
 };

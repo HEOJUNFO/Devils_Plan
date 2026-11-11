@@ -21,6 +21,7 @@ export type RouletteMessage = Extract<ServerMessage, { type: "game"; game: "russ
 export type RectanglesMessage = Extract<ServerMessage, { type: "game"; game: "count-rectangles" }>;
 export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the-grass" }>;
 export type CubesMessage = Extract<ServerMessage, { type: "game"; game: "count-cubes" }>;
+export type PokerMessage = Extract<ServerMessage, { type: "game"; game: "memory-poker" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -166,6 +167,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "count-cubes" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 기억 포커 that satisfies `match`. */
+  async pokerWhere(match: (game: PokerMessage) => boolean = () => true): Promise<PokerMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "memory-poker" && match(message)) return message;
     }
   }
 

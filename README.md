@@ -32,16 +32,19 @@
 | **네모 세기** | 1~16명 (3인 팀 가능) | 숫자를 더해 타깃이 되는 네모를 먼저 세어 버저를 누르세요. 두 번 맞히면 승리. |
 | **잔디 깔기** | 2~16명 | 공원에 잔디 타일을 놓으면 번호만큼 승점. 큰 번호일수록 늦게 놓습니다. |
 | **큐브 세기** | 1~16명 | 쌓인 큐브가 몇 개인지 먼저 세어 답하세요. 틀리면 20초 동안 잠깁니다. |
+| **기억 포커** | 2~16명 | 카드 16장을 외워 두 장을 고르세요. 공유 카드와 만든 족보가 높으면 승리. |
 
-큐브 세기, 네모 세기, 잔디 깔기는 시즌 첫 메인 매치 "양자택일" 안의
-미니게임으로, 하나씩 따로 만들고 있습니다. 미니게임에 딸린 양자택일의
+큐브 세기, 네모 세기, 잔디 깔기, 기억 포커는 시즌 첫 메인 매치 "양자택일"
+안의 미니게임 네 개로, 하나씩 따로 만들었습니다. 미니게임에 딸린 양자택일의
 선택은 그 게임 안에 들어 있습니다: 네모 세기에는 선택 2(팀·개인)와 판이
 끝난 뒤의 선택 3(독식·헌신, 희생·질책, 도전·안전과 추가 대결), 잔디 깔기에는
-선택 5~8(점수·정보, 공격·방어, 상생·견제, 가로수·맨홀).
+선택 5~8(점수·정보, 공격·방어, 상생·견제, 가로수·맨홀). 기억 포커는
+방송에서 최하위 두 사람이 윗순위에 도전하는 일대일 연승 게임이었는데, 방에는
+그런 순위가 없어 모두가 라운드마다 둘씩 짝지어 겨룹니다.
 
 큐브 세기와 네모 세기는 방에 혼자 있어도 시작할 수 있습니다 (세어서 맞히는
-게임이라 상대 없이도 풀 수 있습니다. 봇은 들어오지 않습니다). 잔디 깔기와
-러시안 룰렛은 사람이 모여야 시작합니다.
+게임이라 상대 없이도 풀 수 있습니다. 봇은 들어오지 않습니다). 잔디 깔기,
+기억 포커, 러시안 룰렛은 사람이 모여야 시작합니다.
 
 | 러시안 룰렛 | 네모 세기 |
 |---|---|
@@ -51,6 +54,10 @@
 |---|---|
 | ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-tiles-with-holes-lay.png) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-problem-and-keypad.png) |
 
+| 기억 포커: 뒤집힌 판에서 고르기 | 기억 포커: 공개 |
+|---|---|
+| ![기억 포커 고르는 화면](production/qa/evidence/poker-2026-11-11-choose.png) | ![기억 포커 결과 화면](production/qa/evidence/poker-2026-11-11-reveal.png) |
+
 규칙은 방송에서 공개된 그대로이고, 공개된 규칙이 말하지 않는 부분은
 방송 화면으로 확인하거나 임시로 채웠습니다. 무엇을 그대로 가져왔고 무엇을
 채웠는지는 게임마다 적어 두었습니다.
@@ -59,6 +66,7 @@
 - 네모 세기: [`design/games/count-rectangles.md`](design/games/count-rectangles.md) (팀의 "대표"가 누구인지와 "추가 대결"의 방식은 공개된 규칙에 없어 채운 것)
 - 잔디 깔기: [`design/games/lay-the-grass.md`](design/games/lay-the-grass.md)
 - 큐브 세기: [`design/games/count-cubes.md`](design/games/count-cubes.md) (문제의 그림은 공개된 규칙에 없어 이 프로젝트가 채운 것)
+- 기억 포커: [`design/games/memory-poker.md`](design/games/memory-poker.md) (외우기 20초, 고르기 60초, 족보는 방송 그대로; 모두가 둘씩 겨루는 방식과 5라운드는 방을 위해 채운 것)
 
 ## 방에서 되는 것
 
@@ -114,7 +122,7 @@ npm run dev -- --port 5273
 | `npm run dev` | 클라이언트와 서버(Workers 런타임)를 함께 띄웁니다 |
 | `npm run typecheck` | 서버, 클라이언트, 테스트의 타입 검사 |
 | `npm test` | 전체 테스트. 일부만 돌리려면 `npx vitest run tests/unit/lobby` 처럼 경로를 줍니다 |
-| `npm run smoke` | 떠 있는 서버에 실제 소켓으로 접속해 네 게임을 진행해 봅니다 (기본 주소 `http://localhost:5273`) |
+| `npm run smoke` | 떠 있는 서버에 실제 소켓으로 접속해 다섯 게임을 진행해 봅니다 (기본 주소 `http://localhost:5273`) |
 | `npm run build` | 배포용 빌드 |
 | `npm run deploy` | 빌드한 뒤 `wrangler deploy` (평소에는 쓰지 않습니다. 아래 배포 참고) |
 
@@ -127,7 +135,7 @@ src/
     games.json            #   게임 목록: 이름, 설명, 인원
     hosts.ts              #   게임 id → 그 게임을 진행하는 호스트
     game/                 #   러시안 룰렛 규칙, 기본 봇
-    games/<게임 id>/       #   네모 세기, 잔디 깔기, 큐브 세기의 규칙과 설정
+    games/<게임 id>/       #   네모 세기, 잔디 깔기, 큐브 세기, 기억 포커의 규칙과 설정
     protocol.ts           #   소켓 메시지
     *-config.json         #   방, 채팅, 음성, 방 목록의 설정값
   client/                 # 브라우저: 로비, 대기실, 채팅, 음성
@@ -152,7 +160,7 @@ production/qa/evidence/   # 화면을 바꿀 때마다 남긴 스크린샷
 
 1. `src/shared/games.json` 에 id, 이름, 설명, 인원을 추가
 2. `src/shared/games/<id>/` 에 규칙(`rules.ts`)과 호스트(`host.ts`)를 만들고 `src/shared/hosts.ts` 에 등록
-3. `src/client/games/<id>/screen.ts` 에 화면을 만들고 `src/client/games/index.ts` 에 등록
+3. `src/client/games/<id>/screen.ts` 에 화면을, `words.ts` 에 그 화면의 문구(한국어와 영어)와 규칙 시트를 만들고 `src/client/games/index.ts` 에 등록
 4. `tests/unit/<id>/`, `tests/integration/` 에 테스트, `design/games/<id>.md` 에 규칙의 출처
 
 방(`src/server/room.ts`)은 게임 안을 들여다보지 않고 호스트에 맡기므로, 방

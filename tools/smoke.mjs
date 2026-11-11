@@ -6,10 +6,12 @@
 // make a room of the second game, team up and part, and play it to its end,
 // through the choice that follows its race and the contest that choice adds;
 // then two make a room of the third game and lay its first park; then two
-// make a room of the fourth game, one of them wrong before the other is right.
+// make a room of the fourth game, one of them wrong before the other is right;
+// then two make a room of the fifth game and play its first round.
 // It observes and reports; it changes nothing but the rooms it makes, which
-// it leaves. The second game shows each answer for a few seconds, so the
-// whole check takes about ten seconds longer than the moves do.
+// it leaves. The second game shows each answer for a few seconds, and the
+// fifth lays its board open for half a minute before anything can be chosen,
+// so the whole check takes about forty seconds longer than the moves do.
 //
 // Usage: npm run dev (in another terminal), then
 //   npm run smoke                      # http://localhost:5273
@@ -25,6 +27,7 @@ const PLAYERS = 4;
 const SECOND_GAME = "count-rectangles";
 const THIRD_GAME = "lay-the-grass";
 const FOURTH_GAME = "count-cubes";
+const FIFTH_GAME = "memory-poker";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 const STEP_TIMEOUT_MS = 8000;
@@ -385,6 +388,84 @@ async function fourthGame() {
   for (const p of players) p.close();
 }
 
+/** The fifth game, in a room of its own: two players, off the list. Its first round is played; the game goes on for four more, which the check does not wait for. */
+async function fifthGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 2; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `card${n}`, create: n === 0, game: FIFTH_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  check("a room is made for the fifth game", lobby.game === FIFTH_GAME, lobby.game);
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the fifth game to start", (m) => m.type === "game" || m.type === "refused")));
+  const board = games[0].view?.board ?? [];
+  const cells = (games[0].rules?.rows ?? 0) * (games[0].rules?.cols ?? 0);
+  check(
+    "the fifth game starts with the same open board for both, and the shared cards kept back",
+    games.every((g, n) => g.type === "game" && g.game === FIFTH_GAME && g.view.you === n && g.view.phase === "memorise" && g.view.shared === null) &&
+      board.length === cells &&
+      cells > 0 &&
+      new Set(board).size === cells &&
+      JSON.stringify(games[1].view?.board) === JSON.stringify(board),
+    `${board.length} cards`,
+  );
+
+  // nothing can be chosen while the board lies open
+  players[0].send({ type: "action", action: { type: "pick", cells: [0, 1] } });
+  const early = await players[0].until("the refusal", (m) => m.type === "refused");
+  check("a card cannot be picked while the board lies open", early.reason === "not-choosing", early.reason);
+
+  // the board is turned over by the room's own clock: its time to be learned, and a little more
+  const turnMs = (games[0].rules.memoriseSeconds + 10) * 1000;
+  const turned = await Promise.all(players.map((p) => p.until("the board to be turned over", (m) => m.type === "game" && m.view.phase === "choose", 0, turnMs)));
+  check(
+    "the board is turned over and its cards are no longer sent; the shared cards are out, none of them a card of the board",
+    turned.every((g) => g.view.board === null && Array.isArray(g.view.shared) && g.view.shared.length === g.rules.shared && !g.view.shared.some((card) => board.includes(card))),
+    `shared ${JSON.stringify(turned[0].view.shared)}`,
+  );
+
+  // each picks two cells; what one picked is theirs alone until the round is shown
+  players[0].send({ type: "action", action: { type: "pick", cells: [0, 5] } });
+  const mine = await players[0].until("the pick to be taken", (m) => m.type === "game" && m.view.mine.cells.length === 2);
+  players[0].send({ type: "action", action: { type: "lock" } });
+  const waiting = await players[1].until("the first final choice", (m) => m.type === "game" && m.view.locked.length === 1);
+  check(
+    "a pick is kept from the other player, who is told only that it is final",
+    mine.view.mine.cells.join() === "0,5" && waiting.view.mine.cells.length === 0 && waiting.view.shown === null && waiting.view.locked.join() === "0",
+  );
+  players[1].send({ type: "action", action: { type: "pick", cells: [5, 10] } });
+  players[1].send({ type: "action", action: { type: "lock" } });
+  const shown = await Promise.all(players.map((p) => p.until("the round to be shown", (m) => m.type === "game" && m.view.phase === "reveal")));
+  const hands = shown[0].view.shown?.hands ?? [];
+  const outcome = shown[0].view.shown?.outcomes?.[0];
+  check(
+    "the round is shown as soon as both have chosen: the board again, each player's cells and hand, and who won",
+    shown.every((g) => JSON.stringify(g.view.board) === JSON.stringify(board)) &&
+      hands.map((hand) => hand.cells.join()).join(" ") === "0,5 5,10" &&
+      hands.every((hand) => hand.forced === 0 && typeof hand.hand.kind === "string") &&
+      outcome !== undefined &&
+      outcome.players.join() === "0,1" &&
+      (outcome.winner === null ? outcome.best.length === 2 : outcome.best.join() === `${outcome.winner}`),
+    hands.map((hand) => `${hand.hand.kind} ${hand.hand.ranks[0]}`).join(" against "),
+  );
+  const hidden = players
+    .flatMap((p) => p.messages)
+    .filter((m) => m.type === "game" && m.view.phase === "choose")
+    .every((m) => m.view.board === null);
+  check("the board is not sent while it is turned over", hidden);
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in the fifth game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 async function main() {
   // 1. the page
   const page = await fetch(`${base}/`);
@@ -495,6 +576,7 @@ async function main() {
   // 13. the third game
   await thirdGame();
   await fourthGame();
+  await fifthGame();
 }
 
 try {

@@ -39,8 +39,8 @@ describe("the games a room can be made for", () => {
 
   it("names each game in Korean as the show does, and in English as its English release does", () => {
     // CLAUDE.md, Project Rules: a game is shown under the name the show gives it
-    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기"]);
-    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker"]);
   });
 
   it("lets one player alone start the two counting games, and no other game", () => {
