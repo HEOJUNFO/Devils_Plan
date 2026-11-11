@@ -9,6 +9,7 @@
  */
 import { nextRandom, seedFrom } from "../../game/rng";
 import type { Candidate, GameHost, HostResult, Presence, StartRequest } from "../../hosting";
+import { stand } from "../../standing";
 import botJson from "./bot-config.json";
 import configJson from "./config.json";
 import hostJson from "./host-config.json";
@@ -16,6 +17,7 @@ import {
   abandon,
   applyAction,
   applyTimeout,
+  closeIfSpent,
   createGame,
   deadline as rulesDeadline,
   parseAction,
@@ -49,6 +51,13 @@ export interface RectHostConfig {
    * that those left in the room are not kept from a new game.
    */
   standSeconds: number;
+  /**
+   * A game is ended when this many problems in a row have run out their time
+   * without anyone so much as buzzing: its players are there in name only,
+   * and without this the room could start nothing else for as long as the
+   * problems last.
+   */
+  idleProblems: number;
 }
 
 const config: RectConfig = configJson;
@@ -137,27 +146,41 @@ export interface RectSnapshot {
 const refuse = (reason: RectHostRefusal): HostResult<RectSession, RectHostRefusal> => ({ ok: false, reason });
 
 /**
- * Whether the race has anyone to run it, among the players in `there`
- * (those connected, or those who have not left the room): a unit that has not
- * won with one of its people there, or with a bot while any person of the
- * game is there. Bots do not keep a game going among themselves.
+ * Whether unit `index` has anyone to play for it among the players in `there`
+ * (those connected, or those who have not left the room): one of its people,
+ * or a bot while any person of the game is there. Bots do not keep a game
+ * going among themselves.
  */
-function racing(session: RectSession, there: ReadonlySet<string>): boolean {
+function unitThere(session: RectSession, index: number, there: ReadonlySet<string>): boolean {
   const person = (seat: RectSeat): boolean => seat.token !== null && there.has(seat.token);
   const anyone = session.players.some(person);
-  return session.state.units.some(
-    (unit) =>
-      unit.place === 0 &&
-      unit.members.some((id) => {
-        const seat = session.players.find((player) => player.id === id);
-        return seat !== undefined && (seat.token === null ? anyone : person(seat));
-      }),
-  );
+  return (session.state.units[index]?.members ?? []).some((id) => {
+    const seat = session.players.find((player) => player.id === id);
+    return seat !== undefined && (seat.token === null ? anyone : person(seat));
+  });
+}
+
+/** Whether the race has anyone to run it among the players in `there`: a unit that has not won, with someone to play for it. */
+function racing(session: RectSession, there: ReadonlySet<string>): boolean {
+  return session.state.units.some((unit, index) => unit.place === 0 && unitThere(session, index, there));
 }
 
 /** The game ended where it stands: nobody is left who could win it. */
 function given(session: RectSession): RectSession {
   return { ...session, state: abandon(session.state), frozenAt: null, botAt: null };
+}
+
+/**
+ * Whether the last `idleProblems` problems all ran out their time with
+ * nobody buzzing: the players are there in name only.
+ */
+function idle(state: RectState): boolean {
+  if (state.round < hosting.idleProblems) return false;
+  for (let round = state.round; round > state.round - hosting.idleProblems; round--) {
+    const events = state.history.filter((event) => "round" in event && event.round === round);
+    if (!events.some((event) => event.type === "time") || events.some((event) => event.type === "buzz")) return false;
+  }
+  return true;
 }
 
 /** The bot units that could buzz now: still racing, and not shut out of this problem. */
@@ -172,30 +195,35 @@ function botsReady(session: RectSession): number[] {
 
 /**
  * Brings a session in line with who is here and where the game stands. The
- * game is ended when everyone who could still win has left the room. It
- * stands still while none of them is connected, and is ended if that lasts
- * `standSeconds`. A bot is given a time to buzz when one can.
+ * game stands still while nobody who could still win is connected, and is
+ * ended if that lasts or when they have all left the room (`standing.ts`).
+ * A problem is closed when nobody who is there can still answer it. A bot
+ * is given a time to buzz when one can.
  */
 function settle(session: RectSession, presence: Presence, now: number): RectSession {
   if (session.state.phase === "ended") return session.botAt === null ? session : { ...session, botAt: null };
-  if (!racing(session, presence.seated)) return given(session);
+  const standing = stand({
+    frozenAt: session.frozenAt,
+    here: racing(session, presence.connected),
+    inRoom: racing(session, presence.seated),
+    now,
+    standMs: hosting.standSeconds * 1000,
+  });
+  if (standing.now === "over") return given(session);
+  if (standing.now === "standing") return session.frozenAt === standing.since ? session : { ...session, frozenAt: standing.since };
   let next = session;
-  const here = racing(session, presence.connected);
-  if (session.frozenAt !== null && now - session.frozenAt >= hosting.standSeconds * 1000) {
-    // stood too long, whether or not someone is back at this very moment
-    return given(session);
-  }
-  if (!here && session.frozenAt === null) {
-    next = { ...next, frozenAt: now };
-  } else if (here && session.frozenAt !== null) {
-    const stood = Math.max(0, now - session.frozenAt);
+  if (standing.now === "back") {
     next = {
       ...next,
-      state: shiftClock(next.state, stood),
-      botAt: next.botAt === null ? null : next.botAt + stood,
+      state: shiftClock(next.state, standing.stood),
+      botAt: next.botAt === null ? null : next.botAt + standing.stood,
       frozenAt: null,
     };
   }
+  // a unit nobody is there to play for does not hold the problem open for those who are
+  const spent = closeIfSpent(next.state, (unit) => unitThere(next, unit, presence.connected), now, config);
+  if (spent !== next.state) next = { ...next, state: spent };
+  if (next.state.phase === "ended") return next.botAt === null ? next : { ...next, botAt: null };
   const ready = botsReady(next).length > 0;
   if (!ready && next.botAt !== null) next = { ...next, botAt: null };
   if (ready && next.botAt === null) {
@@ -232,7 +260,14 @@ export const rectanglesHost: GameHost<RectSession, RectHostRefusal> = {
     if (request.bots && !request.allowBots) return refuse("bots-not-allowed");
 
     const seats: RectSeat[] = players.map((player) => ({ id: player.slot, token: player.token, nick: player.nick }));
-    const entrants = players.map((player) => ({ id: player.slot, team: player.team ?? 0 }));
+    // A team that is not exactly full is no team: its players race alone. One player's choice in the
+    // waiting room must not keep everyone else from starting.
+    const sizes = new Map<number, number>();
+    for (const player of players) sizes.set(player.team ?? 0, (sizes.get(player.team ?? 0) ?? 0) + 1);
+    const entrants = players.map((player) => {
+      const team = player.team ?? 0;
+      return { id: player.slot, team: team !== 0 && sizes.get(team) === config.teamSize ? team : 0 };
+    });
     if (request.bots) {
       // Bots play alone, in the slots nobody holds, until there are enough units to race.
       const teams = new Set(entrants.filter((entrant) => entrant.team !== 0).map((entrant) => entrant.team)).size;
@@ -266,9 +301,12 @@ export const rectanglesHost: GameHost<RectSession, RectHostRefusal> = {
     if (player === undefined) return refuse("not-seated");
     const action = parseAction(raw);
     if (action === null) return refuse("bad-action");
-    const result = applyAction(session.state, player.id, action, now, config);
+    // Whatever the clock has brought due comes first: an answer after its time is no answer,
+    // however late the room's own alarm is in saying so.
+    const due = this.tick(session, presence, now);
+    const result = applyAction(due.state, player.id, action, now, config);
     if (!result.ok) return refuse(result.reason);
-    return { ok: true, session: settle({ ...session, state: result.state }, presence, now) };
+    return { ok: true, session: settle({ ...due, state: result.state }, presence, now) };
   },
 
   tick(session, presence, now) {
@@ -284,7 +322,8 @@ export const rectanglesHost: GameHost<RectSession, RectHostRefusal> = {
       }
       const state = applyTimeout(next.state, now, config);
       if (state === next.state) break;
-      next = settle({ ...next, state }, presence, now);
+      // problem after problem with nobody buzzing: nobody is playing
+      next = state.phase === "pause" && idle(state) ? given({ ...next, state }) : settle({ ...next, state }, presence, now);
     }
     return next;
   },

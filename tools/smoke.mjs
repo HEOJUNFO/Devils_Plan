@@ -101,17 +101,17 @@ function countRectangles(board) {
       for (let left = 0; left < board.cols; left++) {
         for (let right = left; right < board.cols; right++) {
           let sum = 0;
-          let any = false;
+          let whole = true;
           for (let row = top; row <= bottom; row++) {
             for (let col = left; col <= right; col++) {
               const cell = board.cells[row * board.cols + col];
-              if (cell === null) continue;
-              sum += cell;
-              any = true;
+              // a place with no cell: no rectangle lies across it
+              if (cell === "gap") whole = false;
+              // a cell with no number adds nothing
+              else if (cell !== null) sum += cell;
             }
           }
-          // a rectangle with no number in it is not one
-          if (any && sum === board.target) found++;
+          if (whole && sum === board.target) found++;
         }
       }
     }
@@ -133,19 +133,18 @@ async function secondGame() {
   const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
   check("a room is made for the second game", lobby.game === SECOND_GAME, lobby.game);
 
-  // a team of one is not a team: the game does not start until they part
+  // a team of one is not a team: its player starts alone, and holds up nobody
   players[1].send({ type: "team", team: 1 });
   const teamed = await players[0].until("the team to be told", (m) => m.type === "lobby" && m.players[1]?.team === 1);
   check("a player's choice of team is told to the room", teamed.players.map((p) => p.team).join() === "0,1");
-  players[0].send({ type: "start", bots: false });
-  const broken = await players[0].until("the refusal to start", (m) => m.type === "refused");
-  check("a game does not start with a team that is not full", broken.reason === "bad-teams", broken.reason);
-  players[1].send({ type: "team", team: 0 });
-  await players[0].until("the team to be undone", (m) => m.type === "lobby" && m.players[1]?.team === 0, players[0].messages.indexOf(teamed) + 1);
 
   players[0].send({ type: "start", bots: false });
-  const games = await Promise.all(players.map((p) => p.until("the second game to start", (m) => m.type === "game")));
-  check("the second game starts, each player a unit of their own", games.every((g, n) => g.game === SECOND_GAME && g.view.you?.player === n && g.view.units.length === 2));
+  const games = await Promise.all(players.map((p) => p.until("the second game to start", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "the second game starts, a team that is not full playing each alone",
+    games.every((g, n) => g.type === "game" && g.game === SECOND_GAME && g.view.you?.player === n && g.view.units.length === 2),
+    games.map((g) => (g.type === "refused" ? g.reason : "started")).join(" "),
+  );
 
   // player 1 is right twice: half the units have won, and the game is over
   let right = 0;

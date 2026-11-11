@@ -4,7 +4,10 @@
  *
  * Design: design/games/count-rectangles.md. A board of square cells, some
  * with numbers, and a target number are put up; players race to say how many
- * rectangles on the board hold numbers that add up to the target. Whoever
+ * rectangles on the board add up to the target. A cell with no number adds
+ * nothing, so with a target of 0 a rectangle of such cells counts too; a
+ * board need not be a rectangle itself, and a rectangle lies only on cells
+ * the board has (both seen in the broadcast, see the design record). Whoever
  * buzzes first has ten seconds to answer. A wrong answer shuts that player's
  * team out of the problem; two right answers make a team a winner, which then
  * sits out; the game ends when half the teams have won.
@@ -31,6 +34,15 @@ export interface RectConfig {
   maxProblems: number;
   /** The sizes a board is drawn from; a size listed twice is drawn twice as often. Not in the document. */
   boards: { rows: number; cols: number }[];
+  /**
+   * Of a hundred boards, about how many have an outline that is not a
+   * rectangle: cells cut away from the edge of one of `irregularBoards`,
+   * about `cutPercent` of them. The broadcast's boards are of both sorts;
+   * how often and how large is not in the document.
+   */
+  irregularPercent: number;
+  irregularBoards: { rows: number; cols: number }[];
+  cutPercent: number;
   /** Numbers on a board run from minus this to this, never 0. Not in the document. */
   maxNumber: number;
   /** Of a hundred cells, about how many have no number. Not in the document. */
@@ -60,12 +72,19 @@ export interface Unit {
   place: number;
 }
 
+/** Where a board has no cell at all: no rectangle lies across it. */
+export const GAP = "gap";
+
+/** A place on a board: a number, `null` for a cell with no number in it, or {@link GAP}. */
+export type Cell = number | null | typeof GAP;
+
 /** A problem: the board and the number to make. */
 export interface Board {
+  /** The box the board lies in. */
   rows: number;
   cols: number;
-  /** Row by row; `null` for a cell with no number. */
-  cells: (number | null)[];
+  /** Row by row. */
+  cells: Cell[];
   target: number;
 }
 
@@ -195,8 +214,13 @@ export function isValidConfig(config: RectConfig): boolean {
   if (!isWhole(config.blankPercent) || config.blankPercent < 0 || config.blankPercent >= 100) return false;
   if (!isWhole(config.maxAnswer) || config.maxAnswer < config.minAnswer || config.maxAnswer > config.maxSaid) return false;
   if (!isWhole(config.maxTarget) || config.maxTarget < 0) return false;
-  if (!Array.isArray(config.boards) || config.boards.length === 0) return false;
-  return config.boards.every((size) => isWhole(size.rows) && isWhole(size.cols) && size.rows >= 1 && size.cols >= 1 && size.rows * size.cols >= 2);
+  if (!isWhole(config.irregularPercent) || config.irregularPercent < 0 || config.irregularPercent > 100) return false;
+  if (!isWhole(config.cutPercent) || config.cutPercent < 0 || config.cutPercent >= 100) return false;
+  const sizes = (list: unknown): list is { rows: number; cols: number }[] =>
+    Array.isArray(list) && list.every((size) => isWhole(size?.rows) && isWhole(size?.cols) && size.rows >= 1 && size.cols >= 1 && size.rows * size.cols >= 2);
+  if (!sizes(config.boards) || config.boards.length === 0) return false;
+  // boards with a cut outline are drawn only if there is something to cut them from
+  return sizes(config.irregularBoards) && (config.irregularPercent === 0 || config.irregularBoards.length > 0);
 }
 
 /** Every rectangle of whole cells on a board of `rows` by `cols`, one-cell ones included. */
@@ -212,35 +236,101 @@ function everyRect(rows: number, cols: number): Rect[] {
   return all;
 }
 
-/** The numbers inside `rect` added up, or `null` when it holds no number at all. */
+/**
+ * The numbers inside `rect` added up: a cell with no number adds nothing, so
+ * a rectangle of such cells alone adds up to 0. `null` when the rectangle
+ * would lie across a place where the board has no cell: that is no rectangle
+ * of this board.
+ */
 function sumIn(board: Board, rect: Rect): number | null {
   let sum = 0;
-  let any = false;
   for (let row = rect.top; row <= rect.bottom; row++) {
     for (let col = rect.left; col <= rect.right; col++) {
       const value = board.cells[row * board.cols + col];
-      if (value === null) continue;
-      sum += value;
-      any = true;
+      if (value === GAP || value === undefined) return null;
+      if (value !== null) sum += value;
     }
   }
-  return any ? sum : null;
+  return sum;
 }
 
 /**
- * The rectangles on `board` whose numbers add up to its target: the ones a
- * player has to count. A rectangle is any block of whole cells, a single cell
- * included; one with no number in it adds up to nothing and is not counted.
+ * The rectangles on `board` that add up to its target: the ones a player has
+ * to count. A rectangle is any block of the board's cells, a single cell
+ * included, with or without numbers in it.
+ *
+ * As the broadcast counts them (design record, "What the broadcast shows"):
+ * with a target of 0, a board of thirty cells without numbers and two with a
+ * 1 has 114.
  */
 export function solutions(board: Board): Rect[] {
   return everyRect(board.rows, board.cols).filter((rect) => sumIn(board, rect) === board.target);
 }
 
-/** A board that always works, for the rare draw that finds none: the one problem known from the show. */
-const FALLBACK: Board = { rows: 3, cols: 4, cells: [1, -6, 6, -1, 3, 5, -2, 2, 3, -7, 4, -8], target: 0 };
+/** A board that always works, for the rare draw that finds none. Not one of the show's. */
+const FALLBACK: Board = { rows: 3, cols: 3, cells: [2, -3, 5, 4, null, -1, -2, 3, 1], target: 4 };
 
 /** How many boards are drawn before giving up on finding one whose answer is in range. */
 const DRAWS = 200;
+
+/** The four places that share a side with a place. */
+const SIDES: readonly (readonly [number, number])[] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/** Whether the cells left in `there` (row by row, in a box of `rows` by `cols`) are all in one piece. */
+function inOnePiece(there: readonly boolean[], rows: number, cols: number): boolean {
+  const first = there.indexOf(true);
+  if (first < 0) return false;
+  const seen = new Set<number>([first]);
+  const queue = [first];
+  while (queue.length > 0) {
+    const index = queue.pop() ?? 0;
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    for (const [dr, dc] of SIDES) {
+      const r = row + dr;
+      const c = col + dc;
+      if (r < 0 || r >= rows || c < 0 || c >= cols) continue;
+      const next = r * cols + c;
+      if (there[next] && !seen.has(next)) {
+        seen.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return seen.size === there.filter(Boolean).length;
+}
+
+/**
+ * The outline of a board that is not a rectangle: a box of `rows` by `cols`
+ * with about `percent` of a hundred cells cut away from its edge, what is
+ * left still in one piece. Returns which places keep a cell, row by row.
+ */
+function cutOutline(random: () => number, rows: number, cols: number, percent: number): boolean[] {
+  const there: boolean[] = Array.from({ length: rows * cols }, () => true);
+  let toCut = Math.round((rows * cols * percent) / 100);
+  // a cut that would split the board is not made; a few of those in a row and the board is left as it is
+  for (let attempt = 0; toCut > 0 && attempt < rows * cols * 8; attempt++) {
+    const index = randomInt(random, rows * cols);
+    if (!there[index]) continue;
+    const row = Math.floor(index / cols);
+    const col = index % cols;
+    const onEdge = SIDES.some(([dr, dc]) => {
+      const r = row + dr;
+      const c = col + dc;
+      return r < 0 || r >= rows || c < 0 || c >= cols || !there[r * cols + c];
+    });
+    if (!onEdge) continue;
+    there[index] = false;
+    if (inOnePiece(there, rows, cols)) toCut--;
+    else there[index] = true;
+  }
+  return there;
+}
 
 /**
  * Draws a problem: a board and a target such that the answer lies in the
@@ -248,20 +338,30 @@ const DRAWS = 200;
  */
 export function drawBoard(random: () => number, config: RectConfig): { board: Board; answer: number } {
   for (let attempt = 0; attempt < DRAWS; attempt++) {
-    const size = config.boards[randomInt(random, config.boards.length)];
-    const cells: (number | null)[] = [];
-    for (let i = 0; i < size.rows * size.cols; i++) {
-      if (random() * 100 < config.blankPercent) {
-        cells.push(null);
-        continue;
+    const irregular = random() * 100 < config.irregularPercent;
+    const sizes = irregular ? config.irregularBoards : config.boards;
+    const size = sizes[randomInt(random, sizes.length)];
+    const there = irregular ? cutOutline(random, size.rows, size.cols, config.cutPercent) : Array.from({ length: size.rows * size.cols }, () => true);
+    // the box is drawn close round what is left
+    const rowsLeft = Array.from({ length: size.rows }, (_, row) => row).filter((row) => there.slice(row * size.cols, (row + 1) * size.cols).some(Boolean));
+    const colsLeft = Array.from({ length: size.cols }, (_, col) => col).filter((col) => rowsLeft.some((row) => there[row * size.cols + col]));
+    const cells: Cell[] = [];
+    for (const row of rowsLeft) {
+      for (const col of colsLeft) {
+        if (!there[row * size.cols + col]) {
+          cells.push(GAP);
+        } else if (random() * 100 < config.blankPercent) {
+          cells.push(null);
+        } else {
+          const magnitude = 1 + randomInt(random, config.maxNumber);
+          cells.push(random() < 0.5 ? -magnitude : magnitude);
+        }
       }
-      const magnitude = 1 + randomInt(random, config.maxNumber);
-      cells.push(random() < 0.5 ? -magnitude : magnitude);
     }
     // how many rectangles make each sum
     const counts = new Map<number, number>();
-    const board: Board = { rows: size.rows, cols: size.cols, cells, target: 0 };
-    for (const rect of everyRect(size.rows, size.cols)) {
+    const board: Board = { rows: rowsLeft.length, cols: colsLeft.length, cells, target: 0 };
+    for (const rect of everyRect(board.rows, board.cols)) {
       const sum = sumIn(board, rect);
       if (sum !== null) counts.set(sum, (counts.get(sum) ?? 0) + 1);
     }
@@ -478,6 +578,26 @@ export function applyTimeout(state: RectState, now: number, config: RectConfig):
   } else if (state.phase === "pause") {
     open(next, state.round + 1, now, config);
   }
+  return next;
+}
+
+/**
+ * Closes the open problem when nobody who is there can still answer it:
+ * every unit still racing that `there` says is present has answered wrong.
+ * A unit that is not there (the caller knows who is) does not hold a problem
+ * open for those who are: without this, one player's wrong answer in a game
+ * the other had walked out of left them waiting out the whole of the
+ * problem's time. Returns the state unchanged when someone there can still
+ * answer, when nobody racing is there at all, or when no problem is open for
+ * buzzing. The input state is not modified.
+ */
+export function closeIfSpent(state: RectState, there: (unit: number) => boolean, now: number, config: RectConfig): RectState {
+  if (state.phase !== "problem") return state;
+  const present = playing(state).filter(there);
+  if (present.length === 0 || !present.every((unit) => state.wrong.includes(unit))) return state;
+  const next = clone(state);
+  next.history.push({ type: "all-wrong", round: state.round });
+  close(next, { kind: "all-wrong" }, now, config);
   return next;
 }
 

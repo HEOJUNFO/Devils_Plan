@@ -19,6 +19,7 @@ export type MessageOf<Type extends ServerMessage["type"]> = Extract<ServerMessag
 /** What a room sends about a game, by which game it is. */
 export type RouletteMessage = Extract<ServerMessage, { type: "game"; game: "russian-roulette" }>;
 export type RectanglesMessage = Extract<ServerMessage, { type: "game"; game: "count-rectangles" }>;
+export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the-grass" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -148,6 +149,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "count-rectangles" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 잔디 깔기 that satisfies `match`. */
+  async grassWhere(match: (game: GrassMessage) => boolean = () => true): Promise<GrassMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "lay-the-grass" && match(message)) return message;
     }
   }
 

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { randomSource } from "../../../src/shared/game/rng";
 import shipped from "../../../src/shared/games/count-rectangles/config.json";
 import {
+  GAP,
   abandon,
   applyAction,
   applyTimeout,
+  closeIfSpent,
   createGame,
   deadline,
   drawBoard,
@@ -16,6 +18,7 @@ import {
   viewFor,
   winnersNeeded,
   type Board,
+  type Cell,
   type RectConfig,
   type RectPlayer,
   type RectState,
@@ -86,6 +89,10 @@ describe("the shipped rules of Count the Rectangles", () => {
     ["answers that cannot be said", { maxAnswer: CONFIG.maxSaid + 1 }],
     ["a range of answers upside down", { minAnswer: 9, maxAnswer: 3 }],
     ["a negative pause", { pauseSeconds: -1 }],
+    ["more than every board cut", { irregularPercent: 101 }],
+    ["a board cut away whole", { cutPercent: 100 }],
+    ["cut boards with nothing to cut them from", { irregularBoards: [] }],
+    ["a box to cut that is one cell", { irregularBoards: [{ rows: 1, cols: 1 }] }],
   ])("are refused with %s", (_what, change) => {
     expect(isValidConfig({ ...CONFIG, ...change })).toBe(false);
   });
@@ -124,20 +131,97 @@ describe("solutions", () => {
     expect(solutions(board)).toEqual([{ top: 0, left: 0, bottom: 0, right: 2 }]);
   });
 
-  it("does not count a rectangle with no number in it, even for a target of 0", () => {
+  it("counts a rectangle with no number in it when the target is 0: it adds up to nothing", () => {
     const board: Board = { rows: 1, cols: 3, cells: [null, 4, -4], target: 0 };
 
-    // the pair 4 and -4, and all three cells; not the empty cell alone
+    // the empty cell alone, all three cells, and the pair 4 and -4
     expect(solutions(board)).toEqual([
+      { top: 0, left: 0, bottom: 0, right: 0 },
       { top: 0, left: 0, bottom: 0, right: 2 },
       { top: 0, left: 1, bottom: 0, right: 2 },
     ]);
+  });
+
+  it("does not count a rectangle with no number in it for any other target", () => {
+    const board: Board = { rows: 1, cols: 3, cells: [null, null, 3], target: 3 };
+
+    // each rectangle that holds the 3, and none of the ones made of empty cells
+    expect(solutions(board)).toEqual([
+      { top: 0, left: 0, bottom: 0, right: 2 },
+      { top: 0, left: 1, bottom: 0, right: 2 },
+      { top: 0, left: 2, bottom: 0, right: 2 },
+    ]);
+  });
+
+  it("counts two rectangles that hold the same numbers and differ only in empty cells as two", () => {
+    const board: Board = { rows: 1, cols: 2, cells: [null, 7], target: 7 };
+
+    expect(solutions(board)).toHaveLength(2);
+  });
+
+  it("never lays a rectangle across a place where the board has no cell", () => {
+    const split: Board = { rows: 1, cols: 3, cells: [5, GAP, 5], target: 10 };
+    const corner: Board = { rows: 2, cols: 2, cells: [1, 1, 1, GAP], target: 3 };
+
+    expect(solutions(split)).toEqual([]);
+    expect(solutions({ ...split, target: 5 })).toHaveLength(2);
+    // the three cells do not make a rectangle; no block of two rows and two columns is whole
+    expect(solutions(corner)).toEqual([]);
+    expect(solutions({ ...corner, target: 2 })).toHaveLength(2);
+  });
+
+  it("does not take a place with no cell for an empty cell: it is no rectangle of nothing either", () => {
+    const board: Board = { rows: 1, cols: 3, cells: [GAP, null, GAP], target: 0 };
+
+    expect(solutions(board)).toEqual([{ top: 0, left: 1, bottom: 0, right: 1 }]);
   });
 
   it("finds nothing when no rectangle makes the target", () => {
     const board: Board = { rows: 2, cols: 2, cells: [1, 2, 3, 4], target: 100 };
 
     expect(solutions(board)).toEqual([]);
+  });
+});
+
+/**
+ * A board as the notes on the broadcast write it down: numbers, `_` for a
+ * cell with no number, `.` for a place with no cell.
+ */
+function boardOf(rows: string[], target: number): Board {
+  const grid = rows.map((row) => row.trim().split(/\s+/));
+  const cells: Cell[] = grid.flat().map((mark) => (mark === "." ? GAP : mark === "_" ? null : Number(mark)));
+  return { rows: grid.length, cols: grid[0].length, cells, target };
+}
+
+describe("the problems seen in the broadcast", () => {
+  // Read off frames of the episode (design record, "What the broadcast shows"). They are here to hold the
+  // counting to the answers given on air, and are not among the problems the game puts up.
+  it("counts the four rectangles the rules screen draws for its example", () => {
+    expect(solutions(boardOf(["10 _", "_ 4", "6 _"], 10))).toHaveLength(4);
+  });
+
+  it("counts 6 in the first problem, whose board is three blocks joined by single cells", () => {
+    const board = boardOf(
+      ["1 8 6 . 7 3 1", "3 5 2 . 4 5 8", "7 4 9 21 9 2 6", ". . . . . . 21", ". . . . 9 4 7", ". . . . 2 5 3", ". . . . 6 8 1"],
+      20,
+    );
+
+    expect(solutions(board)).toHaveLength(6);
+  });
+
+  it("counts 114 in the second problem, every one of them a rectangle with no number in it", () => {
+    const board = boardOf(
+      [". . . . . _ . _ . . .", "_ _ . . _ _ . _ _ . .", "_ _ _ . _ _ . _ _ _ .", "_ _ _ 1 _ _ 1 _ _ _ _", "_ _ . . _ _ . . . . .", ". . . . _ . . . . . ."],
+      0,
+    );
+
+    expect(solutions(board)).toHaveLength(114);
+  });
+
+  it("counts 27 in the problem of the added duel, where most rectangles hold an empty cell", () => {
+    const board = boardOf(["1 1 1 1 1 1 1", "1 _ 1 1 1 1 1", "1 1 1 1 _ 1 1", "1 1 1 1 1 1 1", "1 1 _ 1 1 1 1", "1 1 1 1 1 1 1", "1 1 1 1 1 1 _"], 13);
+
+    expect(solutions(board)).toHaveLength(27);
   });
 });
 
@@ -153,11 +237,14 @@ describe("drawBoard", () => {
   it("draws, over many seeds, only problems that are within what the rules allow", () => {
     for (let seed = 1; seed <= 300; seed++) {
       const { board, answer } = drawBoard(randomSource(seed).next, CONFIG);
+      const cut = board.cells.includes(GAP);
 
-      expect(CONFIG.boards).toContainEqual({ rows: board.rows, cols: board.cols });
+      // a whole board is one of the sizes on the list; a cut one lies inside one of the boxes cut from
+      if (!cut) expect(CONFIG.boards).toContainEqual({ rows: board.rows, cols: board.cols });
+      else expect(CONFIG.irregularBoards.some((box) => board.rows <= box.rows && board.cols <= box.cols)).toBe(true);
       expect(board.cells).toHaveLength(board.rows * board.cols);
       for (const cell of board.cells) {
-        if (cell === null) continue;
+        if (cell === null || cell === GAP) continue;
         expect(Number.isInteger(cell)).toBe(true);
         expect(cell).not.toBe(0);
         expect(Math.abs(cell)).toBeLessThanOrEqual(CONFIG.maxNumber);
@@ -192,26 +279,115 @@ describe("drawBoard", () => {
     }
   });
 
+  it("draws boards with an outline that is not a rectangle about as often as the rules say", () => {
+    let cut = 0;
+    for (let seed = 1; seed <= 300; seed++) {
+      if (drawBoard(randomSource(seed).next, CONFIG).board.cells.includes(GAP)) cut++;
+    }
+
+    // not every board meant to be cut ends up with a cell missing from its box, so the share may fall a little short
+    expect(cut / 300).toBeGreaterThan((CONFIG.irregularPercent - 20) / 100);
+    expect(cut / 300).toBeLessThan((CONFIG.irregularPercent + 15) / 100);
+  });
+
+  it("keeps a cut board in one piece, with no empty row or column round it", () => {
+    const always: RectConfig = { ...CONFIG, irregularPercent: 100 };
+    for (let seed = 1; seed <= 150; seed++) {
+      const { board } = drawBoard(randomSource(seed).next, always);
+      const has = (row: number, col: number): boolean => row >= 0 && row < board.rows && col >= 0 && col < board.cols && board.cells[row * board.cols + col] !== GAP;
+      const cells: [number, number][] = [];
+      for (let row = 0; row < board.rows; row++) for (let col = 0; col < board.cols; col++) if (has(row, col)) cells.push([row, col]);
+      const seen = new Set([cells[0].join()]);
+      const queue = [cells[0]];
+      while (queue.length > 0) {
+        const [row, col] = queue.pop()!;
+        for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          if (has(row + dr, col + dc) && !seen.has([row + dr, col + dc].join())) {
+            seen.add([row + dr, col + dc].join());
+            queue.push([row + dr, col + dc]);
+          }
+        }
+      }
+
+      expect(seen.size).toBe(cells.length);
+      for (let row = 0; row < board.rows; row++) expect(cells.some((cell) => cell[0] === row)).toBe(true);
+      for (let col = 0; col < board.cols; col++) expect(cells.some((cell) => cell[1] === col)).toBe(true);
+    }
+  });
+
+  it("cuts only from the edge inwards: no place without a cell is walled in by cells", () => {
+    const always: RectConfig = { ...CONFIG, irregularPercent: 100 };
+    for (let seed = 1; seed <= 150; seed++) {
+      const { board } = drawBoard(randomSource(seed).next, always);
+      const gap = (row: number, col: number): boolean => board.cells[row * board.cols + col] === GAP;
+      // every place with no cell is reached from outside the box across places with no cell
+      const open = new Set<string>();
+      const queue: [number, number][] = [];
+      for (let row = 0; row < board.rows; row++) {
+        for (let col = 0; col < board.cols; col++) {
+          const rim = row === 0 || col === 0 || row === board.rows - 1 || col === board.cols - 1;
+          if (rim && gap(row, col)) {
+            open.add([row, col].join());
+            queue.push([row, col]);
+          }
+        }
+      }
+      while (queue.length > 0) {
+        const [row, col] = queue.pop()!;
+        for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const r = row + dr;
+          const c = col + dc;
+          if (r < 0 || r >= board.rows || c < 0 || c >= board.cols || !gap(r, c) || open.has([r, c].join())) continue;
+          open.add([r, c].join());
+          queue.push([r, c]);
+        }
+      }
+
+      expect(open.size).toBe(board.cells.filter((cell) => cell === GAP).length);
+    }
+  });
+
+  it("cuts about as much of the box away as the rules say", () => {
+    const always: RectConfig = { ...CONFIG, irregularPercent: 100, irregularBoards: [{ rows: 4, cols: 6 }] };
+    let left = 0;
+    for (let seed = 1; seed <= 100; seed++) {
+      left += drawBoard(randomSource(seed).next, always).board.cells.filter((cell) => cell !== GAP).length;
+    }
+
+    // of twenty-four cells, about seven are cut: seventeen are left
+    expect(left / 100).toBeGreaterThan(24 * (1 - (CONFIG.cutPercent + 8) / 100));
+    expect(left / 100).toBeLessThan(24 * (1 - (CONFIG.cutPercent - 8) / 100));
+  });
+
+  it("draws only whole boards when the rules ask for none to be cut", () => {
+    const never: RectConfig = { ...CONFIG, irregularPercent: 0, irregularBoards: [] };
+
+    for (let seed = 1; seed <= 100; seed++) expect(drawBoard(randomSource(seed).next, never).board.cells).not.toContain(GAP);
+  });
+
   it("leaves some cells without a number, as the document says, and fills most", () => {
     let blank = 0;
     let cells = 0;
     for (let seed = 1; seed <= 300; seed++) {
       const { board } = drawBoard(randomSource(seed).next, CONFIG);
       blank += board.cells.filter((cell) => cell === null).length;
-      cells += board.cells.length;
+      cells += board.cells.filter((cell) => cell !== GAP).length;
     }
 
     expect(blank).toBeGreaterThan(0);
     expect(blank / cells).toBeLessThan(0.4);
   });
 
-  it("falls back on a board that works when none can be drawn", () => {
-    const impossible: RectConfig = { ...CONFIG, boards: [{ rows: 1, cols: 2 }], minAnswer: 50, maxAnswer: 60 };
+  it("falls back on a board of its own that works when none can be drawn, and not on one of the show's", () => {
+    const impossible: RectConfig = { ...CONFIG, boards: [{ rows: 1, cols: 2 }], irregularPercent: 0, minAnswer: 50, maxAnswer: 60 };
 
     const { board, answer } = drawBoard(randomSource(3).next, impossible);
 
-    expect(board).toEqual(KNOWN);
-    expect(answer).toBe(8);
+    expect(board).not.toEqual(KNOWN);
+    expect(board.cells).toHaveLength(board.rows * board.cols);
+    expect(answer).toBe(solutions(board).length);
+    expect(answer).toBeGreaterThanOrEqual(CONFIG.minAnswer);
+    expect(answer).toBeLessThanOrEqual(CONFIG.maxAnswer);
   });
 });
 
@@ -591,6 +767,69 @@ describe("a game that stood still", () => {
     const state = game(alone(2));
 
     expect(shiftClock(state, 0)).toBe(state);
+  });
+});
+
+describe("a problem nobody who is there can still answer", () => {
+  /** Units 0 and 1 are there; unit 2 is not. */
+  const there = (unit: number): boolean => unit !== 2;
+
+  it("is closed as wrong all round when everyone there has answered wrong", () => {
+    const state = miss(miss(game(alone(3)), 0, START + 1000), 1, START + 3000);
+
+    const closed = closeIfSpent(state, there, START + 5000, CONFIG);
+
+    expect(state.phase).toBe("problem");
+    expect(closed).toMatchObject({ phase: "pause", outcome: { kind: "all-wrong" }, pauseUntil: START + 5000 + PAUSE_MS });
+    expect(closed.history.at(-1)).toEqual({ type: "all-wrong", round: 1 });
+    expect(viewFor(closed, 0).answer).toBe(state.answer);
+  });
+
+  it("stays open while someone there has not answered", () => {
+    const state = miss(game(alone(3)), 0, START + 1000);
+
+    expect(closeIfSpent(state, there, START + 5000, CONFIG)).toBe(state);
+  });
+
+  it("stays open when nobody racing is there at all: that is for whoever knows they are gone to deal with", () => {
+    const state = miss(game(alone(2)), 0, START + 1000);
+
+    expect(closeIfSpent(state, () => false, START + 5000, CONFIG)).toBe(state);
+  });
+
+  it("does not wait for a unit that has won, there or not", () => {
+    let step = next(solve(game(alone(4)), 3, START + 1000));
+    step = next(solve(step.state, 3, step.now + 1000));
+    const wrong = miss(miss(step.state, 0, step.now + 1000), 1, step.now + 3000);
+
+    // unit 3 has won and sits out; unit 2 is not there; units 0 and 1 are wrong
+    expect(wrong.units[3].place).toBe(1);
+    expect(closeIfSpent(wrong, there, step.now + 5000, CONFIG).outcome).toEqual({ kind: "all-wrong" });
+  });
+
+  it("is left alone while a player is answering, even one who has gone since buzzing: their time is theirs", () => {
+    const answering = act(miss(game(alone(3)), 0, START + 1000), 1, { type: "buzz" }, START + 3000);
+
+    // unit 0 is wrong and is the only one there; unit 1 buzzed and then dropped
+    expect(closeIfSpent(answering, (unit) => unit === 0, START + 4000, CONFIG)).toBe(answering);
+  });
+
+  it("is not closed a second time, nor once the game is over", () => {
+    const closed = closeIfSpent(miss(miss(game(alone(3)), 0, START + 1000), 1, START + 3000), there, START + 5000, CONFIG);
+    const over = abandon(miss(game(alone(3)), 0, START + 1000));
+
+    expect(closed.phase).toBe("pause");
+    expect(closeIfSpent(closed, there, START + 6000, CONFIG)).toBe(closed);
+    expect(closeIfSpent(over, (unit) => unit === 0, START + 6000, CONFIG)).toBe(over);
+  });
+
+  it("does not change the state it was given", () => {
+    const state = miss(miss(game(alone(3)), 0, START + 1000), 1, START + 3000);
+    const before = structuredClone(state);
+
+    closeIfSpent(state, there, START + 5000, CONFIG);
+
+    expect(state).toEqual(before);
   });
 });
 

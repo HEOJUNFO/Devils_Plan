@@ -61,8 +61,8 @@ export type GameMessage = Extract<ServerMessage, { type: "game"; game: "russian-
 
 /** What the screen asks of whoever owns the connection. */
 export interface TableHandlers {
-  /** The player made a move. */
-  act(action: Action): void;
+  /** The player made a move. Returns whether it could be sent. */
+  act(action: Action): boolean;
   /** The host asked for the next game. */
   again(): void;
   /** The game is over and the player wants the waiting room back. */
@@ -79,6 +79,8 @@ export interface Table {
   update(message: GameMessage): void;
   /** The room refused the player's last move or start. */
   refused(reason: string): void;
+  /** The connection to the room went down: a move on its way when it did is not coming back as anything. */
+  lost(): void;
   /** Whether this player is the host, who starts the next game. */
   setHost(host: boolean): void;
   /** The player in lobby slot `slot` said a line: it shows over their seat for a moment. */
@@ -212,6 +214,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let sel: Selection | null = null;
   /** A move has been sent and the room has not answered yet. */
   let pending = false;
+  /** The connection to the room is down; the next thing the room sends says it is back. */
+  let offline = false;
   let host = false;
   let help = false;
   let note = "";
@@ -392,6 +396,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     latest = message;
     receivedAt = performance.now();
     pending = false;
+    offline = false;
     if (message.view.phase !== "ended") before = message.view;
   }
 
@@ -549,9 +554,13 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   }
 
   function send(action: Action): void {
-    pending = true;
     sel = null;
-    handlers.act(action);
+    // while the connection is down nothing goes, and the table is not left waiting on it
+    pending = handlers.act(action);
+    if (!pending) {
+      say("연결이 끊겨 보내지 못했습니다. 다시 해 주세요");
+      sfx.deny();
+    }
   }
 
   function confirm(): void {
@@ -1050,6 +1059,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const view = latest.view;
     const rules = latest.rules;
     if (noteT > 0) return [note, C.amber];
+    if (offline) return ["연결이 끊겼습니다. 다시 연결하는 중", C.crim];
     if (deal > 0) return ["자리 추첨 중", C.boneD];
     if (fire !== null) return ["격발: 총구가 향한 자리부터 시계 방향으로 한 발씩", C.crim];
     if (anim !== null || !settled()) {
@@ -1211,8 +1221,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
-    // a key typed into a text box (the chat) is not a move
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    // a key typed into a text box (the chat) is not a move, and neither is one pressed on a button
+    // the player has gone to with the keyboard: that key is the button's
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLButtonElement) return;
     startAudio();
     if (!event.repeat) keys.add(event.code);
     if (event.code === "Space" || event.code.startsWith("Arrow") || event.code === "Backspace") event.preventDefault();
@@ -1258,6 +1269,10 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       pending = false;
       say(WAIT_TEXT[reason] ?? "그 행동은 지금 할 수 없습니다");
       sfx.deny();
+    },
+    lost(): void {
+      pending = false;
+      offline = true;
     },
     setHost(value: boolean): void {
       host = value;

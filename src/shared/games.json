@@ -14,5 +14,13 @@
     "maxPlayers": 6,
     "teamSize": 3,
     "turns": false
+  },
+  "lay-the-grass": {
+    "title": "잔디 깔기",
+    "summary": "공원에 잔디 타일을 놓으면 번호만큼 승점. 큰 번호일수록 늦게 놓습니다.",
+    "minPlayers": 2,
+    "maxPlayers": 6,
+    "teamSize": 0,
+    "turns": false
   }
 }

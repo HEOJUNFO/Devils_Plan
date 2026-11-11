@@ -361,15 +361,16 @@ describe("GameRoom: teams in 네모 세기", () => {
     maker.close();
   });
 
-  it("refuses a start while a team is not full", async () => {
+  it("starts with the players of a team that is not full each alone, so one player's choice holds up nobody", async () => {
     const clients = await racers("NBAAF", 3);
     clients[0].send({ type: "team", team: 1 });
     clients[1].send({ type: "team", team: 1 });
     await clients[2].lobbyWhere((lobby) => lobby.players[1].team === 1);
 
-    clients[0].send({ type: "start", bots: false });
+    const games = await startGame(clients);
 
-    expect((await clients[0].refusal()).reason).toBe("bad-teams");
+    expect(games[0].view.units.map((unit) => unit.members)).toEqual([[0], [1], [2]]);
+    expect(games[1].view.you).toEqual({ player: 1, unit: 1 });
     closeAll(clients);
   });
 
@@ -597,6 +598,50 @@ describe("GameRoom: coming and going during 네모 세기", () => {
     expect(after.frozen).toBe(false);
     expect(solved.view.units[1].wins).toBe(1);
     closeAll([clients[0], clients[1]]);
+  });
+
+  it("closes a problem the only player left has answered wrong, without waiting out its time for one who has gone", async () => {
+    const clients = await racers("NCAAL", 2);
+    const games = await startGame(clients);
+    clients[1].send({ type: "leave" });
+    await clients[0].rectWhere((game) => game.players[1].left);
+
+    const after = await answer(clients, 0, count(games[0]) + 1);
+
+    expect(after.view.outcome).toEqual({ kind: "all-wrong" });
+    expect(after.view.phase).toBe("pause");
+    expect(after.view.answer).toBe(count(games[0]));
+    clients[0].close();
+  });
+
+  it("closes a problem at the moment the last player who could still answer drops", async () => {
+    const clients = await racers("NCAAM", 2);
+    const games = await startGame(clients);
+    const open = await answer(clients, 0, count(games[0]) + 1);
+
+    clients[1].close();
+
+    const after = await clients[0].rectWhere((game) => game.view.outcome !== null);
+    expect(open.view).toMatchObject({ phase: "problem", wrong: [0] });
+    expect(after.view.outcome).toEqual({ kind: "all-wrong" });
+    clients[0].close();
+  });
+
+  it("ends a game in which problem after problem runs out with nobody buzzing", async () => {
+    const stub = env.GameRoom.getByName("NCAAN");
+    const clients = await racers("NCAAN", 2);
+    await startGame(clients);
+
+    // the first problem runs out, its pause, then the second problem runs out
+    for (const wait of [PROBLEM_MS, PAUSE_MS, PROBLEM_MS]) {
+      await scheduledAlarm(stub);
+      advanceClock(wait + 1);
+      await runDurableObjectAlarm(stub);
+    }
+
+    const over = await clients[0].rectWhere((game) => game.view.phase === "ended");
+    expect(over.view.history.at(-1)).toEqual({ type: "ended", round: 2, reason: "abandoned" });
+    closeAll(clients);
   });
 
   it("does not take whoever takes a leaver's slot for the leaver", async () => {

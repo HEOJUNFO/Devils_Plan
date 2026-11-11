@@ -6,6 +6,7 @@
  */
 import type { RoomListing } from "./directory";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
+import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
@@ -77,6 +78,7 @@ export type ServerMessage =
    */
   | ({ type: "game"; room: string; game: "russian-roulette" } & GameSnapshot)
   | ({ type: "game"; room: string; game: "count-rectangles" } & RectSnapshot)
+  | ({ type: "game"; room: string; game: "lay-the-grass" } & GrassSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**
@@ -95,6 +97,7 @@ export type Refusal =
   | StartRefusal
   | MoveRefusal
   | RectHostRefusal
+  | GrassHostRefusal
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal

@@ -358,6 +358,12 @@ function showTable(game: GameId): GameScreen {
     });
     table.setHost(isHost);
   }
+  if (tableCanvas.hidden) {
+    // The waiting room lies under the game: none of it takes a key meant for the game. A button
+    // pressed with the mouse keeps the focus, and Enter on the game screen would press it again.
+    room.inert = true;
+    if (document.activeElement instanceof HTMLButtonElement) document.activeElement.blur();
+  }
   tableCanvas.hidden = false;
   leaveGameButton.hidden = false;
   rules.hidden = true;
@@ -373,6 +379,7 @@ function hideTable(): void {
   table = null;
   tableGame = null;
   frame.classList.remove("covered");
+  room.inert = false;
   tableCanvas.hidden = true;
   leaveGameButton.hidden = true;
   disarmLeave();
@@ -615,22 +622,23 @@ function renderRoom(code: string, view: LobbyView): void {
   // who would play: everyone connected, a team counting once
   const sizes = new Map<number, number>();
   for (const p of connected) if (p.team > 0) sizes.set(p.team, (sizes.get(p.team) ?? 0) + 1);
+  // a team that is not exactly full is no team: its players start alone (and hold up nobody)
   const broken = [...sizes].find(([, size]) => size !== game.teamSize);
-  const units = connected.filter((p) => p.team === 0).length + sizes.size;
+  const full = [...sizes].filter(([, size]) => size === game.teamSize);
+  const units = connected.length - full.reduce((sum, [, size]) => sum + size, 0) + full.length;
   const enough = teams
-    ? broken === undefined && (wantBots || units >= 2) && connected.length <= game.maxPlayers
+    ? (wantBots || units >= 2) && connected.length <= game.maxPlayers
     : wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
   startButton.disabled = !isHost || !enough;
-  hint =
-    broken !== undefined
-      ? `팀 ${broken[0]}이 ${broken[1]}명입니다. 팀은 정확히 ${game.teamSize}명이어야 합니다.`
-      : !enough
-        ? teams
-          ? "두 팀(혼자도 한 팀) 이상이 모이면 방장이 시작할 수 있습니다."
-          : `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
-        : isHost
-          ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}준비되면 시작하세요.`
-          : "방장이 시작하기를 기다리는 중입니다.";
+  hint = !enough
+    ? teams
+      ? "두 팀(혼자도 한 팀) 이상이 모이면 방장이 시작할 수 있습니다."
+      : `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
+    : broken !== undefined
+      ? `팀 ${broken[0]}은 ${broken[1]}명이라 팀이 되지 않습니다 (정확히 ${game.teamSize}명). 이대로 시작하면 각자 혼자 합니다.`
+      : isHost
+        ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}준비되면 시작하세요.`
+        : "방장이 시작하기를 기다리는 중입니다.";
   renderRoomBar();
 }
 
@@ -680,6 +688,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // PartySocket reconnects by itself unless we closed it.
     if (socket !== current) return;
     online = false;
+    // whatever the game screen had asked for and not heard back about is not coming
+    table?.lost();
     if (event.code === CLOSE_LEFT) {
       // The room let this player go without this page asking: they left in
       // another window, or were away so long that their place was given up.
@@ -707,6 +717,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // A game that is over is shown to its end only to those who watched it
       // end: someone arriving after it, or who has put its results away, is
       // in the waiting room.
+      // a room made by a newer server may be playing a game this page has not heard of
+      if (!isGameId(message.game)) return;
       const over = message.view.phase === "ended";
       gameOn = !over;
       if (over && (table === null || dismissedGame === message.startedAt)) return;
@@ -905,6 +917,14 @@ voiceMic.addEventListener("click", () => voice.setMuted(!voice.muted));
 // During a game: the tabs over the right-hand column, and T for the chat.
 tabLog.addEventListener("click", () => openChat(false));
 tabChat.addEventListener("click", () => openChat(true));
+// A button pressed with the mouse keeps the focus, and the next Enter or Space meant for the game
+// would press it again. The ones that lie over the game give the focus back; reached and pressed
+// from the keyboard (no mouse: `detail` is 0) they keep it, and the key is theirs.
+for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat]) {
+  button.addEventListener("click", (event) => {
+    if (event.detail > 0 && !tableCanvas.hidden) button.blur();
+  });
+}
 chatInput.addEventListener("keydown", (event) => {
   // Esc gives the keys back to the game
   if (event.key !== "Escape" || event.isComposing) return;

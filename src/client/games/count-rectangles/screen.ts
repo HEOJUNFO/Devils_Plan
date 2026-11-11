@@ -6,7 +6,7 @@
  * Design: design/games/count-rectangles.md. The room decides everything;
  * this screen shows what it sends and asks for a buzz or an answer.
  */
-import type { Rect, RectEvent } from "../../../shared/games/count-rectangles/rules";
+import { GAP, type Rect, type RectEvent } from "../../../shared/games/count-rectangles/rules";
 import { afterBuzz, typeAnswer } from "../../../shared/games/count-rectangles/typing";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
@@ -19,7 +19,6 @@ import {
   SCENE_W,
   VOICE_MARK_W,
   W,
-  drawLamp,
   drawSpeech,
   drawVoiceMark,
   speechLines,
@@ -35,8 +34,8 @@ export type RectMessage = Extract<ServerMessage, { type: "game"; game: "count-re
 
 /** What the screen asks of whoever owns the connection. */
 export interface RectHandlers {
-  /** The player buzzed or answered. */
-  act(action: unknown): void;
+  /** The player buzzed or answered. Returns whether it could be sent. */
+  act(action: unknown): boolean;
   /** The host asked for the next game. */
   again(): void;
   /** The game is over and the player wants the waiting room back. */
@@ -51,6 +50,7 @@ export interface RectHandlers {
 export interface RectScreen {
   update(message: RectMessage): void;
   refused(reason: string): void;
+  lost(): void;
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
   destroy(): void;
@@ -67,6 +67,13 @@ const BOARD_TOP = 12;
 const BOARD_BAND = 124;
 /** The plate with the target number: left of the board, under the page's own way out of the game. */
 const TARGET_RECT: [number, number, number, number] = [5, 42, 70, 46];
+/**
+ * The part of the scene's width the board is drawn in: right of the buttons
+ * the page lays over the top left of a game (the way out, and voice in a
+ * room off the list), so that no cell of a board is ever under one.
+ */
+const BOARD_LEFT = 118;
+const BOARD_WIDTH = 180;
 /** The line a player's answer, place or chat line starts at: between the board and the heads. */
 const SAID_Y = 141;
 /** The line of the players' shoulders, and of their names. */
@@ -82,6 +89,14 @@ const LOG_ROWS = 8;
 const REVEAL_SECONDS = 0.7;
 /** With this many seconds or fewer to answer, the player's own count is ticked aloud. */
 const TICK_FROM = 3;
+/**
+ * Seconds the results are on show before Enter starts another game: the host
+ * may have been pressing Enter to buzz at the moment someone else's answer
+ * ended this one.
+ */
+const RESULTS_HOLD = 1.5;
+/** Said when something could not be sent because the connection is down. */
+const NOT_SENT_TEXT = "연결이 끊겨 보내지 못했습니다. 다시 눌러 주세요";
 
 const REFUSED_TEXT: Record<string, string> = {
   "not-open": "지금은 버저를 누를 수 없습니다",
@@ -158,6 +173,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   let typed = "";
   /** Something has been sent and the room has not answered yet. */
   let pending = false;
+  /** The connection to the room is down; the next thing the room sends says it is back. */
+  let offline = false;
   /**
    * This player's buzz is on its way and the room has not yet said who
    * answers. Digits typed meanwhile are kept: on a slow line the wait is long
@@ -174,6 +191,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   let flash: { colour: string; t: number } | null = null;
   /** `time` when the closed problem's rectangles began to be shown. */
   let revealFrom = 0;
+  /** `time` when the game on show was first seen to be over. */
+  let endedAt = 0;
   /** The last second of the player's own answer that was ticked aloud. */
   let ticked = -1;
   /** By player: a hop still to finish, in seconds. */
@@ -292,9 +311,11 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
     const wasClosed = latest !== null && latest.view.outcome !== null && !fresh;
     if (message.view.outcome !== null && !wasClosed) revealFrom = time;
+    if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
     latest = message;
     receivedAt = performance.now();
     pending = false;
+    offline = false;
     if (buzzed) {
       const view = message.view;
       const me = mine();
@@ -308,8 +329,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
           // someone else was first
           typed = "";
         } else if (queued && typed !== "") {
-          pending = true;
-          handlers.act({ type: "answer", count: Number(typed) });
+          pending = handlers.act({ type: "answer", count: Number(typed) });
         }
         queued = false;
       }
@@ -332,7 +352,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     if (view.phase === "ended") {
       if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT)) {
         handlers.lobby();
-      } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
         if (host) handlers.again();
         else say(REFUSED_TEXT["not-host"]);
       }
@@ -353,11 +373,16 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         }
         return;
       }
-      pending = true;
-      buzzed = true;
       queued = false;
       typed = "";
-      handlers.act({ type: "buzz" });
+      if (!handlers.act({ type: "buzz" })) {
+        // nothing went: the buzzer is not left waiting for an answer that cannot come
+        say(NOT_SENT_TEXT);
+        sfx.deny();
+        return;
+      }
+      pending = true;
+      buzzed = true;
       // what was pressed after the buzz in the same step is the start of the answer
       typing = rest;
     }
@@ -378,8 +403,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       // the buzz is still on its way: the answer goes as soon as it is this player's to give
       queued = true;
     } else if (!pending) {
-      pending = true;
-      handlers.act({ type: "answer", count: result.said });
+      if (handlers.act({ type: "answer", count: result.said })) pending = true;
+      else say(NOT_SENT_TEXT);
     }
   }
 
@@ -428,11 +453,10 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   function boardBox(): { x: number; y: number; cell: number } | null {
     if (latest === null) return null;
     const board = latest.view.board;
-    // the largest cell with which the board still clears the target plate beside it and the heads below
-    const beside = TARGET_RECT[0] + TARGET_RECT[2] + 8;
-    const cell = Math.min(34, Math.floor((SCENE_W - 2 * beside) / board.cols), Math.floor((BOARD_BAND - 4) / board.rows));
+    // as large as its part of the scene allows, and as leaves the heads below their room
+    const cell = Math.min(34, Math.floor(BOARD_WIDTH / board.cols), Math.floor((BOARD_BAND - 4) / board.rows));
     return {
-      x: Math.round((SCENE_W - board.cols * cell) / 2),
+      x: BOARD_LEFT + Math.floor((BOARD_WIDTH - board.cols * cell) / 2),
       y: BOARD_TOP + Math.floor((BOARD_BAND - board.rows * cell) / 2),
       cell,
     };
@@ -452,25 +476,29 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const view = latest.view;
     const board = view.board;
     const { x, y, cell } = box;
-    const w = board.cols * cell;
-    const h = board.rows * cell;
-    // the frame, lit for a moment by a right or a wrong answer
-    pen.px(x - 5, y - 5, w + 10, h + 10, C.ink);
-    pen.px(x - 4, y - 4, w + 8, h + 8, flash !== null && Math.sin(time * 40) > -0.3 ? flash.colour : C.woodD);
-    pen.px(x - 2, y - 2, w + 4, h + 4, C.ink);
-    const shown = lit();
+    /** The places where the board has a cell: a board need not be a rectangle. */
+    const places: { row: number; col: number; cx: number; cy: number }[] = [];
     for (let row = 0; row < board.rows; row++) {
       for (let col = 0; col < board.cols; col++) {
-        const value = board.cells[row * board.cols + col];
-        const cx = x + col * cell;
-        const cy = y + row * cell;
-        const inLit = shown !== null && row >= shown.rect.top && row <= shown.rect.bottom && col >= shown.rect.left && col <= shown.rect.right;
-        pen.px(cx, cy, cell, cell, C.ink);
-        pen.px(cx + 1, cy + 1, cell - 2, cell - 2, inLit ? "#3a2a12" : value === null ? C.wallD : C.steelDD);
-        if (value !== null) {
-          pen.px(cx + 1, cy + 1, cell - 2, 1, inLit ? C.amberD : C.steelD);
-          pen.txt(`${value}`, cx + Math.round(cell / 2), cy + Math.round((cell - 24) / 2), value < 0 ? C.crim : C.bone, "center", 24);
-        }
+        if (board.cells[row * board.cols + col] !== GAP) places.push({ row, col, cx: x + col * cell, cy: y + row * cell });
+      }
+    }
+    // the frame follows the board's outline, and is lit for a moment by a right or a wrong answer
+    const frame = flash !== null && Math.sin(time * 40) > -0.3 ? flash.colour : C.woodD;
+    for (const place of places) pen.px(place.cx - 5, place.cy - 5, cell + 10, cell + 10, C.ink);
+    for (const place of places) pen.px(place.cx - 4, place.cy - 4, cell + 8, cell + 8, frame);
+    for (const place of places) pen.px(place.cx - 2, place.cy - 2, cell + 4, cell + 4, C.ink);
+    const shown = lit();
+    // large figures where a cell has room for them
+    const size = cell >= 28 ? 24 : 12;
+    for (const { row, col, cx, cy } of places) {
+      const value = board.cells[row * board.cols + col];
+      const inLit = shown !== null && row >= shown.rect.top && row <= shown.rect.bottom && col >= shown.rect.left && col <= shown.rect.right;
+      pen.px(cx, cy, cell, cell, C.ink);
+      pen.px(cx + 1, cy + 1, cell - 2, cell - 2, inLit ? "#3a2a12" : value === null ? C.wallD : C.steelDD);
+      if (typeof value === "number") {
+        pen.px(cx + 1, cy + 1, cell - 2, 1, inLit ? C.amberD : C.steelD);
+        pen.txt(`${value}`, cx + Math.round(cell / 2), cy + Math.round((cell - size) / 2), value < 0 ? C.crim : C.bone, "center", size);
       }
     }
     if (shown !== null) {
@@ -568,9 +596,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     pen.px(0, 166, SCENE_W, BAR_Y - 166, C.floor);
     pen.px(0, 166, SCENE_W, 1, C.ink);
     for (let y = 178; y < BAR_Y; y += 11) pen.px(0, y, SCENE_W, 1, C.floorD);
-    drawLamp(pen, Math.sin(time * 1.3) * 2);
     drawBoard();
-    light.draw(pen, SCENE_W / 2, BOARD_TOP + Math.round(BOARD_BAND / 2), 1);
+    light.draw(pen, BOARD_LEFT + Math.round(BOARD_WIDTH / 2), BOARD_TOP + Math.round(BOARD_BAND / 2), 1);
     // the players stand outside the lamp's pool: drawn over the dark, so that they and their names can be read
     drawPlayers();
     drawTarget();
@@ -588,8 +615,9 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       // as wide as the words at their longest, so the plate does not twitch as the seconds go
       const plate = Math.max(160, pen.width(words) + 16);
       const middle = BOARD_TOP + Math.round(BOARD_BAND / 2);
-      pen.px(Math.round(SCENE_W / 2 - plate / 2), middle - 9, plate, 17, C.ink);
-      pen.txt(words, Math.round(SCENE_W / 2), middle - 7, C.boneD, "center");
+      const centre = Math.min(SCENE_W - 4 - Math.round(plate / 2), BOARD_LEFT + Math.round(BOARD_WIDTH / 2));
+      pen.px(centre - Math.round(plate / 2), middle - 9, plate, 17, C.ink);
+      pen.txt(words, centre, middle - 7, C.boneD, "center");
     }
   }
 
@@ -599,6 +627,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const view = latest.view;
     const me = mine();
     if (noteT > 0) return [note, C.amber];
+    if (offline) return ["연결이 끊겼습니다. 다시 연결하는 중", C.crim];
     if (view.phase === "answer" && view.floor !== null) {
       const seconds = Math.ceil((left(latest.clock.answer) ?? 0) / 1000);
       if (answering()) return [`답을 말하세요 · ${seconds}초`, seconds <= TICK_FROM ? C.crim : C.amber];
@@ -738,8 +767,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
     const able = canBuzz();
     button(BUZZ_RECT, "버저", able ? "Space 또는 Enter" : "지금은 누를 수 없음", able && Math.sin(time * 5) > 0, able);
-    pen.txt("네모: 칸에 맞춘 모든 직사각형 (한 칸짜리도).", 162, 241, C.boneD);
-    pen.txt("숫자의 합이 타깃인 것만 셉니다. 틀리면 이 문제는 끝.", 162, 254, C.boneD);
+    pen.txt("네모: 판 위의 칸으로 된 모든 직사각형 (한 칸도).", 162, 241, C.boneD);
+    pen.txt("합이 타깃이면 셉니다. 빈칸은 0. 틀리면 이 문제는 끝.", 162, 254, C.boneD);
   }
 
   function drawHelp(): void {
@@ -749,8 +778,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       ["네모 세기: 규칙", C.amber],
       ["판에는 숫자가 적힌 칸과 빈칸이 있습니다. 안의 숫자를 더하면 타깃 넘버가", C.bone],
       ["되는 네모가 모두 몇 개인지 셉니다.", C.bone],
-      ["네모는 칸에 맞춘 모든 직사각형입니다: 한 칸짜리, 길쭉한 것, 판 전체까지.", C.boneD],
-      ["숫자가 하나도 없는 네모는 세지 않습니다.", C.boneD],
+      ["네모는 판 위의 칸으로 된 모든 직사각형입니다: 한 칸짜리부터. 판이 네모반듯", C.boneD],
+      ["하지 않을 수 있고, 칸이 없는 자리는 걸칠 수 없습니다. 빈칸은 0으로 칩니다.", C.boneD],
       ["", C.bone],
       [`다 세었으면 버저를 누르고 ${rules.answerSeconds}초 안에 개수를 답합니다.`, C.bone],
       ["틀리면 (또는 답하지 못하면) 그 문제에서는 다시 답할 수 없습니다.", C.bone],
@@ -793,8 +822,9 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   }
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
-    // a key typed into a text box (the chat) is not for the game
-    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return;
+    // a key typed into a text box (the chat) is not for the game, and neither is one pressed on a button
+    // the player has gone to with the keyboard: that key is the button's
+    if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLButtonElement) return;
     startAudio();
     if (!event.repeat) keys.push(event.code);
     if (event.code === "Space" || event.code === "Backspace") event.preventDefault();
@@ -845,6 +875,14 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       const text = reason === "bad-count" && latest !== null ? `0부터 ${latest.rules.maxSaid}까지의 수로 답하세요` : REFUSED_TEXT[reason];
       say(text ?? "지금은 할 수 없습니다");
       sfx.deny();
+    },
+    lost(): void {
+      // A buzz or an answer that was on its way when the connection went is not coming back as anything:
+      // the buzzer is free again. If the room did take the buzz, the game sent on rejoining says so.
+      pending = false;
+      buzzed = false;
+      queued = false;
+      offline = true;
     },
     setHost(value: boolean): void {
       host = value;

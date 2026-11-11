@@ -83,12 +83,28 @@ describe("starting a game of 네모 세기", () => {
     expect(session.state.units.map((unit) => unit.members)).toEqual([[0, 2, 3], [1], [4]]);
   });
 
-  it("refuses a team that is not three, and a game with nobody to race", () => {
-    const pair = candidates(3, [1, 1, 0]);
+  it("refuses a game with nobody to race", () => {
     const alone = candidates(1);
+    const oneTeam = candidates(3, [1, 1, 1]);
 
-    expect(host.start(null, pair, request(), presenceOf(pair))).toEqual({ ok: false, reason: "bad-teams" });
     expect(host.start(null, alone, request(), presenceOf(alone))).toEqual({ ok: false, reason: "too-few" });
+    expect(host.start(null, oneTeam, request(), presenceOf(oneTeam))).toEqual({ ok: false, reason: "too-few" });
+  });
+
+  it("takes the players of a team that is not full each alone, so that one player's choice holds up nobody's start", () => {
+    const pair = candidates(3, [1, 1, 0]);
+    const loner = candidates(3, [0, 0, 2]);
+
+    expect(started(pair).state.units.map((unit) => unit.members)).toEqual([[0], [1], [2]]);
+    expect(started(loner).state.units.map((unit) => unit.members)).toEqual([[0], [1], [2]]);
+  });
+
+  it("takes the players of a team of more than three each alone, and leaves a full team beside it as it is", () => {
+    const four = candidates(5, [1, 1, 1, 1, 0]);
+    const mixed = candidates(6, [1, 1, 1, 2, 2, 0]);
+
+    expect(started(four).state.units.map((unit) => unit.members)).toEqual([[0], [1], [2], [3], [4]]);
+    expect(started(mixed).state.units.map((unit) => unit.members)).toEqual([[0, 1, 2], [3], [4], [5]]);
   });
 
   it("lets only the player who came into the room first start", () => {
@@ -177,6 +193,143 @@ describe("playing", () => {
 
     expect(host.act(session, newcomer, { type: "buzz" }, presenceOf(players), T0 + 1)).toEqual({ ok: false, reason: "not-seated" });
     expect((host.view(session, newcomer, presenceOf(players), T0 + 1) as RectSnapshot).view.you).toBeNull();
+  });
+});
+
+describe("an answer and the clock", () => {
+  it("is taken a moment before its time is up", () => {
+    const players = candidates(2);
+    const answering = act(started(players), players, 0, { type: "buzz" }, T0 + 1000);
+
+    const result = host.act(answering, tokenOf(0), { type: "answer", count: answering.state.answer }, presenceOf(players), T0 + 1000 + ANSWER_MS - 1);
+
+    expect(result.ok && result.session.state.outcome).toEqual({ kind: "right", player: 0, unit: 0 });
+  });
+
+  it("is not taken once its time is up, however late the room's clock is in saying so", () => {
+    const players = candidates(2);
+    const answering = act(started(players), players, 0, { type: "buzz" }, T0 + 1000);
+
+    // no alarm has run: the answer itself arrives at the moment the time ends
+    const result = host.act(answering, tokenOf(0), { type: "answer", count: answering.state.answer }, presenceOf(players), T0 + 1000 + ANSWER_MS);
+
+    expect(result).toEqual({ ok: false, reason: "not-your-answer" });
+  });
+
+  it("gives a buzz that comes after the problem's time the closed problem to meet", () => {
+    const players = candidates(2);
+    const session = started(players);
+
+    expect(host.act(session, tokenOf(1), { type: "buzz" }, presenceOf(players), T0 + PROBLEM_MS)).toEqual({ ok: false, reason: "not-open" });
+    expect(host.act(session, tokenOf(1), { type: "buzz" }, presenceOf(players), T0 + PROBLEM_MS - 1).ok).toBe(true);
+  });
+});
+
+describe("a problem nobody who is there can still answer", () => {
+  /** Player 0 buzzes at `now` and says a wrong number half a second later, with `presence` as it is then. */
+  function missBy(session: RectSession, presence: Presence, now: number): RectSession {
+    const buzzed = host.act(session, tokenOf(0), { type: "buzz" }, presence, now);
+    if (!buzzed.ok) throw new Error(`fixture buzz refused: ${buzzed.reason}`);
+    const answered = host.act(buzzed.session, tokenOf(0), { type: "answer", count: buzzed.session.state.answer + 1 }, presence, now + 500);
+    if (!answered.ok) throw new Error(`fixture answer refused: ${answered.reason}`);
+    return answered.session;
+  }
+
+  it("is closed when the only player there answers wrong: one who has left does not hold it open", () => {
+    const players = candidates(2);
+
+    const after = missBy(started(players), presenceOf(players, [], [1]), T0 + 3000);
+
+    expect(after.state).toMatchObject({ phase: "pause", outcome: { kind: "all-wrong" }, wrong: [0] });
+    expect(host.deadline(after)).toBe(T0 + 3500 + PAUSE_MS);
+  });
+
+  it("is closed just the same when the other player is only not connected", () => {
+    const players = candidates(2);
+
+    const after = missBy(started(players), presenceOf(players, [1]), T0 + 3000);
+
+    expect(after.state.outcome).toEqual({ kind: "all-wrong" });
+  });
+
+  it("is closed at the moment the last player who could still answer goes", () => {
+    const players = candidates(2);
+    const open = missBy(started(players), presenceOf(players), T0 + 3000);
+
+    const after = host.attend(open, presenceOf(players, [1]), T0 + 9000);
+
+    expect(open.state).toMatchObject({ phase: "problem", wrong: [0] });
+    expect(after.state).toMatchObject({ phase: "pause", outcome: { kind: "all-wrong" }, pauseUntil: T0 + 9000 + PAUSE_MS });
+  });
+
+  it("stays open while someone there has still to answer", () => {
+    const players = candidates(3);
+
+    const after = missBy(started(players), presenceOf(players, [1]), T0 + 3000);
+
+    expect(after.state).toMatchObject({ phase: "problem", outcome: null });
+    expect(host.deadline(after)).toBe(T0 + PROBLEM_MS);
+  });
+
+  it("stays open for a bot that has still to answer", () => {
+    const person = [{ token: tokenOf(0), nick: "p0", slot: 0, team: 0 }];
+    const session = started(person, { bots: true, allowBots: true });
+    const at = session.botAt! - 2000;
+
+    const after = missBy(session, presenceOf(person), at);
+
+    expect(after.state).toMatchObject({ phase: "problem", wrong: [0] });
+  });
+});
+
+describe("a game its players have stopped playing", () => {
+  /** Lets the clock run the open problem out, and the pause after it. */
+  function runOut(session: RectSession, players: Candidate[]): RectSession {
+    const closed = host.tick(session, presenceOf(players), host.deadline(session)!);
+    return host.running(closed) && closed.state.phase === "pause" ? host.tick(closed, presenceOf(players), host.deadline(closed)!) : closed;
+  }
+
+  it("is ended when two problems in a row have run out with nobody buzzing", () => {
+    const players = candidates(2);
+
+    const one = runOut(started(players), players);
+    const two = runOut(one, players);
+
+    expect(hostJson.idleProblems).toBe(2);
+    expect(one.state).toMatchObject({ phase: "problem", round: 2 });
+    expect(host.running(two)).toBe(false);
+    expect(two.state.history.at(-1)).toEqual({ type: "ended", round: 2, reason: "abandoned" });
+    expect(host.deadline(two)).toBeNull();
+  });
+
+  it("goes on when a problem in between was so much as buzzed at", () => {
+    const players = candidates(2);
+    const one = runOut(started(players), players);
+    const buzzed = act(one, players, 1, { type: "buzz" }, one.state.openedAt + 5000);
+
+    // the buzz goes unanswered and the problem runs out: touched all the same
+    const two = runOut(host.tick(buzzed, presenceOf(players), host.deadline(buzzed)!), players);
+    const three = runOut(two, players);
+
+    expect(two.state).toMatchObject({ phase: "problem", round: 3 });
+    expect(host.running(three)).toBe(true);
+    expect(three.state.round).toBe(4);
+  });
+
+  it("is not ended by problems that were answered wrong by everyone", () => {
+    const players = candidates(2);
+    let session = started(players);
+    for (let round = 0; round < 3; round++) {
+      const at = session.state.openedAt + 1000;
+      for (const player of [0, 1]) {
+        session = act(session, players, player, { type: "buzz" }, at + player * 2000);
+        session = act(session, players, player, { type: "answer", count: session.state.answer + 1 }, at + player * 2000 + 500);
+      }
+      session = host.tick(session, presenceOf(players), host.deadline(session)!);
+    }
+
+    expect(host.running(session)).toBe(true);
+    expect(session.state.round).toBe(4);
   });
 });
 

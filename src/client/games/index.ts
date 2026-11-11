@@ -10,14 +10,19 @@ import type { VoiceMark } from "../../shared/voice";
 import { createTable } from "../game/table";
 import { createLobbyScene } from "../lobby-scene";
 import { createRectScreen } from "./count-rectangles/screen";
+import { createGrassScreen } from "./lay-the-grass/screen";
 
 /** What a room sends about the game being played in it, whichever game that is. */
 export type GameMessage = Extract<ServerMessage, { type: "game" }>;
 
 /** What a game's screen asks of whoever owns the connection. */
 export interface GameHandlers {
-  /** The player asked something of the game: a move, a buzz, an answer. */
-  act(action: unknown): void;
+  /**
+   * The player asked something of the game: a move, a buzz, an answer.
+   * Returns whether it went: while the connection is down nothing is sent,
+   * and nothing is kept to send later.
+   */
+  act(action: unknown): boolean;
   /** The host asked for the next game. */
   again(): void;
   /** The game is over and the player wants the waiting room back. */
@@ -37,6 +42,8 @@ export interface GameScreen {
   update(message: GameMessage): void;
   /** The room refused what the player last asked. */
   refused(reason: string): void;
+  /** The connection to the room went down: nothing the player asked for is still on its way. */
+  lost(): void;
   /** Whether this player is the host, who starts the next game. */
   setHost(host: boolean): void;
   /** The player in lobby slot `slot` said a line. */
@@ -86,6 +93,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
       };
     },
     // the same back room, its table bare: there is no device in this game
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+  },
+  "lay-the-grass": {
+    screen(canvas, handlers) {
+      const screen = createGrassScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "lay-the-grass") screen.update(message);
+        },
+      };
+    },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
   },
 };

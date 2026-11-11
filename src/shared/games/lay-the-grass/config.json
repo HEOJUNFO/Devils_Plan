@@ -1,0 +1,11 @@
+{
+  "rounds": 3,
+  "pickSeconds": 30,
+  "placeSeconds": 60,
+  "pauseSeconds": 10,
+  "cellsPerPlayer": 7,
+  "extraCells": 2,
+  "maxCols": 12,
+  "maxRows": 8,
+  "defaultTile": 7
+}

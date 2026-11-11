@@ -26,7 +26,10 @@ describe("typing an answer", () => {
   });
 
   it("takes no more digits than the largest answer has", () => {
-    expect(typeAnswer("", ["Digit1", "Digit2", "Digit3"], MOST).typed).toBe("12");
+    expect(typeAnswer("", ["Digit1", "Digit2", "Digit3", "Digit4"], 2).typed).toBe("12");
+    expect(typeAnswer("", ["Digit1", "Digit2", "Digit3", "Digit4"], 3).typed).toBe("123");
+    // the broadcast had 114 for an answer: three digits must be sayable
+    expect(MOST).toBeGreaterThanOrEqual(3);
   });
 
   it("takes the last digit off at Backspace, and does nothing with none left", () => {
