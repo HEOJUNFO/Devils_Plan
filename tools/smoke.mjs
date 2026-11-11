@@ -3,7 +3,8 @@
 // Drives a server over its real HTTP and WebSocket addresses, as browsers
 // would: the page loads, the list of rooms answers, four players make and
 // join a room, talk, play a whole game to its end and leave; then two more
-// make a room of the second game, team up and part, and play it to its end;
+// make a room of the second game, team up and part, and play it to its end,
+// through the choice that follows its race and the contest that choice adds;
 // then two make a room of the third game and lay its first park.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, so the
@@ -169,8 +170,28 @@ async function secondGame() {
     .filter((m) => m.type === "game" && m.view.outcome === null)
     .every((m) => m.view.answer === null && m.view.solutions === null);
   check("the answer is not sent while a problem is open", hidden);
+  // the race is over: the third choice is put to both, each on the card of a player alone
+  const raced = await Promise.all(players.map((p) => p.until("the third choice", (m) => m.type === "game" && m.view.phase === "choose")));
+  check(
+    "the race ends when half have won twice, and the third choice is put to everyone",
+    raced.every((g) => g.view.units[1].place === 1 && g.view.units[0].place === 0 && g.view.choosing?.card === "alone"),
+  );
+  // the loser takes the added contest, the winner the small loss
+  players[0].send({ type: "action", action: { type: "choose", option: 1 } });
+  const waiting = await players[1].until("the first choice to be in", (m) => m.type === "game" && m.view.choosing?.chosen.length === 1);
+  check("a choice is kept from the other player until both have chosen", waiting.view.choices.length === 0 && waiting.view.choosing.mine === null);
+  players[1].send({ type: "action", action: { type: "choose", option: 2 } });
+  const contest = await players[0].until("the added contest", (m) => m.type === "game" && m.view.duel !== null && m.view.phase === "problem");
+  check("the added contest is put to whoever took it", contest.view.duel.players.join() === "0" && contest.view.answer === null);
+  players[0].send({ type: "action", action: { type: "buzz" } });
+  await players[1].until("the buzz of the added contest", (m) => m.type === "game" && m.view.duel !== null && m.view.floor?.player === 0);
+  players[0].send({ type: "action", action: { type: "answer", count: countRectangles(contest.view.board) } });
   const ends = await Promise.all(players.map((p) => p.until("the second game to end", (m) => m.type === "game" && m.view.phase === "ended")));
-  check("the second game ends when half have won twice", ends.every((g) => g.view.units[1].place === 1 && g.view.units[0].place === 0));
+  check(
+    "the second game ends with the added contest won, and everyone's points counted",
+    ends.every((g) => g.view.duel?.winner === 0 && g.view.scores?.map((line) => `${line.total}/${line.pieces}`).join() === "-3/3,6/0"),
+    ends[0].view.scores?.map((line) => `${line.total}/${line.pieces}`).join(),
+  );
   const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
   check("no token is sent in the second game either", !sentAll.includes("smoke-check-token"));
 

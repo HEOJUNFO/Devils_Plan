@@ -10,7 +10,13 @@
  * the board has (both seen in the broadcast, see the design record). Whoever
  * buzzes first has ten seconds to answer. A wrong answer shuts that player's
  * team out of the problem; two right answers make a team a winner, which then
- * sits out; the game ends when half the teams have won.
+ * sits out; the race ends when half the teams have won.
+ *
+ * With the mini-game goes the third either-or choice of the main match it is
+ * part of ({@link Card}), made once the race is over: it is how the document
+ * shares out the race's points. A winning team and a losing team each decide
+ * by majority how theirs fall between its leader and the other two; a player
+ * alone takes a small loss or plays an added contest for more.
  *
  * A "unit" is what the document calls a team: three players who teamed up, or
  * one player alone. Nothing here reads the clock or `Math.random`: the caller
@@ -54,12 +60,44 @@ export interface RectConfig {
   maxTarget: number;
   /** The largest answer a player may say. */
   maxSaid: number;
+  /**
+   * Whether the third either-or choice is made once the race is over. Off,
+   * the game ends with the race and nobody is given points: the document's
+   * points cannot be shared out without the choice.
+   */
+  settle: boolean;
+  /** Seconds everyone has for that choice. Not in the document. */
+  chooseSeconds: number;
+  /** What the race is worth (the document): a player alone wins 7 or loses 3, and a winning team shares 7. */
+  winPoints: number;
+  losePoints: number;
+  /** A winning team's shares: 독식 gives its leader 5 and the others 1 each, 헌신 its leader 1 and the others 3 each. */
+  hogLeader: number;
+  hogMember: number;
+  devoteLeader: number;
+  devoteMember: number;
+  /** A losing team's: with 희생 its leader alone loses 3, with 질책 the others lose 2 each. */
+  sacrificeLeader: number;
+  blameMember: number;
+  /** What 안전 costs a player alone, and what 도전's added contest costs its losers and gives its winner in pieces. */
+  safeLoss: number;
+  duelLoss: number;
+  duelPieces: number;
+  /** Problems the added contest runs to at most; with nobody right by then, nobody has won it. Not in the document. */
+  duelProblems: number;
+  /** What the room chooses for a player who has not chosen in time, by their card. Not in the document. */
+  defaultOptions: { winners: number; losers: number; alone: number };
 }
 
-/** A player as the game is started with: `id` tells them apart, `team` is 0 for alone or the number of a team. */
+/**
+ * A player as the game is started with: `id` tells them apart, `team` is 0
+ * for alone or the number of a team. `since` orders the players of a team by
+ * when they took it: the first is its leader (absent: the lowest id).
+ */
 export interface RectPlayer {
   id: number;
   team: number;
+  since?: number;
 }
 
 /** A team of three, or a player alone. */
@@ -70,6 +108,59 @@ export interface Unit {
   wins: number;
   /** The order in which it became a winner, from 1; 0 while it has not. */
   place: number;
+  /** A team's leader, the document's "대표": whose share of the points differs from the others'. `null` for a player alone. */
+  leader: number | null;
+}
+
+/** One of the two options of a choice. */
+export type Option = 1 | 2;
+
+/**
+ * Which card of the third choice a player is given, by how their side came
+ * out of the race. `winners`, to a team that won: 1 독식, 2 헌신. `losers`,
+ * to a team that did not: 1 희생, 2 질책. `alone`, to a player without a
+ * team, winner or not: 1 도전 (the added contest), 2 안전.
+ */
+export type Card = "winners" | "losers" | "alone";
+
+/** What a player chose. `forced`: the room chose for them when their time was up. */
+export interface Chosen {
+  player: number;
+  option: Option;
+  forced: boolean;
+}
+
+/** What a team decided: the option most of its players chose. */
+export interface Decision {
+  unit: number;
+  option: Option;
+}
+
+/**
+ * The added contest of those who chose 도전: problems of the game itself,
+ * put to them alone. Whoever first answers one right has won it and all the
+ * others have lost.
+ */
+export interface Duel {
+  /** Who is in it, lowest id first. */
+  players: number[];
+  /** Which of its problems this is, from 1. */
+  round: number;
+  /** Who won it; `null` while it goes on, and for good when nobody did. */
+  winner: number | null;
+}
+
+/** How a player's points came about. */
+export interface ScoreLine {
+  player: number;
+  /** What the race gave or took: all of it for a player alone, their share of it in a team. */
+  race: number;
+  /** What their own choice took: 안전's price, or the added contest lost. Nought in a team. */
+  choice: number;
+  /** Pieces won in the added contest. They are the main match's, and count for nothing here. */
+  pieces: number;
+  /** `race` and `choice` together. */
+  total: number;
 }
 
 /** Where a board has no cell at all: no rectangle lies across it. */
@@ -98,9 +189,11 @@ export interface Rect {
 
 /**
  * Where a game stands: a problem is open for buzzing, a player who buzzed is
- * answering, a closed problem's answer is on show, or the game is over.
+ * answering, a closed problem's answer is on show, the third choice is being
+ * made, or the game is over. The first three are the race's, and after the
+ * choice the added contest's ({@link RectState.duel}).
  */
-export type RectPhase = "problem" | "answer" | "pause" | "ended";
+export type RectPhase = "problem" | "answer" | "pause" | "choose" | "ended";
 
 /** How a problem closed. */
 export type Outcome =
@@ -113,7 +206,8 @@ export type Outcome =
 
 /** What has happened, in order. Everything here is seen by everyone. */
 export type RectEvent =
-  | { type: "problem"; round: number }
+  /** `duel`: which problem of the added contest it is, when it is one. */
+  | { type: "problem"; round: number; duel?: number }
   | { type: "buzz"; round: number; player: number }
   | { type: "right"; round: number; player: number; said: number }
   | { type: "wrong"; round: number; player: number; said: number }
@@ -122,6 +216,15 @@ export type RectEvent =
   | { type: "time"; round: number }
   | { type: "all-wrong"; round: number }
   | { type: "won"; round: number; unit: number; place: number }
+  /** The race is over and the third choice is up. `half`, `problems`: as for `ended`. */
+  | { type: "raced"; round: number; reason: "half" | "problems" }
+  /** Everyone has chosen: what each player chose, and what each team decided by it. */
+  | { type: "choice"; chosen: Chosen[]; decisions: Decision[] }
+  /** The added contest begins, between `players`. */
+  | { type: "duel"; players: number[] }
+  /** It is over: who won it, or `null` when nobody answered right in the problems it had. */
+  | { type: "duel-over"; winner: number | null }
+  | { type: "score"; lines: ScoreLine[] }
   /**
    * `half`: enough units have won. `problems`: the last problem allowed has
    * been played. `abandoned`: nobody who could still win is there to go on.
@@ -130,7 +233,7 @@ export type RectEvent =
 
 /** A game in progress. Holds the answer to the open problem: send only {@link viewFor} of it. */
 export interface RectState {
-  version: 1;
+  version: 2;
   units: Unit[];
   phase: RectPhase;
   /** Which problem this is, from 1. */
@@ -148,13 +251,25 @@ export interface RectState {
   outcome: Outcome | null;
   /** Until when the closed problem's answer is on show; `null` otherwise. */
   pauseUntil: number | null;
+  /** How the race ended, once it has: the third choice follows it. `null` during the race and in a game without the choice. */
+  raced: "half" | "problems" | null;
+  /** Since when the third choice has been up; `null` when it is not. */
+  choosing: { since: number } | null;
+  /** What each player has chosen so far, in the order they did. Secret until everyone has. */
+  choices: Chosen[];
+  /** What each team decided, once everyone has chosen. */
+  decisions: Decision[];
+  /** The added contest, once the choices call for one. */
+  duel: Duel | null;
+  /** Everyone's points, once the game is over; `null` before, and for a game that gives none. */
+  scores: ScoreLine[] | null;
   history: RectEvent[];
   /** The generator's state: the next board is drawn from here. */
   rng: number;
 }
 
 /** What a player can ask for. */
-export type RectAction = { type: "buzz" } | { type: "answer"; count: number };
+export type RectAction = { type: "buzz" } | { type: "answer"; count: number } | { type: "choose"; option: number };
 
 /** Why something was refused. */
 export type RectRefusal =
@@ -169,6 +284,12 @@ export type RectRefusal =
   | "not-open"
   /** Only the player who buzzed answers. */
   | "not-your-answer"
+  /** No choice is being made now. */
+  | "not-choosing"
+  /** A choice once made stands. */
+  | "already-chosen"
+  /** The added contest is between those who chose it. */
+  | "not-in-duel"
   | "bad-action"
   /** The number said is not a whole number in range. */
   | "bad-count";
@@ -201,6 +322,17 @@ export interface RectView {
   outcome: Outcome | null;
   answer: number | null;
   solutions: Rect[] | null;
+  /**
+   * The third choice while it is being made: the viewer's card (`null` for
+   * someone watching), who has chosen so far, and what the viewer chose.
+   * What the others chose is not sent until everyone has.
+   */
+  choosing: { card: Card | null; chosen: number[]; mine: Option | null } | null;
+  /** What everyone chose and each team decided, once everyone has chosen. */
+  choices: Chosen[];
+  decisions: Decision[];
+  duel: Duel | null;
+  scores: ScoreLine[] | null;
   history: RectEvent[];
 }
 
@@ -220,7 +352,25 @@ export function isValidConfig(config: RectConfig): boolean {
     Array.isArray(list) && list.every((size) => isWhole(size?.rows) && isWhole(size?.cols) && size.rows >= 1 && size.cols >= 1 && size.rows * size.cols >= 2);
   if (!sizes(config.boards) || config.boards.length === 0) return false;
   // boards with a cut outline are drawn only if there is something to cut them from
-  return sizes(config.irregularBoards) && (config.irregularPercent === 0 || config.irregularBoards.length > 0);
+  if (!sizes(config.irregularBoards) || (config.irregularPercent !== 0 && config.irregularBoards.length === 0)) return false;
+  if (typeof config.settle !== "boolean") return false;
+  if (![config.chooseSeconds, config.duelProblems].every((value) => isWhole(value) && value >= 1)) return false;
+  const amounts = [
+    config.winPoints,
+    config.losePoints,
+    config.hogLeader,
+    config.hogMember,
+    config.devoteLeader,
+    config.devoteMember,
+    config.sacrificeLeader,
+    config.blameMember,
+    config.safeLoss,
+    config.duelLoss,
+    config.duelPieces,
+  ];
+  if (!amounts.every((value) => isWhole(value) && value >= 0)) return false;
+  const defaults = config.defaultOptions;
+  return typeof defaults === "object" && defaults !== null && [defaults.winners, defaults.losers, defaults.alone].every((option) => option === 1 || option === 2);
 }
 
 /** Every rectangle of whole cells on a board of `rows` by `cols`, one-cell ones included. */
@@ -391,6 +541,7 @@ export function deadline(state: RectState, config: RectConfig): number | null {
   if (state.phase === "answer") return state.floor?.until ?? null;
   if (state.phase === "problem") return state.openedAt + config.problemSeconds * 1000;
   if (state.phase === "pause") return state.pauseUntil;
+  if (state.phase === "choose") return state.choosing === null ? null : state.choosing.since + config.chooseSeconds * 1000;
   return null;
 }
 
@@ -400,8 +551,85 @@ function clone(state: RectState): RectState {
     units: state.units.map((unit) => ({ ...unit, members: [...unit.members] })),
     wrong: [...state.wrong],
     floor: state.floor === null ? null : { ...state.floor },
+    choosing: state.choosing === null ? null : { ...state.choosing },
+    choices: [...state.choices],
+    decisions: [...state.decisions],
+    duel: state.duel === null ? null : { ...state.duel, players: [...state.duel.players] },
+    scores: state.scores === null ? null : [...state.scores],
     history: [...state.history],
   };
+}
+
+/** Which card of the third choice `player` is given, or `null` for someone who is not in the game. */
+export function cardOf(state: RectState, player: number): Card | null {
+  const unit = state.units[unitOf(state, player)];
+  if (unit === undefined) return null;
+  if (unit.members.length === 1) return "alone";
+  return unit.place > 0 ? "winners" : "losers";
+}
+
+/** What `player` chose, or `null` while they have not. */
+export function optionOf(state: Pick<RectState, "choices">, player: number): Option | null {
+  return state.choices.find((chosen) => chosen.player === player)?.option ?? null;
+}
+
+/** The players whose choice the game is waiting for, lowest id first. */
+export function awaited(state: RectState): number[] {
+  if (state.phase !== "choose") return [];
+  return state.units
+    .flatMap((unit) => unit.members)
+    .filter((player) => optionOf(state, player) === null)
+    .sort((a, b) => a - b);
+}
+
+/** What the room chooses for `player` when their time is up. */
+function defaultFor(state: RectState, player: number, config: RectConfig): Option {
+  const card = cardOf(state, player) ?? "alone";
+  return config.defaultOptions[card] === 1 ? 1 : 2;
+}
+
+/**
+ * Everyone's points, by rule 9 of the document and the third choice. A
+ * player alone has the race's points whole, less what their own choice took;
+ * a team's are shared as it decided, its leader's share apart from the
+ * others'. A team whose decision is not there (the choice was never made)
+ * is given the one the room would have chosen.
+ */
+export function scoreLines(state: RectState, config: RectConfig): ScoreLine[] {
+  const lines: ScoreLine[] = [];
+  state.units.forEach((unit, index) => {
+    const won = unit.place > 0;
+    if (unit.members.length === 1) {
+      const player = unit.members[0];
+      const race = won ? config.winPoints : -config.losePoints;
+      const dares = (optionOf(state, player) ?? defaultFor(state, player, config)) === 1;
+      const beat = dares && state.duel !== null && state.duel.winner === player;
+      const choice = !dares ? -config.safeLoss : beat ? 0 : -config.duelLoss;
+      lines.push({ player, race, choice, pieces: beat ? config.duelPieces : 0, total: race + choice });
+      return;
+    }
+    const decided = state.decisions.find((each) => each.unit === index)?.option ?? defaultFor(state, unit.members[0], config);
+    for (const player of unit.members) {
+      const leads = player === unit.leader;
+      const race = won
+        ? decided === 1
+          ? leads
+            ? config.hogLeader
+            : config.hogMember
+          : leads
+            ? config.devoteLeader
+            : config.devoteMember
+        : decided === 1
+          ? leads
+            ? -config.sacrificeLeader
+            : 0
+          : leads
+            ? 0
+            : -config.blameMember;
+      lines.push({ player, race, choice: 0, pieces: 0, total: race });
+    }
+  });
+  return lines.sort((a, b) => a.player - b.player);
 }
 
 /** Puts up problem number `round` at `now`. */
@@ -418,31 +646,97 @@ function open(state: RectState, round: number, now: number, config: RectConfig):
   state.outcome = null;
   state.pauseUntil = null;
   state.phase = "problem";
-  state.history.push({ type: "problem", round });
+  state.history.push(state.duel === null ? { type: "problem", round } : { type: "problem", round, duel: state.duel.round });
 }
 
-/** The units still racing: those that have not won. */
+/** The units a problem is put to: those that have not won, or in the added contest those of its players. */
 function playing(state: RectState): number[] {
+  const duel = state.duel;
+  if (duel !== null) return state.units.flatMap((unit, index) => (unit.members.some((player) => duel.players.includes(player)) ? [index] : []));
   return state.units.flatMap((unit, index) => (unit.place === 0 ? [index] : []));
 }
 
-/** Closes the open problem with `outcome`: the game ends, or the answer goes on show. */
+/** The game is over: the points are counted, where it gives any. */
+function finish(state: RectState, config: RectConfig): void {
+  state.pauseUntil = null;
+  state.choosing = null;
+  state.scores = scoreLines(state, config);
+  state.history.push({ type: "score", lines: state.scores });
+  state.phase = "ended";
+  state.history.push({ type: "ended", round: state.round, reason: state.raced ?? "half" });
+}
+
+/** The race is over for `reason`: the third choice is put to everyone, or without it the game ends here. */
+function endRace(state: RectState, reason: "half" | "problems", now: number, config: RectConfig): void {
+  state.pauseUntil = null;
+  if (!config.settle) {
+    state.phase = "ended";
+    state.history.push({ type: "ended", round: state.round, reason });
+    return;
+  }
+  state.raced = reason;
+  state.phase = "choose";
+  state.choosing = { since: now };
+  state.history.push({ type: "raced", round: state.round, reason });
+}
+
+/** Closes the open problem with `outcome`: the race or the added contest ends, or the answer goes on show. */
 function close(state: RectState, outcome: Outcome, now: number, config: RectConfig): void {
   state.outcome = outcome;
   state.floor = null;
+  if (state.duel !== null) {
+    // the added contest: over with the first right answer, or with its last problem
+    if (state.duel.winner !== null || state.duel.round >= config.duelProblems) {
+      state.history.push({ type: "duel-over", winner: state.duel.winner });
+      finish(state, config);
+    } else {
+      state.phase = "pause";
+      state.pauseUntil = now + config.pauseSeconds * 1000;
+    }
+    return;
+  }
   const winners = state.units.filter((unit) => unit.place > 0).length;
-  if (winners >= winnersNeeded(state.units.length)) {
-    state.phase = "ended";
-    state.pauseUntil = null;
-    state.history.push({ type: "ended", round: state.round, reason: "half" });
-  } else if (state.round >= config.maxProblems) {
-    state.phase = "ended";
-    state.pauseUntil = null;
-    state.history.push({ type: "ended", round: state.round, reason: "problems" });
-  } else {
+  if (winners >= winnersNeeded(state.units.length)) endRace(state, "half", now, config);
+  else if (state.round >= config.maxProblems) endRace(state, "problems", now, config);
+  else {
     state.phase = "pause";
     state.pauseUntil = now + config.pauseSeconds * 1000;
   }
+}
+
+/**
+ * Everyone has chosen: each team's decision is what most of its players
+ * chose (what the room would choose, should they be evenly split), and the
+ * players alone who chose 도전 play the added contest. With nobody for it
+ * the game is over.
+ */
+function resolve(state: RectState, now: number, config: RectConfig): void {
+  state.choosing = null;
+  state.decisions = state.units.flatMap((unit, index) => {
+    if (unit.members.length === 1) return [];
+    const first = unit.members.filter((player) => optionOf(state, player) === 1).length;
+    const second = unit.members.length - first;
+    const option: Option = first > second ? 1 : second > first ? 2 : defaultFor(state, unit.members[0], config);
+    return [{ unit: index, option }];
+  });
+  state.history.push({ type: "choice", chosen: [...state.choices], decisions: [...state.decisions] });
+  const daring = state.units
+    .filter((unit) => unit.members.length === 1 && optionOf(state, unit.members[0]) === 1)
+    .map((unit) => unit.members[0])
+    .sort((a, b) => a - b);
+  if (daring.length === 0) {
+    finish(state, config);
+    return;
+  }
+  state.duel = { players: daring, round: 1, winner: null };
+  state.history.push({ type: "duel", players: [...daring] });
+  open(state, state.round + 1, now, config);
+}
+
+/** `player` chose `option`; with everyone's choice in, they are settled. */
+function chose(state: RectState, player: number, option: Option, forced: boolean, now: number, config: RectConfig): void {
+  state.choices.push({ player, option, forced });
+  if (awaited(state).length === 0) resolve(state, now, config);
 }
 
 /** The unit `unit` has answered wrong: it is shut out, and the problem goes on, or closes if nobody is left or its time is up. */
@@ -478,25 +772,28 @@ export function createGame(
     if (typeof player !== "object" || player === null || !isWhole(player.id) || !isWhole(player.team) || player.team < 0) {
       return { ok: false, reason: "bad-players" };
     }
+    if (player.since !== undefined && typeof player.since !== "number") return { ok: false, reason: "bad-players" };
     ids.add(player.id);
   }
   if (ids.size !== players.length) return { ok: false, reason: "bad-players" };
 
-  const teams = new Map<number, number[]>();
+  const teams = new Map<number, RectPlayer[]>();
   const units: Unit[] = [];
   for (const player of players) {
-    if (player.team === 0) units.push({ members: [player.id], wins: 0, place: 0 });
-    else teams.set(player.team, [...(teams.get(player.team) ?? []), player.id]);
+    if (player.team === 0) units.push({ members: [player.id], wins: 0, place: 0, leader: null });
+    else teams.set(player.team, [...(teams.get(player.team) ?? []), player]);
   }
   for (const members of teams.values()) {
     if (members.length !== config.teamSize) return { ok: false, reason: "bad-teams" };
-    units.push({ members: [...members].sort((a, b) => a - b), wins: 0, place: 0 });
+    // the leader: whoever took the team first, and of those who cannot be told apart by that the lowest id
+    const leader = [...members].sort((a, b) => (a.since ?? Infinity) - (b.since ?? Infinity) || a.id - b.id)[0];
+    units.push({ members: members.map((member) => member.id).sort((a, b) => a - b), wins: 0, place: 0, leader: leader.id });
   }
   if (units.length < 2) return { ok: false, reason: "too-few" };
   units.sort((a, b) => a.members[0] - b.members[0]);
 
   const state: RectState = {
-    version: 1,
+    version: 2,
     units,
     phase: "problem",
     round: 0,
@@ -507,6 +804,12 @@ export function createGame(
     floor: null,
     outcome: null,
     pauseUntil: null,
+    raced: null,
+    choosing: null,
+    choices: [],
+    decisions: [],
+    duel: null,
+    scores: null,
     history: [],
     rng: seedFrom(setup.seed),
   };
@@ -520,6 +823,7 @@ export function parseAction(raw: unknown): RectAction | null {
   const data = raw as Record<string, unknown>;
   if (data.type === "buzz") return { type: "buzz" };
   if (data.type === "answer") return typeof data.count === "number" ? { type: "answer", count: data.count } : null;
+  if (data.type === "choose") return typeof data.option === "number" ? { type: "choose", option: data.option } : null;
   return null;
 }
 
@@ -529,8 +833,19 @@ export function applyAction(state: RectState, player: number, action: RectAction
   const unit = unitOf(state, player);
   if (unit < 0) return { ok: false, reason: "not-playing" };
 
+  if (action.type === "choose") {
+    if (state.phase !== "choose") return { ok: false, reason: "not-choosing" };
+    if (action.option !== 1 && action.option !== 2) return { ok: false, reason: "bad-action" };
+    if (optionOf(state, player) !== null) return { ok: false, reason: "already-chosen" };
+    const next = clone(state);
+    chose(next, player, action.option, false, now, config);
+    return { ok: true, state: next };
+  }
+
   if (action.type === "buzz") {
-    if (state.units[unit].place > 0) return { ok: false, reason: "already-won" };
+    // the added contest is its players' alone; in the race a unit that has won sits out
+    if (state.duel !== null && !state.duel.players.includes(player)) return { ok: false, reason: "not-in-duel" };
+    if (state.duel === null && state.units[unit].place > 0) return { ok: false, reason: "already-won" };
     if (state.phase !== "problem") return { ok: false, reason: "not-open" };
     if (state.wrong.includes(unit)) return { ok: false, reason: "shut-out" };
     const next = clone(state);
@@ -545,12 +860,17 @@ export function applyAction(state: RectState, player: number, action: RectAction
   if (!isWhole(action.count) || action.count < 0 || action.count > config.maxSaid) return { ok: false, reason: "bad-count" };
   const next = clone(state);
   if (action.count === state.answer) {
-    const won = next.units[unit];
-    won.wins++;
     next.history.push({ type: "right", round: state.round, player, said: action.count });
-    if (won.wins >= config.winsNeeded) {
-      won.place = next.units.filter((other) => other.place > 0).length + 1;
-      next.history.push({ type: "won", round: state.round, unit, place: won.place });
+    if (next.duel !== null) {
+      // the first right answer wins the added contest
+      next.duel.winner = player;
+    } else {
+      const won = next.units[unit];
+      won.wins++;
+      if (won.wins >= config.winsNeeded) {
+        won.place = next.units.filter((other) => other.place > 0).length + 1;
+        next.history.push({ type: "won", round: state.round, unit, place: won.place });
+      }
     }
     close(next, { kind: "right", player, unit }, now, config);
   } else {
@@ -576,8 +896,25 @@ export function applyTimeout(state: RectState, now: number, config: RectConfig):
     next.history.push({ type: "time", round: state.round });
     close(next, { kind: "time" }, now, config);
   } else if (state.phase === "pause") {
+    if (next.duel !== null) next.duel.round++;
     open(next, state.round + 1, now, config);
+  } else if (state.phase === "choose") {
+    // the room chooses for everyone who has not: the last of them settles the choice
+    for (const player of awaited(state)) chose(next, player, defaultFor(next, player, config), true, now, config);
   }
+  return next;
+}
+
+/**
+ * The room chooses for `player`, whose choice the game is waiting for: what
+ * it would choose for them at the end of the time, without waiting for it
+ * (they have left the room). Returns the state unchanged when no choice of
+ * theirs is awaited. The input state is not modified.
+ */
+export function moveFor(state: RectState, player: number, now: number, config: RectConfig): RectState {
+  if (!awaited(state).includes(player)) return state;
+  const next = clone(state);
+  chose(next, player, defaultFor(next, player, config), true, now, config);
   return next;
 }
 
@@ -613,7 +950,23 @@ export function abandon(state: RectState): RectState {
   next.phase = "ended";
   next.floor = null;
   next.pauseUntil = null;
+  next.choosing = null;
   next.history.push({ type: "ended", round: state.round, reason: "abandoned" });
+  return next;
+}
+
+/**
+ * The added contest ended where it stands with nobody having won it: none of
+ * its players is there to go on (who is there is the caller's to know). The
+ * race and the choices stand, and the points are counted. Returns the state
+ * unchanged when no contest is on. The input state is not modified.
+ */
+export function endDuel(state: RectState, config: RectConfig): RectState {
+  if (state.phase === "ended" || state.duel === null) return state;
+  const next = clone(state);
+  next.floor = null;
+  next.history.push({ type: "duel-over", winner: null });
+  finish(next, config);
   return next;
 }
 
@@ -629,13 +982,15 @@ export function shiftClock(state: RectState, by: number): RectState {
     openedAt: state.openedAt + by,
     floor: state.floor === null ? null : { ...state.floor, until: state.floor.until + by },
     pauseUntil: state.pauseUntil === null ? null : state.pauseUntil + by,
+    choosing: state.choosing === null ? null : { since: state.choosing.since + by },
   };
 }
 
 /**
  * The game as `player` may see it (`null` for someone watching). Everything
  * is in the open except how many rectangles make the target, which is shown
- * with the rectangles themselves once the problem is closed.
+ * with the rectangles themselves once the problem is closed, and what the
+ * others have chosen while the third choice is still being made.
  */
 export function viewFor(state: RectState, player: number | null): RectView {
   const unit = player === null ? -1 : unitOf(state, player);
@@ -652,6 +1007,19 @@ export function viewFor(state: RectState, player: number | null): RectView {
     outcome: state.outcome,
     answer: closed ? state.answer : null,
     solutions: closed ? solutions(state.board) : null,
+    choosing:
+      state.phase !== "choose"
+        ? null
+        : {
+            card: player === null ? null : cardOf(state, player),
+            chosen: state.choices.map((chosen) => chosen.player),
+            mine: player === null ? null : optionOf(state, player),
+          },
+    // what is still being chosen is nobody's to see but the chooser's
+    choices: state.phase === "choose" ? [] : [...state.choices],
+    decisions: [...state.decisions],
+    duel: state.duel === null ? null : { ...state.duel, players: [...state.duel.players] },
+    scores: state.scores === null ? null : [...state.scores],
     history: [...state.history],
   };
 }

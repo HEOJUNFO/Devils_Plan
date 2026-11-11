@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import botJson from "../../../src/shared/games/count-rectangles/bot-config.json";
 import shipped from "../../../src/shared/games/count-rectangles/config.json";
 import hostJson from "../../../src/shared/games/count-rectangles/host-config.json";
-import { rectanglesHost, type RectSession, type RectSnapshot } from "../../../src/shared/games/count-rectangles/host";
-import { solutions } from "../../../src/shared/games/count-rectangles/rules";
+import { rectanglesHostFor, type RectSession, type RectSnapshot } from "../../../src/shared/games/count-rectangles/host";
+import { solutions, type RectConfig } from "../../../src/shared/games/count-rectangles/rules";
 import type { Candidate, Presence, StartRequest } from "../../../src/shared/hosting";
 
-const host = rectanglesHost;
+/** The race alone: how the third choice that follows it is hosted has tests of its own (host-settle.test.ts). */
+const RACE: RectConfig = { ...shipped, settle: false };
+const host = rectanglesHostFor(RACE);
 
 /** The time the fixtures start at, in ms since the epoch. */
 const T0 = 1_800_000_000_000;
@@ -360,9 +362,9 @@ describe("what a player is sent", () => {
     session = act(session, players, 0, { type: "answer", count: session.state.answer }, T0 + 8000);
     const closed = seenBy(session, players, 1, T0 + 9000);
 
-    expect(open.clock).toEqual({ answer: null, problem: PROBLEM_MS - 4000, next: null, stand: null });
-    expect(answering.clock).toEqual({ answer: ANSWER_MS - 2000, problem: PROBLEM_MS - 7000, next: null, stand: null });
-    expect(closed.clock).toEqual({ answer: null, problem: null, next: PAUSE_MS - 1000, stand: null });
+    expect(open.clock).toEqual({ answer: null, problem: PROBLEM_MS - 4000, next: null, choose: null, stand: null });
+    expect(answering.clock).toEqual({ answer: ANSWER_MS - 2000, problem: PROBLEM_MS - 7000, next: null, choose: null, stand: null });
+    expect(closed.clock).toEqual({ answer: null, problem: null, next: PAUSE_MS - 1000, choose: null, stand: null });
   });
 
   it("gives the numbers of the rules the screen counts with", () => {
@@ -375,6 +377,20 @@ describe("what a player is sent", () => {
       problemSeconds: shipped.problemSeconds,
       maxSaid: shipped.maxSaid,
       maxProblems: shipped.maxProblems,
+      settle: RACE.settle,
+      chooseSeconds: shipped.chooseSeconds,
+      winPoints: shipped.winPoints,
+      losePoints: shipped.losePoints,
+      hogLeader: shipped.hogLeader,
+      hogMember: shipped.hogMember,
+      devoteLeader: shipped.devoteLeader,
+      devoteMember: shipped.devoteMember,
+      sacrificeLeader: shipped.sacrificeLeader,
+      blameMember: shipped.blameMember,
+      safeLoss: shipped.safeLoss,
+      duelLoss: shipped.duelLoss,
+      duelPieces: shipped.duelPieces,
+      duelProblems: shipped.duelProblems,
     });
   });
 

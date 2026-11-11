@@ -11,6 +11,7 @@ import {
   isValidRoomCode,
   isValidToken,
   joinLobby,
+  leadersOf,
   leaveLobby,
   markAway,
   normalizeNick,
@@ -221,6 +222,19 @@ describe("viewLobby", () => {
     const view = viewLobby(lobbyWith(2, config), new Set([1]), 1, config);
 
     expect(view).toMatchObject({ you: 1, maxPlayers: config.maxPlayers });
+  });
+
+  it("marks who leads each team, of those connected", () => {
+    const config = testConfig({ maxPlayers: TEAM_SIZE * 2 });
+    let state = roomOf(TEAM_GAME, 3, config);
+    state = setTeam(state, tokenFor(1), 1, config)!;
+    state = setTeam(state, tokenFor(0), 1, config)!;
+
+    const all = viewLobby(state, new Set([0, 1, 2]), 0, config);
+    const without = viewLobby(state, new Set([0, 2]), 0, config);
+
+    expect(all.players.map((player) => player.leads)).toEqual([false, true, false]);
+    expect(without.players.map((player) => player.leads)).toEqual([true, false, false]);
   });
 
   it("says a room holds no more than its game takes", () => {
@@ -607,6 +621,39 @@ function roomOf(game: GameId, count: number, config: RoomConfig): LobbyState {
   return state;
 }
 
+describe("leadersOf", () => {
+  const config = testConfig({ maxPlayers: TEAM_SIZE * 2 });
+
+  /** Players 0..5 in the room; 2, 0 and 1 take team 1 in that order, then 4 and 3 take team 2. */
+  function teams(): LobbyState {
+    let state = roomOf(TEAM_GAME, 6, config);
+    for (const [player, team] of [[2, 1], [0, 1], [1, 1], [4, 2], [3, 2]]) state = setTeam(state, tokenFor(player), team, config)!;
+    return state;
+  }
+
+  it("is, in each team, whoever took it first", () => {
+    expect(leadersOf(teams(), new Set([0, 1, 2, 3, 4, 5]))).toEqual(new Set([2, 4]));
+  });
+
+  it("passes to the next to have taken the team when the first does not count", () => {
+    expect(leadersOf(teams(), new Set([0, 1, 3, 4, 5]))).toEqual(new Set([0, 4]));
+  });
+
+  it("is nobody in a team none of whose players counts, and nobody among players alone", () => {
+    expect(leadersOf(teams(), new Set([5]))).toEqual(new Set());
+    expect(leadersOf(roomOf(TEAM_GAME, 3, config), new Set([0, 1, 2]))).toEqual(new Set());
+  });
+
+  it("is the player in the lowest slot where a room stored before this was kept cannot say who was first", () => {
+    const old: LobbyState = {
+      ...roomOf(TEAM_GAME, 3, config),
+    };
+    old.players = old.players.map((player) => ({ ...player, team: 1 }));
+
+    expect(leadersOf(old, new Set([0, 1, 2]))).toEqual(new Set([0]));
+  });
+});
+
 describe("capacityOf", () => {
   it("is what a room holds, for a game that would take more", () => {
     const most = GAMES[SOLO_GAME].maxPlayers;
@@ -684,6 +731,49 @@ describe("setTeam", () => {
     const state = roomOf(TEAM_GAME, 1, config);
 
     expect(setTeam(state, tokenFor(7), 1, config)).toBeNull();
+  });
+
+  it("notes the order in which players take a team: each taking later than every one before it", () => {
+    let state = roomOf(TEAM_GAME, 3, config);
+
+    state = setTeam(state, tokenFor(2), 1, config)!;
+    state = setTeam(state, tokenFor(0), 1, config)!;
+    state = setTeam(state, tokenFor(1), 2, config)!;
+
+    const since = state.players.map((player) => player.teamSince);
+    expect(since[2]).toBeLessThan(since[0]!);
+    expect(since[0]).toBeLessThan(since[1]!);
+  });
+
+  it("counts a player who changes team as taking the new one now, after those already in it", () => {
+    let state = roomOf(TEAM_GAME, 2, config);
+    state = setTeam(state, tokenFor(0), 2, config)!;
+    state = setTeam(state, tokenFor(1), 1, config)!;
+
+    state = setTeam(state, tokenFor(0), 1, config)!;
+
+    expect(state.players[1].teamSince).toBeLessThan(state.players[0].teamSince!);
+  });
+
+  it("forgets when a player took a team once they play alone again", () => {
+    const teamed = setTeam(roomOf(TEAM_GAME, 2, config), tokenFor(0), 1, config)!;
+
+    const alone = setTeam(teamed, tokenFor(0), 0, config)!;
+
+    expect(alone.players[0]).not.toHaveProperty("teamSince");
+  });
+
+  it("does not give a later taking a number an earlier one had, after players have left their teams", () => {
+    let state = roomOf(TEAM_GAME, 2, config);
+    state = setTeam(state, tokenFor(0), 1, config)!;
+    state = setTeam(state, tokenFor(1), 1, config)!;
+    const first = state.players[1].teamSince!;
+    state = setTeam(state, tokenFor(1), 0, config)!;
+    state = setTeam(state, tokenFor(0), 0, config)!;
+
+    state = setTeam(state, tokenFor(0), 1, config)!;
+
+    expect(state.players[0].teamSince).toBeGreaterThan(first);
   });
 
   it("changes nothing when the player is already there", () => {

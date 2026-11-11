@@ -173,7 +173,7 @@ export function createLobbyScene(
         if (lead) drawHostMark(x + width - 26, y);
         const beside = place.at.y - 6;
         if (!player.connected) pen.txt("끊김", place.at.x + 15, beside, C.dim);
-        else if (player.team > 0) pen.txt(`팀 ${player.team}`, place.at.x + 15, beside, TEAM_COLOURS[(player.team - 1) % TEAM_COLOURS.length]);
+        else if (player.team > 0) drawTeamTag(place.at.x + 15, beside, player.team, player.leads);
         continue;
       }
       const name = pen.fit(player.nick, NAME_WIDTH);
@@ -186,10 +186,9 @@ export function createLobbyScene(
       if (!player.connected) pen.txt("끊김", place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
       else if (player.team > 0) {
         // the team chosen for the next game, each team in its own colour
-        const tag = `팀 ${player.team}`;
         const tx = place.slot === me ? x + width + 5 : x;
         const ty = place.slot === me ? y : y + 13;
-        pen.txt(tag, tx, ty, TEAM_COLOURS[(player.team - 1) % TEAM_COLOURS.length]);
+        drawTeamTag(tx, ty, player.team, player.leads);
       }
     }
     for (const place of places) {
@@ -198,6 +197,22 @@ export function createLobbyScene(
       if (line.until <= time || !bySlot.has(place.slot)) speech.delete(place.slot);
       else drawSpeech(pen, place.at, line.lines);
     }
+  }
+
+  /**
+   * The team a player has chosen, at `x`, `y`: written in the team's colour,
+   * and for its leader (whoever took the team first) on a plate of that
+   * colour, so that the team can see whose share of its points will differ.
+   */
+  function drawTeamTag(x: number, y: number, team: number, leads: boolean): void {
+    const tag = `팀 ${team}`;
+    const colour = TEAM_COLOURS[(team - 1) % TEAM_COLOURS.length];
+    if (!leads) {
+      pen.txt(tag, x, y, colour);
+      return;
+    }
+    pen.px(x - 2, y, pen.width(tag) + 3, 13, colour);
+    pen.txt(tag, x, y, C.ink);
   }
 
   /** The mark of the host, who starts the game: its top left at `x`, `y`. */

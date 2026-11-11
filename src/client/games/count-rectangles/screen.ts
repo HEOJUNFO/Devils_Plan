@@ -6,7 +6,7 @@
  * Design: design/games/count-rectangles.md. The room decides everything;
  * this screen shows what it sends and asks for a buzz or an answer.
  */
-import { GAP, type Rect, type RectEvent } from "../../../shared/games/count-rectangles/rules";
+import { GAP, type Card, type Option, type Rect, type RectEvent, type ScoreLine } from "../../../shared/games/count-rectangles/rules";
 import { afterBuzz, typeAnswer } from "../../../shared/games/count-rectangles/typing";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
@@ -110,6 +110,9 @@ const RESULTS_HOLD = 1.5;
 const NOT_SENT_TEXT = "연결이 끊겨 보내지 못했습니다. 다시 눌러 주세요";
 
 const REFUSED_TEXT: Record<string, string> = {
+  "not-choosing": "지금은 선택하는 때가 아닙니다",
+  "already-chosen": "이미 골랐습니다. 선택은 바꿀 수 없습니다",
+  "not-in-duel": "추가 대결은 도전을 고른 사람끼리 합니다",
   "not-open": "지금은 버저를 누를 수 없습니다",
   "shut-out": "이 문제는 이미 틀렸습니다",
   "already-won": "이미 승리했습니다",
@@ -142,6 +145,26 @@ const ERASE_RECT: [number, number, number, number] = [380, 242, 30, 24];
 const SAY_RECT: [number, number, number, number] = [414, 242, 62, 24];
 const AGAIN_RECT: [number, number, number, number] = [386, 225, 90, 15];
 const LOBBY_RECT: [number, number, number, number] = [386, 250, 90, 15];
+/** The two options of the third choice, one above the other over the board. */
+const OPTION_RECTS: readonly [[number, number, number, number], [number, number, number, number]] = [
+  [8, 42, 288, 50],
+  [8, 95, 288, 50],
+];
+/** What the two options of each card are called. */
+const OPTION_NAMES: Record<Card, readonly [string, string]> = {
+  winners: ["독식", "헌신"],
+  losers: ["희생", "질책"],
+  alone: ["도전", "안전"],
+};
+/** Whom each card is for, as its heading says. */
+const CARD_FOR: Record<Card, string> = {
+  winners: "승리 팀 · 팀의 다수결로 정합니다",
+  losers: "패배 팀 · 팀의 다수결로 정합니다",
+  alone: "개인 플레이어",
+};
+
+/** `value` with its sign, as points are written. */
+const signed = (value: number): string => (value > 0 ? `+${value}` : `${value}`);
 
 /**
  * Where each unit goes in the list: its row, and for a player alone which
@@ -220,6 +243,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
    * answers. Digits typed meanwhile are kept: on a slow line the wait is long
    * enough for a quick hand to lose the first one, in a game about speed.
    */
+  /** The option of the third choice pointed at and not yet confirmed. */
+  let pointed: Option | null = null;
   let buzzed = false;
   /** Enter was pressed during that wait: the answer goes as soon as it is this player's to give. */
   let queued = false;
@@ -274,7 +299,31 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const me = mine();
     if (latest === null || me === null || latest.frozen || pending) return false;
     const view = latest.view;
-    return view.phase === "problem" && view.units[me.unit].place === 0 && !view.wrong.includes(me.unit);
+    // the added contest is put to those who took it, the race to the units that have not won
+    const asked = view.duel !== null ? view.duel.players.includes(me.player) : view.units[me.unit].place === 0;
+    return view.phase === "problem" && asked && !view.wrong.includes(me.unit);
+  }
+  /** Whether the third choice is this player's to make now. */
+  function choosing(): boolean {
+    const up = latest?.view.choosing ?? null;
+    return up !== null && up.card !== null && up.mine === null && !latest!.frozen;
+  }
+  /** The points of `player`, once the game has counted them. */
+  function scoreOf(player: number): ScoreLine | null {
+    return latest?.view.scores?.find((line) => line.player === player) ?? null;
+  }
+  /** What the two options of `card` do, in a line or two each, with the numbers of the rules. */
+  function cardLines(card: Card, option: Option): string[] {
+    const rules = latest!.rules;
+    if (card === "winners") {
+      return option === 1
+        ? [`대표 승점 ${rules.hogLeader}점 획득,`, `두 팀원 승점 각 ${rules.hogMember}점씩 획득`]
+        : [`대표 승점 ${rules.devoteLeader}점 획득,`, `두 팀원 승점 각 ${rules.devoteMember}점씩 획득`];
+    }
+    if (card === "losers") return option === 1 ? [`대표만 승점 ${rules.sacrificeLeader}점 차감`] : [`두 팀원만 승점 ${rules.blameMember}점씩 차감`];
+    return option === 1
+      ? ["추가 대결을 진행한다.", `승리 시 피스 ${rules.duelPieces}개 획득,`, `패배 시 승점 ${rules.duelLoss}점 차감`]
+      : ["대결하지 않고,", `승점 ${rules.safeLoss}점 차감`];
   }
   function answering(): boolean {
     const me = mine();
@@ -332,6 +381,14 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       sfx.deny();
     } else if (event.type === "time" || event.type === "all-wrong") {
       sfx.out();
+    } else if (event.type === "raced") {
+      said.clear();
+      pointed = null;
+      sfx.turn();
+    } else if (event.type === "choice" || event.type === "duel") {
+      sfx.pick();
+    } else if (event.type === "score") {
+      sfx.earn();
     }
   }
 
@@ -348,6 +405,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       speech.clear();
       playing.length = 0;
       flash = null;
+      pointed = null;
     }
     const wasClosed = latest !== null && latest.view.outcome !== null && !fresh;
     if (message.view.outcome !== null && !wasClosed) revealFrom = time;
@@ -399,6 +457,33 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       }
       return;
     }
+    if (view.phase === "choose") {
+      if (!choosing() || pending) return;
+      const point = (option: Option): void => {
+        pointed = option;
+        sfx.move();
+      };
+      const send = (): void => {
+        if (pointed === null || pending) return;
+        pending = handlers.act({ type: "choose", option: pointed });
+        if (!pending) say(NOT_SENT_TEXT);
+      };
+      // an option is pointed at first and confirmed second: a choice cannot be taken back. The keys
+      // are taken in the order pressed, so that Enter confirms what was pointed at when it came.
+      for (const code of keys) {
+        if (code === "Digit1" || code === "Numpad1") point(1);
+        else if (code === "Digit2" || code === "Numpad2") point(2);
+        else if (code === "Enter" || code === "NumpadEnter") send();
+      }
+      for (const click of clicks) {
+        for (const option of [1, 2] as const) {
+          if (!inRect(click, OPTION_RECTS[option - 1])) continue;
+          if (pointed === option) send();
+          else point(option);
+        }
+      }
+      return;
+    }
     const toAnswer = answering();
     // A slow frame can hold several keys: they are taken in the order pressed (see `typing.ts`).
     let typing: readonly string[] = keys;
@@ -409,7 +494,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       if (!canBuzz()) {
         const me = mine();
         if (me !== null && view.phase === "problem" && !pending) {
-          say(view.units[me.unit].place > 0 ? REFUSED_TEXT["already-won"] : REFUSED_TEXT["shut-out"]);
+          const outside = view.duel !== null && !view.duel.players.includes(me.player);
+          say(outside ? REFUSED_TEXT["not-in-duel"] : view.duel === null && view.units[me.unit].place > 0 ? REFUSED_TEXT["already-won"] : REFUSED_TEXT["shut-out"]);
           sfx.deny();
         }
         return;
@@ -621,6 +707,12 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       });
       // what one of them has just said takes this place for as long as it is on show
       if (unit.members.some((player) => said.has(player))) return;
+      if (view.duel !== null && view.phase !== "ended") {
+        // the added contest: who is in it, over their heads
+        if (view.duel.players.includes(unit.members[0]) && !view.wrong.includes(index)) pen.txt(named ? "도전" : "!", middle + 1, SAID_Y + 2, C.amber, "center");
+        else if (view.duel.players.includes(unit.members[0])) pen.txt(named ? "오답" : "×", middle + 1, SAID_Y + 2, C.crim, "center");
+        return;
+      }
       if (unit.place > 0) {
         // the place: with its word where there is room for it
         const words = named ? `${unit.place}위` : `${unit.place}`;
@@ -664,11 +756,13 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     pen.px(0, 166, SCENE_W, BAR_Y - 166, C.floor);
     pen.px(0, 166, SCENE_W, 1, C.ink);
     for (let y = 178; y < BAR_Y; y += 11) pen.px(0, y, SCENE_W, 1, C.floorD);
-    drawBoard();
+    // while the third choice is up its cards have the wall to themselves: the last board is put away
+    if (latest.view.phase !== "choose") drawBoard();
     light.draw(pen, BOARD_LEFT + Math.round(BOARD_WIDTH / 2), BOARD_TOP + Math.round(BOARD_BAND / 2), 1);
     // the players stand outside the lamp's pool: drawn over the dark, so that they and their names can be read
     drawPlayers();
-    drawTarget();
+    if (latest.view.phase === "choose") drawChoice();
+    else drawTarget();
     for (const p of playing) {
       fxlib.clearFrame(p.frame);
       p.fx.draw(p.frame);
@@ -689,6 +783,44 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
   }
 
+  /** The third choice, over the board: the card of the viewer's side, its two options, and how many have chosen. */
+  function drawChoice(): void {
+    if (latest === null || latest.view.choosing === null) return;
+    const up = latest.view.choosing;
+    const view = latest.view;
+    const me = mine();
+    pen.px(4, 22, SCENE_W - 8, 142, C.ink);
+    pen.px(5, 23, SCENE_W - 10, 140, C.bar);
+    pen.txt("선택 3", 12, 26, C.amber);
+    const total = view.units.reduce((sum, unit) => sum + unit.members.length, 0);
+    const count = `${up.chosen.length}/${total}명이 골랐습니다`;
+    if (up.card === null || me === null) {
+      // someone watching has no card: only how the choosing stands
+      pen.txt("모두 고르는 중입니다", 12 + pen.width("선택 3") + 8, 26, C.boneD);
+      pen.txt(count, 12, 148, C.boneD);
+      return;
+    }
+    pen.txt(CARD_FOR[up.card], 12 + pen.width("선택 3") + 8, 26, C.boneD);
+    for (const option of [1, 2] as const) {
+      const rect = OPTION_RECTS[option - 1];
+      const [x, y, w, h] = rect;
+      const taken = up.mine === option;
+      const lit = taken || (up.mine === null && pointed === option);
+      const live = choosing() && !pending;
+      pen.px(x, y, w, h, lit ? C.amberD : C.steelDD);
+      pen.px(x + 1, y + 1, w - 2, h - 2, lit ? "#3a2a12" : live && inRect(mouse, rect) ? C.btnH : C.btn);
+      pen.txt(`${option}`, x + 7, y + 18, C.dim);
+      pen.txt(OPTION_NAMES[up.card][option - 1], x + 20, y + 12, lit ? C.amber : up.mine === null ? C.bone : C.dim, "left", 24);
+      const lines = cardLines(up.card, option);
+      const top = y + Math.round((h - lines.length * 15) / 2) + 1;
+      lines.forEach((line, at) => pen.txt(line, x + 100, top + at * 15, lit || up.mine === null ? C.bone : C.dim));
+    }
+    // a team's leader, whose share differs from the others': named under the cards
+    const leader = view.units[me.unit].leader;
+    const who = leader === null ? "" : leader === me.player ? "우리 팀 대표: 나 · " : `우리 팀 대표: ${pen.fit(nickOf(leader), NAME_WIDTH)} · `;
+    pen.txt(pen.fit(`${who}${count}`, SCENE_W - 24), 12, 148, C.boneD);
+  }
+
   /** The words for where the game stands, and their colour. */
   function standing(): [string, string] {
     if (latest === null) return ["", C.boneD];
@@ -696,6 +828,12 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const me = mine();
     if (noteT > 0) return [note, C.amber];
     if (offline) return ["연결이 끊겼습니다. 다시 연결하는 중", C.crim];
+    if (view.phase === "choose") {
+      const seconds = Math.ceil((left(latest.clock.choose) ?? 0) / 1000);
+      if (pending) return ["보내는 중", C.boneD];
+      if (choosing()) return [`선택 3: 하나를 고르세요 · ${seconds}초`, seconds <= TICK_FROM ? C.crim : C.amber];
+      return [`선택 3: 모두 고르기를 기다리는 중 · ${seconds}초`, C.bone];
+    }
     if (view.phase === "answer" && view.floor !== null) {
       const seconds = Math.ceil((left(latest.clock.answer) ?? 0) / 1000);
       if (answering()) return [`답을 말하세요 · ${seconds}초`, seconds <= TICK_FROM ? C.crim : C.amber];
@@ -708,6 +846,14 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
     if (view.phase === "ended") return ["판이 끝났습니다", C.amber];
     if (me === null) return ["관전 중입니다. 다음 판부터 함께할 수 있습니다", C.boneD];
+    if (view.duel !== null) {
+      // the added contest: its players race, everyone else looks on
+      const names = view.duel.players.map((player) => pen.fit(nickOf(player), LIST_NAME_WIDTH)).join(" 대 ");
+      if (!view.duel.players.includes(me.player)) return [pen.fit(`추가 대결을 구경합니다: ${names}`, W - 12), C.boneD];
+      if (view.wrong.includes(me.unit)) return ["오답: 이 문제에서는 다시 답할 수 없습니다", C.crim];
+      if (pending) return ["보내는 중", C.boneD];
+      return ["추가 대결! 먼저 맞히면 승리 · 버저 (Space)", C.amber];
+    }
     if (view.units[me.unit].place > 0) return ["승리! 남은 문제를 구경합니다", C.amber];
     if (view.wrong.includes(me.unit)) return ["오답: 이 문제에서는 다시 답할 수 없습니다", C.crim];
     if (pending) return ["보내는 중", C.boneD];
@@ -720,7 +866,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const lines: [string, string][] = [];
     for (const event of latest.view.history.slice(0, seen)) {
       const who = "player" in event ? pen.fit(nickOf(event.player), LIST_NAME_WIDTH) : "";
-      if (event.type === "problem") lines.push([`문제 ${event.round}`, C.boneD]);
+      if (event.type === "problem") lines.push([event.duel === undefined ? `문제 ${event.round}` : `추가 대결 문제 ${event.duel}`, C.boneD]);
       else if (event.type === "buzz") lines.push([`${who} 버저!`, C.bone]);
       else if (event.type === "right") lines.push([`${who}: ${event.said}개 정답!`, C.teal]);
       else if (event.type === "wrong") lines.push([`${who}: ${event.said}개 오답`, C.crim]);
@@ -728,6 +874,24 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       else if (event.type === "time") lines.push(["제한 시간 종료", C.boneD]);
       else if (event.type === "all-wrong") lines.push(["모두 오답", C.boneD]);
       else if (event.type === "won") lines.push([`${unitName(event.unit, 96)} 승리 (${event.place}위)`, C.amber]);
+      else if (event.type === "raced") lines.push([event.reason === "half" ? "절반이 승리 · 선택 3" : "마지막 문제까지 · 선택 3", C.amber]);
+      else if (event.type === "choice") {
+        // each team's decision, then who took which of the two alone
+        for (const decided of event.decisions) {
+          const unit = latest.view.units[decided.unit];
+          const card: Card = unit !== undefined && unit.place > 0 ? "winners" : "losers";
+          lines.push([`${unitName(decided.unit, 110)}: ${OPTION_NAMES[card][decided.option - 1]}`, C.brass]);
+        }
+        const solo = event.chosen.filter((chosen) => latest!.view.units.some((unit) => unit.members.length === 1 && unit.members[0] === chosen.player));
+        for (const option of [1, 2] as const) {
+          const those = solo.filter((chosen) => chosen.option === option).map((chosen) => pen.fit(nickOf(chosen.player), 40));
+          if (those.length > 0) lines.push([pen.fit(`${OPTION_NAMES.alone[option - 1]} ${those.length}명: ${those.join(", ")}`, PANEL_WIDTH), C.brass]);
+        }
+      } else if (event.type === "duel") lines.push([pen.fit(`추가 대결: ${event.players.map((player) => pen.fit(nickOf(player), 44)).join(" 대 ")}`, PANEL_WIDTH), C.amber]);
+      else if (event.type === "duel-over") {
+        const won = event.winner === null ? "추가 대결: 승자 없음" : `대결 승리: ${pen.fit(nickOf(event.winner), 44)} · 피스 ${latest.rules.duelPieces}개`;
+        lines.push([pen.fit(won, PANEL_WIDTH), event.winner === null ? C.boneD : C.teal]);
+      } else if (event.type === "score") lines.push(["승점을 셌습니다", C.boneD]);
       else lines.push([ENDED_TEXT[event.reason], C.amber]);
     }
     return lines;
@@ -739,7 +903,9 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    pen.txt(`문제 ${view.round}`, x, 3, C.bone);
+    pen.txt(view.phase === "choose" ? "선택 3" : view.duel !== null ? `추가 대결 ${view.duel.round}` : `문제 ${view.round}`, x, 3, C.bone);
+    const choose = view.phase === "choose" ? left(latest.clock.choose) : null;
+    if (choose !== null) pen.txt(`${Math.ceil(choose / 1000)}초`, W - 5, 3, choose <= TICK_FROM * 1000 ? C.crim : C.boneD, "right");
     const problem = left(latest.clock.problem);
     if (problem !== null) {
       const seconds = Math.ceil(problem / 1000);
@@ -759,7 +925,15 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       const colour = unit.place > 0 ? C.amber : view.wrong.includes(index) && view.outcome === null ? C.dim : mine()?.unit === index ? C.bone : C.boneD;
       pen.txt(name, ux, uy, colour);
       const px = ux + (team ? 108 : LIST_NAME_WIDTH + 4);
-      if (unit.place > 0) pen.txt(`${unit.place}위`, px, uy, C.amber);
+      const points = unit.members.map((player) => scoreOf(player));
+      if (points.every((line) => line !== null)) {
+        // the game is over: each player's points, a team's in the order of its names
+        const words = points.map((line) => signed(line!.total)).join(" ");
+        pen.txt(words, team ? x + PANEL_WIDTH - 1 : ux + 81, uy, unit.place > 0 ? C.amber : C.boneD, "right");
+      } else if (view.phase === "choose" && view.choosing !== null) {
+        // the choice: a mark for each player who has chosen
+        unit.members.forEach((player, at) => pen.px(px + at * 8, uy + 4, 6, 5, view.choosing!.chosen.includes(player) ? C.brass : C.steelDD));
+      } else if (unit.place > 0) pen.txt(`${unit.place}위`, px, uy, C.amber);
       else for (let i = 0; i < latest!.rules.winsNeeded; i++) pen.px(px + i * 8, uy + 4, 6, 5, i < unit.wins ? C.brass : C.steelDD);
     });
     // under the list: where it ends in a crowded game, where the longest ends otherwise
@@ -796,7 +970,21 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       .sort((a, b) => a.unit.place - b.unit.place)
       .map((each) => `${each.unit.place}위 ${unitName(each.index, 70)}`);
     pen.txt(pen.fit(winners.length > 0 ? winners.join("  ") : "승리한 팀이 없습니다", 280), 96, 226, C.bone);
-    pen.txt(`문제 ${view.round}까지 했습니다`, 96, 240, C.boneD);
+    const line = me === null ? null : scoreOf(me.player);
+    if (line === null) pen.txt(`문제 ${view.round}까지 했습니다`, 96, 240, C.boneD);
+    else {
+      // how the viewer's points came about: a team's by what it decided, a player's own by the race and their choice
+      const unit = me === null ? undefined : view.units[me.unit];
+      const decided = me === null ? undefined : view.decisions.find((each) => each.unit === me.unit);
+      const parts = [`승점 ${signed(line.total)}`];
+      if (unit !== undefined && unit.members.length > 1 && decided !== undefined) {
+        const card: Card = unit.place > 0 ? "winners" : "losers";
+        parts.push(`${OPTION_NAMES[card][decided.option - 1]} (${unit.leader === me?.player ? "대표" : "팀원"})`);
+      } else parts.push(`네모 세기 ${signed(line.race)}`);
+      if (line.choice !== 0) parts.push(`${line.choice === -latest.rules.safeLoss && line.pieces === 0 && view.duel?.players.includes(line.player) !== true ? "안전" : "추가 대결"} ${signed(line.choice)}`);
+      if (line.pieces > 0) parts.push(`추가 대결 승리: 피스 ${line.pieces}개`);
+      pen.txt(pen.fit(parts.join(" · "), 280), 96, 240, line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD);
+    }
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
     else pen.txt(host ? "같은 사람들과 한 판 더 하거나 대기실로" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
     if (host) button(AGAIN_RECT, "Enter 새 판", "", true, true);
@@ -813,6 +1001,20 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
     const [words, colour] = standing();
     pen.txt(words, 6, 225, colour);
+    if (latest.view.phase === "choose") {
+      const up = latest.view.choosing;
+      const how =
+        up === null || up.card === null
+          ? "승리 팀은 독식·헌신, 패배 팀은 희생·질책을 다수결로, 개인은 도전·안전을 고릅니다."
+          : up.mine !== null
+            ? "골랐습니다. 모두 고르면 한꺼번에 공개됩니다."
+            : pointed !== null
+              ? "한 번 더 누르거나 Enter로 확정합니다. 한 번 고르면 바꿀 수 없습니다."
+              : "1 또는 2, 또는 카드를 눌러 고릅니다. 한 번 고르면 바꿀 수 없습니다.";
+      pen.txt(how, 6, 241, up !== null && up.card !== null && up.mine === null ? C.bone : C.boneD);
+      pen.txt("H: 규칙 (선택 3의 승점 나누기 포함)", 6, 254, C.boneD);
+      return;
+    }
     if (answering()) {
       // the answer so far, and a pad of digits for whoever has no keys
       pen.txt("답", 6, 246, C.boneD);
@@ -847,7 +1049,9 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       [`${rules.winsNeeded}번 맞히면 승리하고 이후 문제에서 빠집니다.`, C.bone],
       ["전체 팀(혼자도 한 팀)의 절반이 승리하면 끝납니다.", C.bone],
       [`문제마다 제한 시간은 ${Math.round(rules.problemSeconds / 60)}분입니다.`, C.boneD],
-      ["", C.bone],
+      [`끝나면 선택 3: 승리 팀은 승점 ${rules.winPoints}점을 독식(대표 ${rules.hogLeader}, 팀원 ${rules.hogMember}씩)·헌신(대표 ${rules.devoteLeader}, 팀원 ${rules.devoteMember}씩)으로,`, C.bone],
+      [`패배 팀은 희생(대표만 -${rules.sacrificeLeader})·질책(두 팀원 -${rules.blameMember}씩)으로 나눕니다. 팀의 다수결이고, 대표는 팀을 먼저 고른 사람.`, C.bone],
+      [`개인은 승리 +${rules.winPoints}, 패배 -${rules.losePoints}. 안전은 -${rules.safeLoss}, 도전은 추가 대결: 이기면 피스 ${rules.duelPieces}개, 지면 -${rules.duelLoss}.`, C.bone],
       ["H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", C.amber],
     ];
     pen.clear(C.night);

@@ -28,6 +28,8 @@ export interface Candidate {
   seq?: number;
   /** The team they chose in the waiting room, in a game that has teams; 0 or absent for none. */
   team?: number;
+  /** When they took that team, as a number that grows from one taking to the next: whoever took a team first leads it. */
+  teamSince?: number;
 }
 
 /** What a room tells a game when asking it to start. */

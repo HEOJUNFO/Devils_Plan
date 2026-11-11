@@ -23,5 +23,20 @@
   "minAnswer": 4,
   "maxAnswer": 12,
   "maxTarget": 6,
-  "maxSaid": 999
+  "maxSaid": 999,
+  "settle": true,
+  "chooseSeconds": 20,
+  "winPoints": 7,
+  "losePoints": 3,
+  "hogLeader": 5,
+  "hogMember": 1,
+  "devoteLeader": 1,
+  "devoteMember": 3,
+  "sacrificeLeader": 3,
+  "blameMember": 2,
+  "safeLoss": 1,
+  "duelLoss": 3,
+  "duelPieces": 3,
+  "duelProblems": 3,
+  "defaultOptions": { "winners": 2, "losers": 1, "alone": 2 }
 }

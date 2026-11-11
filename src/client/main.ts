@@ -626,9 +626,11 @@ function renderRoom(code: string, view: LobbyView): void {
   const teams = game.teamSize > 0;
   clockButton.hidden = !game.turns;
   teamButton.hidden = !teams;
-  const myTeam = view.players.find((p) => p.slot === view.you)?.team ?? 0;
-  teamButton.textContent = myTeam === 0 ? "혼자 하기" : `팀 ${myTeam}`;
-  teamButton.title = `누르면 바뀝니다: 혼자, 또는 ${game.teamSize}명이 한 팀`;
+  const mine = view.players.find((p) => p.slot === view.you);
+  const myTeam = mine?.team ?? 0;
+  // a team's leader is whoever took it first: their share of the team's points differs from the others'
+  teamButton.textContent = myTeam === 0 ? "혼자 하기" : mine?.leads === true ? `팀 ${myTeam} 대표` : `팀 ${myTeam}`;
+  teamButton.title = `누르면 바뀝니다: 혼자, 또는 ${game.teamSize}명이 한 팀. 팀을 먼저 고른 사람이 대표입니다`;
 
   // who would play: everyone connected, a team counting once
   const sizes = new Map<number, number>();

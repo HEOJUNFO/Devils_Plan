@@ -645,6 +645,24 @@ button.choice[aria-pressed="true"] {
   line-height: 15px;
 }
 
+/*
+ * A game's sheet: as much of it as the frame has room for above the button
+ * that closes it, and the rest by scrolling. A game with choices attached has
+ * more rules than fit at once.
+ */
+#rules [data-game] {
+  height: 212px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 6px;
+  scrollbar-color: var(--edge) var(--bar);
+  scrollbar-width: thin;
+}
+
+#rules [data-game][hidden] {
+  display: none;
+}
+
 #rules h2 {
   margin-bottom: 6px;
   color: var(--amber);

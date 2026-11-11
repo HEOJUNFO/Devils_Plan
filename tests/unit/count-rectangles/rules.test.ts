@@ -25,7 +25,8 @@ import {
 } from "../../../src/shared/games/count-rectangles/rules";
 
 /** The rules as shipped. */
-const CONFIG: RectConfig = shipped;
+/** The race alone, as it was before the third choice came with it: that choice has tests of its own (settle.test.ts). */
+const CONFIG: RectConfig = { ...shipped, settle: false };
 
 /** An arbitrary moment the tests call the start of the game, in ms. */
 const START = 1_000_000;
@@ -409,10 +410,10 @@ describe("createGame", () => {
     const state = game(alone(4));
 
     expect(state.units).toEqual([
-      { members: [0], wins: 0, place: 0 },
-      { members: [1], wins: 0, place: 0 },
-      { members: [2], wins: 0, place: 0 },
-      { members: [3], wins: 0, place: 0 },
+      { members: [0], wins: 0, place: 0, leader: null },
+      { members: [1], wins: 0, place: 0, leader: null },
+      { members: [2], wins: 0, place: 0, leader: null },
+      { members: [3], wins: 0, place: 0, leader: null },
     ]);
   });
 
@@ -498,7 +499,7 @@ describe("answering", () => {
   it("counts a right answer for the unit, closes the problem and shows the answer for a while", () => {
     const state = solve(game(alone(3)), 2, START + 4000);
 
-    expect(state.units[2]).toEqual({ members: [2], wins: 1, place: 0 });
+    expect(state.units[2]).toEqual({ members: [2], wins: 1, place: 0, leader: null });
     expect(state.phase).toBe("pause");
     expect(state.outcome).toEqual({ kind: "right", player: 2, unit: 2 });
     expect(state.pauseUntil).toBe(START + 5000 + PAUSE_MS);
@@ -573,7 +574,7 @@ describe("winning", () => {
     let step = next(state);
     state = solve(step.state, 3, step.now + 1000);
 
-    expect(state.units[3]).toEqual({ members: [3], wins: 2, place: 1 });
+    expect(state.units[3]).toEqual({ members: [3], wins: 2, place: 1, leader: null });
     expect(state.history).toContainEqual({ type: "won", round: 2, unit: 3, place: 1 });
     expect(state.phase).toBe("pause");
 
@@ -633,7 +634,7 @@ describe("winning", () => {
     state = solve(step.state, 0, step.now + 1000);
 
     // two right answers by different members of the team: the team has won, and one unit of two is half
-    expect(state.units[0]).toEqual({ members: [0, 1, 2], wins: 2, place: 1 });
+    expect(state.units[0]).toEqual({ members: [0, 1, 2], wins: 2, place: 1, leader: 0 });
     expect(state.phase).toBe("ended");
   });
 });

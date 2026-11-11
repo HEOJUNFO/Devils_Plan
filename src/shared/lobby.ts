@@ -114,6 +114,12 @@ export interface LobbyPlayer {
    * players may team up: a number from 1, or 0 or absent for playing alone.
    */
   team?: number;
+  /**
+   * When the player took that team, as a number that grows from one taking
+   * to the next in the room; absent for a player alone. Whoever took a team
+   * first leads it (see {@link leadersOf}).
+   */
+  teamSince?: number;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -130,6 +136,8 @@ export interface LobbyState {
   turnSeconds?: number;
   /** The `seq` the next player to come in gets. */
   nextSeq?: number;
+  /** The `teamSince` the next player to take a team gets. */
+  nextTeamSince?: number;
 }
 
 /** A player as everyone may see them. Carries no token. */
@@ -140,6 +148,8 @@ export interface PublicPlayer {
   connected: boolean;
   /** The team they have chosen for the next game; 0 for playing alone. */
   team: number;
+  /** Whether they lead that team: of those connected in it, the one who took it first. */
+  leads: boolean;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -391,7 +401,33 @@ export function setTeam(state: LobbyState, token: string, team: number, config: 
   const player = findPlayer(state, token);
   if (player === undefined) return null;
   if ((player.team ?? 0) === team) return state;
-  return { ...state, players: state.players.map((p) => (p === player ? { ...p, team } : p)) };
+  const { teamSince: _since, ...rest } = player;
+  if (team === 0) return { ...state, players: state.players.map((p) => (p === player ? { ...rest, team } : p)) };
+  // later than everyone who has taken a team here before
+  const since = Math.max(state.nextTeamSince ?? 0, ...state.players.map((p) => (p.teamSince ?? -1) + 1));
+  return {
+    ...state,
+    players: state.players.map((p) => (p === player ? { ...rest, team, teamSince: since } : p)),
+    nextTeamSince: since + 1,
+  };
+}
+
+/**
+ * The slots of the players who lead a team: in each team, of the players in
+ * `among` (the slots that count: those connected), the one who took it first,
+ * and of those who cannot be told apart by that the one in the lowest slot.
+ * A game that starts with a team makes the same player its leader.
+ */
+export function leadersOf(state: LobbyState, among: ReadonlySet<number>): Set<number> {
+  const first = new Map<number, LobbyPlayer>();
+  for (const player of state.players) {
+    const team = player.team ?? 0;
+    if (team === 0 || !among.has(player.slot)) continue;
+    const leader = first.get(team);
+    const earlier = leader === undefined || (player.teamSince ?? Infinity) < (leader.teamSince ?? Infinity);
+    if (earlier) first.set(team, player);
+  }
+  return new Set([...first.values()].map((player) => player.slot));
 }
 
 /** Puts the room on the list of rooms or takes it off. The input state is not modified. */
@@ -410,6 +446,7 @@ export function viewLobby(
   config: RoomConfig,
   voice = false,
 ): LobbyView {
+  const leaders = leadersOf(state, connectedSlots);
   return {
     you: viewerSlot,
     maxPlayers: capacityOf(gameOf(state), config),
@@ -423,6 +460,7 @@ export function viewLobby(
       nick: p.nick,
       connected: connectedSlots.has(p.slot),
       team: p.team ?? 0,
+      leads: leaders.has(p.slot),
     })),
   };
 }

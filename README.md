@@ -34,7 +34,10 @@
 | **큐브 세기** | 2~16명 | 쌓인 큐브가 몇 개인지 먼저 세어 답하세요. 틀리면 20초 동안 잠깁니다. |
 
 큐브 세기, 네모 세기, 잔디 깔기는 시즌 첫 메인 매치 "양자택일" 안의
-미니게임으로, 하나씩 따로 만들고 있습니다.
+미니게임으로, 하나씩 따로 만들고 있습니다. 미니게임에 딸린 양자택일의
+선택은 그 게임 안에 들어 있습니다: 네모 세기에는 선택 2(팀·개인)와 판이
+끝난 뒤의 선택 3(독식·헌신, 희생·질책, 도전·안전과 추가 대결), 잔디 깔기에는
+선택 5~8(점수·정보, 공격·방어, 상생·견제, 가로수·맨홀).
 
 | 러시안 룰렛 | 네모 세기 |
 |---|---|
@@ -49,7 +52,7 @@
 채웠는지는 게임마다 적어 두었습니다.
 
 - 러시안 룰렛: [`design/game-brief.md`](design/game-brief.md) (방송은 6인, 4·5인 탁자는 이 프로젝트가 줄인 것)
-- 네모 세기: [`design/games/count-rectangles.md`](design/games/count-rectangles.md)
+- 네모 세기: [`design/games/count-rectangles.md`](design/games/count-rectangles.md) (팀의 "대표"가 누구인지와 "추가 대결"의 방식은 문서에 없어 채운 것)
 - 잔디 깔기: [`design/games/lay-the-grass.md`](design/games/lay-the-grass.md)
 - 큐브 세기: [`design/games/count-cubes.md`](design/games/count-cubes.md) (문제의 그림은 문서에 없어 이 프로젝트가 채운 것)
 

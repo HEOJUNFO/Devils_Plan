@@ -44,7 +44,7 @@ describe("GameRoom", () => {
       turnSeconds: 0,
       voice: true,
       host: 0,
-      players: [{ slot: 0, nick: "ann", connected: true, team: 0 }],
+      players: [{ slot: 0, nick: "ann", connected: true, team: 0, leads: false }],
     });
     a.close();
   });
@@ -428,7 +428,7 @@ describe("GameRoom", () => {
     await runDurableObjectAlarm(stub);
 
     const lobby = await a.lobbyWhere((l) => l.players.length === 1);
-    expect(lobby.players).toEqual([{ slot: 0, nick: "p0", connected: true, team: 0 }]);
+    expect(lobby.players).toEqual([{ slot: 0, nick: "p0", connected: true, team: 0, leads: false }]);
     const c = await open("AAAAY", { player: 2 });
     expect(await c.next()).toMatchObject({ you: 1 });
     a.close();
@@ -468,7 +468,7 @@ describe("GameRoom", () => {
     const lobby = await extra.next();
     expect(lobby).toMatchObject({ type: "lobby", you: 2 });
     expect(lobby.type === "lobby" ? lobby.players : []).toHaveLength(MOST);
-    expect(lobby.type === "lobby" ? lobby.players[2] : null).toEqual({ slot: 2, nick: "new", connected: true, team: 0 });
+    expect(lobby.type === "lobby" ? lobby.players[2] : null).toEqual({ slot: 2, nick: "new", connected: true, team: 0, leads: false });
     for (const c of clients.filter((_, n) => n !== 2)) c.close();
     extra.close();
   });
@@ -1118,7 +1118,7 @@ describe("GameRoom", () => {
     b.send({ type: "leave" });
 
     const lobby = await a.lobbyWhere((l) => l.players.length === 1);
-    expect(lobby.players).toEqual([{ slot: 0, nick: "ann", connected: true, team: 0 }]);
+    expect(lobby.players).toEqual([{ slot: 0, nick: "ann", connected: true, team: 0, leads: false }]);
     a.close();
   });
 });
