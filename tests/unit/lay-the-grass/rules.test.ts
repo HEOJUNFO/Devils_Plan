@@ -6,12 +6,14 @@ import {
   abandon,
   applyAction,
   applyTimeout,
+  boxFor,
   coveredBy,
   createGame,
   deadline,
   drawPark,
   fits,
   hasCell,
+  hasWay,
   isValidConfig,
   layOrderOf,
   moveFor,
@@ -116,6 +118,7 @@ describe("the shipped rules of Lay the Grass", () => {
     ["a pause of less than nothing", { pauseSeconds: -1 }],
     ["fewer extra cells than none", { extraCells: -1 }],
     ["a box with no width", { maxCols: 0 }],
+    ["a box with less room than its park", { parkRoomPercent: 99 }],
     ["a default tile that does not exist", { defaultTile: 5 }],
     ["a park built of tiles no tile is the size of", { cellsPerPlayer: 6 }],
     ["half a park", { rounds: 1.5 }],
@@ -246,24 +249,67 @@ describe("laying a tile on a park", () => {
 });
 
 describe("drawing a park", () => {
-  it.each([2, 3, 4, 5, 6])("gives %i players seven cells each and two more, in one piece inside the box", (players) => {
+  /** From a game of two to the document's sixteen. */
+  const SIZES = [2, 3, 4, 5, 6, 8, 11, 16];
+
+  it.each(SIZES)("gives %i players seven cells each and two more, in one piece inside the box for that many", (players) => {
+    const box = boxFor(players, CONFIG);
     for (let seed = 1; seed <= 40; seed++) {
       const { park } = drawPark(randomSource(seed * 7919).next, players, CONFIG);
 
       expect(parkSize(park)).toBe(CONFIG.cellsPerPlayer * players + CONFIG.extraCells);
-      expect(park.rows.length).toBeLessThanOrEqual(CONFIG.maxRows);
-      expect(Math.max(...park.rows.map((row) => row.length))).toBeLessThanOrEqual(CONFIG.maxCols);
+      expect(park.rows.length).toBeLessThanOrEqual(box.rows);
+      expect(Math.max(...park.rows.map((row) => row.length))).toBeLessThanOrEqual(box.cols);
       expect(new Set(park.rows.map((row) => row.length)).size).toBe(1);
       expect(isConnected(park)).toBe(true);
     }
   });
 
-  it.each([2, 3, 4, 5, 6])("has room, while it is empty, for every one of the seven tiles, for %i players", (players) => {
+  it.each(SIZES)("has room, while it is empty, for every one of the seven tiles, for %i players", (players) => {
     for (let seed = 1; seed <= 30; seed++) {
       const { park } = drawPark(randomSource(seed * 7919).next, players, CONFIG);
 
       for (const tile of TILES) expect(waysToLay(park, [], tile.number).length).toBeGreaterThan(0);
     }
+  });
+
+  it("gives a larger game a larger box, and none more than the screen has room for", () => {
+    const boxes = SIZES.map((players) => boxFor(players, CONFIG));
+
+    boxes.forEach((box, at) => {
+      expect(box.cols).toBeLessThanOrEqual(CONFIG.maxCols);
+      expect(box.rows).toBeLessThanOrEqual(CONFIG.maxRows);
+      // room for the park laid out plainly, whatever its build
+      expect(box.rows * box.cols).toBeGreaterThanOrEqual(CONFIG.cellsPerPlayer * SIZES[at] + CONFIG.extraCells);
+      if (at > 0) expect(box.rows * box.cols).toBeGreaterThanOrEqual(boxes[at - 1].rows * boxes[at - 1].cols);
+    });
+    // a game of two is not given the room of a game of sixteen: its park is drawn large
+    expect(boxes[0].cols).toBeLessThan(boxes.at(-1)!.cols);
+  });
+
+  it("puts parks together in more than one way: in one lump, any way, or with arms", () => {
+    const builds = new Set<string>();
+    for (let seed = 1; seed <= 60; seed++) builds.add(drawPark(randomSource(seed * 7919).next, 6, CONFIG).growth);
+
+    expect([...builds].sort()).toEqual(["any", "close", "loose"]);
+  });
+
+  it("draws many different parks for the same number of players", () => {
+    const parks = new Set<string>();
+    for (let seed = 1; seed <= 40; seed++) parks.add(drawPark(randomSource(seed * 7919).next, 16, CONFIG).park.rows.join("/"));
+
+    expect(parks.size).toBe(40);
+  });
+
+  it("says whether a tile has a place without listing them all, and says the same as the list", () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const { park, built } = drawPark(randomSource(seed * 104729).next, 5, CONFIG);
+      const laid = built.slice(0, 3);
+
+      for (const tile of TILES) expect(hasWay(park, laid, tile.number)).toBe(waysToLay(park, laid, tile.number).length > 0);
+    }
+    expect(hasWay({ rows: ["##", "##"] }, [], 13)).toBe(false);
+    expect(hasWay({ rows: ["###", "###", "###"] }, [], 99)).toBe(false);
   });
 
   it("has no empty row or column around it", () => {
@@ -276,7 +322,7 @@ describe("drawing a park", () => {
     expect(park.rows.some((row) => row[width - 1] === "#")).toBe(true);
   });
 
-  it.each([2, 4, 6])("is built of one tile for each of %i players, so that everyone can lay one", (players) => {
+  it.each([2, 4, 6, 16])("is built of one tile for each of %i players, so that everyone can lay one", (players) => {
     for (let seed = 1; seed <= 25; seed++) {
       const { park, built } = drawPark(randomSource(seed * 104729).next, players, CONFIG);
       const laid: Placement[] = [];

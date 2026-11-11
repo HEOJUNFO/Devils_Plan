@@ -37,9 +37,16 @@ export interface GrassConfig {
    */
   cellsPerPlayer: number;
   extraCells: number;
-  /** The widest and the tallest a park may be, in cells: what the screen has room for. */
+  /** The widest and the tallest a park may be, in cells: what the screen has room for, for the largest game. */
   maxCols: number;
   maxRows: number;
+  /**
+   * How much room a park is given to take its shape in, as a percentage of
+   * its own cells: the box it is grown in holds that many cells, and no more
+   * than `maxCols` by `maxRows`. A small game gets a small box, so that its
+   * park is drawn large. Not in the document.
+   */
+  parkRoomPercent: number;
   /** The tile picked for a player who does not pick in time. */
   defaultTile: number;
   /**
@@ -305,6 +312,62 @@ export function fits(
   return coveredBy(tile, row, col, turns).every((cell) => free(park, full, trees, cell.row, cell.col, cell.kind));
 }
 
+/** What stands on a square of the board a park is looked at as: nothing may lie there, anything may, or only a holed cell (a tree). */
+const SHUT = 1;
+const TREE = 2;
+
+/**
+ * Goes through every way tile `number` can still be laid on `park`: by turn,
+ * then from the top, then from the left. `visit` is given each; when it
+ * returns `true` the search stops there. The park is read once into a board
+ * of numbers, so that a large park with many tiles on it is still gone
+ * through quickly.
+ */
+function eachWay(
+  park: Park,
+  placed: readonly Placement[],
+  number: number,
+  laying: Laying,
+  visit: (way: Omit<Placement, "player" | "tile" | "cut">) => boolean,
+): void {
+  const tile = shapeOf(number, laying.cut ?? []);
+  if (tile === undefined) return;
+  const height = park.rows.length;
+  const width = Math.max(0, ...park.rows.map((row) => row.length));
+  const board = new Uint8Array(height * width).fill(SHUT);
+  for (let row = 0; row < height; row++) {
+    for (let col = 0; col < park.rows[row].length; col++) if (park.rows[row][col] === "#") board[row * width + col] = 0;
+  }
+  for (const placement of placed) {
+    const laid = shapeOf(placement.tile, placement.cut ?? []);
+    if (laid === undefined) continue;
+    for (const cell of coveredBy(laid, placement.row, placement.col, placement.turns)) {
+      if (cell.row >= 0 && cell.row < height && cell.col >= 0 && cell.col < width) board[cell.row * width + cell.col] = SHUT;
+    }
+  }
+  for (const tree of laying.trees ?? []) {
+    if (tree.row >= 0 && tree.row < height && tree.col >= 0 && tree.col < width && board[tree.row * width + tree.col] === 0) {
+      board[tree.row * width + tree.col] = TREE;
+    }
+  }
+  for (let turns = 0; turns < 4; turns++) {
+    const shape = turned(tile, turns);
+    for (let row = 0; row + shape.rows <= height; row++) {
+      for (let col = 0; col + shape.cols <= width; col++) {
+        let free = true;
+        for (const cell of shape.cells) {
+          const on = board[(row + cell.row) * width + col + cell.col];
+          if (on === SHUT || (on === TREE && cell.kind !== "hole")) {
+            free = false;
+            break;
+          }
+        }
+        if (free && visit({ row, col, turns })) return;
+      }
+    }
+  }
+}
+
 /**
  * Every way tile `number` can still be laid on `park`: by turn, then from the
  * top, then from the left. Empty when the tile has nowhere to go.
@@ -315,24 +378,22 @@ export function waysToLay(
   number: number,
   laying: Laying = {},
 ): Omit<Placement, "player" | "tile" | "cut">[] {
-  const tile = shapeOf(number, laying.cut ?? []);
-  if (tile === undefined) return [];
-  const full = taken(placed);
-  const trees = new Set((laying.trees ?? []).map((tree) => at(tree.row, tree.col)));
-  const height = park.rows.length;
-  const width = Math.max(0, ...park.rows.map((row) => row.length));
   const ways: Omit<Placement, "player" | "tile" | "cut">[] = [];
-  for (let turns = 0; turns < 4; turns++) {
-    const shape = turned(tile, turns);
-    for (let row = 0; row + shape.rows <= height; row++) {
-      for (let col = 0; col + shape.cols <= width; col++) {
-        if (shape.cells.every((cell) => free(park, full, trees, row + cell.row, col + cell.col, cell.kind))) {
-          ways.push({ row, col, turns });
-        }
-      }
-    }
-  }
+  eachWay(park, placed, number, laying, (way) => {
+    ways.push(way);
+    return false;
+  });
   return ways;
+}
+
+/** Whether tile `number` can still be laid on `park` somewhere: the same as asking for a way, without listing them all. */
+export function hasWay(park: Park, placed: readonly Placement[], number: number, laying: Laying = {}): boolean {
+  let found = false;
+  eachWay(park, placed, number, laying, () => {
+    found = true;
+    return true;
+  });
+  return found;
 }
 
 /**
@@ -563,6 +624,8 @@ export function isValidConfig(config: GrassConfig): boolean {
     config.maxRows,
     config.checkOutOf,
   ];
+  // a park has to have room to be grown in
+  if (!isWhole(config.parkRoomPercent) || config.parkRoomPercent < 100) return false;
   if (!positive.every((value) => isWhole(value) && value >= 1)) return false;
   const none = [config.pauseSeconds, config.extraCells, config.scoreBonus, config.attackLoss, config.cutMax, config.checkBonus, config.checkAtMost];
   if (!none.every((value) => isWhole(value) && value >= 0)) return false;
@@ -574,59 +637,57 @@ export function isValidConfig(config: GrassConfig): boolean {
   return TILES.some((tile) => tile.cells.length === config.cellsPerPlayer);
 }
 
-/** How many times a park is drawn afresh before giving up on fitting it in the box. */
-const DRAWS = 60;
+/** How many times a park is drawn afresh in one build before a build that holds together better is tried. */
+const DRAWS = 8;
+/** How many times a park is drawn in the build that holds together best, the last tried: a park for two seldom has room for every tile. */
+const LAST_DRAWS = 60;
 
-/** The four cells that share a side with a cell. */
-const SIDES: readonly (readonly [number, number])[] = [
-  [1, 0],
-  [-1, 0],
-  [0, 1],
-  [0, -1],
-];
-
-/** A park being built: its cells, and the box they lie in. */
-interface Growing {
-  cells: Set<string>;
-  top: number;
-  left: number;
-  bottom: number;
-  right: number;
+/** The most rows and columns a park may take. */
+interface Box {
+  rows: number;
+  cols: number;
 }
 
-/** Whether `cells` added to `park` would still lie in a box of `maxRows` by `maxCols`. */
-function inBox(park: Growing, cells: readonly { row: number; col: number }[], config: GrassConfig): boolean {
-  const top = Math.min(park.top, ...cells.map((cell) => cell.row));
-  const bottom = Math.max(park.bottom, ...cells.map((cell) => cell.row));
-  const left = Math.min(park.left, ...cells.map((cell) => cell.col));
-  const right = Math.max(park.right, ...cells.map((cell) => cell.col));
-  return bottom - top + 1 <= config.maxRows && right - left + 1 <= config.maxCols;
+/** How wide a park's box is for each row of its height: the shape of the part of the screen it is drawn in. */
+const BOX_WIDE = 3;
+const BOX_HIGH = 2;
+
+/**
+ * The box a park for `players` is grown in: room for `parkRoomPercent` of
+ * its cells, half as wide again as it is high, and never more than the
+ * values allow. It always has room for the park laid out plainly.
+ */
+export function boxFor(players: number, config: GrassConfig): Box {
+  const cells = config.cellsPerPlayer * players + config.extraCells;
+  const room = (cells * config.parkRoomPercent) / 100;
+  const cols = Math.min(config.maxCols, Math.max(4, Math.ceil(Math.sqrt((room * BOX_WIDE) / BOX_HIGH))));
+  const rows = Math.min(config.maxRows, Math.max(4, Math.ceil((cols * BOX_HIGH) / BOX_WIDE), Math.ceil(cells / cols)));
+  return { rows, cols };
 }
 
-function grow(park: Growing, cells: readonly { row: number; col: number }[]): void {
-  for (const cell of cells) {
-    park.cells.add(at(cell.row, cell.col));
-    park.top = Math.min(park.top, cell.row);
-    park.bottom = Math.max(park.bottom, cell.row);
-    park.left = Math.min(park.left, cell.col);
-    park.right = Math.max(park.right, cell.col);
-  }
+/**
+ * How a park is grown, piece by piece: every new piece pressed `close`
+ * against what is there (a park in one lump), laid `loose` against it (arms
+ * and necks, with a lump here and there), or put wherever it touches
+ * (`any`). (gap) The document has one park; a room gets a new one for every
+ * game, and they differ in build.
+ */
+export type Growth = "close" | "any" | "loose";
+
+/**
+ * One of `choices`, by how the park is grown: from the quarter that lie
+ * closest against it, from the half that touch it least, or any of them.
+ * The order of `choices` is the caller's and is kept among equals, so the
+ * same draw gives the same park.
+ */
+function closest<T extends { touch: number }>(choices: T[], random: () => number, growth: Growth = "close"): T {
+  if (growth === "any") return choices[randomInt(random, choices.length)];
+  const sorted = [...choices].sort((a, b) => (growth === "close" ? b.touch - a.touch : a.touch - b.touch));
+  return sorted[randomInt(random, Math.max(1, Math.ceil(sorted.length / (growth === "close" ? 4 : 2))))];
 }
 
-/** How many sides `cells` share with the park: the more, the closer the new piece lies against it. */
-function touching(park: Growing, cells: readonly { row: number; col: number }[]): number {
-  let sides = 0;
-  for (const cell of cells) {
-    for (const [dr, dc] of SIDES) if (park.cells.has(at(cell.row + dr, cell.col + dc))) sides++;
-  }
-  return sides;
-}
-
-/** One of `choices` that lie closest against the park: drawn from the best quarter, so parks differ without straggling. */
-function closest<T extends { touch: number }>(choices: T[], random: () => number): T {
-  const sorted = [...choices].sort((a, b) => b.touch - a.touch);
-  return sorted[randomInt(random, Math.max(1, Math.ceil(sorted.length / 4)))];
-}
+/** The longest side of any tile, in cells: how far a piece can reach past the park it is laid against. */
+const REACH = Math.max(...TILES.map((tile) => Math.max(tile.rows, tile.cols)));
 
 /**
  * Builds a park for `players`: tiles of `cellsPerPlayer` cells laid side by
@@ -634,74 +695,113 @@ function closest<T extends { touch: number }>(choices: T[], random: () => number
  * at least one way for everybody to lay a tile, and never much room to spare.
  * Returns the park and the tiles it was built of (which are nobody's: the
  * park starts empty). `null` when it could not be kept inside the box.
+ *
+ * The park is grown on a board of numbers wide enough for it to go any way
+ * from the middle: a park for sixteen is put up as fast as one for two used
+ * to be.
  */
-function buildPark(random: () => number, players: number, config: GrassConfig): { park: Park; built: Placement[] } | null {
+function buildPark(random: () => number, players: number, config: GrassConfig, growth: Growth = "close"): { park: Park; built: Placement[] } | null {
+  const box = boxFor(players, config);
   const pieces = TILES.filter((tile) => tile.cells.length === config.cellsPerPlayer);
-  const park: Growing = { cells: new Set(), top: 0, left: 0, bottom: 0, right: 0 };
+  // every piece in each of its four turns, in the order they are tried
+  const shapes = pieces.flatMap((tile) => [0, 1, 2, 3].map((turns) => ({ tile: tile.number, turns, shape: turned(tile, turns) })));
+  // the first piece lies in the middle of a board with a box's room, and a piece's reach, on every side of it
+  const margin = REACH + 2;
+  const height = box.rows * 2 + margin * 2;
+  const width = box.cols * 2 + margin * 2;
+  const originRow = box.rows + margin;
+  const originCol = box.cols + margin;
+  const board = new Uint8Array(height * width);
+  let top = originRow;
+  let bottom = originRow;
+  let left = originCol;
+  let right = originCol;
   const built: Placement[] = [];
+  const put = (cells: readonly { row: number; col: number }[], row: number, col: number): void => {
+    for (const cell of cells) {
+      const r = row + cell.row;
+      const c = col + cell.col;
+      board[r * width + c] = 1;
+      top = Math.min(top, r);
+      bottom = Math.max(bottom, r);
+      left = Math.min(left, c);
+      right = Math.max(right, c);
+    }
+  };
+  /** How many sides the square at `r`, `c` shares with the park. */
+  const sides = (r: number, c: number): number => board[r * width + c - 1] + board[r * width + c + 1] + board[(r - 1) * width + c] + board[(r + 1) * width + c];
 
-  const first = pieces[randomInt(random, pieces.length)];
-  const firstTurns = randomInt(random, 4);
-  grow(park, coveredBy(first, 0, 0, firstTurns));
-  built.push({ player: 0, tile: first.number, row: 0, col: 0, turns: firstTurns });
+  const first = shapes[randomInt(random, pieces.length) * 4 + randomInt(random, 4)];
+  // the bounds start as the first piece's own
+  top = bottom = originRow + first.shape.cells[0].row;
+  left = right = originCol + first.shape.cells[0].col;
+  put(first.shape.cells, originRow, originCol);
+  built.push({ player: 0, tile: first.tile, row: originRow, col: originCol, turns: first.turns });
 
   for (let piece = 1; piece < players; piece++) {
-    const choices: { placement: Placement; cells: TileCell[]; touch: number }[] = [];
-    for (const tile of pieces) {
-      for (let turns = 0; turns < 4; turns++) {
-        const shape = turned(tile, turns);
-        for (let row = park.top - shape.rows; row <= park.bottom + 1; row++) {
-          for (let col = park.left - shape.cols; col <= park.right + 1; col++) {
-            const cells = coveredBy(tile, row, col, turns);
-            if (cells.some((cell) => park.cells.has(at(cell.row, cell.col)))) continue;
-            const touch = touching(park, cells);
-            if (touch === 0 || !inBox(park, cells, config)) continue;
-            choices.push({ placement: { player: piece, tile: tile.number, row, col, turns }, cells, touch });
+    const choices: { at: number; row: number; col: number; touch: number }[] = [];
+    for (let at = 0; at < shapes.length; at++) {
+      const shape = shapes[at].shape;
+      for (let row = top - shape.rows; row <= bottom + 1; row++) {
+        // the piece's own box is the tile's: a turned tile fills its box from edge to edge
+        if (Math.max(bottom, row + shape.rows - 1) - Math.min(top, row) + 1 > box.rows) continue;
+        for (let col = left - shape.cols; col <= right + 1; col++) {
+          if (Math.max(right, col + shape.cols - 1) - Math.min(left, col) + 1 > box.cols) continue;
+          let touch = 0;
+          let free = true;
+          for (const cell of shape.cells) {
+            const r = row + cell.row;
+            const c = col + cell.col;
+            if (board[r * width + c] === 1) {
+              free = false;
+              break;
+            }
+            touch += sides(r, c);
           }
+          if (free && touch > 0) choices.push({ at, row, col, touch });
         }
       }
     }
     if (choices.length === 0) return null;
-    const chosen = closest(choices, random);
-    grow(park, chosen.cells);
-    built.push(chosen.placement);
+    // a park with arms still has lumps: every other piece or so is pressed close, or no big tile would find room
+    const how: Growth = growth === "loose" && random() < 0.5 ? "close" : growth;
+    const chosen = closest(choices, random, how);
+    put(shapes[chosen.at].shape.cells, chosen.row, chosen.col);
+    built.push({ player: piece, tile: shapes[chosen.at].tile, row: chosen.row, col: chosen.col, turns: shapes[chosen.at].turns });
   }
 
   for (let extra = 0; extra < config.extraCells; extra++) {
-    const seen = new Set<string>();
-    const choices: { cell: { row: number; col: number }; touch: number }[] = [];
-    for (const key of park.cells) {
-      const [row, col] = key.split(",").map(Number);
-      for (const [dr, dc] of SIDES) {
-        const cell = { row: row + dr, col: col + dc };
-        const name = at(cell.row, cell.col);
-        if (park.cells.has(name) || seen.has(name) || !inBox(park, [cell], config)) continue;
-        seen.add(name);
-        choices.push({ cell, touch: touching(park, [cell]) });
+    const choices: { row: number; col: number; touch: number }[] = [];
+    // from the top, then from the left: an order to draw from that is the same every time
+    for (let row = top - 1; row <= bottom + 1; row++) {
+      if (Math.max(bottom, row) - Math.min(top, row) + 1 > box.rows) continue;
+      for (let col = left - 1; col <= right + 1; col++) {
+        if (board[row * width + col] === 1 || Math.max(right, col) - Math.min(left, col) + 1 > box.cols) continue;
+        const touch = sides(row, col);
+        if (touch > 0) choices.push({ row, col, touch });
       }
     }
     if (choices.length === 0) return null;
-    // in a fixed order before drawing: a set's order is not something to draw from
-    choices.sort((a, b) => a.cell.row - b.cell.row || a.cell.col - b.cell.col);
-    grow(park, [closest(choices, random).cell]);
+    const chosen = closest(choices, random, growth);
+    put([{ row: 0, col: 0 }], chosen.row, chosen.col);
   }
 
   const rows: string[] = [];
-  for (let row = park.top; row <= park.bottom; row++) {
+  for (let row = top; row <= bottom; row++) {
     let line = "";
-    for (let col = park.left; col <= park.right; col++) line += park.cells.has(at(row, col)) ? "#" : ".";
+    for (let col = left; col <= right; col++) line += board[row * width + col] === 1 ? "#" : ".";
     rows.push(line);
   }
   return {
     park: { rows },
-    built: built.map((placement) => ({ ...placement, row: placement.row - park.top, col: placement.col - park.left })),
+    built: built.map((placement) => ({ ...placement, row: placement.row - top, col: placement.col - left })),
   };
 }
 
 /** A park that always works, for the rare draw that will not fit the box: rows filled from the left, as wide as the box allows. */
 function plainPark(players: number, config: GrassConfig): Park {
   const cells = config.cellsPerPlayer * players + config.extraCells;
-  const width = Math.min(config.maxCols, Math.max(1, Math.ceil(Math.sqrt(cells * 1.5))));
+  const width = Math.min(boxFor(players, config).cols, Math.max(1, Math.ceil(Math.sqrt(cells * 1.5))));
   const rows: string[] = [];
   for (let left = cells; left > 0; left -= width) rows.push("#".repeat(Math.min(width, left)).padEnd(width, "."));
   return { rows };
@@ -714,17 +814,29 @@ function plainPark(players: number, config: GrassConfig): Park {
  * be laid at all. Should none turn up, the one with room for the most kinds
  * is taken. `built` is empty for the plain park drawn when none would fit
  * the box.
+ *
+ * How the park is grown is drawn first: about two parks in five are one
+ * lump, as many are put together any way, and one in five has arms
+ * ({@link Growth}). A build that does not give a park with room for every
+ * tile in a few tries gives way to the next closer one.
  */
-export function drawPark(random: () => number, players: number, config: GrassConfig): { park: Park; built: Placement[] } {
-  let best: { park: Park; built: Placement[]; kinds: number } | null = null;
-  for (let attempt = 0; attempt < DRAWS; attempt++) {
-    const drawn = buildPark(random, players, config);
-    if (drawn === null) continue;
-    const kinds = TILES.filter((tile) => waysToLay(drawn.park, [], tile.number).length > 0).length;
-    if (kinds === TILES.length) return drawn;
-    if (best === null || kinds > best.kinds) best = { ...drawn, kinds };
+export function drawPark(random: () => number, players: number, config: GrassConfig): { park: Park; built: Placement[]; growth: Growth } {
+  const lot = random();
+  const wanted: Growth = lot < 0.4 ? "close" : lot < 0.8 ? "any" : "loose";
+  // a park with arms may have no room for the big tiles: then one put together more closely is drawn instead
+  const builds: Growth[] = wanted === "loose" ? ["loose", "any", "close"] : wanted === "any" ? ["any", "close"] : ["close"];
+  let best: { park: Park; built: Placement[]; kinds: number; growth: Growth } | null = null;
+  for (const growth of builds) {
+    const tries = growth === builds[builds.length - 1] ? LAST_DRAWS : DRAWS;
+    for (let attempt = 0; attempt < tries; attempt++) {
+      const drawn = buildPark(random, players, config, growth);
+      if (drawn === null) continue;
+      const kinds = TILES.filter((tile) => hasWay(drawn.park, [], tile.number)).length;
+      if (kinds === TILES.length) return { ...drawn, growth };
+      if (best === null || kinds > best.kinds) best = { ...drawn, kinds, growth };
+    }
   }
-  return best === null ? { park: plainPark(players, config), built: [] } : { park: best.park, built: best.built };
+  return best === null ? { park: plainPark(players, config), built: [], growth: "close" } : { park: best.park, built: best.built, growth: best.growth };
 }
 
 /** How high `player` stands in the priority, 0 for the highest. */
@@ -784,6 +896,15 @@ export function waysFor(state: GrassState, player: number, config: GrassConfig):
     if (ways.length > 0) return cut.length > 0 ? ways.map((way) => ({ ...way, cut })) : ways;
   }
   return [];
+}
+
+/** Whether `player` can still lay their tile somewhere: whole, or, for a 방어 player, with some cut of it. */
+export function canLay(state: GrassState, player: number, config: GrassConfig): boolean {
+  const number = state.picks.find((pick) => pick.player === player)?.tile ?? config.defaultTile;
+  const tile = tileOf(number);
+  if (tile === undefined) return false;
+  const cuts = optionOf(state, player, 6) === 2 ? cutsOf(tile, config.cutMax) : [[]];
+  return cuts.some((cut) => hasWay(state.park, state.placed, number, { cut, trees: state.trees }));
 }
 
 /** Whom the game is waiting on now: everyone still to choose, or the player on turn. */
@@ -930,7 +1051,7 @@ function nextToLay(state: GrassState, now: number, config: GrassConfig): void {
   for (const player of state.layOrder) {
     if (state.failed.includes(player) || state.placed.some((placement) => placement.player === player)) continue;
     const tile = state.picks.find((pick) => pick.player === player)?.tile ?? config.defaultTile;
-    if (waysFor(state, player, config).length === 0) {
+    if (!canLay(state, player, config)) {
       state.failed.push(player);
       state.history.push({ type: "fail", round: state.round, player, tile });
       continue;

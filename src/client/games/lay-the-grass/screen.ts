@@ -16,6 +16,7 @@ import {
   coveredBy,
   fits,
   hasCell,
+  hasWay,
   shapeOf,
   tileOf,
   turned,
@@ -1019,7 +1020,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const rect = tileRect(index);
       const [x, y, w, h] = rect;
       const picked = chosen === tile.number;
-      const room = waysToLay(view.park, view.placed, tile.number).length > 0;
+      const room = hasWay(view.park, view.placed, tile.number);
       pen.px(x, y, w, h, picked ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, picked ? "#3a2a12" : mine && inRect(mouse, rect) ? C.btnH : C.btn);
       drawTile(tile, x + 3, y + Math.floor((h - tile.rows * 5) / 2), 5, room ? "#6fcf5a" : C.dim);
