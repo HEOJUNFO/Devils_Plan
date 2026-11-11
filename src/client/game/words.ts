@@ -159,7 +159,7 @@ const en: typeof ko = {
     title: "Russian Roulette: rules",
     parts: [
       "Some of the chambers hold a live round (with 6 players, two of the six). Each seat faces one chamber, and you live if the chamber in front of you is empty at the last volley.",
-      "On your turn you do one of five things. You start with 16 credits.",
+      "On your turn, do one of five things. You start with 16 credits.",
       [
         "Public check (1): shows everyone whether two neighbouring chambers are loaded",
         "Private check (2): shows only you two neighbouring chambers",
