@@ -55,6 +55,7 @@ import { CHAIR_DOWN, FIGURE_COUNT } from "./figures";
 import { C } from "./palette";
 import * as fxlib from "./pixelfx.js";
 import { isMuted, setMuted, sfx, startAudio } from "./sound";
+import { WORDS } from "./words";
 
 /** What the room sends about a game of Russian Roulette. */
 export type GameMessage = Extract<ServerMessage, { type: "game"; game: "russian-roulette" }>;
@@ -110,20 +111,9 @@ const LOG_NAME_WIDTH = 52;
 const LOG_TOP = 106;
 const LOG_ROWS = 8;
 
-const WAIT_TEXT: Record<string, string> = {
-  "not-your-turn": "지금은 내 차례가 아닙니다",
-  "not-enough-credits": "크레딧이 모자랍니다",
-  "out-of-credits": "크레딧을 다 써서 더는 행동할 수 없습니다",
-  "swap-pending": "먼저 맞바꿀 두 칸을 골라야 합니다",
-  "game-over": "이 판은 끝났습니다",
-  "not-seated": "관전 중에는 행동할 수 없습니다",
-  "no-game": "진행 중인 판이 없습니다",
-  "not-host": "방장만 새 판을 시작할 수 있습니다",
-  "bad-player-count": "지금 인원으로는 시작할 수 없습니다 (4~6명)",
-  "already-playing": "이미 판이 진행 중입니다",
-  "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
-  "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
-};
+/** The lead's mark beside a name: a plate a pixel wider than its word on each side, and the gap before it. */
+const LEAD_MARK_EDGE = 2;
+const LEAD_MARK_GAP = 3;
 
 interface Selection {
   mode: "pick" | "confirm" | "amount" | "swap";
@@ -260,7 +250,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   const layoutOf = (seat: number): SeatLayout => seatLayout(posOf(seat), seats());
   const angleOf = (seat: number): number => posAngle(posOf(seat), seats());
   const nickOf = (seat: number): string => latest?.players[seat]?.nick ?? "";
-  const word = (round: 0 | 1): string => (round === 1 ? "실탄" : "빔");
+  const word = WORDS.round;
 
   /** The seat the muzzle points at as far as the screen has shown, and the turn still being played. */
   function shownMuzzle(): { seat: number; turning: number } {
@@ -499,12 +489,12 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       shake = 5;
       flick = 0.5;
       sfx.bang();
-      pops.push({ text: "탕!", x: px0, y: py0, t: 1.1, colour: C.crim });
+      pops.push({ text: WORDS.bang, x: px0, y: py0, t: 1.1, colour: C.crim });
       muzzleFx(fire.a, 3 + fire.k);
       addFx(fxlib.poof, { x: at.x, y: at.y + 14, seed: 21 + fire.k }, [at.x - 56, at.y - 66, 112, 92]);
     } else {
       sfx.click();
-      pops.push({ text: "철컥", x: px0, y: py0, t: 0.8, colour: C.teal });
+      pops.push({ text: WORDS.click, x: px0, y: py0, t: 0.8, colour: C.teal });
     }
     fire.stage = "hold";
     fire.t = FIRE_GAP * (shot.hit ? 1.3 : fire.hits >= live ? 0.2 : 0.5);
@@ -543,7 +533,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   function choose(i: number): void {
     if (latest === null || latest.view.credits === null) return;
     if (latest.view.credits < costs(latest.rules)[i]) {
-      say(WAIT_TEXT["not-enough-credits"]);
+      say(WORDS.refused["not-enough-credits"]);
       sfx.deny();
       return;
     }
@@ -558,7 +548,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     // while the connection is down nothing goes, and the table is not left waiting on it
     pending = handlers.act(action);
     if (!pending) {
-      say("연결이 끊겨 보내지 못했습니다. 다시 해 주세요");
+      say(WORDS.notSent);
       sfx.deny();
     }
   }
@@ -587,7 +577,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         handlers.lobby();
       } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT))) {
         if (host) handlers.again();
-        else say(WAIT_TEXT["not-host"]);
+        else say(WORDS.refused["not-host"]);
       }
       return;
     }
@@ -752,36 +742,37 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const fresh = i > lastMine;
       const add = (text: string, colour: string = C.bone) => lines.push({ text, colour, fresh });
       if (event.type === "public") {
-        add(`${who} 공개 ${LETTERS[event.pair]}${word(event.seen[0])} ${LETTERS[mod(event.pair + 1, seats())]}${word(event.seen[1])}`);
+        const said = WORDS.log.publicCheck(who, LETTERS[event.pair], LETTERS[mod(event.pair + 1, seats())], word(event.seen[0]), word(event.seen[1]));
+        for (const line of said) add(line);
       } else if (event.type === "private") {
         const a = LETTERS[event.pair];
         const b = LETTERS[mod(event.pair + 1, seats())];
-        add(`${who} 비공개 ${a}·${b}`);
-        if (event.seen !== null) add(`나만: ${a} ${word(event.seen[0])}, ${b} ${word(event.seen[1])}`, C.amber);
+        add(WORDS.log.privateCheck(who, a, b));
+        if (event.seen !== null) add(WORDS.log.onlyYou(a, b, word(event.seen[0]), word(event.seen[1])), C.amber);
       } else if (event.type === "rotate") {
-        add(`${who} 총구 ${event.steps}칸 회전`);
+        add(WORDS.log.turned(who, event.steps));
       } else if (event.type === "tamper") {
-        if (event.forced) add(`${who} 시간 초과: 1개 제출`, C.boneD);
-        else add(event.amount === null ? `${who} 조작함에 제출` : `${who} 조작함에 ${event.amount}개`);
-        if (event.earned) add(`${who} 조작권 획득!`, C.amber);
+        if (event.forced) add(WORDS.log.timedOut(who), C.boneD);
+        else add(WORDS.log.putIn(who, event.amount));
+        if (event.earned) add(WORDS.log.earnedSwap(who), C.amber);
       } else if (event.type === "swap") {
-        add(`${who} 조작: ${LETTERS[event.pair]}·${LETTERS[mod(event.pair + 1, seats())]} 맞바꿈`, C.amber);
+        add(WORDS.log.swapped(who, LETTERS[event.pair], LETTERS[mod(event.pair + 1, seats())]), C.amber);
       } else {
-        add(`${who} 조작권을 놓침`, C.boneD);
+        add(WORDS.log.lostSwap(who), C.boneD);
       }
       if (event.out) {
         out++;
-        add(`${who} 크레딧 소진`, C.crim);
-        if (out === latest.rules.endWhenOut - 1) add("한 명만 더 바닥나면 끝!", C.amber);
+        add(WORDS.log.outOfCredits(who), C.crim);
+        if (out === latest.rules.endWhenOut - 1) add(WORDS.log.oneMore, C.amber);
       }
-      if (event.ended) add("격발!", C.crim);
+      if (event.ended) add(WORDS.log.fire, C.crim);
     }
     if (fire !== null || fired) {
       const result = view.result;
       const shots = result === null ? [] : fired ? result.shots : result.shots.slice(0, Math.max(0, fire === null ? 0 : fire.stage === "aim" ? fire.k : fire.k + 1));
       for (const shot of shots) {
         const who = pen.fit(nickOf(shot.seat), LOG_NAME_WIDTH);
-        lines.push({ text: shot.hit ? `탕! ${who} 탈락` : `철컥. ${who} 생존`, colour: shot.hit ? C.crim : C.teal, fresh: true });
+        lines.push({ text: WORDS.log.shot(who, shot.hit), colour: shot.hit ? C.crim : C.teal, fresh: true });
       }
     }
     return lines;
@@ -836,7 +827,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const mine = seat === view.seat;
       const name = pen.fit(player.nick, NAME_WIDTH);
       const lead = view.phase !== "ended" && deal <= 0 && mod(view.round, n) === seat;
-      const width = pen.width(name) + (lead ? 17 : 0);
+      // the mark of whoever leads the round: its word is as long as the language makes it
+      const leadPlate = pen.width(WORDS.seat.lead) + LEAD_MARK_EDGE;
+      const width = pen.width(name) + (lead ? leadPlate + LEAD_MARK_GAP : 0);
       const lx = at.label.align === "center" ? at.label.x - Math.round(width / 2) : at.label.x;
       const ly = at.label.y;
       pen.txt(name, lx, ly, fallen[seat] ? C.dim : waiting === seat || (mine && deal > 0) ? C.amber : C.bone);
@@ -846,18 +839,18 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       if (voice !== "out") drawVoiceMark(pen, lx - VOICE_MARK_W, ly, voice, time);
       if (lead) {
         // leads this round
-        pen.px(lx + width - 14, ly, 14, 13, C.amberD);
-        pen.px(lx + width - 13, ly + 1, 12, 11, C.ink);
-        pen.txt("선", lx + width - 13, ly + 1, C.amber);
+        pen.px(lx + width - leadPlate, ly, leadPlate, 13, C.amberD);
+        pen.px(lx + width - leadPlate + 1, ly + 1, leadPlate - LEAD_MARK_EDGE, 11, C.ink);
+        pen.txt(WORDS.seat.lead, lx + width - leadPlate + 1, ly + 1, C.amber);
       }
       // under the name: what the table can tell of the seat. My own seat has no room for a second line.
       const second = (text: string, colour: string) => pen.txt(text, mine ? lx + width + 5 : lx, mine ? ly : ly + 13, colour);
-      if (fallen[seat]) second("탈락", C.crim);
+      if (fallen[seat]) second(WORDS.seat.shot, C.crim);
       else if (deal > 0) {
         // nothing yet
-      } else if (info.out) second("소진", C.crim);
-      else if (player.left) second("나감", C.dim);
-      else if (!player.connected) second("끊김", C.dim);
+      } else if (info.out) second(WORDS.seat.spent, C.crim);
+      else if (player.left) second(WORDS.seat.left, C.dim);
+      else if (!player.connected) second(WORDS.seat.offline, C.dim);
       else if (!mine) {
         // credits left, as far as the table can count them
         pen.px(lx, ly + 16, 5, 5, C.brassD);
@@ -1002,16 +995,16 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
     if (view.credits === null || view.pot === null) {
-      pen.txt("관전 중", x, 3, C.amber);
-      pen.txt("이 판에는 자리가 없습니다", x, 26, C.boneD);
+      pen.txt(WORDS.panel.watching, x, 3, C.amber);
+      pen.txt(WORDS.panel.noSeat, x, 26, C.boneD);
     } else {
       // my credits, which only I can see, and my hidden deposit towards the swap
-      pen.txt("크레딧", x, 3, C.boneD);
-      pen.txt(`${view.credits}`, x + 42, 3, C.amber);
+      pen.txt(WORDS.panel.credits, x, 3, C.boneD);
+      pen.txt(`${view.credits}`, x + pen.width(WORDS.panel.credits) + 6, 3, C.amber);
       const pitch = 168 / rules.startCredits;
       const pipWidth = Math.max(1, Math.floor(pitch) - 2);
       for (let i = 0; i < rules.startCredits; i++) pen.px(x + Math.floor(i * pitch), 17, pipWidth, 5, i < view.credits ? C.brass : C.steelDD);
-      pen.txt("조작함", x, 26, C.boneD);
+      pen.txt(WORDS.panel.pot, x, 26, C.boneD);
       for (let i = 0; i < rules.tamperNeed; i++) pen.px(x + 44 + i * 10, 30, 8, 5, i < view.pot ? C.crim : C.steelDD);
       pen.txt(`${view.pot}/${rules.tamperNeed}`, W - 5, 26, C.boneD, "right");
       const mine = myChamber();
@@ -1024,24 +1017,23 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
           else if (q === null) blank++;
         }
         const letter = LETTERS[mine];
-        const line =
-          known === 1 ? `내 앞 약실 ${letter}: 실탄!` : known === 0 ? `내 앞 약실 ${letter}: 비었음` : `내 앞 약실 ${letter}: 모름 ${Math.round((100 * live) / Math.max(1, blank))}%`;
+        const line = WORDS.panel.mine(letter, known, Math.round((100 * live) / Math.max(1, blank)));
         pen.txt(line, x, 40, known === 1 ? C.crim : known === 0 ? C.teal : C.bone);
       }
     }
     pen.px(x, 55, 168, 1, C.steelDD);
     pen.ell(x + 5, 64, 4, 3, C.bone);
     pen.ell(x + 5, 64, 3, 2, C.hatch);
-    pen.txt("모두 앎", x + 13, 58, C.boneD);
+    pen.txt(WORDS.panel.allKnow, x + 13, 58, C.boneD);
     pen.ell(x + 87, 64, 3, 2, C.hatch);
     pen.px(x + 86, 59, 3, 1, C.amber);
     pen.px(x + 86, 69, 3, 1, C.amber);
     pen.px(x + 81, 63, 1, 3, C.amber);
     pen.px(x + 93, 63, 1, 3, C.amber);
-    pen.txt("나만 앎", x + 98, 58, C.boneD);
+    pen.txt(WORDS.panel.onlyIKnow, x + 98, 58, C.boneD);
     pen.px(x, 73, 168, 1, C.steelDD);
     const close = view.phase !== "ended" && view.outCount >= rules.endWhenOut - 1;
-    pen.txt(`${view.round + 1}라운드 · 소진 ${view.outCount}/${rules.endWhenOut} · H 규칙`, x, 76, close ? C.crim : C.boneD);
+    pen.txt(WORDS.panel.status(view.round + 1, view.outCount, rules.endWhenOut), x, 76, close ? C.crim : C.boneD);
     // what happened, newest at the bottom; a mark on what came since my last move
     const lines = logLines();
     const from = Math.max(0, lines.length - LOG_ROWS);
@@ -1059,9 +1051,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const view = latest.view;
     const rules = latest.rules;
     if (noteT > 0) return [note, C.amber];
-    if (offline) return ["연결이 끊겼습니다. 다시 연결하는 중", C.crim];
-    if (deal > 0) return ["자리 추첨 중", C.boneD];
-    if (fire !== null) return ["격발: 총구가 향한 자리부터 시계 방향으로 한 발씩", C.crim];
+    if (offline) return [WORDS.prompt.offline, C.crim];
+    if (deal > 0) return [WORDS.prompt.dealing, C.boneD];
+    if (fire !== null) return [WORDS.prompt.firing, C.crim];
     if (anim !== null || !settled()) {
       const lines = logLines();
       return [lines.length > 0 ? lines[lines.length - 1].text : "", C.boneD];
@@ -1073,33 +1065,33 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const player = latest.players[waiting];
       if (latest.turnEndsIn !== null && !player.connected) {
         const left = secondsLeft() ?? 0;
-        return [`${who} 자리 비움: ${left}초 뒤 자동으로 1크레딧 제출`, C.boneD];
+        return [WORDS.prompt.away(who, left), C.boneD];
       }
-      return [`${who} 차례`, C.boneD];
+      return [WORDS.prompt.turnOf(who), C.boneD];
     }
-    if (pending) return ["보내는 중", C.boneD];
+    if (pending) return [WORDS.prompt.sending, C.boneD];
     const mine = myChamber() ?? 0;
     if (sel === null) {
       const known = view.chambers[mine];
-      if (view.outCount >= rules.endWhenOut - 1) return ["내 차례: 누구든 크레딧을 다 쓰면 그 자리에서 격발입니다", C.amber];
+      if (view.outCount >= rules.endWhenOut - 1) return [WORDS.prompt.lastCredits, C.amber];
       const myMoves = view.history.filter((event) => event.seat === view.seat).length;
       if (myMoves < 2) {
         // the first turns teach by the next thing to do
-        if (known === null) return ["내 차례: 1이나 2로 내 앞 약실부터 조사해 보세요", C.amber];
-        if (known === 1) return ["내 앞이 실탄! 3이나 4로 총구를 돌려 옆자리로 넘기세요", C.crim];
-        return ["내 앞은 비었습니다. 크레딧을 아끼며 다른 자리를 살피세요", C.teal];
+        if (known === null) return [WORDS.prompt.firstCheck, C.amber];
+        if (known === 1) return [WORDS.prompt.liveAhead, C.crim];
+        return [WORDS.prompt.emptyAhead, C.teal];
       }
-      return ["내 차례: 행동을 고르세요 (1~5)", C.amber];
+      return [WORDS.prompt.yourTurn, C.amber];
     }
     const n = seats();
     const pair = `${LETTERS[sel.pair]}·${LETTERS[mod(sel.pair + 1, n)]}`;
-    if (sel.mode === "pick") return [`${sel.act === 0 ? "공개 조사" : "비공개 조사"}: ${pair} 칸 · 좌우 키로 고르기`, C.amber];
-    if (sel.mode === "swap") return [`조작권! 맞바꿀 두 칸 ${pair} · 좌우 키로 고르기`, C.amber];
-    if (sel.mode === "amount") return [`조작함에 ${sel.amount}개 · 좌우 키로 개수 · 모은 ${view.pot ?? 0}/${rules.tamperNeed}`, C.amber];
+    if (sel.mode === "pick") return [WORDS.prompt.pick(sel.act === 0, pair), C.amber];
+    if (sel.mode === "swap") return [WORDS.prompt.swap(pair), C.amber];
+    if (sel.mode === "amount") return [WORDS.prompt.amount(sel.amount, view.pot ?? 0, rules.tamperNeed), C.amber];
     const steps = sel.act === 2 ? 1 : 2;
     const j = mod(mine - steps, n);
     const known = view.chambers[j];
-    return [`${steps}칸 회전: ${LETTERS[j]} 약실(${known === 1 ? "실탄" : known === 0 ? "빔" : "모름"})이 내 앞으로`, known === 1 ? C.crim : C.amber];
+    return [WORDS.prompt.turn(steps, LETTERS[j], known), known === 1 ? C.crim : C.amber];
   }
 
   function smallButton(rect: readonly [number, number, number, number], label: string, strong: boolean): void {
@@ -1113,14 +1105,14 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const result = latest.view.result;
     const me = latest.view.seat;
     const lost = me !== null && result.hitSeats.includes(me);
-    pen.txt(me === null ? "종료" : lost ? "탈락" : "생존!", 10, 234, me === null ? C.bone : lost ? C.crim : C.teal, "left", 24);
+    pen.txt(WORDS.result.verdict(me !== null, lost), 10, 234, me === null ? C.bone : lost ? C.crim : C.teal, "left", 24);
     const live = result.chambers.map((round, j) => (round === 1 ? LETTERS[j] : "")).filter((letter) => letter !== "");
-    pen.txt(`실탄은 ${live.join("·")} 약실에 있었습니다`, 96, 226, C.bone);
-    pen.txt(`쓰러진 자리: ${result.hitSeats.map((seat) => pen.fit(nickOf(seat), LOG_NAME_WIDTH)).join(", ")}`, 96, 240, C.boneD);
+    pen.txt(WORDS.result.live(live.join("·")), 96, 226, C.bone);
+    pen.txt(WORDS.result.fallen(result.hitSeats.map((seat) => pen.fit(nickOf(seat), LOG_NAME_WIDTH)).join(", ")), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? "같은 사람들과 한 판 더 하거나 대기실로" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
-    if (host) smallButton(AGAIN_RECT, "Enter 새 판", true);
-    smallButton(LOBBY_RECT, "Esc 대기실로", false);
+    else pen.txt(host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) smallButton(AGAIN_RECT, WORDS.button.again, true);
+    smallButton(LOBBY_RECT, WORDS.button.lobby, false);
   }
 
   function drawBar(): void {
@@ -1137,14 +1129,14 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(words, 6, 225, colour);
     const live = canAct();
     if (live && sel !== null) {
-      smallButton(OK_RECT, "Enter 확정", true);
-      if (sel.mode !== "swap") smallButton(NO_RECT, "Esc 취소", false);
+      smallButton(OK_RECT, WORDS.button.confirm, true);
+      if (sel.mode !== "swap") smallButton(NO_RECT, WORDS.button.cancel, false);
     }
     if (view.credits === null) {
-      pen.txt("관전 중입니다. 다음 판부터 함께할 수 있습니다.", 6, 248, C.boneD);
+      pen.txt(WORDS.prompt.watching, 6, 248, C.boneD);
       return;
     }
-    const names = ["공개 조사", "비공개 조사", "1칸 회전", "2칸 회전", "조작"];
+    const names = WORDS.action.names;
     const prices = costs(rules);
     for (let i = 0; i < 5; i++) {
       const rect = buttonRect(i);
@@ -1154,7 +1146,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       pen.px(x, y, w, h, on ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, on ? "#3a2a12" : can && inRect(mouse, rect) ? C.btnH : C.btn);
       pen.txt(`${i + 1} ${names[i]}`, x + 5, y + 2, on ? C.amber : can ? C.bone : C.dim);
-      pen.txt(i < 4 ? `크레딧 ${prices[i]}` : `1~${rules.tamperMaxPerTurn}개씩 · ${view.pot ?? 0}/${rules.tamperNeed}`, x + 5, y + 14, can || on ? C.boneD : C.dim);
+      pen.txt(i < 4 ? WORDS.action.price(prices[i]) : WORDS.action.tamper(rules.tamperMaxPerTurn, view.pot ?? 0, rules.tamperNeed), x + 5, y + 14, can || on ? C.boneD : C.dim);
     }
   }
 
@@ -1162,34 +1154,12 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (latest === null) return;
     const rules = latest.rules;
     const n = seats();
-    const lines: [string, string][] = [
-      ["러시안 룰렛: 규칙", C.amber],
-      [`약실 ${n}칸 중 ${rules.bullets}칸에 실탄이 있습니다. 한 자리에 약실 한 칸이 마주`, C.bone],
-      ["보고, 마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.", C.bone],
-      ["", C.bone],
-      [`내 차례에는 다섯 가지 중 하나를 합니다. 크레딧은 ${rules.startCredits}개로 시작합니다.`, C.bone],
-      [`1 공개 조사 (${rules.costPublic}): 이웃한 두 칸이 찼는지 모두에게 공개`, C.boneD],
-      [`2 비공개 조사 (${rules.costPrivate}): 이웃한 두 칸을 나만 확인`, C.boneD],
-      [`3 1칸 회전 (${rules.costRotate1}) · 4 2칸 회전 (${rules.costRotate2}): 총구와 실린더가 시계 방향으로`, C.boneD],
-      ["   돕니다. 모든 약실이 그만큼 옆자리로 넘어갑니다.", C.boneD],
-      [`5 조작: 한 번에 1~${rules.tamperMaxPerTurn}개씩 몰래 모아 ${rules.tamperNeed}이 되면 이웃한 두 칸의 탄을 맞바꿈`, C.boneD],
-      ["", C.bone],
-      ["남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없습니다.", C.bone],
-      [`${rules.endWhenOut}명이 크레딧을 다 쓰면 끝. 총구가 향한 자리부터 시계 방향으로`, C.bone],
-      ["한 발씩 격발하고, 실탄을 맞은 사람이 탈락합니다.", C.bone],
-      [
-        rules.turnSeconds > 0
-          ? `이 방은 차례마다 ${rules.turnSeconds}초: 넘기면 자동으로 1크레딧 제출 (접속이 끊기면 더 빨리).`
-          : "접속이 끊긴 사람의 차례는 잠시 뒤 자동으로 1크레딧 제출로 넘어갑니다.",
-        C.boneD,
-      ],
-      ["H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", C.amber],
-    ];
+    const lines = WORDS.help(rules, n);
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);
-    lines.forEach(([text, colour], i) => {
-      if (text !== "") pen.txt(text, 22, 20 + i * 15, colour);
+    lines.forEach((line, i) => {
+      if (line.text !== "") pen.txt(line.text, 22, 20 + i * 15, line.tone === "title" ? C.amber : line.tone === "dim" ? C.boneD : C.bone);
     });
   }
 
@@ -1267,7 +1237,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     update,
     refused(reason: string): void {
       pending = false;
-      say(WAIT_TEXT[reason] ?? "그 행동은 지금 할 수 없습니다");
+      say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {

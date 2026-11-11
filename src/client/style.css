@@ -383,9 +383,50 @@ button.choice[aria-pressed="true"] {
   white-space: nowrap;
 }
 
-/* The line over the room's code never runs to a second line. */
+/* The lines over the room's code: none of them runs on to another. */
 #room-game {
   overflow: hidden;
+  white-space: nowrap;
+}
+
+#room-game span {
+  display: block;
+}
+
+/*
+ * In English a game's name is as wide as the column. It takes a line to
+ * itself over the room's code (main.ts), and what lies below gives up that
+ * line: the voice controls and the chat, which are laid over the gap.
+ */
+:root[lang="en"] #room-game {
+  height: 26px;
+}
+
+:root[lang="en"] #voice:not(.in-game) {
+  top: 67px;
+}
+
+:root[lang="en"] #chat:not(.in-game) {
+  top: 88px;
+  height: 86px;
+}
+
+/* During a game the way out is a few pixels wider in English: the voice controls start clear of it. */
+:root[lang="en"] #voice.in-game {
+  left: 57px;
+}
+
+/* And the games to pick from go one to a row, with nothing over them but the form's own heading. */
+:root[lang="en"] #game-choices {
+  grid-template-columns: 1fr;
+}
+
+:root[lang="en"] #game-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
@@ -615,10 +656,16 @@ button.choice[aria-pressed="true"] {
   color: var(--bone-dim);
 }
 
-#rules-open {
+#rules-open,
+#lang {
   position: absolute;
   right: 6px;
   bottom: 4px;
+}
+
+/* The other language the page can be read in: in the lobby, where a room has the button for its rules. */
+#lang {
+  color: var(--bone-dim);
 }
 
 /* The way out of a game sits over the wall at the top left, clear of the panel. */
@@ -655,17 +702,13 @@ button.choice[aria-pressed="true"] {
  * that closes it, and the rest by scrolling. A game with choices attached has
  * more rules than fit at once.
  */
-#rules [data-game] {
+#rules-sheet {
   height: 212px;
   overflow-x: hidden;
   overflow-y: auto;
   padding-right: 6px;
   scrollbar-color: var(--edge) var(--bar);
   scrollbar-width: thin;
-}
-
-#rules [data-game][hidden] {
-  display: none;
 }
 
 #rules h2 {

@@ -8,10 +8,15 @@ import type { LobbyView } from "../../shared/lobby";
 import type { ServerMessage } from "../../shared/protocol";
 import type { VoiceMark } from "../../shared/voice";
 import { createTable } from "../game/table";
+import { WORDS as ROULETTE_WORDS } from "../game/words";
 import { createLobbyScene } from "../lobby-scene";
+import type { RulesSheet } from "../sheet";
 import { createCubesScreen } from "./count-cubes/screen";
+import { WORDS as CUBES_WORDS } from "./count-cubes/words";
 import { createRectScreen } from "./count-rectangles/screen";
+import { WORDS as RECT_WORDS } from "./count-rectangles/words";
 import { createGrassScreen } from "./lay-the-grass/screen";
+import { WORDS as GRASS_WORDS } from "./lay-the-grass/words";
 
 /** What a room sends about the game being played in it, whichever game that is. */
 export type GameMessage = Extract<ServerMessage, { type: "game" }>;
@@ -73,6 +78,8 @@ export interface WaitingScene {
 export interface GameClient {
   screen(canvas: HTMLCanvasElement, handlers: GameHandlers): GameScreen;
   scene(canvas: HTMLCanvasElement, voice: (slot: number) => VoiceMark): WaitingScene;
+  /** Its rules as the page shows them before a game, in the language the page is read in. */
+  sheet: RulesSheet;
 }
 
 /** Every game's screen and waiting-room picture, by the game's id. */
@@ -88,6 +95,7 @@ export const CLIENTS: Record<GameId, GameClient> = {
       };
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: true }),
+    sheet: ROULETTE_WORDS.sheet,
   },
   "count-rectangles": {
     screen(canvas, handlers) {
@@ -101,6 +109,7 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     // the same back room, its table bare: there is no device in this game
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: RECT_WORDS.sheet,
   },
   "lay-the-grass": {
     screen(canvas, handlers) {
@@ -113,6 +122,7 @@ export const CLIENTS: Record<GameId, GameClient> = {
       };
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: GRASS_WORDS.sheet,
   },
   "count-cubes": {
     screen(canvas, handlers) {
@@ -125,5 +135,6 @@ export const CLIENTS: Record<GameId, GameClient> = {
       };
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: CUBES_WORDS.sheet,
   },
 };

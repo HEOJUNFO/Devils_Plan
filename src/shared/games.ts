@@ -6,13 +6,18 @@
  * hosting in the room (`src/server/room.ts`) and its screen in the client.
  */
 import games from "./games.json";
+import type { Lang } from "./lang";
 
 /** What the lobby needs to know about a game. */
 export interface GameInfo {
-  /** The name players see: the name the show gives the game (CLAUDE.md, Project Rules). */
-  title: string;
-  /** One or two sentences for someone choosing a game. */
-  summary: string;
+  /**
+   * The name players see, in each language: the name the show gives the game
+   * (CLAUDE.md, Project Rules). In English, the name its English release
+   * gives where one is known; "Russian Roulette" is the everyday term.
+   */
+  title: Record<Lang, string>;
+  /** One or two sentences for someone choosing a game, in each language. The bar under the frame holds an English one on one line up to 468 pixels. */
+  summary: Record<Lang, string>;
   /** The fewest and the most players a game of it can be started with. */
   minPlayers: number;
   maxPlayers: number;

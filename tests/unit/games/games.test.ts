@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId } from "../../../src/shared/games";
+import { LANGS } from "../../../src/shared/lang";
 import roomConfig from "../../../src/shared/room-config.json";
 
 describe("the games a room can be made for", () => {
@@ -9,11 +10,13 @@ describe("the games a room can be made for", () => {
     expect(GAME_IDS).toContain(DEFAULT_GAME);
   });
 
-  it.each(GAME_IDS)("gives %s a name, a summary and a sensible range of players", (id) => {
+  it.each(GAME_IDS)("gives %s a name and a summary in every language, and a sensible range of players", (id) => {
     const game = GAMES[id];
 
-    expect(game.title.trim()).not.toBe("");
-    expect(game.summary.trim()).not.toBe("");
+    for (const lang of LANGS) {
+      expect(game.title[lang].trim()).not.toBe("");
+      expect(game.summary[lang].trim()).not.toBe("");
+    }
     expect(Number.isInteger(game.minPlayers)).toBe(true);
     expect(Number.isInteger(game.maxPlayers)).toBe(true);
     expect(game.minPlayers).toBeGreaterThanOrEqual(1);
@@ -32,6 +35,12 @@ describe("the games a room can be made for", () => {
     expect(game.teamSize).toBeGreaterThanOrEqual(0);
     // a team must fit in a game, with someone left to play against
     expect(game.teamSize).toBeLessThan(game.maxPlayers);
+  });
+
+  it("names each game in Korean as the show does, and in English as its English release does", () => {
+    // CLAUDE.md, Project Rules: a game is shown under the name the show gives it
+    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes"]);
   });
 
   it("lets one player alone start the two counting games, and no other game", () => {

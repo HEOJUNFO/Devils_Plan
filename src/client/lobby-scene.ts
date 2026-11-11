@@ -30,6 +30,7 @@ import {
 } from "./game/draw";
 import { FIGURE_COUNT } from "./game/figures";
 import { C } from "./game/palette";
+import { WORDS } from "./words";
 
 /** The lobby's picture. */
 export interface LobbyScene {
@@ -61,8 +62,9 @@ const HALL_TOP = 27;
 const HALL_ROW_MOST = 56;
 /** The widest a name and its marks are together under a chair, in pixels. */
 const HALL_NAME_ROOM = 74;
-/** How wide the host's mark is, with the gap before it. */
-const HOST_MARK_W = 29;
+/** The host's mark: a plate a pixel wider than its word on each side, and the gap before it. */
+const HOST_MARK_EDGE = 2;
+const HOST_MARK_GAP = 3;
 /** How far the lamp's light reaches over the rows of chairs, against 1 over a table: nobody sits in the dark. */
 const HALL_LIGHT = 1.6;
 /** In a row of chairs: how far under the top of its row a figure's shoulders are, and its name. */
@@ -131,6 +133,8 @@ export function createLobbyScene(
     const sway = Math.sin(time * 1.3) * 3;
     const me = lobby?.you ?? 0;
     const bySlot = new Map((lobby?.players ?? []).map((player) => [player.slot, player]));
+    // how wide the host's mark is, with the gap before it: its word is as long as the language makes it
+    const HOST_MARK_W = pen.width(WORDS.scene.host) + HOST_MARK_EDGE + HOST_MARK_GAP;
     const { seats, rows } = placesFor(lobby?.maxPlayers ?? TABLE_SEATS, Math.max(-1, ...bySlot.keys()));
     // at a table the viewer sits nearest; in the rows everyone keeps the chair of their slot
     const places: Place[] = Array.from({ length: seats }, (_, slot) => ({
@@ -170,9 +174,9 @@ export function createLobbyScene(
         const x = place.at.label.x - Math.round((width - (mark !== "out" ? VOICE_MARK_W : 0)) / 2);
         pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
         if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
-        if (lead) drawHostMark(x + width - 26, y);
+        if (lead) drawHostMark(x + width - (HOST_MARK_W - HOST_MARK_GAP), y);
         const beside = place.at.y - 6;
-        if (!player.connected) pen.txt("끊김", place.at.x + 15, beside, C.dim);
+        if (!player.connected) pen.txt(WORDS.scene.offline, place.at.x + 15, beside, C.dim);
         else if (player.team > 0) drawTeamTag(place.at.x + 15, beside, player.team, player.leads);
         continue;
       }
@@ -182,8 +186,8 @@ export function createLobbyScene(
       pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
       const mark = voice(place.slot);
       if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
-      if (lead) drawHostMark(x + width - 26, y);
-      if (!player.connected) pen.txt("끊김", place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
+      if (lead) drawHostMark(x + width - (HOST_MARK_W - HOST_MARK_GAP), y);
+      if (!player.connected) pen.txt(WORDS.scene.offline, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
       else if (player.team > 0) {
         // the team chosen for the next game, each team in its own colour
         const tx = place.slot === me ? x + width + 5 : x;
@@ -205,7 +209,7 @@ export function createLobbyScene(
    * colour, so that the team can see whose share of its points will differ.
    */
   function drawTeamTag(x: number, y: number, team: number, leads: boolean): void {
-    const tag = `팀 ${team}`;
+    const tag = WORDS.scene.team(team);
     const colour = TEAM_COLOURS[(team - 1) % TEAM_COLOURS.length];
     if (!leads) {
       pen.txt(tag, x, y, colour);
@@ -217,9 +221,10 @@ export function createLobbyScene(
 
   /** The mark of the host, who starts the game: its top left at `x`, `y`. */
   function drawHostMark(x: number, y: number): void {
-    pen.px(x, y, 26, 13, C.amberD);
-    pen.px(x + 1, y + 1, 24, 11, C.ink);
-    pen.txt("방장", x + 1, y + 1, C.amber);
+    const word = pen.width(WORDS.scene.host);
+    pen.px(x, y, word + HOST_MARK_EDGE, 13, C.amberD);
+    pen.px(x + 1, y + 1, word, 11, C.ink);
+    pen.txt(WORDS.scene.host, x + 1, y + 1, C.amber);
   }
 
   function frame(): void {

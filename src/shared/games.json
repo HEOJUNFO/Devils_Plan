@@ -1,31 +1,55 @@
 {
   "russian-roulette": {
-    "title": "러시안 룰렛",
-    "summary": "실탄이 든 약실을 캐내고 총구를 돌려, 마지막 격발에서 살아남으세요.",
+    "title": {
+      "ko": "러시안 룰렛",
+      "en": "Russian Roulette"
+    },
+    "summary": {
+      "ko": "실탄이 든 약실을 캐내고 총구를 돌려, 마지막 격발에서 살아남으세요.",
+      "en": "Find the loaded chambers, turn the muzzle, survive the last volley."
+    },
     "minPlayers": 4,
     "maxPlayers": 6,
     "teamSize": 0,
     "turns": true
   },
   "count-rectangles": {
-    "title": "네모 세기",
-    "summary": "숫자를 더해 타깃이 되는 네모를 먼저 세어 버저를 누르세요. 두 번 맞히면 승리.",
+    "title": {
+      "ko": "네모 세기",
+      "en": "Count the Rectangles"
+    },
+    "summary": {
+      "ko": "숫자를 더해 타깃이 되는 네모를 먼저 세어 버저를 누르세요. 두 번 맞히면 승리.",
+      "en": "Count rectangles that add up to the target, buzz first. Two right wins."
+    },
     "minPlayers": 1,
     "maxPlayers": 16,
     "teamSize": 3,
     "turns": false
   },
   "lay-the-grass": {
-    "title": "잔디 깔기",
-    "summary": "공원에 잔디 타일을 놓으면 번호만큼 승점. 큰 번호일수록 늦게 놓습니다.",
+    "title": {
+      "ko": "잔디 깔기",
+      "en": "Lay the Grass"
+    },
+    "summary": {
+      "ko": "공원에 잔디 타일을 놓으면 번호만큼 승점. 큰 번호일수록 늦게 놓습니다.",
+      "en": "Lay a grass tile to score its number. Bigger numbers are laid later."
+    },
     "minPlayers": 2,
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false
   },
   "count-cubes": {
-    "title": "큐브 세기",
-    "summary": "쌓인 큐브가 몇 개인지 먼저 세어 답하세요. 틀리면 20초 동안 잠깁니다.",
+    "title": {
+      "ko": "큐브 세기",
+      "en": "Count the Cubes"
+    },
+    "summary": {
+      "ko": "쌓인 큐브가 몇 개인지 먼저 세어 답하세요. 틀리면 20초 동안 잠깁니다.",
+      "en": "Count the cubes first. A wrong answer locks you out for 20 seconds."
+    },
     "minPlayers": 1,
     "maxPlayers": 16,
     "teamSize": 0,

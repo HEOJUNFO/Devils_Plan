@@ -55,6 +55,30 @@ defaults in this file, these win.
   `empty-chamber`, the name of the first build. `wrangler.jsonc`,
   `package.json` and the browser's storage keys carry it; the folder
   `prototypes/empty-chamber/` keeps its name.
+- **The game is read in Korean and in English.** Every sentence a player
+  reads is there in both languages. The user, on 2026-11-11:
+  "우리프프로젝트 영어지원 하게업데이트하고 프로젝트룰에추가핮".
+  *How it is built (the assistant's choices, not the user's words):* a
+  screen's sentences are in a `words.ts` beside it, Korean and English side
+  by side, taken through `words()` of `src/client/lang.ts`; none is written
+  in the markup or in a screen's code. The type check holds the two to one
+  shape, so a sentence missing in one language does not compile. A game's
+  name and summary are in `src/shared/games.json`, by language. The room
+  sends reasons and events, never sentences, so players of one room each
+  read it in their own. A new game, or a new sentence, comes with both.
+  The page opens in the language its address asks for (`?lang=en`), else the
+  one last chosen in that browser, else the browser's, else English; the
+  lobby has the button that changes it, which loads the page again.
+  *Assistant's reading, not the user's words:* Korean is still the language
+  a sentence is written in first, and the English follows it. In English a
+  game has the name the show's English release gives it where one can be
+  found ("Count the Rectangles", "Count the Cubes", "Lay the Grass"), and its
+  terms likewise ("Piece", "Selection", "Monopolize"); where none can be
+  found the assistant translates plainly and says so in its report. What
+  players type (nicknames, chat) is shown as typed. The screen is a fixed 480
+  by 270 pixels, so an English sentence is looked at on the screen it is on,
+  not only type-checked. Bots keep their Korean names ("봇 1"): they are a
+  test aid (`.claude/rules/bots.md`).
 - **The lobby is a list of rooms.** Before making a room a player sees the
   open rooms and can join one, make one, or enter a code. The user, on
   2026-11-11: "내가말한로비는 여러방리스트가 있는 로비말한거야". A screen with

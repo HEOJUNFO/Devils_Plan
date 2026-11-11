@@ -7,6 +7,9 @@
  *
  * To act as several players in one browser, open each tab with a different
  * `?profile=<name>`; each profile keeps its own token and nickname.
+ *
+ * The page is read in Korean or in English (`lang.ts`). No sentence is
+ * written here or in the markup: the page's own are in `words.ts`.
  */
 import { PartySocket } from "partysocket";
 import type { RoomListing } from "../shared/directory";
@@ -36,8 +39,11 @@ import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
+import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
+import { storageKey } from "./storage";
 import { createVoice } from "./voice";
+import { WORDS } from "./words";
 
 const config: RoomConfig = roomConfig;
 
@@ -62,43 +68,11 @@ const fakeMic =
 /** How many fresh codes to try when a newly made code is already in use. */
 const CREATE_ATTEMPTS = 3;
 
-/** The way out of a game: what the button says, and what it says while it waits for the second press. */
-const LEAVE_TEXT = "나가기";
-const LEAVE_CONFIRM_TEXT = "한 번 더 누르면 나감";
+/** How long the way out of a game waits for its second press. */
 const LEAVE_CONFIRM_MS = 3000;
 
-/** The words under the lobby. A room puts its game's own there. */
-const LOBBY_BAR = ["열린 방에 들어가거나, 방을 만들어 사람들을 모으세요.", "친구끼리만 하려면 비공개 방을 만들고 초대 링크를 보내세요."];
-
-const REJECT_TEXT: Record<RejectReason, string> = {
-  "full": "방이 가득 찼습니다.",
-  "bad-nick": "닉네임을 입력해 주세요.",
-  "bad-token": "브라우저 저장 정보가 손상됐습니다. 새로고침해 주세요.",
-  "bad-room": "방 코드 형식이 올바르지 않습니다.",
-  "not-found": "그런 방이 없습니다.",
-  "code-taken": "방을 만들지 못했습니다. 다시 시도해 주세요.",
-  "join-timeout": "연결이 너무 오래 걸렸습니다. 다시 시도해 주세요.",
-};
-
-/** Why something asked of the room was refused, for the waiting room. Refused moves are explained on the game screen. */
-const REFUSED_TEXT: Record<string, string> = {
-  "not-host": "방장만 할 수 있습니다.",
-  "bad-player-count": "지금 인원으로는 시작할 수 없습니다.",
-  "bad-teams": "팀 인원이 맞지 않아 시작할 수 없습니다.",
-  "too-few": "인원이 모자라 시작할 수 없습니다.",
-  "already-playing": "이미 판이 진행 중입니다.",
-  "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다.",
-  "bad-setting": "그 설정은 이 방에서 쓸 수 없습니다.",
-  "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요.",
-};
-
-/** How the length of a turn is said: on the button in the waiting room and when making a room. */
-function clockText(seconds: number): string {
-  return seconds > 0 ? `차례 ${seconds}초` : "차례 무제한";
-}
-
-/** Said in the chat to a player whose lines come too fast for the room to pass on. */
-const CHAT_TOO_FAST_TEXT = "너무 빨리 보내고 있습니다. 잠시 뒤에 다시 보내세요.";
+/** Why the room would not let this page in, in words. */
+const REJECT_TEXT: Record<RejectReason, string> = WORDS.reject;
 
 function el<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -146,14 +120,63 @@ const listingButton = el<HTMLButtonElement>("listing");
 const sceneCanvas = el<HTMLCanvasElement>("scene");
 const tableCanvas = el<HTMLCanvasElement>("table");
 const leaveGameButton = el<HTMLButtonElement>("leave-game");
+const rulesSheet = el<HTMLElement>("rules-sheet");
+const langButton = el<HTMLButtonElement>("lang");
 
 /** What the page is called while no room is open. */
-const SITE_TITLE = document.title;
+const SITE_TITLE = WORDS.site.title;
+
+/** The words that stay as they are while the page is open, put where the markup leaves room for them. */
+function writeWords(): void {
+  document.title = SITE_TITLE;
+  document.querySelector('meta[name="description"]')?.setAttribute("content", WORDS.site.description);
+  const said: [id: string, text: string][] = [
+    ["rooms-title", WORDS.rooms.title],
+    ["entry-title", WORDS.site.title],
+    ["entry-sub", WORDS.entry.sub],
+    ["nick-label", WORDS.entry.nick],
+    ["create", WORDS.entry.create],
+    ["by-code", WORDS.entry.byCode],
+    ["join", WORDS.entry.join],
+    ["new-room-title", WORDS.newRoom.title],
+    ["game-label", WORDS.newRoom.game],
+    ["listed-label", WORDS.newRoom.who],
+    ["listed-yes", WORDS.newRoom.listed],
+    ["listed-no", WORDS.newRoom.unlisted],
+    ["create-cancel", WORDS.newRoom.cancel],
+    ["create-go", WORDS.newRoom.go],
+    ["copy", WORDS.room.copy],
+    ["start", WORDS.room.start],
+    ["leave", WORDS.room.leave],
+    ["rules-open", WORDS.bar.rules],
+    ["rules-close", WORDS.bar.close],
+    ["leave-game", WORDS.game.leave],
+    ["tab-chat", WORDS.game.chat(0)],
+    ["chat-send", WORDS.chat.send],
+    ["turn-device", WORDS.site.turnDevice],
+  ];
+  for (const [id, text] of said) el(id).textContent = text;
+  // said to a screen reader of what has no words on show
+  const labelled: [id: string, text: string][] = [
+    ["code", WORDS.entry.code],
+    ["voice", WORDS.voice.label],
+    ["tabs", WORDS.game.tabs],
+    ["chat", WORDS.chat.label],
+    ["chat-input", WORDS.chat.say],
+  ];
+  for (const [id, text] of labelled) el(id).setAttribute("aria-label", text);
+  chatInput.placeholder = WORDS.chat.say;
+  // One other language, on one button, named as its own readers name it. More would take a list.
+  const [other] = OTHER_LANGS;
+  if (other !== undefined) {
+    langButton.textContent = other.name;
+    langButton.lang = other.lang;
+    langButton.addEventListener("click", () => switchLang(other.lang));
+  }
+}
+writeWords();
 
 drawLobbyArt(el<HTMLCanvasElement>("lobby-art"));
-
-const profile = new URLSearchParams(location.search).get("profile") ?? "";
-const storageKey = (name: string) => `game-plan.${name}${profile ? `.${profile}` : ""}`;
 
 function loadToken(): string {
   const key = storageKey("token");
@@ -232,7 +255,7 @@ let chosenListed = localStorage.getItem(storageKey("listed")) !== "0";
 function disarmLeave(): void {
   if (leaveArmed !== null) clearTimeout(leaveArmed);
   leaveArmed = null;
-  leaveGameButton.textContent = LEAVE_TEXT;
+  leaveGameButton.textContent = WORDS.game.leave;
   frame.classList.remove("leaving");
 }
 
@@ -269,12 +292,12 @@ function renderVoice(): void {
   voiceBox.hidden = currentCode === "" || view === null || (inGame && !offered);
   voiceBox.classList.toggle("in-game", inGame);
   voiceNote.hidden = offered;
-  voiceNote.textContent = "음성 채팅은 비공개 방에서만";
+  voiceNote.textContent = WORDS.voice.unlistedOnly;
   voiceToggle.hidden = !offered;
-  voiceToggle.textContent = voice.on ? "음성 나가기" : inGame ? "음성 켜기" : "음성 채팅 켜기";
+  voiceToggle.textContent = voice.on ? WORDS.voice.leave : inGame ? WORDS.voice.joinInGame : WORDS.voice.join;
   voiceMic.hidden = !offered || !voice.on;
   voiceMic.disabled = !voice.hasMic;
-  voiceMic.textContent = !voice.hasMic ? "마이크 없음" : voice.muted ? "마이크 끔" : "마이크 켬";
+  voiceMic.textContent = !voice.hasMic ? WORDS.voice.noMic : voice.muted ? WORDS.voice.micOff : WORDS.voice.micOn;
   voiceMic.setAttribute("aria-pressed", String(voice.on && !voice.muted));
 }
 
@@ -284,7 +307,7 @@ const chat = createChat(
     maxLength: chatConfig.maxLength,
     storagePrefix: storageKey("chat"),
     send: (text) => send({ type: "chat", text }),
-    notSent: "연결이 끊겨 보내지 못했습니다. 다시 연결되면 보내 주세요.",
+    notSent: WORDS.chat.notSent,
   },
 );
 
@@ -298,11 +321,11 @@ function syncChat(): void {
   chatBox.hidden = currentCode === "" || (inGame && !chatOpen);
   chatBox.classList.toggle("in-game", inGame);
   frame.classList.toggle("crowd", inGame && crowded);
-  tabLog.textContent = crowded ? "현황" : "기록";
+  tabLog.textContent = crowded ? WORDS.game.standings : WORDS.game.log;
   tabLog.setAttribute("aria-pressed", String(!chatOpen));
   tabChat.setAttribute("aria-pressed", String(chatOpen));
   tabChat.classList.toggle("unread", unread > 0);
-  tabChat.textContent = unread > 0 ? `채팅 ${unread}` : "채팅";
+  tabChat.textContent = WORDS.game.chat(unread);
   // an hour in a tab, the chat comes back at its last line
   if (!chatBox.hidden) chat.toEnd();
 }
@@ -406,10 +429,10 @@ function hideTable(): void {
 
 /** What a row says about how the room stands. */
 function standing(listing: RoomListing, game: GameId): string {
-  if (listing.players >= listing.maxPlayers) return "가득 참";
-  if (listing.playing) return "게임 중 · 들어가면 관전";
+  if (listing.players >= listing.maxPlayers) return WORDS.rooms.full;
+  if (listing.playing) return WORDS.rooms.playing;
   const short = GAMES[game].minPlayers - listing.players;
-  return short > 0 ? `대기 중 · ${short}명 더 오면 시작` : "대기 중 · 곧 시작";
+  return short > 0 ? WORDS.rooms.waitingFor(short) : WORDS.rooms.waiting;
 }
 
 /** Draws the list of rooms; `null` while it is not known (connecting, or the connection dropped). */
@@ -432,9 +455,9 @@ function renderRooms(listings: RoomListing[] | null): void {
       return span;
     };
     button.append(
-      part("room-host", `${listing.host}의 방`),
+      part("room-host", WORDS.rooms.of(listing.host)),
       part("room-count", `${listing.players}/${listing.maxPlayers}`),
-      part("room-game", GAMES[game].title),
+      part("room-game", GAMES[game].title[lang]),
       part(listing.playing || full ? "room-state busy" : "room-state", standing(listing, game)),
     );
     button.addEventListener("click", () => joinRoom(listing.code));
@@ -445,13 +468,8 @@ function renderRooms(listings: RoomListing[] | null): void {
   roomList.replaceChildren(...rows);
   // the list is redrawn whole: the row the keyboard was on stays the one it is on
   if (focused !== undefined) roomList.querySelector<HTMLElement>(`[data-code="${focused}"]`)?.focus();
-  roomsCount.textContent = listings === null ? "" : `${known.length}개`;
-  roomsNote.textContent =
-    listings === null
-      ? "방 목록을 불러오는 중입니다."
-      : known.length === 0
-        ? "열린 방이 없습니다. 공개 방을 만들면 여기에 올라와 누구나 들어올 수 있습니다."
-        : "";
+  roomsCount.textContent = listings === null ? "" : WORDS.rooms.count(known.length);
+  roomsNote.textContent = listings === null ? WORDS.rooms.loading : known.length === 0 ? WORDS.rooms.none : "";
 }
 
 /** Starts listening to the list of rooms, if not already. */
@@ -490,7 +508,8 @@ function showLobby(message = ""): void {
   notice.textContent = message;
   showScene(null);
   syncScene();
-  setBar(LOBBY_BAR[0], LOBBY_BAR[1], false);
+  setBar(WORDS.bar.lobby[0], WORDS.bar.lobby[1], false);
+  langButton.hidden = false;
   document.title = SITE_TITLE;
   watchRooms();
 }
@@ -503,7 +522,7 @@ function renderNewRoom(): void {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "choice";
-    button.textContent = GAMES[id].title;
+    button.textContent = GAMES[id].title[lang];
     button.setAttribute("aria-pressed", String(id === chosenGame));
     button.addEventListener("click", () => {
       chosenGame = id;
@@ -517,11 +536,10 @@ function renderNewRoom(): void {
   listedNo.setAttribute("aria-pressed", String(!chosenListed));
   // The length of a turn a room starts with goes with who can come in; the host can change it in the
   // room. A game without turns has none to speak of.
-  const who = chosenListed ? "목록에 보여 누구나 들어옵니다." : "링크나 코드를 아는 사람만 들어옵니다.";
-  const clock = chosenListed ? `${clockText(config.listedTurnSeconds)}로 시작.` : `${clockText(0)}으로 시작.`;
+  const who = chosenListed ? WORDS.newRoom.listedHint : WORDS.newRoom.unlistedHint;
+  const clock = WORDS.newRoom.startsAt(chosenListed ? config.listedTurnSeconds : 0);
   listedHint.textContent = game.turns ? `${who} ${clock}` : who;
-  const howMany = game.minPlayers === 1 ? `혼자서도 할 수 있고, ${game.maxPlayers}명까지 함께 합니다.` : `${game.minPlayers}명부터 ${game.maxPlayers}명까지 함께 합니다.`;
-  setBar(game.summary, howMany, true);
+  setBar(game.summary[lang], WORDS.newRoom.howMany(game.minPlayers, game.maxPlayers), true);
 }
 
 /** The form for a new room: which game, and who may come in. */
@@ -530,6 +548,7 @@ function showNewRoom(): void {
   notice.textContent = "";
   entry.hidden = true;
   newRoom.hidden = false;
+  langButton.hidden = true;
   renderNewRoom();
   el<HTMLButtonElement>("create-go").focus();
 }
@@ -538,7 +557,8 @@ function closeNewRoom(): void {
   newRoom.hidden = true;
   entry.hidden = false;
   rules.hidden = true;
-  setBar(LOBBY_BAR[0], LOBBY_BAR[1], false);
+  setBar(WORDS.bar.lobby[0], WORDS.bar.lobby[1], false);
+  langButton.hidden = false;
 }
 
 // ---- A room, before a game ---------------------------------------------------------------------------
@@ -548,7 +568,7 @@ function renderRoomBar(): void {
   const view = currentView;
   if (view === null) return;
   const game = isGameId(view.game) ? GAMES[view.game] : null;
-  setBar(game?.summary ?? "", hint, game !== null);
+  setBar(game?.summary[lang] ?? "", hint, game !== null);
 }
 
 /** The line over the room's code: the game, who can come in and how many are here, or that the connection is down. */
@@ -556,20 +576,26 @@ function renderStatus(): void {
   const view = currentView;
   if (view === null) return;
   const here = view.players.filter((p) => p.connected).length;
-  const game = isGameId(view.game) ? GAMES[view.game].title : "새 게임";
-  roomGame.textContent = online
-    ? `${game} · ${view.listed ? "공개" : "비공개"} · ${here}/${view.maxPlayers}`
-    : "연결이 끊겼습니다. 다시 연결하는 중";
+  const game = isGameId(view.game) ? GAMES[view.game].title[lang] : WORDS.room.newGame;
+  // one line in Korean; in English two, a game's name being as wide as the column
+  const lines = online ? WORDS.room.status(game, view.listed, here, view.maxPlayers) : [WORDS.room.offline];
+  roomGame.replaceChildren(
+    ...lines.map((line) => {
+      const span = document.createElement("span");
+      span.textContent = line;
+      return span;
+    }),
+  );
   // said aloud to a screen reader when it changes
-  status.textContent = online ? `${here}명 접속, 최대 ${view.maxPlayers}명` : "연결이 끊겼습니다. 다시 연결하는 중";
+  status.textContent = online ? WORDS.room.statusSpoken(here, view.maxPlayers) : WORDS.room.offline;
 }
 
 /** Says in the chat who has come into the room and who has gone since it was last sent. */
 function noteComings(before: LobbyView, after: LobbyView): void {
   const was = new Map(before.players.map((p) => [p.slot, p.nick]));
   const is = new Map(after.players.map((p) => [p.slot, p.nick]));
-  for (const [slot, nick] of is) if (!was.has(slot)) chat.note(`${nick} 님이 들어왔습니다`);
-  for (const [slot, nick] of was) if (!is.has(slot)) chat.note(`${nick} 님이 나갔습니다`);
+  for (const [slot, nick] of is) if (!was.has(slot)) chat.note(WORDS.room.came(nick));
+  for (const [slot, nick] of was) if (!is.has(slot)) chat.note(WORDS.room.went(nick));
 }
 
 /** The room before a game: who is here, the code to share, the chat, and the start. */
@@ -583,6 +609,7 @@ function renderRoom(code: string, view: LobbyView): void {
   entry.hidden = true;
   newRoom.hidden = true;
   room.hidden = false;
+  langButton.hidden = true;
   roomCode.textContent = code;
   showScene(view);
   syncScene();
@@ -593,9 +620,7 @@ function renderRoom(code: string, view: LobbyView): void {
   for (let slot = 0; slot < view.maxPlayers; slot++) {
     const player = bySlot.get(slot);
     const row = document.createElement("li");
-    row.textContent = player
-      ? `${slot + 1}번 ${player.nick}${slot === view.you ? " (나)" : ""}: ${player.connected ? "접속" : "끊김"}`
-      : `${slot + 1}번 빈 자리`;
+    row.textContent = player ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected) : WORDS.room.emptySeat(slot + 1);
     rows.push(row);
   }
   players.replaceChildren(...rows);
@@ -612,15 +637,15 @@ function renderRoom(code: string, view: LobbyView): void {
 
   // A room made by a newer server may be for a game this page has not heard of.
   const game = isGameId(view.game) ? GAMES[view.game] : null;
-  document.title = `${game?.title ?? SITE_TITLE} · ${code}`;
+  document.title = `${game?.title[lang] ?? SITE_TITLE} · ${code}`;
   listingButton.hidden = !isHost;
-  listingButton.textContent = view.listed ? "비공개로" : "공개로";
-  clockButton.textContent = clockText(view.turnSeconds);
+  listingButton.textContent = view.listed ? WORDS.room.toUnlisted : WORDS.room.toListed;
+  clockButton.textContent = WORDS.room.clock(view.turnSeconds);
   clockButton.disabled = !isHost;
-  clockButton.title = isHost ? "누르면 차례 제한 시간을 바꿉니다" : "차례 제한 시간은 방장이 정합니다";
+  clockButton.title = isHost ? WORDS.room.clockHost : WORDS.room.clockGuest;
   if (game === null) {
     startButton.disabled = true;
-    hint = "새로고침하면 이 게임을 할 수 있습니다.";
+    hint = WORDS.room.reloadForGame;
     renderRoomBar();
     return;
   }
@@ -631,8 +656,8 @@ function renderRoom(code: string, view: LobbyView): void {
   const mine = view.players.find((p) => p.slot === view.you);
   const myTeam = mine?.team ?? 0;
   // a team's leader is whoever took it first: their share of the team's points differs from the others'
-  teamButton.textContent = myTeam === 0 ? "혼자 하기" : mine?.leads === true ? `팀 ${myTeam} 대표` : `팀 ${myTeam}`;
-  teamButton.title = `누르면 바뀝니다: 혼자, 또는 ${game.teamSize}명이 한 팀. 팀을 먼저 고른 사람이 대표입니다`;
+  teamButton.textContent = myTeam === 0 ? WORDS.room.solo : WORDS.room.team(myTeam, mine?.leads === true);
+  teamButton.title = WORDS.room.teamHelp(game.teamSize);
 
   const sizes = new Map<number, number>();
   for (const p of connected) if (p.team > 0) sizes.set(p.team, (sizes.get(p.team) ?? 0) + 1);
@@ -644,12 +669,12 @@ function renderRoom(code: string, view: LobbyView): void {
   startButton.disabled = !isHost || !enough;
   const alone = connected.length === 1 && game.minPlayers === 1;
   hint = !enough
-    ? `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
+    ? WORDS.room.needPlayers(game.minPlayers, connected.length)
     : broken !== undefined
-      ? `팀 ${broken[0]}은 ${broken[1]}명이라 팀이 아닙니다 (${game.teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`
+      ? WORDS.room.brokenTeam(broken[0], broken[1], game.teamSize)
       : isHost
-        ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}${alone ? "혼자서도 할 수 있습니다. " : ""}준비되면 시작하세요.`
-        : "방장이 시작하기를 기다리는 중입니다.";
+        ? WORDS.room.hostReady(wantBots, alone)
+        : WORDS.room.waitHost;
   renderRoomBar();
 }
 
@@ -706,7 +731,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // another window, or were away so long that their place was given up.
       disconnect();
       history.replaceState(null, "", `${location.pathname}${location.search}`);
-      showLobby("방에서 나왔습니다. 다른 창에서 나갔거나 자리를 오래 비웠습니다.");
+      showLobby(WORDS.room.left);
       return;
     }
     renderStatus();
@@ -740,15 +765,15 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     if (message.type === "refused") {
       // Something asked of the room was not accepted; the connection is fine.
       if (message.reason === "chat-too-fast") {
-        chat.note(CHAT_TOO_FAST_TEXT);
+        chat.note(WORDS.chat.tooFast);
       } else if (message.reason === "voice-not-here") {
         // the room went on the list between the button being shown and pressed
         voice.leave();
-        chat.note("이 방에서는 음성 채팅을 쓸 수 없습니다.");
+        chat.note(WORDS.voice.notHere);
       } else if (table !== null) {
         table.refused(message.reason);
       } else {
-        hint = REFUSED_TEXT[message.reason] ?? "지금은 할 수 없습니다.";
+        hint = WORDS.refused[message.reason] ?? WORDS.refusedOther;
         renderRoomBar();
       }
       return;
@@ -885,7 +910,7 @@ leaveGameButton.addEventListener("click", () => {
     leaveRoom();
     return;
   }
-  leaveGameButton.textContent = LEAVE_CONFIRM_TEXT;
+  leaveGameButton.textContent = WORDS.game.leaveConfirm;
   // the longer words reach over where the voice controls sit beside the button: they give way meanwhile
   frame.classList.add("leaving");
   leaveArmed = setTimeout(disarmLeave, LEAVE_CONFIRM_MS);
@@ -896,15 +921,15 @@ copyButton.addEventListener("click", () => {
   const done = (text: string): void => {
     copyButton.textContent = text;
     setTimeout(() => {
-      copyButton.textContent = "링크 복사";
+      copyButton.textContent = WORDS.room.copy;
     }, 1500);
   };
   navigator.clipboard.writeText(link).then(
-    () => done("복사됨"),
+    () => done(WORDS.room.copied),
     () => {
       // no clipboard here (an old browser, or a page not served securely): the code is on screen to read out
-      done("복사 실패");
-      hint = `링크를 복사하지 못했습니다. 방 코드 ${currentCode}를 알려 주세요.`;
+      done(WORDS.room.copyFailed);
+      hint = WORDS.room.copyFailedHint(currentCode);
       renderRoomBar();
     },
   );
@@ -918,11 +943,7 @@ voiceToggle.addEventListener("click", () => {
   }
   void voice.join().then(() => {
     if (!voice.on) return;
-    chat.note(
-      voice.hasMic
-        ? "음성 채팅에 들어왔습니다. 음성은 방 사람들의 기기와 직접 주고받습니다."
-        : "마이크를 쓸 수 없어 듣기만 합니다. 브라우저의 마이크 권한을 확인해 주세요.",
-    );
+    chat.note(voice.hasMic ? WORDS.voice.joined : WORDS.voice.listenOnly);
   });
 });
 voiceMic.addEventListener("click", () => voice.setMuted(!voice.muted));
@@ -959,7 +980,21 @@ addEventListener("keydown", (event) => {
 rulesOpen.addEventListener("click", () => {
   // the sheet of the game being waited for, or of the one chosen for a new room
   const game = currentView !== null && isGameId(currentView.game) ? currentView.game : chosenGame;
-  for (const sheet of rules.querySelectorAll<HTMLElement>("[data-game]")) sheet.hidden = sheet.dataset.game !== game;
+  const sheet = CLIENTS[game].sheet;
+  const title = document.createElement("h2");
+  title.textContent = sheet.title;
+  const parts = sheet.parts.map((part) => {
+    if (typeof part === "string") {
+      const paragraph = document.createElement("p");
+      paragraph.textContent = part;
+      return paragraph;
+    }
+    const list = document.createElement("ul");
+    for (const point of part) list.appendChild(document.createElement("li")).textContent = point;
+    return list;
+  });
+  rulesSheet.replaceChildren(title, ...parts);
+  rulesSheet.scrollTop = 0;
   rules.hidden = false;
   el<HTMLButtonElement>("rules-close").focus();
 });

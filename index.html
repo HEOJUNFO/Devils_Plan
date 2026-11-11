@@ -14,13 +14,18 @@
     <link rel="stylesheet" href="/src/client/style.css" />
   </head>
   <body>
-    <!-- Everything is laid out on the game's own 480 by 270 pixels and scaled up as one piece. -->
+    <!--
+      Everything is laid out on the game's own 480 by 270 pixels and scaled up as one piece.
+      No sentence is written here: the page is read in Korean or in English, and main.ts
+      puts the words of the reader's language in (src/client/words.ts). The title and the
+      description above are what a reader without the script is shown.
+    -->
     <div id="frame">
       <!-- The lobby: the rooms anyone can join, of every game. -->
       <section id="rooms" aria-labelledby="rooms-title">
         <canvas id="lobby-art" aria-hidden="true"></canvas>
         <header>
-          <h2 id="rooms-title">열린 방</h2>
+          <h2 id="rooms-title"></h2>
           <p id="rooms-count"></p>
         </header>
         <p id="rooms-note" role="status"></p>
@@ -28,17 +33,17 @@
       </section>
 
       <main id="entry" class="panel">
-        <h1>게임 로비</h1>
-        <p class="sub">방을 고르거나 만드세요</p>
+        <h1 id="entry-title"></h1>
+        <p class="sub" id="entry-sub"></p>
 
-        <label for="nick">닉네임</label>
+        <label for="nick" id="nick-label"></label>
         <input id="nick" type="text" autocomplete="off" />
-        <button id="create" type="button" class="primary wide">방 만들기</button>
+        <button id="create" type="button" class="primary wide"></button>
 
-        <p class="or">방 코드로 입장</p>
+        <p class="or" id="by-code"></p>
         <div class="row">
-          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="방 코드" />
-          <button id="join" type="button">입장</button>
+          <input id="code" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" />
+          <button id="join" type="button"></button>
         </div>
 
         <p id="notice" role="alert"></p>
@@ -46,19 +51,19 @@
 
       <!-- Making a room: which game, and whether anyone may join. -->
       <section id="new-room" class="panel" aria-labelledby="new-room-title" hidden>
-        <h2 id="new-room-title">새 방</h2>
-        <p class="label" id="game-label">게임</p>
+        <h2 id="new-room-title"></h2>
+        <p class="label" id="game-label"></p>
         <!-- What the chosen game is about is said in the bar under the frame, which has the room for it. -->
         <div id="game-choices" class="choices" role="group" aria-labelledby="game-label"></div>
-        <p class="label" id="listed-label">누가 들어올 수 있나요</p>
+        <p class="label" id="listed-label"></p>
         <div class="row" role="group" aria-labelledby="listed-label">
-          <button id="listed-yes" type="button" class="choice">공개</button>
-          <button id="listed-no" type="button" class="choice">비공개</button>
+          <button id="listed-yes" type="button" class="choice"></button>
+          <button id="listed-no" type="button" class="choice"></button>
         </div>
         <p id="listed-hint"></p>
         <div class="row bottom">
-          <button id="create-cancel" type="button">취소</button>
-          <button id="create-go" type="button" class="primary">만들기</button>
+          <button id="create-cancel" type="button"></button>
+          <button id="create-go" type="button" class="primary"></button>
         </div>
       </section>
 
@@ -68,18 +73,18 @@
         <p class="label" id="room-game"></p>
         <div class="code-row">
           <p class="room-code"><strong id="room-code"></strong></p>
-          <button id="copy" type="button">링크 복사</button>
+          <button id="copy" type="button"></button>
         </div>
         <p id="status" role="status" class="sr-only"></p>
         <ol id="players" class="sr-only"></ol>
         <!-- The voice controls (#voice) and the chat (#chat), below, are laid over the gap left here. -->
         <div class="row bottom second">
-          <button id="start" type="button" class="primary">게임 시작</button>
+          <button id="start" type="button" class="primary"></button>
           <button id="clock" type="button"></button>
           <button id="team" type="button" hidden></button>
         </div>
         <div class="row bottom">
-          <button id="leave" type="button">나가기</button>
+          <button id="leave" type="button"></button>
           <button id="listing" type="button" hidden></button>
         </div>
       </section>
@@ -87,93 +92,44 @@
       <footer id="bar">
         <p id="bar-1"></p>
         <p id="bar-2" class="dim"></p>
-        <button id="rules-open" type="button" hidden>규칙 보기</button>
+        <button id="rules-open" type="button" hidden></button>
+        <!-- The other language the page can be read in, named in that language; offered in the lobby. -->
+        <button id="lang" type="button" hidden></button>
       </footer>
 
       <canvas id="table" hidden></canvas>
-      <button id="leave-game" type="button" hidden>나가기</button>
+      <button id="leave-game" type="button" hidden></button>
 
       <!-- The room's voice chat: under the room's code in the waiting room, beside the way out during a game. -->
-      <div id="voice" role="group" aria-label="음성 채팅" hidden>
+      <div id="voice" role="group" hidden>
         <button id="voice-mic" type="button" hidden></button>
         <button id="voice-toggle" type="button"></button>
         <p id="voice-note" hidden></p>
       </div>
 
       <!-- During a game the right-hand column shows the moves or the chat. -->
-      <div id="tabs" role="group" aria-label="오른쪽 칸에 보일 것" hidden>
-        <button id="tab-log" type="button" class="choice" aria-pressed="true">기록</button>
-        <button id="tab-chat" type="button" class="choice" aria-pressed="false">채팅</button>
+      <div id="tabs" role="group" hidden>
+        <button id="tab-log" type="button" class="choice" aria-pressed="true"></button>
+        <button id="tab-chat" type="button" class="choice" aria-pressed="false"></button>
       </div>
 
       <!-- The room's chat: in the waiting room's column, and during a game in place of the moves. -->
-      <section id="chat" aria-label="채팅" hidden>
+      <section id="chat" hidden>
         <ol id="chat-log" aria-live="polite"></ol>
         <form id="chat-form">
-          <input id="chat-input" type="text" autocomplete="off" aria-label="할 말" placeholder="할 말" />
-          <button type="submit">전송</button>
+          <input id="chat-input" type="text" autocomplete="off" />
+          <button id="chat-send" type="submit"></button>
         </form>
       </section>
 
-      <!-- The rules of each game, one sheet a game; the page shows the one asked for. -->
+      <!-- The rules of a game: main.ts writes the sheet of the game asked for (each game's words.ts). -->
       <section id="rules" hidden>
-        <div data-game="russian-roulette">
-          <h2>러시안 룰렛: 규칙</h2>
-          <p>약실 중 몇 칸에 실탄이 있습니다 (6명이면 여섯 칸 중 두 칸). 한 자리에 약실 한 칸이 마주 보고, 마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.</p>
-          <p>내 차례에는 다섯 가지 중 하나를 합니다. 크레딧은 16개로 시작합니다.</p>
-          <ul>
-            <li>공개 조사 (1): 이웃한 두 칸이 찼는지 모두에게 공개</li>
-            <li>비공개 조사 (2): 이웃한 두 칸을 나만 확인</li>
-            <li>1칸 회전 (3), 2칸 회전 (4): 총구와 실린더가 시계 방향으로 돌아 모든 약실이 옆자리로 넘어감</li>
-            <li>조작: 한 번에 1~3개씩 몰래 모아 6이 되면 이웃한 두 칸의 탄을 맞바꿈</li>
-          </ul>
-          <p>남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없습니다. 절반이 크레딧을 다 쓰면 끝나고, 총구가 향한 자리부터 시계 방향으로 한 발씩 격발합니다.</p>
-        </div>
-        <div data-game="count-rectangles" hidden>
-          <h2>네모 세기: 규칙</h2>
-          <p>숫자가 적힌 칸과 빈칸으로 된 판, 그리고 타깃 넘버가 나옵니다. 안의 숫자를 더하면 타깃이 되는 네모가 모두 몇 개인지 셉니다.</p>
-          <ul>
-            <li>네모는 판 위의 칸으로 된 모든 직사각형입니다: 한 칸짜리부터. 판이 네모반듯하지 않을 수 있고, 칸이 없는 자리는 걸칠 수 없습니다.</li>
-            <li>빈칸은 0으로 칩니다. 타깃이 0이면 빈칸만으로 된 네모도 셉니다.</li>
-            <li>다 세었으면 버저를 누르고 10초 안에 개수를 답합니다. 버저는 한 번에 한 사람만 누를 수 있습니다.</li>
-            <li>틀리거나 답하지 못하면 그 문제에서는 다시 답할 수 없습니다. 팀이면 팀 전체가 그렇습니다.</li>
-            <li>두 번 맞히면 승리하고 이후 문제에서 빠집니다. 전체 팀의 절반이 승리하면 끝납니다.</li>
-          </ul>
-          <p>시작 전에 세 사람은 팀을 맺을 수 있습니다 (세 명이 아닌 팀은 각자 혼자 합니다). 팀을 가장 먼저 고른 사람이 그 팀의 대표입니다. 혼자 하는 사람도 한 팀으로 셉니다. 문제마다 제한 시간은 5분입니다.</p>
-          <p>끝나면 선택 3으로 승점을 나눕니다. 모두 동시에 고르고, 한 번 고르면 바꿀 수 없습니다.</p>
-          <ul>
-            <li>승리 팀 (팀의 다수결): 독식은 대표 5점·두 팀원 1점씩, 헌신은 대표 1점·두 팀원 3점씩.</li>
-            <li>패배 팀 (팀의 다수결): 희생은 대표만 3점 차감, 질책은 두 팀원만 2점씩 차감.</li>
-            <li>개인: 승리 7점, 패배 3점 차감. 안전은 1점 더 차감, 도전은 추가 대결 (도전한 사람끼리 먼저 맞히면 승리: 피스 3개, 지면 3점 차감).</li>
-          </ul>
-        </div>
-        <div data-game="lay-the-grass" hidden>
-          <h2>잔디 깔기: 규칙</h2>
-          <p>공원 위에 내 잔디 타일을 놓아 승점을 얻습니다. 타일은 일곱 종류이고, 타일에 적힌 번호가 곧 승점입니다.</p>
-          <ul>
-            <li>먼저 승점이 낮은 사람부터 타일 하나를 모두가 보는 앞에서 고릅니다. 같은 타일을 골라도 되고, 한 번 고르면 바꿀 수 없습니다.</li>
-            <li>그다음 번호가 작은 타일부터 공원에 놓습니다. 돌릴 수 있지만 뒤집을 수 없고, 공원 밖으로 나가거나 다른 타일과 겹칠 수 없습니다.</li>
-            <li>놓으면 번호만큼 승점을 얻습니다. 놓을 자리가 없으면 0점입니다.</li>
-          </ul>
-          <p>번호가 클수록 점수는 크지만 늦게 놓습니다.</p>
-          <p>사이사이에 둘 중 하나를 고르는 선택이 네 번 나옵니다 (선택 5~8). 모두 동시에 고르고, 다 고르면 누가 무엇을 골랐는지 공개됩니다. 한 번 고르면 바꿀 수 없습니다. 선택의 내용은 나올 때 공개되고, 선택 5에서 "정보"를 고르면 미리 봅니다.</p>
-        </div>
-        <div data-game="count-cubes" hidden>
-          <h2>큐브 세기: 규칙</h2>
-          <p>큐브를 쌓아 만든 입체가 나옵니다. 큐브가 모두 몇 개인지 세어, 그 수를 각자 입력합니다.</p>
-          <ul>
-            <li>입체는 속이 꽉 차 있습니다. 보이는 큐브 밑에 깔린 큐브도 셉니다. 뒤쪽이 앞쪽보다 낮은 곳은 없어서, 다른 큐브 뒤에 숨은 기둥은 없습니다.</li>
-            <li>맞힌 순서대로 순위가 정해집니다. 누가 맞히고 틀렸는지는 모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다.</li>
-            <li>틀리면 20초 동안 답할 수 없습니다.</li>
-            <li>한 명만 남기고 모두 맞히면 끝납니다.</li>
-          </ul>
-          <p>제한 시간은 5분입니다. 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.</p>
-        </div>
-        <button id="rules-close" type="button" class="primary">닫기</button>
+        <div id="rules-sheet"></div>
+        <button id="rules-close" type="button" class="primary"></button>
       </section>
     </div>
     <!-- On a phone held upright the frame would be a strip too small to read. -->
-    <p id="turn-device" role="status">화면을 가로로 돌려 주세요</p>
+    <p id="turn-device" role="status"></p>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>
