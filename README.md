@@ -62,13 +62,9 @@
 |---|---|
 | ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-tiles-with-holes-lay.png) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-turn-first-view.png) |
 
-| 기억 포커: 뒤집힌 판에서 고르기 | 기억 포커: 공개 |
+| 기억 포커 | 무거운 13 |
 |---|---|
-| ![기억 포커 고르는 화면](production/qa/evidence/poker-2026-11-11-choose.png) | ![기억 포커 결과 화면](production/qa/evidence/poker-2026-11-11-reveal.png) |
-
-| 무거운 13: 카드와 칩 내기 | 무거운 13: 바위를 놓을 차례 |
-|---|---|
-| ![무거운 13 카드와 칩을 고르는 화면](production/qa/evidence/under-2026-11-11-submit.png) | ![무거운 13 내 차례 화면](production/qa/evidence/under-2026-11-11-my-turn.png) |
+| ![기억 포커 결과 화면](production/qa/evidence/poker-2026-11-11-reveal.png) | ![무거운 13 카드와 칩을 고르는 화면](production/qa/evidence/under-2026-11-11-submit.png) |
 
 규칙은 방송에서 공개된 그대로이고, 공개된 규칙이 말하지 않는 부분은
 방송 화면으로 확인하거나 임시로 채웠습니다. 무엇을 그대로 가져왔고 무엇을
