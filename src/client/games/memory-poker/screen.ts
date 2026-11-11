@@ -6,16 +6,21 @@
  * screen shows what it sends and asks it to take a choice. While the board
  * is turned over the room sends none of its cards, so there is nothing here
  * to look up: a card's back shows the letter of its cell, as the document's
- * board does. Cards are chosen with the pointer, or with the arrow keys and
- * Space; Enter makes the choice final.
+ * board does. Cards are chosen with the pointer or a finger, or with the
+ * arrow keys and Space; Enter, or the button of the bar, makes the choice
+ * final.
  */
 import { rankOf, suitOf, type Card, type Hand } from "../../../shared/games/memory-poker/cards";
 import type { Outcome, PokerEvent } from "../../../shared/games/memory-poker/rules";
+import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
+import { TOUCH } from "../../touch";
+import { WORDS as PAGE } from "../../words";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS } from "./words";
 
@@ -45,6 +50,7 @@ export interface PokerScreen {
   lost(): void;
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
+  press(code: string): void;
   destroy(): void;
 }
 
@@ -146,7 +152,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
-  const clicks: { x: number; y: number }[] = [];
+  const clicks: Press[] = [];
   const mouse = { x: -1, y: -1 };
   let stopped = false;
 
@@ -266,7 +272,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
-    const clicked = (rect: Box): boolean => clicks.some((p) => inRect(p, rect));
+    const clicked = (rect: Box, finger?: Reach): boolean => clicks.some((p) => hits(p, rect, finger));
     if (pressed("KeyM")) setMuted(!isMuted());
     const was = help;
     if (pressed("KeyH")) help = !help;
@@ -277,9 +283,9 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
 
     const view = latest.view;
     if (view.phase === "ended") {
-      if (pressed("Escape") || clicked(LOBBY_RECT)) {
+      if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) handlers.again();
         else say(WORDS.refused["not-host"]);
       }
@@ -606,12 +612,14 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     const choosing = view.phase === "choose" && me() !== null;
     const [words, colour] = standing();
     pen.txt(pen.fit(words, choosing ? LOCK_RECT[0] - 14 : W - 12), 6, 225, colour);
+    // which keys open the rules and mute the sound; under a finger, where the menu that does is
+    const hint = TOUCH ? PAGE.menu.hint : WORDS.hint;
     if (!choosing) {
-      pen.txt(WORDS.hint, 6, 240, C.dim);
+      pen.txt(hint, 6, 240, C.dim);
       return;
     }
     pen.txt(pen.fit(WORDS.keys, LOCK_RECT[0] - 14), 6, 240, C.boneD);
-    pen.txt(WORDS.hint, 6, 254, C.dim);
+    pen.txt(hint, 6, 254, C.dim);
     const live = canChoose() && !pending;
     button(LOCK_RECT, WORDS.button.lock, live && selection.length === latest.rules.picks, live);
   }
@@ -652,10 +660,6 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
   canvas.height = H;
   ctx.imageSmoothingEnabled = false;
 
-  function toScreen(event: PointerEvent): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) * W) / (rect.width || W), y: ((event.clientY - rect.top) * H) / (rect.height || H) };
-  }
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
     // a key typed into a text box (the chat) is not for the game, and neither is one pressed on a button
@@ -666,27 +670,24 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     if (!event.repeat || event.code.startsWith("Arrow")) keys.push(event.code);
     if (event.code === "Space" || event.code.startsWith("Arrow")) event.preventDefault();
   };
-  const onPointerMove = (event: PointerEvent): void => {
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-  };
-  const onPointerDown = (event: PointerEvent): void => {
-    startAudio();
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    clicks.push(p);
-  };
-  // a pointer that has left the screen is over none of its cards
-  const onPointerLeave = (): void => {
-    mouse.x = -1;
-    mouse.y = -1;
-  };
+  const unwatch = watchPointer(canvas, W, H, {
+    move(p): void {
+      mouse.x = p.x;
+      mouse.y = p.y;
+    },
+    down(p): void {
+      startAudio();
+      mouse.x = p.x;
+      mouse.y = p.y;
+      clicks.push(p);
+    },
+    // a pointer that has left the screen, or a finger that has lifted, is over none of its cards
+    gone(): void {
+      mouse.x = -1;
+      mouse.y = -1;
+    },
+  });
   addEventListener("keydown", onKeyDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointerleave", onPointerLeave);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -734,12 +735,13 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       if (player === undefined) return;
       speech.set(slot, { lines: speechLines(pen, text), t: speechSeconds(text) });
     },
+    press(code: string): void {
+      keys.push(code);
+    },
     destroy(): void {
       stopped = true;
       removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
+      unwatch();
     },
   };
 }

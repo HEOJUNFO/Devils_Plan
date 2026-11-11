@@ -66,6 +66,12 @@ export interface GameScreen {
   setHost(host: boolean): void;
   /** The player in lobby slot `slot` said a line. */
   say(slot: number, text: string): void;
+  /**
+   * A key was pressed for the player by something that is not a keyboard: the
+   * page's menu, under a finger, opens the rules as `KeyH` does. `code` is a
+   * key's code as the browser names it.
+   */
+  press(code: string): void;
   /** Stops drawing and listening. */
   destroy(): void;
 }

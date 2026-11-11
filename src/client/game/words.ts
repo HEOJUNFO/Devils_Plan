@@ -7,6 +7,7 @@
  */
 import { words } from "../lang";
 import type { HelpLine, RulesSheet } from "../sheet";
+import { byInput, keyed } from "../touch";
 
 const ko = {
   sheet: {
@@ -84,7 +85,7 @@ const ko = {
       known === 1 ? `내 앞 약실 ${letter}: 실탄!` : known === 0 ? `내 앞 약실 ${letter}: 비었음` : `내 앞 약실 ${letter}: 모름 ${chance}%`,
     allKnow: "모두 앎",
     onlyIKnow: "나만 앎",
-    status: (round: number, out: number, endWhenOut: number) => `${round}라운드 · 소진 ${out}/${endWhenOut} · H 규칙`,
+    status: (round: number, out: number, endWhenOut: number) => byInput(`${round}라운드 · 소진 ${out}/${endWhenOut} · H 규칙`, `${round}라운드 · 소진 ${out}/${endWhenOut}`),
   },
   /** The line over the buttons: 468 pixels, or 330 while a move waits to be confirmed. */
   prompt: {
@@ -99,25 +100,27 @@ const ko = {
     liveAhead: "내 앞이 실탄! 3이나 4로 총구를 돌려 옆자리로 넘기세요",
     emptyAhead: "내 앞은 비었습니다. 크레딧을 아끼며 다른 자리를 살피세요",
     yourTurn: "내 차례: 행동을 고르세요 (1~5)",
-    pick: (open: boolean, pair: string) => `${open ? "공개 조사" : "비공개 조사"}: ${pair} 칸 · 좌우 키로 고르기`,
-    swap: (pair: string) => `조작권! 맞바꿀 두 칸 ${pair} · 좌우 키로 고르기`,
-    amount: (amount: number, pot: number, need: number) => `조작함에 ${amount}개 · 좌우 키로 개수 · 모은 ${pot}/${need}`,
+    pick: (open: boolean, pair: string) => `${open ? "공개 조사" : "비공개 조사"}: ${pair} 칸 · ${byInput("좌우 키로 고르기", "약실을 눌러 고르기")}`,
+    swap: (pair: string) => `조작권! 맞바꿀 두 칸 ${pair} · ${byInput("좌우 키로 고르기", "약실을 눌러 고르기")}`,
+    amount: (amount: number, pot: number, need: number) => `조작함에 ${amount}개 · ${byInput("좌우 키로 개수", "- +로 개수")} · 모은 ${pot}/${need}`,
     turn: (steps: number, letter: string, known: 0 | 1 | null) =>
       `${steps}칸 회전: ${letter} 약실(${known === 1 ? "실탄" : known === 0 ? "빔" : "모름"})이 내 앞으로`,
     watching: "관전 중입니다. 다음 판부터 함께할 수 있습니다.",
   },
   /** The small buttons: confirm and cancel 62 pixels wide inside, the two under the results 88. */
   button: {
-    confirm: "Enter 확정",
-    cancel: "Esc 취소",
-    again: "Enter 새 판",
-    lobby: "Esc 대기실로",
+    confirm: keyed("Enter", "확정"),
+    cancel: keyed("Esc", "취소"),
+    again: keyed("Enter", "새 판"),
+    lobby: keyed("Esc", "대기실로"),
   },
   /** The five moves, on buttons 82 pixels wide inside: the name after its key, and the price under it. */
   action: {
     names: ["공개 조사", "비공개 조사", "1칸 회전", "2칸 회전", "조작"],
     price: (credits: number) => `크레딧 ${credits}`,
     tamper: (most: number, pot: number, need: number) => `1~${most}개씩 · ${pot}/${need}`,
+    /** On the fifth button while credits are counted out for the pot: how many, on a button 30 pixels wide inside. Pressed, it puts them in. */
+    count: (credits: number) => `${credits}개`,
   },
   /** The results, in the bar: the verdict in large letters 86 pixels wide at most, the lines beside it 290. */
   result: {
@@ -150,7 +153,7 @@ const ko = {
           : "접속이 끊긴 사람의 차례는 잠시 뒤 자동으로 1크레딧 제출로 넘어갑니다.",
       tone: "dim",
     },
-    { text: "H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", tone: "title" },
+    { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
 };
 
@@ -220,7 +223,7 @@ const en: typeof ko = {
       known === 1 ? `My chamber ${letter}: live!` : known === 0 ? `My chamber ${letter}: empty` : `My chamber ${letter}: live? ${chance}%`,
     allKnow: "All know",
     onlyIKnow: "Only me",
-    status: (round, out, endWhenOut) => `Round ${round}, ${out}/${endWhenOut} out, H rules`,
+    status: (round, out, endWhenOut) => byInput(`Round ${round}, ${out}/${endWhenOut} out, H rules`, `Round ${round}, ${out}/${endWhenOut} out`),
   },
   prompt: {
     offline: "Connection lost. Reconnecting",
@@ -234,23 +237,24 @@ const en: typeof ko = {
     liveAhead: "Live in front of you! Turn the muzzle with 3 or 4 to pass it on",
     emptyAhead: "Empty in front of you. Save credits and look at the other seats",
     yourTurn: "Your turn: pick a move (1-5)",
-    pick: (open, pair) => `${open ? "Public check" : "Private check"}: ${pair} · pick with the arrow keys`,
-    swap: (pair) => `A swap! Chambers ${pair} · pick with the arrow keys`,
-    amount: (amount, pot, need) => `Put in ${amount} · left and right to change · pot ${pot}/${need}`,
+    pick: (open, pair) => `${open ? "Public check" : "Private check"}: ${pair} · ${byInput("pick with the arrow keys", "tap a chamber to pick")}`,
+    swap: (pair) => `A swap! Chambers ${pair} · ${byInput("pick with the arrow keys", "tap a chamber to pick")}`,
+    amount: (amount, pot, need) => `Put in ${amount} · ${byInput("left and right to change", "- and + to change")} · pot ${pot}/${need}`,
     turn: (steps, letter, known) => `Turn ${steps}: chamber ${letter} (${known === 1 ? "live" : known === 0 ? "empty" : "unknown"}) comes to you`,
     watching: "You are watching. You can play from the next game.",
   },
   button: {
-    confirm: "Enter OK",
-    cancel: "Esc back",
-    again: "Enter again",
-    lobby: "Esc to room",
+    confirm: keyed("Enter", "OK"),
+    cancel: keyed("Esc", "back"),
+    again: keyed("Enter", "again"),
+    lobby: keyed("Esc", "to room"),
   },
   action: {
     // "check" is left to the line over the buttons: a button holds one word after its key
     names: ["Public", "Private", "Turn 1", "Turn 2", "Tamper"],
     price: (credits) => (credits === 1 ? "1 credit" : `${credits} credits`),
     tamper: (most, pot, need) => `1-${most} · pot ${pot}/${need}`,
+    count: (credits) => `${credits}`,
   },
   result: {
     verdict: (seated, lost) => (!seated ? "Over" : lost ? "Shot" : "Alive!"),
@@ -281,7 +285,7 @@ const en: typeof ko = {
           : "An offline player has 1 credit put in for them after a moment.",
       tone: "dim",
     },
-    { text: "H or Esc: close · M: mute · T: chat", tone: "title" },
+    { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],
 };
 

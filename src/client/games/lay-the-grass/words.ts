@@ -8,6 +8,7 @@
 import { englishOrdinal } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
+import { byInput, keyed } from "../../touch";
 
 const ko = {
   sheet: {
@@ -79,14 +80,14 @@ const ko = {
     /** Under the cards, beside the button that shows the park: 190 pixels. */
     watching: "관전 중입니다",
     done: "골랐습니다. 모두 고르면 공개됩니다.",
-    confirm: "한 번 더 누르거나 Enter로 확정",
-    how: "1 또는 2, 또는 카드를 누르세요",
+    confirm: byInput("한 번 더 누르거나 Enter로 확정", "한 번 더 누르면 확정"),
+    how: byInput("1 또는 2, 또는 카드를 누르세요", "카드를 누르세요"),
     /** The button that puts the cards aside to show the park, and the one that brings them back: 88 pixels inside. */
-    seePark: "V 공원 보기",
-    seeCards: "V 선택 카드",
+    seePark: keyed("V", "공원 보기"),
+    seeCards: keyed("V", "선택 카드"),
     /** The sheet of the cards so far (I). */
     sheet: "선택 카드",
-    sheetClose: "I 또는 Esc: 닫기",
+    sheetClose: byInput("I 또는 Esc: 닫기", "아무 곳이나 누르면 닫힙니다"),
     notYet: "아직 공개되지 않았습니다",
     ahead: "(미리보기)",
   },
@@ -102,10 +103,11 @@ const ko = {
     chooseWait: (which: number, seconds: number) => `선택 ${which}: 모두 고르기를 기다리는 중 · ${seconds}초`,
     /** Picking a tile: before one is pointed at, and with `chosen` waiting to be confirmed. */
     pick: (chosen: number | null, seconds: number) =>
-      `${chosen === null ? "타일을 고르세요 (한 번 고르면 못 바꿉니다)" : `${chosen}번으로 정하려면 Enter, 또는 한 번 더 누르기`} · ${seconds}초`,
+      `${chosen === null ? "타일을 고르세요 (한 번 고르면 못 바꿉니다)" : byInput(`${chosen}번으로 정하려면 Enter, 또는 한 번 더 누르기`, `${chosen}번으로 정하려면 한 번 더 누르세요`)} · ${seconds}초`,
     mark: (what: "tree" | "plus" | "minus", seconds: number) =>
       `${what === "tree" ? "가로수를" : what === "plus" ? "+1 맨홀을" : "-1 맨홀을"} 놓을 칸을 누르세요 · ${seconds}초`,
-    cut: (cells: number, most: number, seconds: number) => `자를 칸을 누르세요 (${cells}/${most}칸) · X로 끝 · ${seconds}초`,
+    cut: (cells: number, most: number, seconds: number) =>
+      byInput(`자를 칸을 누르세요 (${cells}/${most}칸) · X로 끝 · ${seconds}초`, `자를 칸을 누르세요 (${cells}/${most}칸) · 다 잘랐으면 자르기 끝 · ${seconds}초`),
     lay: (seconds: number) => `타일을 놓으세요 · ${seconds}초`,
     /** What someone else is doing; `watching` for a player who is not in the game. */
     other: (watching: boolean, who: string, doing: "pick" | "manholes" | "trees" | "lay", seconds: number) =>
@@ -162,23 +164,25 @@ const ko = {
   },
   /** The buttons along the bar: the two under the results 88 pixels wide inside, the three for laying 84. */
   button: {
-    again: "Enter 새 판",
-    lobby: "Esc 대기실로",
-    cut: "X 자르기",
-    cutDone: "X 자르기 끝",
-    turn: "R 돌리기",
-    lay: "Enter 놓기",
+    again: keyed("Enter", "새 판"),
+    lobby: keyed("Esc", "대기실로"),
+    cut: keyed("X", "자르기"),
+    cutDone: keyed("X", "자르기 끝"),
+    turn: keyed("R", "돌리기"),
+    lay: keyed("Enter", "놓기"),
+    /** Under a finger, over the park: opens the sheet of the cards, as the I key does. */
+    cards: "선택 카드",
   },
   /** Beside the player's own tile, in the bar. */
   hand: {
     /** The tile and what it is worth, with the option of choice 6 where one was taken: 160 pixels. */
     mine: (tile: number, option: string | null) => `내 타일 ${tile}번 · ${tile}점${option === null ? "" : ` · ${option}`}`,
-    cards: "I: 지금까지 나온 선택 카드 보기",
-    mark: "마우스·화살표로 칸을 고르고 눌러서 놓기",
+    cards: byInput("I: 지금까지 나온 선택 카드 보기", "나온 카드는 위의 선택 카드 버튼으로 봅니다"),
+    mark: byInput("마우스·화살표로 칸을 고르고 눌러서 놓기", "칸을 누르고, 한 번 더 눌러서 놓기"),
     marks: "맨홀을 덮으면 +1/-1점. 가로수 위에는 구멍 칸만.",
     /** While laying: 256 pixels, or 164 with the button for cutting beside it. */
-    lay: "마우스·화살표로 옮기고 눌러서 놓기",
-    layCut: "옮겨서 놓기 · X 자르기",
+    lay: byInput("마우스·화살표로 옮기고 눌러서 놓기", "공원을 눌러 옮기고, 놓기를 누르세요"),
+    layCut: byInput("옮겨서 놓기 · X 자르기", "눌러 옮기고 놓기"),
     order: "번호가 작은 타일부터 놓습니다. 자리가 없으면 0점.",
     failed: "놓을 자리가 없어 이번 공원은 0점입니다.",
     scored: (points: number) => `타일을 놓아 ${points}점을 얻었습니다.`,
@@ -196,11 +200,11 @@ const ko = {
     { text: "" },
     { text: "사이사이에 둘 중 하나를 고르는 선택이 네 번 나옵니다 (선택 5~8).", tone: "mark" },
     { text: "모두 동시에 고르고, 다 고른 뒤에 누가 무엇을 골랐는지 공개됩니다.", tone: "dim" },
-    { text: "선택의 내용은 나올 때 공개됩니다. I 키로 나온 카드를 다시 볼 수 있습니다.", tone: "dim" },
+    { text: byInput("선택의 내용은 나올 때 공개됩니다. I 키로 나온 카드를 다시 볼 수 있습니다.", "선택의 내용은 나올 때 공개됩니다. 선택 카드 버튼으로 다시 볼 수 있습니다."), tone: "dim" },
     { text: "" },
     { text: `고르기 ${pickSeconds}초, 놓기 ${placeSeconds}초. 시간이 지나면 자동으로 넘어갑니다.`, tone: "dim" },
-    { text: "숫자: 고르기 · R: 돌리기 · X: 자르기(방어) · 화살표: 옮기기 · Enter: 정하기", tone: "dim" },
-    { text: "H 또는 Esc: 닫기 · I: 선택 카드 · V: 공원 보기 · M: 음소거 · T: 채팅", tone: "title" },
+    { text: byInput("숫자: 고르기 · R: 돌리기 · X: 자르기(방어) · 화살표: 옮기기 · Enter: 정하기", "타일은 공원을 눌러 옮기고, 놓기 버튼으로 놓습니다. 한 번 놓으면 못 바꿉니다."), tone: "dim" },
+    { text: byInput("H 또는 Esc: 닫기 · I: 선택 카드 · V: 공원 보기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
 };
 
@@ -268,12 +272,12 @@ const en: typeof ko = {
     picked: (have, of) => `${have}/${of} have picked`,
     watching: "You are watching",
     done: "Picked. Shown when all have.",
-    confirm: "Again, or Enter, to confirm",
-    how: "Press 1 or 2, or a card",
-    seePark: "V see park",
-    seeCards: "V cards",
+    confirm: byInput("Again, or Enter, to confirm", "Tap it again to confirm"),
+    how: byInput("Press 1 or 2, or a card", "Tap a card"),
+    seePark: keyed("V", "see park"),
+    seeCards: keyed("V", "cards"),
     sheet: "Selection cards",
-    sheetClose: "I or Esc: close",
+    sheetClose: byInput("I or Esc: close", "Tap anywhere to close"),
     notYet: "Not shown yet",
     ahead: "(preview)",
   },
@@ -285,9 +289,10 @@ const en: typeof ko = {
     sending: "Sending",
     choose: (which, seconds) => `Selection ${which}: pick one · ${seconds}s`,
     chooseWait: (which, seconds) => `Selection ${which}: waiting for everyone to pick · ${seconds}s`,
-    pick: (chosen, seconds) => `${chosen === null ? "Pick a tile (a pick cannot be changed)" : `Enter, or press it again, to settle on tile ${chosen}`} · ${seconds}s`,
+    pick: (chosen, seconds) =>
+      `${chosen === null ? "Pick a tile (a pick cannot be changed)" : byInput(`Enter, or press it again, to settle on tile ${chosen}`, `Tap it again to settle on tile ${chosen}`)} · ${seconds}s`,
     mark: (what, seconds) => `Press the cell for the ${what === "tree" ? "tree" : what === "plus" ? "+1 manhole" : "-1 manhole"} · ${seconds}s`,
-    cut: (cells, most, seconds) => `Press the cells to cut (${cells}/${most}) · X when done · ${seconds}s`,
+    cut: (cells, most, seconds) => byInput(`Press the cells to cut (${cells}/${most}) · X when done · ${seconds}s`, `Tap the cells to cut (${cells}/${most}) · then Done · ${seconds}s`),
     lay: (seconds) => `Lay your tile · ${seconds}s`,
     other: (watching, who, doing, seconds) =>
       `${watching ? "Watching · " : ""}${who} is ${doing === "pick" ? "picking" : doing === "manholes" ? "placing a manhole" : doing === "trees" ? "placing a tree" : "laying"} · ${seconds}s`,
@@ -335,20 +340,21 @@ const en: typeof ko = {
     waitHost: "Waiting for the host to start a new game",
   },
   button: {
-    again: "Enter again",
-    lobby: "Esc to room",
-    cut: "X cut",
-    cutDone: "X done",
-    turn: "R turn",
-    lay: "Enter lay",
+    again: keyed("Enter", "again"),
+    lobby: keyed("Esc", "to room"),
+    cut: keyed("X", "cut"),
+    cutDone: keyed("X", "done"),
+    turn: keyed("R", "turn"),
+    lay: keyed("Enter", "lay"),
+    cards: "Cards",
   },
   hand: {
     mine: (tile, option) => `Tile ${tile} · ${tile} pts${option === null ? "" : ` · ${option}`}`,
-    cards: "I: see the selection cards so far",
-    mark: "Pick a cell with the mouse or the arrows, and press to place",
+    cards: byInput("I: see the selection cards so far", "The cards so far: the Cards button above"),
+    mark: byInput("Pick a cell with the mouse or the arrows, and press to place", "Tap a cell, then tap it again to place"),
     marks: "A tile over a manhole: +1 or -1. Over a tree: only a holed cell.",
-    lay: "Move by mouse or arrows, then press",
-    layCut: "Move, lay · X cuts",
+    lay: byInput("Move by mouse or arrows, then press", "Tap the park to move it, then Lay"),
+    layCut: byInput("Move, lay · X cuts", "Tap to move, then Lay"),
     order: "The smallest number lays first. No room scores 0.",
     failed: "No room for your tile: 0 points this park.",
     scored: (points) => `Your tile is laid: ${points} points.`,
@@ -365,11 +371,11 @@ const en: typeof ko = {
     { text: "" },
     { text: "Along the way, a selection between two options comes up 4 times.", tone: "mark" },
     { text: "Everyone picks at once; then who picked what is shown.", tone: "dim" },
-    { text: "What a selection is about shows as it comes up. I: the cards again.", tone: "dim" },
+    { text: byInput("What a selection is about shows as it comes up. I: the cards again.", "A selection is revealed as it comes up. Cards: see them again."), tone: "dim" },
     { text: "" },
     { text: `${pickSeconds}s to pick, ${placeSeconds}s to lay. After that the game moves on by itself.`, tone: "dim" },
-    { text: "Digits: pick · R: turn · X: cut (Defense) · Arrows: move · Enter: set", tone: "dim" },
-    { text: "H or Esc: close · I: cards · V: see park · M: mute · T: chat", tone: "title" },
+    { text: byInput("Digits: pick · R: turn · X: cut (Defense) · Arrows: move · Enter: set", "Tap the park to move your tile, then Lay. A tile laid stays."), tone: "dim" },
+    { text: byInput("H or Esc: close · I: cards · V: see park · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],
 };
 

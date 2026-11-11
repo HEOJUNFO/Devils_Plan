@@ -8,6 +8,7 @@
 import { englishOrdinal } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
+import { byInput, keyed } from "../../touch";
 
 const ko = {
   sheet: {
@@ -16,7 +17,7 @@ const ko = {
       "큐브를 쌓아 만든 입체가 나옵니다. 큐브가 모두 몇 개인지 세어, 그 수를 각자 입력합니다.",
       [
         "입체는 속이 꽉 차 있습니다. 보이는 큐브 밑에 깔린 큐브도 셉니다. 처음 보이는 쪽에서는 뒤가 앞보다 낮은 곳이 없어, 다른 큐브 뒤에 숨은 기둥이 없습니다.",
-        "그림은 마우스로 끌어서 (또는 방향키로) 돌려 볼 수 있습니다.",
+        byInput("그림은 마우스로 끌어서 (또는 방향키로) 돌려 볼 수 있습니다.", "그림은 손가락으로 끌어서 돌려 볼 수 있습니다."),
         "맞힌 순서대로 순위가 정해집니다. 누가 맞히고 틀렸는지는 모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다.",
         "틀리면 20초 동안 답할 수 없습니다.",
         "한 명만 남기고 모두 맞히면 끝납니다.",
@@ -59,7 +60,7 @@ const ko = {
     lockedFor: (seconds: number) => `${seconds}초 뒤에 다시 답할 수 있습니다`,
   },
   /** In the corner of the picture: how the solid is turned, and, once it has been, how the first view comes back. */
-  turn: { hint: "끌어서 돌려 보기", back: "V: 처음 보던 쪽으로" },
+  turn: { hint: "끌어서 돌려 보기", back: keyed("V:", "처음 보던 쪽으로") },
   /** Over the picture while the game stands still; `seconds` until it is given up, where that is known. */
   waitingBack: (seconds: number | null) => (seconds === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${seconds}초`),
   /** The line over the entry, 468 pixels. */
@@ -71,7 +72,7 @@ const ko = {
     right: (place: number, solved: string) => `정답! ${place}위 · 다른 사람들을 기다리는 중 (${solved})`,
     sending: "보내는 중",
     wrong: (seconds: number) => `오답 · ${seconds}초 뒤에 다시 답할 수 있습니다`,
-    ask: "큐브는 모두 몇 개? 숫자를 넣고 Enter (또는 아래 버튼)",
+    ask: byInput("큐브는 모두 몇 개? 숫자를 넣고 Enter (또는 아래 버튼)", "큐브는 모두 몇 개? 아래 버튼으로 숫자를 넣고 입력"),
   },
   /** How many have the answer of how many it takes: the column's heading, with the clock beside it. */
   solved: (have: number, needed: number) => `정답 ${have}/${needed}명`,
@@ -101,7 +102,7 @@ const ko = {
     waitHost: "방장이 새 판을 시작하기를 기다리는 중",
   },
   /** The two buttons under the results, 88 pixels wide inside. */
-  button: { again: "Enter 새 판", lobby: "Esc 대기실로" },
+  button: { again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
   /** The rules over the screen (H), by the room's own numbers. */
   help: (lockSeconds: number, minutes: number, alone: boolean): HelpLine[] => [
     { text: "큐브 세기: 규칙", tone: "title" },
@@ -109,7 +110,7 @@ const ko = {
     { text: "" },
     { text: "입체는 속이 꽉 차 있습니다. 보이는 큐브 밑에 깔린 큐브도 셉니다." },
     { text: "처음 보이는 쪽에서는 뒤가 앞보다 낮은 곳이 없어, 숨은 기둥이 없습니다.", tone: "dim" },
-    { text: "그림은 끌어서 돌려 볼 수 있습니다 (방향키도 같음). V: 처음 보던 쪽으로.", tone: "dim" },
+    { text: byInput("그림은 끌어서 돌려 볼 수 있습니다 (방향키도 같음). V: 처음 보던 쪽으로.", "그림은 끌어서 돌려 볼 수 있습니다. 처음 보던 쪽은 그림 구석의 버튼으로."), tone: "dim" },
     { text: "" },
     { text: "답이 맞으면 맞힌 순서대로 순위가 정해집니다. 누가 맞히고 틀렸는지는" },
     { text: "모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다." },
@@ -117,8 +118,8 @@ const ko = {
     { text: alone ? "혼자 하는 판은 맞히면 끝납니다." : "한 명만 남기고 모두 맞히면 끝납니다." },
     { text: `제한 시간은 ${minutes}분입니다. 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.`, tone: "dim" },
     { text: "" },
-    { text: "숫자 키: 입력 · Backspace: 지움 · Enter: 답하기 (아래 버튼도 같음)", tone: "dim" },
-    { text: "H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", tone: "title" },
+    { text: byInput("숫자 키: 입력 · Backspace: 지움 · Enter: 답하기 (아래 버튼도 같음)", "숫자는 아래 버튼으로 넣고, 입력을 누르면 답합니다."), tone: "dim" },
+    { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
 };
 
@@ -129,7 +130,10 @@ const en: typeof ko = {
       "A solid built of stacked cubes comes up. Count how many cubes there are in all, and enter the number, each player for themselves.",
       [
         "The solid has no hollows. The cubes under the ones you see count too. Seen from where it is first shown, nowhere is the back lower than the front, so no column hides behind other cubes.",
-        "Drag the picture with the mouse (or use the arrow keys) to turn the solid and look at it from another side.",
+        byInput(
+          "Drag the picture with the mouse (or use the arrow keys) to turn the solid and look at it from another side.",
+          "Drag the picture with a finger to turn the solid and look at it from another side.",
+        ),
         "Players are ranked in the order they get it right. Everyone is told who was right and who was wrong, but not the numbers entered.",
         "A wrong answer locks you out for 20 seconds.",
         "The game ends when all but one have got it right.",
@@ -166,7 +170,7 @@ const en: typeof ko = {
     paused: "The game is paused",
     lockedFor: (seconds) => `You can answer again in ${seconds}s`,
   },
-  turn: { hint: "Drag to turn", back: "V: first view" },
+  turn: { hint: "Drag to turn", back: keyed("V:", "first view") },
   waitingBack: (seconds) => (seconds === null ? "Waiting for them to come back" : `Waiting for them to come back · ${seconds}s`),
   standing: {
     offline: "Connection lost. Reconnecting",
@@ -176,7 +180,7 @@ const en: typeof ko = {
     right: (place, solved) => `Right! ${englishOrdinal(place)} place · waiting for the others (${solved})`,
     sending: "Sending",
     wrong: (seconds) => `Wrong · you can answer again in ${seconds}s`,
-    ask: "How many cubes in all? Type the number, then Enter (or the buttons)",
+    ask: byInput("How many cubes in all? Type the number, then Enter (or the buttons)", "How many cubes in all? Enter the number with the buttons, then OK"),
   },
   solved: (have, needed) => `Solved ${have}/${needed}`,
   log: {
@@ -198,7 +202,7 @@ const en: typeof ko = {
     hostNext: (alone) => (alone ? "Play again or go back" : "Play again with the same people or go back"),
     waitHost: "Waiting for the host to start a new game",
   },
-  button: { again: "Enter again", lobby: "Esc to room" },
+  button: { again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
   help: (lockSeconds, minutes, alone) => [
     { text: "Count the Cubes: rules", tone: "title" },
     { text: "Count how many cubes the solid in the picture is made of," },
@@ -206,7 +210,7 @@ const en: typeof ko = {
     { text: "" },
     { text: "No hollows: cubes under the ones you see count too." },
     { text: "At first the back is never lower than the front: none is hidden.", tone: "dim" },
-    { text: "Drag the picture to turn it (arrow keys too). V: the first view.", tone: "dim" },
+    { text: byInput("Drag the picture to turn it (arrow keys too). V: the first view.", "Drag the picture to turn it. The button in its corner: the first view."), tone: "dim" },
     { text: "" },
     { text: "Players are ranked in the order they get it right. All are told" },
     { text: "who was right and who was wrong, but not the numbers entered." },
@@ -214,8 +218,8 @@ const en: typeof ko = {
     { text: alone ? "A game played alone ends when you get it right." : "The game ends when all but one have got it right." },
     { text: `Limit: ${minutes} minutes. After that only those who were right are ranked.`, tone: "dim" },
     { text: "" },
-    { text: "Digits: type · Backspace: delete · Enter: answer (or the buttons)", tone: "dim" },
-    { text: "H or Esc: close · M: mute · T: chat", tone: "title" },
+    { text: byInput("Digits: type · Backspace: delete · Enter: answer (or the buttons)", "Enter the number with the buttons; OK answers."), tone: "dim" },
+    { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],
 };
 

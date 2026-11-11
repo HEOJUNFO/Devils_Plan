@@ -9,6 +9,7 @@
 import { LIT_SECONDS, litSeconds } from "../../../shared/games/count-rectangles/reveal";
 import { GAP, type Card, type Option, type Rect, type RectEvent, type ScoreLine } from "../../../shared/games/count-rectangles/rules";
 import { afterBuzz, typeAnswer } from "../../../shared/games/count-rectangles/typing";
+import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import {
@@ -27,6 +28,7 @@ import {
 } from "../../game/draw";
 import { FIGURE_COUNT, figureRects } from "../../game/figures";
 import { C } from "../../game/palette";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
 import * as fxlib from "../../game/pixelfx.js";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LIST_PITCH, LOG_PITCH, PANEL_WIDTH, isCrowded, panelLayout, underList } from "../panel";
@@ -58,6 +60,7 @@ export interface RectScreen {
   lost(): void;
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
+  press(code: string): void;
   destroy(): void;
 }
 
@@ -116,6 +119,8 @@ const BUZZ_RECT: [number, number, number, number] = [4, 240, 150, 28];
 const digitRect = (digit: number): [number, number, number, number] => [118 + digit * 26, 242, 24, 24];
 const ERASE_RECT: [number, number, number, number] = [380, 242, 30, 24];
 const SAY_RECT: [number, number, number, number] = [414, 242, 62, 24];
+/** How far a button of the pad takes a finger: half the gap to the next, and up and down to the edges of the bar's row. */
+const PAD_REACH: Reach = [1, 3, 1, 4];
 const AGAIN_RECT: [number, number, number, number] = [386, 225, 90, 15];
 const LOBBY_RECT: [number, number, number, number] = [386, 250, 90, 15];
 /** The two options of the third choice, one above the other over the board. */
@@ -232,7 +237,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
 
   /** The keys pressed since the last step, in the order they were pressed: an answer is typed digit by digit. */
   const keys: string[] = [];
-  const clicks: { x: number; y: number }[] = [];
+  const clicks: Press[] = [];
   const mouse = { x: -1, y: -1 };
   let stopped = false;
 
@@ -399,7 +404,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
-    const clicked = (rect: readonly [number, number, number, number]): boolean => clicks.some((p) => inRect(p, rect));
+    const clicked = (rect: readonly [number, number, number, number], finger?: Reach): boolean => clicks.some((p) => hits(p, rect, finger));
     if (pressed("KeyM")) setMuted(!isMuted());
     const was = help;
     if (pressed("KeyH")) help = !help;
@@ -409,9 +414,9 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     if (help || was) return;
     const view = latest.view;
     if (view.phase === "ended") {
-      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT)) {
+      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) handlers.again();
         else say(WORDS.refused["not-host"]);
       }
@@ -477,9 +482,9 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     // the pad is on screen only once the answer is this player's; its buttons count as the keys they stand for
     const pad: string[] = [];
     if (toAnswer) {
-      for (let digit = 0; digit <= 9; digit++) if (clicked(digitRect(digit))) pad.push(`Digit${digit}`);
-      if (clicked(ERASE_RECT)) pad.push("Backspace");
-      if (clicked(SAY_RECT)) pad.push("Enter");
+      for (let digit = 0; digit <= 9; digit++) if (clicked(digitRect(digit), PAD_REACH)) pad.push(`Digit${digit}`);
+      if (clicked(ERASE_RECT, PAD_REACH)) pad.push("Backspace");
+      if (clicked(SAY_RECT, PAD_REACH)) pad.push("Enter");
     }
     const result = typeAnswer(typed, [...typing, ...pad], most);
     if (result.typed.length > typed.length || (result.typed !== typed && result.typed.length === typed.length)) sfx.move();
@@ -996,7 +1001,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       pen.txt(typed === "" ? "_" : typed, 66, 242, C.amber, "center", 24);
       for (let digit = 0; digit <= 9; digit++) button(digitRect(digit), `${digit}`, "", false, true);
       button(ERASE_RECT, WORDS.button.erase, "", false, typed !== "");
-      button(SAY_RECT, "Enter", "", typed !== "", typed !== "");
+      button(SAY_RECT, WORDS.button.say, "", typed !== "", typed !== "");
       return;
     }
     const able = canBuzz();
@@ -1034,10 +1039,6 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   canvas.height = H;
   ctx.imageSmoothingEnabled = false;
 
-  function toScreen(event: PointerEvent): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) * W) / (rect.width || W), y: ((event.clientY - rect.top) * H) / (rect.height || H) };
-  }
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
     // a key typed into a text box (the chat) is not for the game, and neither is one pressed on a button
@@ -1047,21 +1048,24 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     if (!event.repeat) keys.push(event.code);
     if (event.code === "Space" || event.code === "Backspace") event.preventDefault();
   };
-  const onPointerMove = (event: PointerEvent): void => {
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-  };
-  const onPointerDown = (event: PointerEvent): void => {
-    startAudio();
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    clicks.push(p);
-  };
+  const unwatch = watchPointer(canvas, W, H, {
+    move(p): void {
+      mouse.x = p.x;
+      mouse.y = p.y;
+    },
+    down(p): void {
+      startAudio();
+      mouse.x = p.x;
+      mouse.y = p.y;
+      clicks.push(p);
+    },
+    // a pointer that has left the screen, or a finger that has lifted, is over none of its buttons
+    gone(): void {
+      mouse.x = -1;
+      mouse.y = -1;
+    },
+  });
   addEventListener("keydown", onKeyDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -1115,11 +1119,13 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       if (player === undefined) return;
       speech.set(slot, { lines: speechLines(pen, text), t: speechSeconds(text) });
     },
+    press(code: string): void {
+      keys.push(code);
+    },
     destroy(): void {
       stopped = true;
       removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
+      unwatch();
     },
   };
 }

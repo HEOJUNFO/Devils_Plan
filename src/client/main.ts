@@ -37,23 +37,25 @@ import {
   type DirectoryRequest,
   type RejectReason,
 } from "../shared/protocol";
+import { liftFor, placeFrame } from "../shared/frame";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import chatConfig from "../shared/chat-config.json";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
+import { isMuted, setMuted, startAudio } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
 import { storageKey } from "./storage";
+import { TOUCH } from "./touch";
 import { createVoice } from "./voice";
 import { WORDS } from "./words";
 
 const config: RoomConfig = roomConfig;
 
-/** The frame's size in its own pixels: the game's screen. */
-const FRAME_W = 480;
-const FRAME_H = 270;
+/** How far above the on-screen keyboard a box being typed in is kept, in CSS pixels. */
+const KEYBOARD_MARGIN = 8;
 
 /**
  * `?bots=1` asks the room to fill empty seats with bots. Only a room run for
@@ -127,6 +129,14 @@ const listingButton = el<HTMLButtonElement>("listing");
 const sceneCanvas = el<HTMLCanvasElement>("scene");
 const tableCanvas = el<HTMLCanvasElement>("table");
 const leaveGameButton = el<HTMLButtonElement>("leave-game");
+const menuOpen = el<HTMLButtonElement>("menu-open");
+const gameMenu = el<HTMLElement>("game-menu");
+const menuList = el<HTMLElement>("menu-list");
+const menuRules = el<HTMLButtonElement>("menu-rules");
+const menuSound = el<HTMLButtonElement>("menu-sound");
+const menuFull = el<HTMLButtonElement>("menu-full");
+const menuClose = el<HTMLButtonElement>("menu-close");
+const turnFull = el<HTMLButtonElement>("turn-full");
 const rulesSheet = el<HTMLElement>("rules-sheet");
 const langButton = el<HTMLButtonElement>("lang");
 
@@ -160,7 +170,11 @@ function writeWords(): void {
     ["leave-game", WORDS.game.leave],
     ["tab-chat", WORDS.game.chat(0)],
     ["chat-send", WORDS.chat.send],
-    ["turn-device", WORDS.site.turnDevice],
+    ["turn-words", WORDS.site.turnDevice],
+    ["turn-full", WORDS.site.turnFull],
+    ["menu-open", WORDS.menu.open],
+    ["menu-rules", WORDS.menu.rules],
+    ["menu-close", WORDS.menu.close],
   ];
   for (const [id, text] of said) el(id).textContent = text;
   // said to a screen reader of what has no words on show
@@ -170,6 +184,8 @@ function writeWords(): void {
     ["tabs", WORDS.game.tabs],
     ["chat", WORDS.chat.label],
     ["chat-input", WORDS.chat.say],
+    ["table", WORDS.game.screen],
+    ["game-menu", WORDS.menu.label],
   ];
   for (const [id, text] of labelled) el(id).setAttribute("aria-label", text);
   chatInput.placeholder = WORDS.chat.say;
@@ -195,25 +211,63 @@ function loadToken(): string {
   return token;
 }
 
+// What the style sheet lays out for a finger: larger buttons, and one menu over a game (style.css).
+document.documentElement.classList.toggle("touch", TOUCH);
+
+/** The window the frame was last fitted to, in CSS pixels. */
+let fitted = { width: 0, height: 0 };
+
 /**
- * Fits the frame to the window, as large as it goes while one pixel of the
- * game stays a whole number of the screen's own pixels: every pixel square and
- * sharp, on a screen of any density. A window too small even for one to one
- * gets the frame shrunk to fit, soft but whole.
+ * Fits the frame to the window (`shared/frame.ts` says how large): with a
+ * mouse as large as it goes on whole pixels of the screen, under a finger as
+ * large as the screen allows.
  */
 function fitFrame(): void {
-  const density = devicePixelRatio || 1;
-  const fit = Math.min(innerWidth / FRAME_W, innerHeight / FRAME_H);
-  const whole = Math.floor(fit * density) / density;
-  const scale = whole > 0 ? whole : fit;
-  // the corner sits on a whole screen pixel too, or everything blurs by half a pixel
-  const snap = (value: number): number => Math.round(value * density) / density;
-  frame.style.setProperty("--scale", String(scale));
-  frame.style.setProperty("--left", `${snap((innerWidth - FRAME_W * scale) / 2)}px`);
-  frame.style.setProperty("--top", `${snap((innerHeight - FRAME_H * scale) / 2)}px`);
+  // Where a phone's browser shrinks the window for its keyboard, the frame is not shrunk to the strip
+  // that is left while a box is typed in: it keeps its size and is lifted (`liftFrame`).
+  const typing = TOUCH && document.activeElement instanceof HTMLInputElement && innerWidth === fitted.width;
+  const height = typing ? Math.max(innerHeight, fitted.height) : innerHeight;
+  fitted = { width: innerWidth, height };
+  const placed = placeFrame({ width: innerWidth, height, density: devicePixelRatio || 1, coarse: TOUCH });
+  frame.style.setProperty("--scale", String(placed.scale));
+  frame.style.setProperty("--left", `${placed.left}px`);
+  frame.style.setProperty("--top", `${placed.top}px`);
 }
 addEventListener("resize", fitFrame);
 fitFrame();
+
+/** How far the frame is lifted now, in CSS pixels. */
+let lifted = 0;
+
+/**
+ * Under a finger: keeps the box being typed in clear of the on-screen
+ * keyboard. A browser that moves the page for its keyboard has the box in
+ * sight already, and nothing is lifted; one that only lays the keyboard over
+ * the page would leave the chat's box under it.
+ */
+function liftFrame(): void {
+  const seen = window.visualViewport;
+  const box = document.activeElement;
+  let lift = 0;
+  if (TOUCH && seen != null && box instanceof HTMLInputElement && frame.contains(box)) {
+    // where the box ends with the frame where it belongs
+    const bottom = box.getBoundingClientRect().bottom + lifted;
+    lift = liftFor(bottom, seen.offsetTop, seen.height, KEYBOARD_MARGIN);
+  }
+  if (lift === lifted) return;
+  lifted = lift;
+  frame.style.setProperty("--lift", `${lift}px`);
+}
+if (TOUCH) {
+  window.visualViewport?.addEventListener("resize", liftFrame);
+  window.visualViewport?.addEventListener("scroll", liftFrame);
+  addEventListener("focusin", liftFrame);
+  addEventListener("focusout", () => {
+    liftFrame();
+    // a browser that moved the page for its keyboard does not always move it back
+    if (!(document.activeElement instanceof HTMLInputElement)) scrollTo(0, 0);
+  });
+}
 
 /** The connection to the room this page is in or is entering. */
 let socket: PartySocket | null = null;
@@ -254,6 +308,10 @@ let chatOpen = false;
 let crowded = false;
 /** Lines others said during a game while the chat was not on show. */
 let unread = 0;
+/** The screen's promise not to go dark, while one is held (`keepAwake`). */
+let awake: WakeLockSentinel | null = null;
+/** Whether that promise has been asked for and not yet given. */
+let waking = false;
 
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
@@ -321,6 +379,13 @@ function renderVoice(): void {
   const view = currentView;
   const inGame = table !== null;
   const offered = view?.voice === true;
+  // Under a finger the controls of a game are in its menu, where they have the room to be pressed;
+  // in the waiting room, and with a mouse, they sit on the frame itself.
+  const home = TOUCH && inGame ? menuList : frame;
+  if (voiceBox.parentElement !== home) {
+    if (home === menuList) menuList.insertBefore(voiceBox, menuFull);
+    else frame.insertBefore(voiceBox, tabs);
+  }
   // during a game there is no room to say that a room has no voice: the controls are just not there
   voiceBox.hidden = currentCode === "" || view === null || (inGame && !offered);
   voiceBox.classList.toggle("in-game", inGame);
@@ -376,8 +441,80 @@ function openChat(open: boolean): void {
   chatOpen = open;
   if (open) unread = 0;
   syncChat();
-  if (open) chat.focus();
-  else chatInput.blur();
+  // Under a finger the chat is opened to be read as often as to be written in, and a box that takes
+  // the focus brings the keyboard up over half the screen: there the box is pressed to type in it.
+  if (open && !TOUCH) chat.focus();
+  else if (!open) chatInput.blur();
+}
+
+/**
+ * Under a finger, during a game: opens or closes the menu over it, with its
+ * buttons saying how things stand.
+ */
+function openMenu(open: boolean): void {
+  const show = open && TOUCH && table !== null;
+  gameMenu.hidden = !show;
+  menuOpen.setAttribute("aria-expanded", String(show));
+  if (!show) {
+    disarmLeave();
+    return;
+  }
+  menuSound.textContent = isMuted() ? WORDS.menu.soundOff : WORDS.menu.soundOn;
+  menuSound.setAttribute("aria-pressed", String(!isMuted()));
+  // a phone's browser that cannot fill the screen (Safari on an iPhone) has no button for it
+  menuFull.hidden = !document.fullscreenEnabled;
+  menuFull.textContent = document.fullscreenElement === null ? WORDS.menu.full : WORDS.menu.fullExit;
+}
+
+/**
+ * Fills the screen with the page and, where the browser can, turns it
+ * sideways and holds it there: a phone with its rotation locked shows the
+ * frame as it is meant to be seen. What a browser cannot do it leaves undone.
+ */
+function fillScreen(): void {
+  const turn = (): void => {
+    // not every browser has it, and none grants it outside full screen
+    const orientation = screen.orientation as ScreenOrientation & { lock?: (orientation: string) => Promise<void> };
+    void orientation.lock?.("landscape").catch(() => undefined);
+  };
+  if (document.fullscreenElement !== null) {
+    turn();
+    return;
+  }
+  void document.documentElement.requestFullscreen({ navigationUI: "hide" }).then(turn, () => undefined);
+}
+
+/**
+ * Under a finger: keeps the screen lit while a game is being played. A phone
+ * goes dark after half a minute without a press, and a player waiting for
+ * their turn presses nothing; a dark phone drops its connection. The browser
+ * takes the promise back whenever the page is hidden, so it is asked for
+ * again each time things change.
+ */
+function keepAwake(): void {
+  const wanted = TOUCH && table !== null && gameOn && document.visibilityState === "visible";
+  if (!wanted) {
+    void awake?.release().catch(() => undefined);
+    awake = null;
+    return;
+  }
+  if (awake !== null || waking || !("wakeLock" in navigator)) return;
+  waking = true;
+  navigator.wakeLock.request("screen").then(
+    (sentinel) => {
+      waking = false;
+      awake = sentinel;
+      sentinel.addEventListener("release", () => {
+        if (awake === sentinel) awake = null;
+      });
+      // things may have changed while it was asked for
+      keepAwake();
+    },
+    () => {
+      // a battery saver, or a browser that keeps the promise to itself: the screen dims as it would have
+      waking = false;
+    },
+  );
 }
 
 /** The words under the scene, and whether the rules can be opened from there. */
@@ -441,6 +578,7 @@ function showTable(game: GameId): GameScreen {
   }
   tableCanvas.hidden = false;
   leaveGameButton.hidden = false;
+  menuOpen.hidden = !TOUCH;
   rules.hidden = true;
   syncScene();
   syncChat();
@@ -458,9 +596,12 @@ function hideTable(): void {
   room.inert = false;
   tableCanvas.hidden = true;
   leaveGameButton.hidden = true;
+  menuOpen.hidden = true;
+  openMenu(false);
   disarmLeave();
   chatOpen = false;
   unread = 0;
+  keepAwake();
   syncScene();
   syncChat();
   renderVoice();
@@ -914,9 +1055,13 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       if (!isGameId(message.game)) return;
       const over = message.view.phase === "ended";
       gameOn = !over;
-      if (over && (table === null || dismissedGame === message.startedAt)) return;
+      if (over && (table === null || dismissedGame === message.startedAt)) {
+        keepAwake();
+        return;
+      }
       shownGame = message.startedAt;
       showTable(message.game).update(message);
+      keepAwake();
       return;
     }
     if (message.type === "refused") {
@@ -1121,13 +1266,57 @@ voiceToggle.addEventListener("click", () => {
 });
 voiceMic.addEventListener("click", () => voice.setMuted(!voice.muted));
 
+// Under a finger, during a game: the menu. The way out goes into it for good, and the voice controls
+// while a game is on (`renderVoice`): over the game itself they are too small to be pressed.
+if (TOUCH) menuList.insertBefore(leaveGameButton, menuClose);
+menuOpen.addEventListener("click", () => openMenu(true));
+menuClose.addEventListener("click", () => openMenu(false));
+// a press beside the buttons puts the menu away, as one beside any sheet does
+gameMenu.addEventListener("click", (event) => {
+  if (event.target === gameMenu) openMenu(false);
+});
+menuRules.addEventListener("click", () => {
+  openMenu(false);
+  // the game's own sheet, as its H key opens it
+  table?.press("KeyH");
+});
+menuSound.addEventListener("click", () => {
+  setMuted(!isMuted());
+  openMenu(true);
+});
+menuFull.addEventListener("click", () => {
+  if (document.fullscreenElement !== null) void document.exitFullscreen().catch(() => undefined);
+  else fillScreen();
+  openMenu(false);
+});
+// Upright, where the browser can fill the screen and turn the page: one press does what turning the phone would.
+turnFull.hidden = !(TOUCH && document.fullscreenEnabled);
+turnFull.addEventListener("click", fillScreen);
+
+// Sound may only start at a press the browser counts as the player's own, and under a finger that is
+// the finger lifting, not landing: a game's screen asks at the press, which a phone does not count.
+// Asked from the waiting room on, so that the first sounds of a game are heard by whoever started it.
+for (const type of ["pointerup", "touchend", "click"] as const) {
+  addEventListener(type, () => {
+    if (currentCode !== "") startAudio();
+  });
+}
+
+// Under a finger a long press brings up the browser's own menu (copy, share, save the picture) over
+// the game. A text box keeps it: that is where pasting is.
+if (TOUCH) {
+  frame.addEventListener("contextmenu", (event) => {
+    if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+  });
+}
+
 // During a game: the tabs over the right-hand column, and T for the chat.
 tabLog.addEventListener("click", () => openChat(false));
 tabChat.addEventListener("click", () => openChat(true));
 // A button pressed with the mouse keeps the focus, and the next Enter or Space meant for the game
 // would press it again. The ones that lie over the game give the focus back; reached and pressed
 // from the keyboard (no mouse: `detail` is 0) they keep it, and the key is theirs.
-for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat]) {
+for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
   button.addEventListener("click", (event) => {
     if (event.detail > 0 && !tableCanvas.hidden) button.blur();
   });
@@ -1176,7 +1365,8 @@ el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
 });
 addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
-  if (!rules.hidden) rules.hidden = true;
+  if (!gameMenu.hidden) openMenu(false);
+  else if (!rules.hidden) rules.hidden = true;
   else if (!newRoom.hidden) closeNewRoom();
   else if (!roomsGames.hidden) {
     showGamePicks(false);
@@ -1240,6 +1430,12 @@ function wake(): void {
 }
 addEventListener("online", wake);
 document.addEventListener("visibilitychange", wake);
+// the browser takes the screen's promise back when the page is hidden: asked for again when it is back
+document.addEventListener("visibilitychange", keepAwake);
+// leaving full screen by the browser's own way (a swipe, the back button) is told to the menu when it is next opened
+document.addEventListener("fullscreenchange", () => {
+  if (!gameMenu.hidden) openMenu(true);
+});
 
 // A table waiting on a player whose page went without a word (a laptop
 // closed, a network gone) wakes nobody, so the room would never notice. A
@@ -1278,4 +1474,6 @@ codeInput.maxLength = config.roomCodeLength;
 nickInput.value = localStorage.getItem(storageKey("nick")) ?? "";
 showLobby();
 followAddress();
-if (socket === null) nickInput.focus();
+// Ready to be typed in at once where there are keys. Under a finger a box that takes the focus by
+// itself brings the keyboard up over the list of rooms before anything has been read.
+if (socket === null && !TOUCH) nickInput.focus();

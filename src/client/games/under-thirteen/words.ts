@@ -9,6 +9,7 @@ import type { Chip, Stand, UnderEnd } from "../../../shared/games/under-thirteen
 import { englishOrdinal } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
+import { byInput, keyed } from "../../touch";
 
 /** The numbers of the room's rules the sheet over the screen is written with. */
 export interface HelpNumbers {
@@ -95,24 +96,26 @@ const ko = {
     paused: "판이 멈춰 있습니다",
     sending: "보내는 중",
     submit: (clock: string) => `바위 카드 1장과 색깔 칩 1개를 몰래 내세요 · ${clock}`,
-    ready: (clock: string) => `Enter로 냅니다 (내면 바꿀 수 없음) · ${clock}`,
+    ready: (clock: string) => byInput(`Enter로 냅니다 (내면 바꿀 수 없음) · ${clock}`, `내기를 누르면 냅니다 (내면 바꿀 수 없음) · ${clock}`),
     submitted: (have: number, of: number, clock: string) => `냈습니다 · 다른 사람을 기다리는 중 (${have}/${of}) · ${clock}`,
     watchSubmit: (have: number, of: number, clock: string) => `관전 중 · 카드와 칩을 내는 중 (${have}/${of}) · ${clock}`,
     chips: "칩 공개! 곧 카드를 공개합니다",
-    myTurn: (stand: string, weight: number, seconds: number) => `내 차례: ${stand}에 ${weight} · 놓기(Enter) 또는 패스(P) · ${seconds}초`,
+    myTurn: (stand: string, weight: number, seconds: number) =>
+      byInput(`내 차례: ${stand}에 ${weight} · 놓기(Enter) 또는 패스(P) · ${seconds}초`, `내 차례: ${stand}에 ${weight} · 놓기 또는 패스 · ${seconds}초`),
     mineGoing: (stand: string, weight: number) => `내 바위를 놓는 중: ${stand}에 ${weight}`,
-    myRainbow: (weight: number, seconds: number) => `내 차례: 무게 ${weight} · 받침대를 고르세요 (1·2·3 또는 클릭) · ${seconds}초`,
+    myRainbow: (weight: number, seconds: number) =>
+      byInput(`내 차례: 무게 ${weight} · 받침대를 고르세요 (1·2·3 또는 클릭) · ${seconds}초`, `내 차례: 무게 ${weight} · 받침대를 눌러 고르세요 · ${seconds}초`),
     theirTurn: (who: string, seconds: number) => `${who}의 바위를 놓는 중 · ${seconds}초`,
     roundOver: (round: number, seconds: number) => `라운드 ${round} 끝 · 다음 라운드까지 ${seconds}초`,
     lastOver: (seconds: number) => `마지막 라운드 끝 · 결과까지 ${seconds}초`,
   },
   /** Under the standing line: what the keys do, by what is asked. */
   keys: {
-    submit: "숫자 키: 카드 · ←→: 칩 · Enter: 내기 (버튼도 같음)",
+    submit: byInput("숫자 키: 카드 · ←→: 칩 · Enter: 내기 (버튼도 같음)", "카드와 칩을 하나씩 누르고 내기"),
     idle: "H: 규칙 · M: 음소거 · T: 채팅",
   },
   /** The buttons of the bar. */
-  button: { submit: "Enter 내기", place: "Enter 놓기", pass: "P 패스", again: "Enter 새 판", lobby: "Esc 대기실로" },
+  button: { submit: keyed("Enter", "내기"), place: keyed("Enter", "놓기"), pass: keyed("P", "패스"), again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
   log: {
     round: (round: number, first: string) => `라운드 ${round} · 선 ${first}`,
     dealt: "카드와 칩을 다시 받음",
@@ -147,7 +150,7 @@ const ko = {
     { text: "" },
     { text: `카드와 칩은 ${n.perSet}라운드에 한 번씩 쓰고, 같은 세트를 다시 받아 ${n.rounds}라운드까지.` },
     { text: "벌점이 가장 적으면 1위. 벌점이 같으면 더 최근에 벌점을 받은 사람이 아래.", tone: "dim" },
-    { text: "H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", tone: "title" },
+    { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
 };
 
@@ -212,22 +215,24 @@ const en: typeof ko = {
     paused: "The game is paused",
     sending: "Sending",
     submit: (clock) => `Secretly put in one rock card and one color chip · ${clock}`,
-    ready: (clock) => `Enter puts them in (it cannot be changed) · ${clock}`,
+    ready: (clock) => byInput(`Enter puts them in (it cannot be changed) · ${clock}`, `Tap Put in (it cannot be changed) · ${clock}`),
     submitted: (have, of, clock) => `Yours is in · waiting for the others (${have}/${of}) · ${clock}`,
     watchSubmit: (have, of, clock) => `Watching · cards and chips going in (${have}/${of}) · ${clock}`,
     chips: "The chips! The cards are shown next",
-    myTurn: (stand, weight, seconds) => `Your turn: ${weight} on ${stand} · place (Enter) or pass (P) · ${seconds}s`,
+    myTurn: (stand, weight, seconds) =>
+      byInput(`Your turn: ${weight} on ${stand} · place (Enter) or pass (P) · ${seconds}s`, `Your turn: ${weight} on ${stand} · place or pass · ${seconds}s`),
     mineGoing: (stand, weight) => `Your rock is going on: ${weight} on ${stand}`,
-    myRainbow: (weight, seconds) => `Your turn: weight ${weight} · choose a stand (1, 2, 3 or click) · ${seconds}s`,
+    myRainbow: (weight, seconds) =>
+      byInput(`Your turn: weight ${weight} · choose a stand (1, 2, 3 or click) · ${seconds}s`, `Your turn: weight ${weight} · tap a stand to choose it · ${seconds}s`),
     theirTurn: (who, seconds) => `Placing ${who}'s rock · ${seconds}s`,
     roundOver: (round, seconds) => `Round ${round} over · next round in ${seconds}s`,
     lastOver: (seconds) => `Last round over · result in ${seconds}s`,
   },
   keys: {
-    submit: "Digits: card · ←→: chip · Enter: put in (or the buttons)",
+    submit: byInput("Digits: card · ←→: chip · Enter: put in (or the buttons)", "Tap a card and a chip, then Put in"),
     idle: "H: rules · M: mute · T: chat",
   },
-  button: { submit: "Enter put in", place: "Enter place", pass: "P pass", again: "Enter again", lobby: "Esc to room" },
+  button: { submit: keyed("Enter", "put in"), place: keyed("Enter", "place"), pass: keyed("P", "pass"), again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
   log: {
     round: (round, first) => `Round ${round} · first: ${first}`,
     dealt: "A fresh set is dealt",
@@ -260,7 +265,7 @@ const en: typeof ko = {
     { text: "The last to take a penalty is first player next round.", tone: "dim" },
     { text: `Cards and chips last ${n.perSet} rounds, then are dealt again: ${n.rounds} rounds.` },
     { text: "Fewest penalty points wins; a more recent penalty ranks lower.", tone: "dim" },
-    { text: "H or Esc: close · M: mute · T: chat", tone: "title" },
+    { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],
 };
 

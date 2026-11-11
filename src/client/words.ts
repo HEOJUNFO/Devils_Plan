@@ -14,6 +14,8 @@ const ko = {
     title: "게임 로비",
     description: "친구들과 방을 만들어 함께 하는 두뇌 게임. 열린 방에 들어가거나 방을 만들어 사람들을 모으세요.",
     turnDevice: "화면을 가로로 돌려 주세요",
+    /** On the button that turns the page itself, where the browser can. */
+    turnFull: "가로 전체 화면으로 보기",
   },
   entry: {
     sub: "방을 고르거나 만드세요",
@@ -113,6 +115,21 @@ const ko = {
     log: "기록",
     standings: "현황",
     chat: (unread: number) => (unread > 0 ? `채팅 ${unread}` : "채팅"),
+    /** Said to a screen reader of the game's screen, which is a picture. */
+    screen: "게임 화면",
+  },
+  /** Under a finger, during a game: the button over the game, and what it opens. */
+  menu: {
+    open: "메뉴",
+    /** In a game's bar, where it tells a player with keys which of them open the rules and mute the sound. */
+    hint: "규칙 · 소리 · 나가기: 왼쪽 위 메뉴",
+    label: "게임 메뉴",
+    rules: "규칙 보기",
+    soundOn: "소리 켬",
+    soundOff: "소리 끔",
+    full: "전체 화면",
+    fullExit: "전체 화면 끝내기",
+    close: "닫기",
   },
   voice: {
     label: "음성 채팅",
@@ -163,6 +180,7 @@ const en: typeof ko = {
     title: "Game Lobby",
     description: "Brain games to play with friends in a room of your own. Join an open room, or make one and gather people.",
     turnDevice: "Turn your screen sideways",
+    turnFull: "Go full screen, sideways",
   },
   entry: {
     sub: "Pick a room or make one",
@@ -256,6 +274,18 @@ const en: typeof ko = {
     log: "Log",
     standings: "Players",
     chat: (unread) => (unread > 0 ? `Chat ${unread}` : "Chat"),
+    screen: "Game screen",
+  },
+  menu: {
+    open: "Menu",
+    hint: "Rules, sound, leave: Menu, top left",
+    label: "Game menu",
+    rules: "Rules",
+    soundOn: "Sound on",
+    soundOff: "Sound off",
+    full: "Full screen",
+    fullExit: "Exit full screen",
+    close: "Close",
   },
   voice: {
     label: "Voice chat",

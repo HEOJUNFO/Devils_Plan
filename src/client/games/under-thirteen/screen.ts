@@ -10,11 +10,15 @@
  * the keys are a shorter way to the same.
  */
 import { STANDS, sumOf, type Chip, type Stand, type UnderEvent } from "../../../shared/games/under-thirteen/rules";
+import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
+import { TOUCH, keyed } from "../../touch";
+import { WORDS as PAGE } from "../../words";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS } from "./words";
 
@@ -44,6 +48,7 @@ export interface UnderScreen {
   lost(): void;
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
+  press(code: string): void;
   destroy(): void;
 }
 
@@ -145,7 +150,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
-  const clicks: { x: number; y: number }[] = [];
+  const clicks: Press[] = [];
   const mouse = { x: -1, y: -1 };
   let stopped = false;
 
@@ -260,7 +265,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
-    const clicked = (rect: Box): boolean => clicks.some((p) => inRect(p, rect));
+    const clicked = (rect: Box, finger?: Reach): boolean => clicks.some((p) => hits(p, rect, finger));
     if (pressed("KeyM")) setMuted(!isMuted());
     const was = help;
     if (pressed("KeyH")) help = !help;
@@ -271,9 +276,9 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
 
     const view = latest.view;
     if (view.phase === "ended") {
-      if (pressed("Escape") || clicked(LOBBY_RECT)) {
+      if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) handlers.again();
         else say(WORDS.refused["not-host"]);
       }
@@ -614,8 +619,10 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     }
     const [words, colour] = standing();
     pen.txt(pen.fit(words, W - 12), 6, 225, colour);
+    // which keys open the rules and mute the sound; under a finger, where the menu that does is
+    const idle = TOUCH ? PAGE.menu.hint : WORDS.keys.idle;
     if (me() === null) {
-      pen.txt(WORDS.keys.idle, 6, 240, C.dim);
+      pen.txt(idle, 6, 240, C.dim);
       return;
     }
     if (view.phase === "submit") {
@@ -623,14 +630,15 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       return;
     }
     if (!asked()) {
-      pen.txt(WORDS.keys.idle, 6, 240, C.dim);
+      pen.txt(idle, 6, 240, C.dim);
       return;
     }
     const live = !pending;
     if (chipOf(me() as number) === "rainbow") {
       STANDS.forEach((stand, index) => {
         const rect = standButton(index);
-        button(rect, `${index + 1} ${WORDS.stand[stand]}`, false, live);
+        // after the key that chooses it, where there are keys
+        button(rect, keyed(`${index + 1}`, WORDS.stand[stand]), false, live);
         pen.px(rect[0] + 2, rect[1] + rect[3] - 4, rect[2] - 4, 2, STAND_COLOURS[stand]);
       });
     } else button(PLACE_RECT, WORDS.button.place, live, live);
@@ -675,10 +683,6 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   canvas.height = H;
   ctx.imageSmoothingEnabled = false;
 
-  function toScreen(event: PointerEvent): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) * W) / (rect.width || W), y: ((event.clientY - rect.top) * H) / (rect.height || H) };
-  }
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
     // a key typed into a text box (the chat) is not for the game, and neither is one pressed on a button
@@ -688,27 +692,24 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (!event.repeat) keys.push(event.code);
     if (event.code === "Space" || event.code.startsWith("Arrow")) event.preventDefault();
   };
-  const onPointerMove = (event: PointerEvent): void => {
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-  };
-  const onPointerDown = (event: PointerEvent): void => {
-    startAudio();
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    clicks.push(p);
-  };
-  // a pointer that has left the screen is over none of its buttons
-  const onPointerLeave = (): void => {
-    mouse.x = -1;
-    mouse.y = -1;
-  };
+  const unwatch = watchPointer(canvas, W, H, {
+    move(p): void {
+      mouse.x = p.x;
+      mouse.y = p.y;
+    },
+    down(p): void {
+      startAudio();
+      mouse.x = p.x;
+      mouse.y = p.y;
+      clicks.push(p);
+    },
+    // a pointer that has left the screen, or a finger that has lifted, is over none of its buttons
+    gone(): void {
+      mouse.x = -1;
+      mouse.y = -1;
+    },
+  });
   addEventListener("keydown", onKeyDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointerleave", onPointerLeave);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -753,12 +754,13 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       if (player === undefined) return;
       speech.set(slot, { lines: speechLines(pen, text), t: speechSeconds(text) });
     },
+    press(code: string): void {
+      keys.push(code);
+    },
     destroy(): void {
       stopped = true;
       removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
+      unwatch();
     },
   };
 }

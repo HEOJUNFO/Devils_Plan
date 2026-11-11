@@ -51,6 +51,8 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
+  /* nothing here scrolls: a finger dragged past the edge neither reloads the page nor pulls it about */
+  overscroll-behavior: none;
   /* the frame's own colour: what the window has left over round the frame is not a band of another */
   background: var(--night);
 }
@@ -70,6 +72,8 @@ body {
     inset: 0;
     z-index: 1;
     display: flex;
+    flex-direction: column;
+    gap: 24px;
     align-items: center;
     justify-content: center;
     margin: 0;
@@ -79,12 +83,28 @@ body {
     font: 20px/1.4 "Galmuri11", "Galmuri11 All", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
     text-align: center;
   }
+
+  /* Where the browser can turn the page itself (main.ts shows the button there): large enough for a thumb. */
+  #turn-full {
+    height: auto;
+    min-height: 48px;
+    padding: 10px 20px;
+    border-color: #b8741f;
+    color: #ffb43c;
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  #turn-full[hidden] {
+    display: none;
+  }
 }
 
 #frame {
   position: fixed;
-  left: var(--left, 0);
-  top: var(--top, 0);
+  left: var(--left, 0px);
+  /* lifted while a phone's keyboard would lie over the box being typed in (main.ts) */
+  top: calc(var(--top, 0px) - var(--lift, 0px));
   width: 480px;
   height: 270px;
   overflow: hidden;
@@ -97,6 +117,9 @@ body {
   /* Korean breaks between words, not inside one; a word too long for its line still breaks. */
   word-break: keep-all;
   overflow-wrap: break-word;
+  /* a press is a press: two quick ones do not zoom the page, and no grey flash is laid over what was pressed */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 canvas {
@@ -395,7 +418,19 @@ button {
   cursor: pointer;
 }
 
-button:hover:not(:disabled) {
+/*
+ * Pointed at, a button lights up; pressed, it does too. Only what can point
+ * without pressing has the first: after a finger has pressed a button the
+ * browser would go on counting it as pointed at, and the button would stay
+ * lit until something else was pressed.
+ */
+@media (hover: hover) {
+  button:hover:not(:disabled) {
+    background: var(--button-hover);
+  }
+}
+
+button:active:not(:disabled) {
   background: var(--button-hover);
 }
 
@@ -554,10 +589,16 @@ button.choice[aria-pressed="true"] {
 
 /* The one picked, and the one pointed at, show their whole edge over their neighbours'. */
 :root[lang="en"] #game-choices button[aria-pressed="true"],
-:root[lang="en"] #game-choices button:hover,
 :root[lang="en"] #game-choices button:focus-visible {
   position: relative;
   z-index: 1;
+}
+
+@media (hover: hover) {
+  :root[lang="en"] #game-choices button:hover {
+    position: relative;
+    z-index: 1;
+  }
 }
 
 :root[lang="en"] #listed-label {
@@ -660,9 +701,14 @@ button.choice[aria-pressed="true"] {
   opacity: 0.6;
 }
 
-#voice.in-game:hover,
 #voice.in-game:focus-within {
   opacity: 1;
+}
+
+@media (hover: hover) {
+  #voice.in-game:hover {
+    opacity: 1;
+  }
 }
 
 #voice.in-game button {
@@ -825,8 +871,10 @@ button.choice[aria-pressed="true"] {
   opacity: 0.6;
 }
 
-#leave-game:hover {
-  opacity: 1;
+@media (hover: hover) {
+  #leave-game:hover {
+    opacity: 1;
+  }
 }
 
 /* Asked to press again, the button is wider than the room the voice controls leave it. */
@@ -883,10 +931,57 @@ button.choice[aria-pressed="true"] {
 
 /* A game's rules sheet covers the whole frame: what the page itself lays over the game gives way to it. */
 #frame.covered #leave-game,
+#frame.covered #menu-open,
 #frame.covered #tabs,
 #frame.covered #chat,
 #frame.covered #voice {
   visibility: hidden;
+}
+
+/*
+ * Under a finger (main.ts marks the page `touch` where the player's main way
+ * to press is one). The frame is drawn at about one and a quarter on a phone
+ * held sideways, so a button of 17 pixels is 21 across a fingertip: here the
+ * buttons are 24 tall, 30 on that phone, which is what the panels have room
+ * for, and what lies over a game goes into one menu whose buttons are larger
+ * still. Nothing is drawn differently with a mouse.
+ */
+
+/* Nothing on the frame is text to be selected by a long press, but what is typed and what would be copied. */
+:root.touch #frame {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+:root.touch input,
+:root.touch #chat-log,
+:root.touch #room-code {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/*
+ * A box typed in: its letters are 16 pixels, the size under which an iPhone
+ * zooms the page in on a box it gives the keyboard to, and leaves it there.
+ */
+:root.touch input {
+  height: 24px;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+/* What a box says while it is empty stays the size of the page's other words: only what is typed has to be 16, and "Say something" at 16 does not fit its box. */
+:root.touch input::placeholder {
+  font-size: 12px;
+}
+
+:root.touch .panel button,
+:root.touch #chat-send,
+:root.touch #rules-open,
+:root.touch #lang,
+:root.touch #rules-close {
+  height: 24px;
 }
 
 /* Over the list of rooms the heading grows to hold a button a finger can press. */
@@ -899,4 +994,196 @@ button.choice[aria-pressed="true"] {
 :root.touch #rooms-pick {
   height: 24px;
   margin-top: 0;
+}
+
+/* The button in the bar's corner is taller, and would lie over the end of a long second line: the line ends short of it. */
+:root.touch #bar-2 {
+  padding-right: 76px;
+}
+
+/* The lobby's form: the room under its last line goes to the taller box and buttons. */
+:root.touch .sub {
+  margin-bottom: 5px;
+  padding-bottom: 5px;
+}
+
+:root.touch .or {
+  margin-top: 7px;
+  padding-top: 5px;
+}
+
+:root.touch #notice {
+  margin-top: 4px;
+}
+
+/*
+ * A new room: the form takes the whole frame, over the list of rooms, which
+ * is not what is being looked at while a room is made. In the column it has
+ * with a mouse, buttons a finger can press leave room for three of the seven
+ * games at a time; here they are all in sight, four to a row, or three where
+ * the names are English and longer.
+ */
+:root.touch #new-room {
+  left: 0;
+  width: 480px;
+  border-left: 0;
+}
+
+:root.touch #game-choices,
+:root[lang="en"].touch #game-choices {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  max-height: none;
+  margin-bottom: 0;
+}
+
+:root[lang="en"].touch #game-choices {
+  grid-template-columns: repeat(3, 1fr);
+  /* no heading comes between the games and who may come in, in English: a gap does */
+  margin-bottom: 8px;
+}
+
+:root[lang="en"].touch #game-choices button {
+  height: 24px;
+}
+
+:root[lang="en"].touch #game-choices button + button {
+  margin-top: 0;
+}
+
+:root.touch #listed-hint {
+  min-height: 13px;
+}
+
+/* The waiting room: the same things in the same order, each a line taller, and the chat that much shorter. */
+:root.touch .row.bottom.second {
+  bottom: 34px;
+}
+
+/* The voice controls start two pixels under the button that copies the link, which is now 24 tall beside the code: a finger on its lower edge would else ask for the microphone. */
+:root.touch #voice:not(.in-game) {
+  top: 53px;
+}
+
+:root.touch #voice:not(.in-game) button {
+  height: 24px;
+}
+
+:root.touch #chat:not(.in-game) {
+  top: 80px;
+  height: 80px;
+}
+
+:root.touch #frame.tall-heading #voice:not(.in-game) {
+  top: 66px;
+}
+
+:root.touch #frame.tall-heading #chat:not(.in-game) {
+  top: 93px;
+  height: 67px;
+}
+
+:root.touch #voice-note {
+  line-height: 24px;
+}
+
+/* The tabs over a game's column keep their height, which the column is laid out round, and take a finger from further off. */
+:root.touch #tabs button {
+  position: relative;
+}
+
+:root.touch #tabs button::before {
+  position: absolute;
+  inset: -7px -1px;
+  content: "";
+}
+
+/* The one button over a game: where the way out is with a mouse. */
+#menu-open {
+  position: absolute;
+  left: 3px;
+  top: 2px;
+  /* as wide in one language as in the other: a game may draw a button of its own beside it, from 56 on */
+  width: 46px;
+  height: 20px;
+  padding: 0;
+  opacity: 0.85;
+}
+
+/*
+ * A finger is taken from the frame's corner to the button's far edges, and no further down: a game
+ * may have something to press right under it (the charts of 미스터리 거래소, the first cells of a park),
+ * and a press there opened the menu, with the next press landing on one of its buttons.
+ */
+#menu-open::before {
+  position: absolute;
+  inset: -2px -3px 0;
+  content: "";
+}
+
+#menu-open[hidden],
+#game-menu[hidden] {
+  display: none;
+}
+
+/* The menu: over the whole game, which goes on under it and shows through. */
+#game-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(10 11 20 / 0.8);
+}
+
+#menu-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 280px;
+  padding: 10px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+}
+
+#menu-list button {
+  height: 36px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+#menu-list button[hidden] {
+  display: none;
+}
+
+/* The voice controls, a row of the menu to themselves; the way out beside the full screen, or alone where there is none. */
+#menu-list #voice.in-game {
+  position: static;
+  grid-column: 1 / -1;
+  gap: 6px;
+  width: auto;
+  opacity: 1;
+}
+
+#frame.leaving #menu-list #voice.in-game {
+  visibility: visible;
+}
+
+#menu-list #voice.in-game button {
+  flex: 1;
+}
+
+#menu-list #leave-game {
+  position: static;
+  opacity: 1;
+}
+
+#menu-full[hidden] + #leave-game,
+#menu-close {
+  grid-column: 1 / -1;
+}
+
+#menu-sound[aria-pressed="true"] {
+  border-color: var(--teal);
+  color: var(--teal);
 }

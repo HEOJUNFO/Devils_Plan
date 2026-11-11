@@ -6,8 +6,9 @@
  * screen shows what it sends and asks it to take an answer. The number is
  * entered with the keyboard or with the buttons along the bar, which are
  * there for a screen that has no keys. The solid can be turned and looked at
- * from any side, by dragging its picture or with the arrow keys: that is
- * this screen's own doing, and nothing the room is told.
+ * from any side, by dragging its picture with the pointer or a finger, or
+ * with the arrow keys: that is this screen's own doing, and nothing the room
+ * is told.
  *
  * The solid is the one thing here that is not drawn on the frame's 480 by 270
  * pixels. It turns to any angle, and at that size its edges went in steps and
@@ -18,10 +19,12 @@
 import type { CubesEvent } from "../../../shared/games/count-cubes/rules";
 import { FIRST_VIEW, SHADE, dragged, facesOf, pictureOf, turned, type Face, type View } from "../../../shared/games/count-cubes/view";
 import { typeAnswer } from "../../../shared/games/count-rectangles/typing";
+import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS } from "./words";
@@ -52,6 +55,7 @@ export interface CubesScreen {
   lost(): void;
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
+  press(code: string): void;
   destroy(): void;
 }
 
@@ -112,6 +116,18 @@ const PAD: readonly { label: string; code: string }[] = [
 const padRect = (index: number): Box => [92 + index * 32, 238, 30, 30];
 const AGAIN_RECT: Box = [386, 225, 90, 15];
 const LOBBY_RECT: Box = [386, 250, 90, 15];
+/**
+ * The words in the corner of the picture that bring the first view back, as a
+ * place to press: where they end, their top and how tall they are; the room
+ * the button has round them (its left and right, over them, under them, the
+ * line round it counted in); and how much further off than the button a
+ * finger still presses it. How wide the words are is the language's to say.
+ */
+const BACK_RIGHT = SCENE_W - 6;
+const BACK_TOP = BAR_Y - 15;
+const BACK_HEIGHT = 13;
+const BACK_ROOM = { side: 4, over: 4, under: 2 } as const;
+const BACK_REACH: Reach = [4, 4, 2, 0];
 
 /** `ms` as seconds with one decimal: how long an answer took. */
 const seconds1 = WORDS.took;
@@ -178,7 +194,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
-  const clicks: { x: number; y: number }[] = [];
+  const clicks: Press[] = [];
   const mouse = { x: -1, y: -1 };
   let stopped = false;
 
@@ -254,7 +270,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
-    const clicked = (rect: Box): boolean => clicks.some((p) => inRect(p, rect));
+    const clicked = (rect: Box, finger?: Reach): boolean => clicks.some((p) => hits(p, rect, finger));
     if (pressed("KeyM")) setMuted(!isMuted());
     const was = help;
     if (pressed("KeyH")) help = !help;
@@ -264,13 +280,13 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     if (help || was) return;
 
     // Turning the solid is looking, not playing: it is there for someone watching and after the game too.
-    if (pressed("KeyV")) angle = FIRST_VIEW;
+    if (pressed("KeyV") || (angle !== FIRST_VIEW && clicked(backRect(), BACK_REACH))) angle = FIRST_VIEW;
 
     const view = latest.view;
     if (view.phase === "ended") {
-      if (pressed("Escape") || clicked(LOBBY_RECT)) {
+      if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) handlers.again();
         else say(WORDS.refused["not-host"]);
       }
@@ -347,6 +363,12 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     pen.txt(words, Math.round(SCENE_W / 2), y + 2, colour, "center");
   }
 
+  /** The button that brings the first view back, as it is drawn and as it is pressed: its words, and the room round them. */
+  function backRect(): Box {
+    const width = pen.width(WORDS.turn.back);
+    return [BACK_RIGHT - width - BACK_ROOM.side, BACK_TOP - BACK_ROOM.over, width + BACK_ROOM.side * 2, BACK_HEIGHT + BACK_ROOM.over + BACK_ROOM.under];
+  }
+
   /** How many of the display's pixels go to one of the frame's, as the page has the frame scaled now. */
   function sharpness(): number {
     const shown = canvas.getBoundingClientRect().width;
@@ -374,7 +396,14 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     scenePen.px(0, 0, SCENE_W, BAR_Y, C.night);
     for (let y = 9; y < BAR_Y; y += 17) scenePen.px(0, y, SCENE_W, 1, C.wallD);
     // How the solid is turned, in the corner; the solid goes over it, so that where a solid reaches the corner it is the solid that shows.
-    scenePen.txt(angle === FIRST_VIEW ? WORDS.turn.hint : WORDS.turn.back, SCENE_W - 6, BAR_Y - 15, C.dim, "right");
+    if (angle === FIRST_VIEW) scenePen.txt(WORDS.turn.hint, BACK_RIGHT, BACK_TOP, C.dim, "right");
+    else {
+      // once turned, the way back to the first view: a key's, and a button to press
+      const [x, y, w, h] = backRect();
+      scenePen.px(x, y, w, h, C.steelDD);
+      scenePen.px(x + 1, y + 1, w - 2, h - 2, C.btn);
+      scenePen.txt(WORDS.turn.back, BACK_RIGHT, BACK_TOP, C.boneD, "right");
+    }
 
     if (faces === null || faces.of !== latest.startedAt) faces = { of: latest.startedAt, faces: facesOf(latest.view.solid) };
     g.translate(PICTURE.x, PICTURE.y);
@@ -597,10 +626,6 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   canvas.height = H;
   ctx.imageSmoothingEnabled = false;
 
-  function toScreen(event: PointerEvent): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) * W) / (rect.width || W), y: ((event.clientY - rect.top) * H) / (rect.height || H) };
-  }
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
     // a key typed into a text box (the chat) is not for the game, and neither is one pressed on a button
@@ -624,54 +649,65 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   };
   // the window that loses the keyboard never hears the key come up
   const onBlur = (): void => held.clear();
-  /** Whether a drag that begins at `p` turns the solid: on its picture, and not under the rules sheet. */
-  const onPicture = (p: { x: number; y: number }): boolean => !help && latest !== null && inRect(p, PICTURE_RECT);
+  /**
+   * Whether a drag that begins at `p` turns the solid: on its picture, not
+   * under the rules sheet, and not on the words that bring the first view back.
+   */
+  const onPicture = (p: Press): boolean => !help && latest !== null && inRect(p, PICTURE_RECT) && !(angle !== FIRST_VIEW && hits(p, backRect(), BACK_REACH));
   /** The pointer shows that the picture can be taken hold of. */
   const showGrip = (p: { x: number; y: number }): void => {
-    canvas.style.cursor = drag !== null ? "grabbing" : onPicture(p) ? "grab" : "";
+    canvas.style.cursor = drag !== null ? "grabbing" : onPicture({ ...p, touch: false }) ? "grab" : "";
   };
-  const onPointerMove = (event: PointerEvent): void => {
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    if (drag !== null && event.pointerId === drag.id) {
-      angle = dragged(angle, p.x - drag.x, p.y - drag.y);
-      drag.x = p.x;
-      drag.y = p.y;
-    }
-    showGrip(p);
-  };
-  const onPointerUp = (event: PointerEvent): void => {
-    if (drag === null || event.pointerId !== drag.id) return;
+  /** The solid is let go of: the hand lifted, the browser took the press away, or the canvas lost hold of the pointer. */
+  const letGo = (pointer: number): void => {
+    if (drag === null || pointer !== drag.id) return;
     drag = null;
-    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
-    showGrip(toScreen(event));
+    if (canvas.hasPointerCapture(pointer)) canvas.releasePointerCapture(pointer);
   };
-  const onPointerDown = (event: PointerEvent): void => {
-    startAudio();
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    clicks.push(p);
-    if (drag === null && onPicture(p)) {
-      drag = { id: event.pointerId, x: p.x, y: p.y };
-      // the drag goes on when the pointer leaves the frame
-      canvas.setPointerCapture(event.pointerId);
+  const unwatch = watchPointer(canvas, W, H, {
+    move(p, event): void {
+      mouse.x = p.x;
+      mouse.y = p.y;
+      if (drag !== null && event.pointerId === drag.id) {
+        angle = dragged(angle, p.x - drag.x, p.y - drag.y);
+        drag.x = p.x;
+        drag.y = p.y;
+      }
       showGrip(p);
-    }
-    // A button of the bar stands for a key and takes its place among the keys as they came: a digit
-    // clicked and Enter typed straight after it can reach one slow frame together, and must not be
-    // read as Enter and then the digit (the answer would go without its last digit).
-    const key = padShown() ? PAD.find((_, index) => inRect(p, padRect(index))) : undefined;
-    if (key !== undefined) keys.push(key.code);
-  };
+    },
+    down(p, event): void {
+      startAudio();
+      mouse.x = p.x;
+      mouse.y = p.y;
+      clicks.push(p);
+      if (drag === null && onPicture(p)) {
+        drag = { id: event.pointerId, x: p.x, y: p.y };
+        // the drag goes on when the pointer leaves the frame
+        canvas.setPointerCapture(event.pointerId);
+        showGrip(p);
+      }
+      // A button of the bar stands for a key and takes its place among the keys as they came: a digit
+      // clicked and Enter typed straight after it can reach one slow frame together, and must not be
+      // read as Enter and then the digit (the answer would go without its last digit).
+      const key = padShown() ? PAD.find((_, index) => inRect(p, padRect(index))) : undefined;
+      if (key !== undefined) keys.push(key.code);
+    },
+    up(p, event): void {
+      letGo(event.pointerId);
+      showGrip(p);
+    },
+    // a pointer that has left the screen, or a finger that has lifted, is over none of its buttons
+    gone(): void {
+      mouse.x = -1;
+      mouse.y = -1;
+    },
+  });
+  // a hold the browser ends by itself ends the drag: nothing else would, and the solid could not be taken hold of again
+  const onLostCapture = (event: PointerEvent): void => letGo(event.pointerId);
+  canvas.addEventListener("lostpointercapture", onLostCapture);
   addEventListener("keydown", onKeyDown);
   addEventListener("keyup", onKeyUp);
   addEventListener("blur", onBlur);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointerup", onPointerUp);
-  canvas.addEventListener("pointercancel", onPointerUp);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -722,16 +758,17 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       if (player === undefined) return;
       speech.set(slot, { lines: speechLines(pen, text), t: speechSeconds(text) });
     },
+    press(code: string): void {
+      keys.push(code);
+    },
     destroy(): void {
       stopped = true;
       removeEventListener("keydown", onKeyDown);
       removeEventListener("keyup", onKeyUp);
       removeEventListener("blur", onBlur);
       sceneCanvas.remove();
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointerup", onPointerUp);
-      canvas.removeEventListener("pointercancel", onPointerUp);
+      unwatch();
+      canvas.removeEventListener("lostpointercapture", onLostCapture);
       // the canvas goes on to the next screen with the pointer it had
       canvas.style.cursor = "";
     },

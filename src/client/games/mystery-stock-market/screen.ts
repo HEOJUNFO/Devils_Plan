@@ -15,12 +15,15 @@
 import { STOCKS } from "../../../shared/games/mystery-stock-market/prices";
 import { CARD, placeWords, wordsOf, type CardPiece, type HiddenWord } from "../../../shared/games/mystery-stock-market/rule-words";
 import type { MarketEvent, MarketMove, StockView } from "../../../shared/games/mystery-stock-market/rules";
+import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { lang } from "../../lang";
+import { TOUCH } from "../../touch";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS, grouped } from "./words";
 
@@ -50,6 +53,7 @@ export interface MarketScreen {
   lost(): void;
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
+  press(code: string): void;
   destroy(): void;
 }
 
@@ -101,8 +105,15 @@ const inRect = (p: { x: number; y: number }, r: Box): boolean => p.x >= r[0] && 
 /** The place of a stock's row in the table, and of a chart among the charts. */
 const rowRect = (index: number): Box => [2, ROW_Y - 3 + index * ROW_H, SCENE_W - 4, ROW_H];
 const cellRect = (index: number): Box => [4 + (index % CELLS_IN_ROW) * (CELL_W + 1), CELL_Y + Math.floor(index / CELLS_IN_ROW) * CELL_H, CELL_W - 1, CELL_H - 2];
-/** The switch between the table and the charts, where the table has no head. */
-const VIEW_RECT: Box = [4, 22, 60, 14];
+/**
+ * The switch between the table and the charts, where the table has no head.
+ * Under a finger it is beside the menu's button instead, over the table: right
+ * under that button it was 14 pixels tall, and a press meant for it was taken
+ * by the button above.
+ */
+const VIEW_RECT: Box = TOUCH ? [56, 2, 60, 20] : [4, 22, 60, 14];
+/** Where its word is written. Under a finger: level with the word of the menu's button beside it. */
+const VIEW_WORD_Y = VIEW_RECT[1] + (TOUCH ? 5 : 1);
 /** The buttons of the bar while orders are taken. */
 const MINUS_RECT: Box = [6, 238, 16, 28];
 const SHARES_RECT: Box = [24, 238, 52, 28];
@@ -120,6 +131,29 @@ const SECOND_RECT: Box = [314, 238, 78, 28];
 const LAST_RECT: Box = [396, 238, 78, 28];
 const AGAIN_RECT: Box = [386, 225, 90, 15];
 const LOBBY_RECT: Box = [386, 250, 90, 15];
+/**
+ * Under a finger a number of shares has no keys to be typed with: a press on
+ * the number puts a pad of figures in place of the bar's buttons, the number
+ * at its left. The pad's buttons, in order, and the key each stands for.
+ */
+const FIGURES_RECT: Box = [6, 238, 80, 28];
+const PAD_CODES: readonly string[] = [...["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((digit) => `Digit${digit}`), "Backspace", "Enter"];
+const padRect = (index: number): Box => [92 + index * 32, 238, 30, 28];
+/**
+ * How far the buttons of the bar take a finger: half the gap to the next,
+ * and up and down to the edges of the bar's row. The two that step the
+ * number by one are 16 pixels wide: the first reaches to the frame's edge,
+ * the second over the gap beside it.
+ */
+const BAR_REACH: Reach = [1, 4, 1, 4];
+const MINUS_REACH: Reach = [6, 4, 1, 4];
+const PLUS_REACH: Reach = [1, 4, 3, 4];
+/**
+ * The switch between the table and the charts. Beside the menu's button: to
+ * that button's edge, up to the frame's, and down to the table's head. Where
+ * a mouse has it: sideways, and down as far as the table's first row.
+ */
+const VIEW_REACH: Reach = TOUCH ? [2, 2, 8, 4] : [4, 0, 8, 2];
 
 /** A small arrow, for a price that rose and for one that fell. */
 const ARROW_UP = ["..#..", ".###.", "#####"] as const;
@@ -167,6 +201,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   /** Whether that number was put there by a button and not typed: the next figure typed then takes its place. */
   let put = true;
   let mode: Mode = "trade";
+  /** Whether the pad of figures is on show in place of the bar's buttons. */
+  let pad = false;
   /** Whether the charts are on show in place of the table. */
   let charts = false;
   /** `time` when the game on show was first seen to be over. */
@@ -176,7 +212,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
-  const clicks: { x: number; y: number }[] = [];
+  const clicks: Press[] = [];
   const mouse = { x: -1, y: -1 };
   let stopped = false;
 
@@ -252,6 +288,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       put = true;
       charts = false;
       mode = "trade";
+      pad = false;
       sent = null;
       if (before !== null) sfx.turn();
     }
@@ -305,7 +342,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
-    const clicked = (rect: Box): boolean => clicks.some((p) => inRect(p, rect));
+    const clicked = (rect: Box, finger?: Reach): boolean => clicks.some((p) => hits(p, rect, finger));
     if (pressed("KeyM")) setMuted(!isMuted());
     const was = help;
     if (pressed("KeyH")) help = !help;
@@ -319,7 +356,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     if (mode === "trade" || view.phase === "ended") {
       if (pressed("ArrowUp")) selected = (selected + STOCKS.length - 1) % STOCKS.length;
       if (pressed("ArrowDown")) selected = (selected + 1) % STOCKS.length;
-      if (pressed("KeyC") || clicked(VIEW_RECT)) {
+      if (pressed("KeyC") || clicked(VIEW_RECT, VIEW_REACH)) {
         charts = !charts;
         sfx.move();
       }
@@ -329,9 +366,9 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     }
 
     if (view.phase === "ended") {
-      if (pressed("Escape") || clicked(LOBBY_RECT)) {
+      if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) handlers.again();
         else say(WORDS.refused["not-host"]);
       }
@@ -339,21 +376,25 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     }
     const own = view.mine;
     const stock = chosen();
-    if (own === null || stock === undefined || !atWork()) return;
+    if (own === null || stock === undefined || !atWork()) {
+      // nothing is entered while nothing can be ordered
+      pad = false;
+      return;
+    }
 
     if (mode !== "trade") {
       // the bar is asking whether the player means it
-      if (pressed("Escape") || clicked(LAST_RECT)) {
+      if (pressed("Escape") || clicked(LAST_RECT, BAR_REACH)) {
         mode = "trade";
       } else if (mode === "piece") {
-        if (pressed("Digit1", "Numpad1") || clicked(THIRD_RECT)) {
+        if (pressed("Digit1", "Numpad1") || clicked(THIRD_RECT, BAR_REACH)) {
           ask({ type: "peek", stock: stock.id });
           mode = "trade";
-        } else if (pressed("Digit2", "Numpad2") || clicked(SECOND_RECT)) {
+        } else if (pressed("Digit2", "Numpad2") || clicked(SECOND_RECT, BAR_REACH)) {
           ask({ type: "cash" });
           mode = "trade";
         }
-      } else if (pressed("Enter", "NumpadEnter") || clicked(SECOND_RECT)) {
+      } else if (pressed("Enter", "NumpadEnter") || clicked(SECOND_RECT, BAR_REACH)) {
         ask(mode === "secret" ? { type: "secret", stock: stock.id } : { type: "done" });
         mode = "trade";
       }
@@ -366,7 +407,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       typed = `${Math.min(10 ** MOST_FIGURES - 1, Math.max(1, count))}`;
       put = true;
     };
-    for (const code of keys) {
+    /** Takes one key of a number: a figure, or the one that takes a figure back. */
+    const figure = (code: string): void => {
       const digit = /^(?:Digit|Numpad)(\d)$/.exec(code);
       if (digit !== null) {
         // a figure typed over a number that was not typed, or over nought, takes its place
@@ -377,31 +419,54 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
         typed = typed.slice(0, -1);
         put = false;
       }
+    };
+    if (pad) {
+      // The pad's buttons count as the keys they stand for, after the keys that came with them. The key
+      // that ends a number here puts the pad away: it does not end the round, as it does from the bar.
+      const pressedOn = PAD_CODES.filter((_code, index) => clicked(padRect(index), BAR_REACH));
+      for (const code of [...keys, ...pressedOn]) {
+        if (code === "Enter" || code === "NumpadEnter" || code === "Escape") {
+          pad = false;
+          sfx.pick();
+          break;
+        }
+        figure(code);
+      }
+      return;
     }
-    if (pressed("ArrowRight") || clicked(PLUS_RECT)) enter(shares() + 1);
-    if (pressed("ArrowLeft") || clicked(MINUS_RECT)) enter(shares() - 1);
-    if (pressed("KeyA") || clicked(MAX_RECT)) {
+    for (const code of keys) figure(code);
+    // a finger on the number itself asks for the pad
+    if (clicks.some((p) => p.touch && hits(p, SHARES_RECT, [0, 4, 0, 4]))) {
+      pad = true;
+      // the number that stands there is taken over by the first figure
+      put = true;
+      sfx.pick();
+      return;
+    }
+    if (pressed("ArrowRight") || clicked(PLUS_RECT, PLUS_REACH)) enter(shares() + 1);
+    if (pressed("ArrowLeft") || clicked(MINUS_RECT, MINUS_REACH)) enter(shares() - 1);
+    if (pressed("KeyA") || clicked(MAX_RECT, BAR_REACH)) {
       const most = mostBought();
       if (most === null) {
         say(WORDS.say.noMax);
         sfx.deny();
       } else enter(most);
     }
-    if (pressed("KeyZ") || clicked(ALL_RECT)) enter(own.shares[stock.id]);
+    if (pressed("KeyZ") || clicked(ALL_RECT, BAR_REACH)) enter(own.shares[stock.id]);
 
-    if (pressed("KeyB") || clicked(BUY_RECT)) order("buy");
-    else if (pressed("KeyS") || clicked(SELL_RECT)) order("sell");
-    else if (pressed("KeyX") || clicked(SECRET_RECT)) {
+    if (pressed("KeyB") || clicked(BUY_RECT, BAR_REACH)) order("buy");
+    else if (pressed("KeyS") || clicked(SELL_RECT, BAR_REACH)) order("sell");
+    else if (pressed("KeyX") || clicked(SECRET_RECT, BAR_REACH)) {
       if (own.secret) mode = "secret";
       else {
         say(WORDS.refused["secret-used"]);
         sfx.deny();
       }
-    } else if (pressed("KeyP") || clicked(PIECE_RECT)) {
+    } else if (pressed("KeyP") || clicked(PIECE_RECT, BAR_REACH)) {
       if (view.round > latest.rules.pieceRounds) say(WORDS.refused["pieces-closed"]);
       else if (own.pieces < 1) say(WORDS.refused["no-pieces"]);
       else mode = "piece";
-    } else if (pressed("Enter", "NumpadEnter") || clicked(DONE_RECT)) mode = "done";
+    } else if (pressed("Enter", "NumpadEnter") || clicked(DONE_RECT, BAR_REACH)) mode = "done";
   }
 
   // ---- One step of the screen's clock ---------------------------------------------------------------
@@ -607,7 +672,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     // the switch between the table and the charts
     const lit = inRect(mouse, VIEW_RECT);
     frame(VIEW_RECT, lit ? C.steel : C.steelDD);
-    pen.txt(pen.fit(charts ? WORDS.button.table : WORDS.button.charts, VIEW_RECT[2] - 4), VIEW_RECT[0] + Math.round(VIEW_RECT[2] / 2), VIEW_RECT[1] + 1, lit ? C.bone : C.boneD, "center");
+    pen.txt(pen.fit(charts ? WORDS.button.table : WORDS.button.charts, VIEW_RECT[2] - 4), VIEW_RECT[0] + Math.round(VIEW_RECT[2] / 2), VIEW_WORD_Y, lit ? C.bone : C.boneD, "center");
     if (charts) drawCharts();
     else drawTable();
     drawDetail();
@@ -777,8 +842,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       button(LAST_RECT, WORDS.button.cancel, false, true);
       return;
     }
-    button(MINUS_RECT, "-", false, live);
-    const [x, y, w, h] = SHARES_RECT;
+    const [x, y, w, h] = pad ? FIGURES_RECT : SHARES_RECT;
     pen.px(x, y, w, h, live ? C.amberD : C.steelDD);
     pen.px(x + 1, y + 1, w - 2, h - 2, C.ink);
     // with its thousands apart where that fits, and as it was typed where it does not
@@ -786,6 +850,15 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     pen.txt(entered, x + w - 4, y + 8, live ? C.bone : C.dim, "right");
     // a mark where the next figure goes, while nothing is entered
     if (live && typed === "" && Math.sin(time * 6) > 0) pen.px(x + w - 6, y + 8, 2, 12, C.amber);
+    if (pad) {
+      // the figures, the one that takes a figure back, and the one that puts the pad away with the number as it stands
+      PAD_CODES.forEach((code, index) => {
+        const label = code === "Backspace" ? WORDS.button.erase : code === "Enter" ? WORDS.button.enter : code.slice(-1);
+        button(padRect(index), label, code === "Enter", live);
+      });
+      return;
+    }
+    button(MINUS_RECT, "-", false, live);
     button(PLUS_RECT, "+", false, live);
     button(MAX_RECT, WORDS.button.max, false, live && mostBought() !== null);
     button(ALL_RECT, WORDS.button.all, false, live && own.shares[stock.id] > 0);
@@ -837,10 +910,6 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   canvas.height = H;
   ctx.imageSmoothingEnabled = false;
 
-  function toScreen(event: PointerEvent): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) * W) / (rect.width || W), y: ((event.clientY - rect.top) * H) / (rect.height || H) };
-  }
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
     // a key typed into a text box (the chat) is not for the game, and neither is one pressed on a button
@@ -851,27 +920,24 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     if (!event.repeat || event.code.startsWith("Arrow")) keys.push(event.code);
     if (event.code === "Space" || event.code === "Backspace" || event.code.startsWith("Arrow")) event.preventDefault();
   };
-  const onPointerMove = (event: PointerEvent): void => {
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-  };
-  const onPointerDown = (event: PointerEvent): void => {
-    startAudio();
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    clicks.push(p);
-  };
-  // a pointer that has left the screen is over none of its buttons
-  const onPointerLeave = (): void => {
-    mouse.x = -1;
-    mouse.y = -1;
-  };
+  const unwatch = watchPointer(canvas, W, H, {
+    move(p): void {
+      mouse.x = p.x;
+      mouse.y = p.y;
+    },
+    down(p): void {
+      startAudio();
+      mouse.x = p.x;
+      mouse.y = p.y;
+      clicks.push(p);
+    },
+    // a pointer that has left the screen, or a finger that has lifted, is over none of its buttons
+    gone(): void {
+      mouse.x = -1;
+      mouse.y = -1;
+    },
+  });
   addEventListener("keydown", onKeyDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
-  canvas.addEventListener("pointerleave", onPointerLeave);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -917,12 +983,13 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       if (player === undefined) return;
       speech.set(slot, { lines: speechLines(pen, text), t: speechSeconds(text) });
     },
+    press(code: string): void {
+      keys.push(code);
+    },
     destroy(): void {
       stopped = true;
       removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointerleave", onPointerLeave);
+      unwatch();
     },
   };
 }

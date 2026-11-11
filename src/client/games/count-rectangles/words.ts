@@ -8,6 +8,7 @@
 import { englishOrdinal } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
+import { byInput, keyed } from "../../touch";
 
 const ko = {
   sheet: {
@@ -93,9 +94,9 @@ const ko = {
     /** Under the line that says where the game stands, 468 pixels. */
     watching: "승리 팀은 독식·헌신, 패배 팀은 희생·질책을 다수결로, 개인은 도전·안전을 고릅니다.",
     done: "골랐습니다. 모두 고르면 한꺼번에 공개됩니다.",
-    confirm: "한 번 더 누르거나 Enter로 확정합니다. 한 번 고르면 바꿀 수 없습니다.",
-    how: "1 또는 2, 또는 카드를 눌러 고릅니다. 한 번 고르면 바꿀 수 없습니다.",
-    rules: "H: 규칙 (선택 3의 승점 나누기 포함)",
+    confirm: byInput("한 번 더 누르거나 Enter로 확정합니다. 한 번 고르면 바꿀 수 없습니다.", "한 번 더 누르면 확정합니다. 한 번 고르면 바꿀 수 없습니다."),
+    how: byInput("1 또는 2, 또는 카드를 눌러 고릅니다. 한 번 고르면 바꿀 수 없습니다.", "카드를 눌러 고릅니다. 한 번 고르면 바꿀 수 없습니다."),
+    rules: byInput("H: 규칙 (선택 3의 승점 나누기 포함)", "선택 3의 승점 나누기는 왼쪽 위 메뉴의 규칙 보기에 있습니다"),
   },
   /** Beside the board: over the target number (70 pixels), and under it once the problem is closed. */
   target: "타깃",
@@ -125,9 +126,9 @@ const ko = {
     versus: " 대 ",
     duelWatch: (names: string) => `추가 대결을 구경합니다: ${names}`,
     wrong: "오답: 이 문제에서는 다시 답할 수 없습니다",
-    duel: "추가 대결! 먼저 맞히면 승리 · 버저 (Space)",
+    duel: byInput("추가 대결! 먼저 맞히면 승리 · 버저 (Space)", "추가 대결! 먼저 맞히면 승리 · 버저를 누르세요"),
     won: "승리! 남은 문제를 구경합니다",
-    buzz: "다 세었으면 버저! (Space)",
+    buzz: byInput("다 세었으면 버저! (Space)", "다 세었으면 버저!"),
   },
   /** The moves, a line each in a column 168 pixels wide. */
   log: {
@@ -157,7 +158,7 @@ const ko = {
     duel: (round: number) => `추가 대결 ${round}`,
     seconds: (seconds: number) => `${seconds}초`,
     place: (place: number) => `${place}위`,
-    toWin: (wins: number) => `${wins}번 맞히면 승리 · H 규칙`,
+    toWin: (wins: number) => byInput(`${wins}번 맞히면 승리 · H 규칙`, `${wins}번 맞히면 승리`),
     toEnd: (units: number, needed: number) => (units === 1 ? "상대 없는 판: 승리하면 끝" : `${units}팀 중 ${needed}팀이 이기면 끝`),
   },
   /** The results, in the bar: the verdict in large letters 86 pixels wide at most, the lines beside it 280. */
@@ -177,12 +178,14 @@ const ko = {
   },
   /** The buttons along the bar: the two under the results 88 pixels wide inside, the buzzer 140, the one that takes a digit back 28. */
   button: {
-    again: "Enter 새 판",
-    lobby: "Esc 대기실로",
+    again: keyed("Enter", "새 판"),
+    lobby: keyed("Esc", "대기실로"),
     buzzer: "버저",
-    buzzerKeys: "Space 또는 Enter",
+    buzzerKeys: byInput("Space 또는 Enter", "누르고 답하기"),
     buzzerShut: "지금은 누를 수 없음",
     erase: "지움",
+    /** Gives the number entered as the answer: the key that does, or under a finger a word for it. */
+    say: byInput("Enter", "입력"),
   },
   /** Before the number being typed: 16 pixels. */
   typed: "답",
@@ -221,7 +224,7 @@ const ko = {
     { text: `헌신(대표 ${rules.devoteLeader}, 팀원 ${rules.devoteMember}씩)으로 나누고, 패배 팀은 희생(대표만 -${rules.sacrificeLeader})이나` },
     { text: `질책(두 팀원 -${rules.blameMember}씩)으로 나눕니다. 팀의 다수결, 대표는 팀을 먼저 고른 사람.` },
     { text: `개인: 승리 +${rules.winPoints}, 패배 -${rules.losePoints}. 안전 -${rules.safeLoss}. 도전: 추가 대결, 이기면 피스 ${rules.duelPieces}개, 지면 -${rules.duelLoss}.` },
-    { text: "H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", tone: "title" },
+    { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
 };
 
@@ -300,9 +303,9 @@ const en: typeof ko = {
     leader: (who) => (who === null ? "Our leader: you · " : `Our leader: ${who} · `),
     watching: "Winning teams, losing teams and players alone each pick one of two.",
     done: "Picked. All picks are shown at once when everyone has picked.",
-    confirm: "Press it again, or Enter, to confirm. A pick cannot be changed.",
-    how: "Press 1 or 2, or a card, to pick. A pick cannot be changed.",
-    rules: "H: rules (with how Selection 3 shares the points)",
+    confirm: byInput("Press it again, or Enter, to confirm. A pick cannot be changed.", "Tap it again to confirm. A pick cannot be changed."),
+    how: byInput("Press 1 or 2, or a card, to pick. A pick cannot be changed.", "Tap a card to pick. A pick cannot be changed."),
+    rules: byInput("H: rules (with how Selection 3 shares the points)", "How Selection 3 shares the points: Menu (top left), Rules"),
   },
   target: "Target",
   answer: (count) => `Answer: ${count}`,
@@ -325,9 +328,9 @@ const en: typeof ko = {
     versus: " vs ",
     duelWatch: (names) => `Watching the playoff: ${names}`,
     wrong: "Wrong: you cannot answer this problem again",
-    duel: "Playoff! First right answer wins · buzzer (Space)",
+    duel: byInput("Playoff! First right answer wins · buzzer (Space)", "Playoff! First right answer wins · hit the buzzer"),
     won: "You won! Watch the rest of the problems",
-    buzz: "Counted? Hit the buzzer! (Space)",
+    buzz: byInput("Counted? Hit the buzzer! (Space)", "Counted? Hit the buzzer!"),
   },
   log: {
     problem: (round) => `Problem ${round}`,
@@ -353,7 +356,7 @@ const en: typeof ko = {
     duel: (round) => `Playoff ${round}`,
     seconds: (seconds) => `${seconds}s`,
     place: (place) => englishOrdinal(place),
-    toWin: (wins) => `${wins} right to win · H rules`,
+    toWin: (wins) => byInput(`${wins} right to win · H rules`, `${wins} right to win`),
     toEnd: (units, needed) => (units === 1 ? "No rival: a win ends it" : `Over when ${needed} of ${units} win`),
   },
   result: {
@@ -371,12 +374,13 @@ const en: typeof ko = {
     waitHost: "Waiting for the host to start a new game",
   },
   button: {
-    again: "Enter again",
-    lobby: "Esc to room",
+    again: keyed("Enter", "again"),
+    lobby: keyed("Esc", "to room"),
     buzzer: "Buzzer",
-    buzzerKeys: "Space or Enter",
+    buzzerKeys: byInput("Space or Enter", "Tap to answer"),
     buzzerShut: "Not available now",
     erase: "Del",
+    say: byInput("Enter", "OK"),
   },
   typed: "#",
   brief: ["Rectangle: any rectangle of cells (one cell too).", "Sum = target counts. Blank = 0. One wrong: out."],
@@ -396,7 +400,7 @@ const en: typeof ko = {
     { text: `or Sacrifice (leader ${rules.devoteLeader}, others ${rules.devoteMember}). Losers: Sacrifice (leader -${rules.sacrificeLeader}) or` },
     { text: `Punish (others -${rules.blameMember} each), by majority. Alone: win +${rules.winPoints}, lose -${rules.losePoints};` },
     { text: `Safety -${rules.safeLoss}; Challenge is a playoff: winner ${rules.duelPieces} Pieces, losers -${rules.duelLoss}.` },
-    { text: "H or Esc: close · M: mute · T: chat", tone: "title" },
+    { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],
 };
 

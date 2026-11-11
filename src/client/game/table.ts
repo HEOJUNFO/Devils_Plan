@@ -10,6 +10,7 @@
  * not shown yet are played one after another, each with its own short
  * animation, so several arriving at once still read in order.
  */
+import { hits, type Box, type Press, type Reach } from "../../shared/frame";
 import type { Action, RulesConfig, SeatEvent, SeatView } from "../../shared/game";
 import type { ServerMessage } from "../../shared/protocol";
 import type { VoiceMark } from "../../shared/voice";
@@ -54,6 +55,7 @@ import {
 import { CHAIR_DOWN, FIGURE_COUNT } from "./figures";
 import { C } from "./palette";
 import * as fxlib from "./pixelfx.js";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "./pointer";
 import { isMuted, setMuted, sfx, startAudio } from "./sound";
 import { WORDS } from "./words";
 
@@ -86,6 +88,8 @@ export interface Table {
   setHost(host: boolean): void;
   /** The player in lobby slot `slot` said a line: it shows over their seat for a moment. */
   say(slot: number, text: string): void;
+  /** A key was pressed for the player by something that is not a keyboard; `code` as the browser names a key. */
+  press(code: string): void;
   /** Stops drawing and listening. */
   destroy(): void;
 }
@@ -183,6 +187,29 @@ const inRect = (p: { x: number; y: number }, r: readonly [number, number, number
 const buttonRect = (i: number): [number, number, number, number] => [4 + i * 95, 240, 92, 28];
 const OK_RECT: [number, number, number, number] = [342, 223, 66, 15];
 const NO_RECT: [number, number, number, number] = [412, 223, 64, 15];
+/**
+ * How far those two take a finger: up over the foot of the column, where
+ * nothing is pressed, sideways to the frame's edge and half the gap between
+ * them, and down to a pixel short of the moves under them.
+ */
+const OK_REACH: Reach = [6, 10, 2, 1];
+const NO_REACH: Reach = [2, 10, 4, 1];
+/**
+ * While credits are counted out for the pot, the fifth button is three: one
+ * fewer, the count itself, which puts them in, and one more. Without them
+ * the count could be changed with the arrow keys alone.
+ */
+const FEWER_RECT: Box = [384, 240, 28, 28];
+const COUNT_RECT: Box = [414, 240, 32, 28];
+const MORE_RECT: Box = [448, 240, 28, 28];
+/** How far the buttons of the bar take a finger: half the gap to the next, and down to the frame's edge. */
+const MOVE_REACH: Reach = [1, 0, 1, 2];
+/**
+ * Seconds a move has to have been chosen before a finger pressing its button
+ * again makes it: two quick presses are one press that bounced, and a move
+ * cannot be taken back.
+ */
+const AGAIN_HOLD = 0.35;
 /** The two buttons under the results: the next game (the host's) and the way back to the waiting room. */
 const AGAIN_RECT: [number, number, number, number] = [386, 225, 90, 15];
 const LOBBY_RECT: [number, number, number, number] = [386, 250, 90, 15];
@@ -202,6 +229,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let seen = 0;
   let anim: Anim | null = null;
   let sel: Selection | null = null;
+  /** `time` when that move was chosen. */
+  let selAt = 0;
   /** A move has been sent and the room has not answered yet. */
   let pending = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
@@ -238,7 +267,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   const playing: PlayingFx[] = [];
 
   const keys = new Set<string>();
-  const clicks: { x: number; y: number }[] = [];
+  const clicks: Press[] = [];
   const mouse = { x: -1, y: -1 };
   let stopped = false;
 
@@ -540,6 +569,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (i <= 1) sel = { mode: "pick", act: i, pair: lookDefault(), amount: 1 };
     else if (i <= 3) sel = { mode: "confirm", act: i, pair: 0, amount: 1 };
     else sel = { mode: "amount", act: 4, pair: 0, amount: 1 };
+    selAt = time;
     sfx.pick();
   }
 
@@ -564,7 +594,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.has(code));
-    const clicked = (rect: readonly [number, number, number, number]): boolean => clicks.some((p) => inRect(p, rect));
+    const clicked = (rect: Box, finger?: Reach): boolean => clicks.some((p) => hits(p, rect, finger));
     if (pressed("KeyM")) setMuted(!isMuted());
     const was = help;
     if (pressed("KeyH")) help = !help;
@@ -573,9 +603,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (help !== was) handlers.covered(help);
     if (help || was) return;
     if (fired && latest.view.phase === "ended") {
-      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT)) {
+      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT))) {
+      } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) handlers.again();
         else say(WORDS.refused["not-host"]);
       }
@@ -597,7 +627,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
 
     let picked: number | null = null;
     for (let i = 0; i < 5; i++) {
-      if (pressed(`Digit${i + 1}`, `Numpad${i + 1}`) || clicked(buttonRect(i))) picked = i;
+      if (pressed(`Digit${i + 1}`, `Numpad${i + 1}`) || clicked(buttonRect(i), MOVE_REACH)) picked = i;
     }
     if (sel === null) {
       if (picked !== null) choose(picked);
@@ -609,9 +639,16 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         choose(picked);
         return;
       }
-      if (pressed("Escape", "Backspace") || clicked(NO_RECT)) {
+      if (pressed("Escape", "Backspace") || clicked(NO_RECT, NO_REACH)) {
         sel = null;
         sfx.back();
+        return;
+      }
+      // Under a finger the lit button is the nearest thing to press: pressed again, it makes the move.
+      // (While credits are counted out it is three buttons, and the middle one does: see below.)
+      const lit = buttonRect(sel.act);
+      if (sel.mode !== "amount" && time - selAt >= AGAIN_HOLD && clicks.some((p) => p.touch && hits(p, lit, MOVE_REACH))) {
+        confirm();
         return;
       }
     }
@@ -640,16 +677,21 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       }
     } else if (sel.mode === "amount") {
       const most = Math.min(latest.rules.tamperMaxPerTurn, latest.view.credits ?? 0);
-      if (left && sel.amount > 1) {
+      if ((left || clicked(FEWER_RECT, MOVE_REACH)) && sel.amount > 1) {
         sel.amount--;
         sfx.move();
       }
-      if (right && sel.amount < most) {
+      if ((right || clicked(MORE_RECT, MOVE_REACH)) && sel.amount < most) {
         sel.amount++;
         sfx.move();
       }
+      // the count itself puts them in; not the press that only just chose the move, landing twice
+      if (time - selAt >= AGAIN_HOLD && clicked(COUNT_RECT, MOVE_REACH)) {
+        confirm();
+        return;
+      }
     }
-    if (pressed("Enter", "NumpadEnter", "Space") || clicked(OK_RECT)) confirm();
+    if (pressed("Enter", "NumpadEnter", "Space") || clicked(OK_RECT, OK_REACH)) confirm();
   }
 
   // ---- One step of the screen's clock ----------------------------------------------------------
@@ -1143,6 +1185,21 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const [x, y, w, h] = rect;
       const can = live && view.credits >= prices[i] && !(sel !== null && sel.mode === "swap");
       const on = live && sel !== null && sel.act === i;
+      if (on && sel !== null && sel.mode === "amount") {
+        // counting credits out for the pot: one fewer, the count, one more
+        const most = Math.min(rules.tamperMaxPerTurn, view.credits);
+        const step = (box: Box, sign: string, able: boolean): void => {
+          pen.px(box[0], box[1], box[2], box[3], C.steelDD);
+          pen.px(box[0] + 1, box[1] + 1, box[2] - 2, box[3] - 2, able && inRect(mouse, box) ? C.btnH : C.btn);
+          pen.txt(sign, box[0] + Math.round(box[2] / 2), box[1] + 7, able ? C.bone : C.dim, "center");
+        };
+        step(FEWER_RECT, "-", sel.amount > 1);
+        pen.px(COUNT_RECT[0], COUNT_RECT[1], COUNT_RECT[2], COUNT_RECT[3], C.amberD);
+        pen.px(COUNT_RECT[0] + 1, COUNT_RECT[1] + 1, COUNT_RECT[2] - 2, COUNT_RECT[3] - 2, "#3a2a12");
+        pen.txt(WORDS.action.count(sel.amount), COUNT_RECT[0] + Math.round(COUNT_RECT[2] / 2), COUNT_RECT[1] + 7, C.amber, "center");
+        step(MORE_RECT, "+", sel.amount < most);
+        continue;
+      }
       pen.px(x, y, w, h, on ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, on ? "#3a2a12" : can && inRect(mouse, rect) ? C.btnH : C.btn);
       pen.txt(`${i + 1} ${names[i]}`, x + 5, y + 2, on ? C.amber : can ? C.bone : C.dim);
@@ -1184,11 +1241,6 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   canvas.height = H;
   ctx.imageSmoothingEnabled = false;
 
-  function toScreen(event: PointerEvent): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) * W) / (rect.width || W), y: ((event.clientY - rect.top) * H) / (rect.height || H) };
-  }
-
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
     // a key typed into a text box (the chat) is not a move, and neither is one pressed on a button
@@ -1198,21 +1250,24 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (!event.repeat) keys.add(event.code);
     if (event.code === "Space" || event.code.startsWith("Arrow") || event.code === "Backspace") event.preventDefault();
   };
-  const onPointerMove = (event: PointerEvent): void => {
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-  };
-  const onPointerDown = (event: PointerEvent): void => {
-    startAudio();
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    clicks.push(p);
-  };
+  const unwatch = watchPointer(canvas, W, H, {
+    move(p): void {
+      mouse.x = p.x;
+      mouse.y = p.y;
+    },
+    down(p): void {
+      startAudio();
+      mouse.x = p.x;
+      mouse.y = p.y;
+      clicks.push(p);
+    },
+    // a pointer that has left the screen, or a finger that has lifted, is over none of its buttons
+    gone(): void {
+      mouse.x = -1;
+      mouse.y = -1;
+    },
+  });
   addEventListener("keydown", onKeyDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -1259,11 +1314,13 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       speech = speech.filter((line) => line.seat !== seat);
       speech.push({ seat, lines: speechLines(pen, text), t: speechSeconds(text) });
     },
+    press(code: string): void {
+      keys.add(code);
+    },
     destroy(): void {
       stopped = true;
       removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
+      unwatch();
     },
   };
 }

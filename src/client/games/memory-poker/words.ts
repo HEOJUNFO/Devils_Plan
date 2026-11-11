@@ -11,6 +11,7 @@ import type { PokerEnd } from "../../../shared/games/memory-poker/rules";
 import { englishOrdinal } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
+import { byInput, keyed } from "../../touch";
 
 /** The numbers of the room's rules the sheet over the screen is written with. */
 export interface HelpNumbers {
@@ -113,7 +114,7 @@ const ko = {
     sending: "보내는 중",
     learn: (seconds: number) => `카드를 외우세요 · ${seconds}초 뒤에 뒤집힙니다`,
     choose: (picks: number, have: number, seconds: number) => `뒤집힌 카드에서 ${picks}장을 고르세요 (${have}/${picks}) · ${seconds}초`,
-    ready: (seconds: number) => `Enter로 확정하세요 · ${seconds}초`,
+    ready: (seconds: number) => byInput(`Enter로 확정하세요 · ${seconds}초`, `확정을 눌러 정하세요 · ${seconds}초`),
     locked: (have: number, of: number, seconds: number) => `확정했습니다 · 기다리는 중 (${have}/${of}) · ${seconds}초`,
     watchLearn: (seconds: number) => `관전 중 · 카드를 외우는 시간 ${seconds}초`,
     watchChoose: (have: number, of: number, seconds: number) => `관전 중 · 고르는 중 (${have}/${of}) · ${seconds}초`,
@@ -125,7 +126,7 @@ const ko = {
     last: (words: string, seconds: number) => `${words} · 최종 결과까지 ${seconds}초`,
   },
   /** Under the standing line while choosing, 364 pixels. */
-  keys: "클릭 또는 방향키+Space: 고르기/빼기 · Enter: 확정",
+  keys: byInput("클릭 또는 방향키+Space: 고르기/빼기 · Enter: 확정", "카드를 눌러 고르고, 다시 눌러 뺍니다"),
   hint: "H: 규칙 · M: 음소거 · T: 채팅",
   log: {
     dealt: (round: number) => `라운드 ${round}`,
@@ -142,7 +143,7 @@ const ko = {
     waitHost: "방장이 새 판을 시작하기를 기다리는 중",
   },
   /** The buttons of the bar, 88 pixels wide inside. */
-  button: { lock: "Enter 확정", again: "Enter 새 판", lobby: "Esc 대기실로" },
+  button: { lock: keyed("Enter", "확정"), again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
   /** The rules over the screen (H), by the room's own numbers. */
   help: (n: HelpNumbers): HelpLine[] => [
     { text: "기억 포커: 규칙", tone: "title" },
@@ -159,8 +160,8 @@ const ko = {
     { text: "라운드마다 둘씩 짝지어 겨룹니다 (인원이 홀수면 한 조는 셋)." },
     { text: `${n.rounds}라운드를 하고, 이긴 횟수가 많은 순서로 순위를 정합니다.` },
     { text: "두 사람의 족보가 완전히 같으면 무승부입니다.", tone: "dim" },
-    { text: "클릭 또는 방향키+Space: 고르기/빼기 · Enter: 확정 (확정하면 못 바꿈)", tone: "dim" },
-    { text: "H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", tone: "title" },
+    { text: byInput("클릭 또는 방향키+Space: 고르기/빼기 · Enter: 확정 (확정하면 못 바꿈)", "카드를 눌러 고르고, 다시 눌러 뺍니다 · 확정하면 못 바꿉니다"), tone: "dim" },
+    { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
 };
 
@@ -240,7 +241,7 @@ const en: typeof ko = {
     sending: "Sending",
     learn: (seconds) => `Learn the cards · turned over in ${seconds}s`,
     choose: (picks, have, seconds) => `Pick ${picks} face-down cards (${have}/${picks}) · ${seconds}s`,
-    ready: (seconds) => `Press Enter to make it final · ${seconds}s`,
+    ready: (seconds) => byInput(`Press Enter to make it final · ${seconds}s`, `Tap Final to settle it · ${seconds}s`),
     locked: (have, of, seconds) => `Final · waiting (${have}/${of}) · ${seconds}s`,
     watchLearn: (seconds) => `Watching · ${seconds}s to learn the cards`,
     watchChoose: (have, of, seconds) => `Watching · choosing (${have}/${of}) · ${seconds}s`,
@@ -251,7 +252,7 @@ const en: typeof ko = {
     next: (words, seconds) => `${words} · next round in ${seconds}s`,
     last: (words, seconds) => `${words} · final result in ${seconds}s`,
   },
-  keys: "Click, or arrows + Space: pick/unpick · Enter: final",
+  keys: byInput("Click, or arrows + Space: pick/unpick · Enter: final", "Tap a card to pick it, again to put it back"),
   hint: "H: rules · M: mute · T: chat",
   log: {
     dealt: (round) => `Round ${round}`,
@@ -266,7 +267,7 @@ const en: typeof ko = {
     hostNext: "Play again with the same people or go back",
     waitHost: "Waiting for the host to start a new game",
   },
-  button: { lock: "Enter final", again: "Enter again", lobby: "Esc to room" },
+  button: { lock: keyed("Enter", "final"), again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
   help: (n) => [
     { text: "Memory Poker: rules", tone: "title" },
     { text: `${n.cards} cards lie face up for ${n.memoriseSeconds} seconds, then are turned over.` },
@@ -282,8 +283,8 @@ const en: typeof ko = {
     { text: "Suits are not compared. Two equal hands are a tie.", tone: "dim" },
     { text: "Each round players are paired off (odd number: one group of 3)." },
     { text: `${n.rounds} rounds; players are ranked by rounds won.` },
-    { text: "Click, or arrows + Space: pick · Enter: final (it cannot be changed)", tone: "dim" },
-    { text: "H or Esc: close · M: mute · T: chat", tone: "title" },
+    { text: byInput("Click, or arrows + Space: pick · Enter: final (it cannot be changed)", "Tap a card to pick it, again to put it back · Final cannot be undone"), tone: "dim" },
+    { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],
 };
 

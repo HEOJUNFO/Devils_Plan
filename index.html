@@ -2,7 +2,8 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- A phone's keyboard is laid over the page and does not shrink it: the frame keeps its size while a box is typed in. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-visual" />
     <title>게임 로비</title>
     <meta name="description" content="친구들과 방을 만들어 함께 하는 두뇌 게임. 열린 방에 들어가거나 방을 만들어 사람들을 모으세요." />
     <meta name="theme-color" content="#0d1020" />
@@ -105,6 +106,8 @@
 
       <canvas id="table" hidden></canvas>
       <button id="leave-game" type="button" hidden></button>
+      <!-- Under a finger the way out and the voice controls are too small to sit over a game: one button opens them (#game-menu, below). -->
+      <button id="menu-open" type="button" aria-haspopup="dialog" hidden></button>
 
       <!-- The room's voice chat: under the room's code in the waiting room, beside the way out during a game. -->
       <div id="voice" role="group" hidden>
@@ -128,14 +131,30 @@
         </form>
       </section>
 
+      <!--
+        Under a finger, during a game: what a keyboard does with a key and a mouse with a small button,
+        on buttons a finger can press. main.ts moves the way out and the voice controls in here.
+      -->
+      <section id="game-menu" role="dialog" aria-modal="true" hidden>
+        <div id="menu-list">
+          <button id="menu-rules" type="button"></button>
+          <button id="menu-sound" type="button"></button>
+          <button id="menu-full" type="button" hidden></button>
+          <button id="menu-close" type="button" class="primary"></button>
+        </div>
+      </section>
+
       <!-- The rules of a game: main.ts writes the sheet of the game asked for (each game's words.ts). -->
       <section id="rules" hidden>
         <div id="rules-sheet"></div>
         <button id="rules-close" type="button" class="primary"></button>
       </section>
     </div>
-    <!-- On a phone held upright the frame would be a strip too small to read. -->
-    <p id="turn-device" role="status"></p>
+    <!-- On a phone held upright the frame would be a strip too small to read. Where the browser can turn the page itself, a button does. -->
+    <div id="turn-device" role="status">
+      <p id="turn-words"></p>
+      <button id="turn-full" type="button" hidden></button>
+    </div>
     <script type="module" src="/src/client/main.ts"></script>
   </body>
 </html>

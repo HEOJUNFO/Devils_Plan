@@ -29,11 +29,14 @@ import {
   type ScoreLine,
   type Tile,
 } from "../../../shared/games/lay-the-grass/rules";
+import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C, shade } from "../../game/palette";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
+import { TOUCH } from "../../touch";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS } from "./words";
 
@@ -63,6 +66,7 @@ export interface GrassScreen {
   lost(): void;
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
+  press(code: string): void;
   destroy(): void;
 }
 
@@ -138,6 +142,17 @@ const OPTION_RECTS: readonly [Box, Box] = [
   [8, 112, 288, 62],
 ];
 const PEEK_RECT: Box = [206, 194, 90, 18];
+/** How far that button takes a finger: nothing else is pressed near it. */
+const PEEK_REACH: Reach = [6, 6, 8, 6];
+/** How far the three buttons for laying take a finger: half the gap to the next, and up and down to the edges of the bar's row. */
+const LAYING_REACH: Reach = [3, 3, 3, 4];
+/**
+ * Under a finger: the button that opens the sheet of the choices' cards, as
+ * the I key does. Beside the page's own button over the game, in the strip
+ * the scene keeps clear for the page; how wide it is is the language's to say.
+ */
+const CARDS_AT = { x: 56, y: 2, h: 20 } as const;
+const CARDS_REACH: Reach = [3, 2, 6, 2];
 
 /** `value` with its sign, as points are written. */
 const signed = (value: number): string => (value > 0 ? `+${value}` : `${value}`);
@@ -186,6 +201,12 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   let cutting = false;
   /** The park cell pointed at for a manhole or a tree. */
   let cursor: { row: number; col: number } | null = null;
+  /**
+   * The park cell a finger last pressed for a manhole or a tree. A finger
+   * covers the cell it presses, and what is put cannot be taken back: the
+   * first press points at the cell, a second on the same one puts.
+   */
+  let fingered: { row: number; col: number } | null = null;
   /** The tile laid last lights up for a moment: by player. */
   const lit = new Map<number, number>();
   /** The last second of the player's own turn that was ticked aloud. */
@@ -197,7 +218,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
-  const clicks: { x: number; y: number }[] = [];
+  const clicks: Press[] = [];
   const mouse = { x: -1, y: -1, moved: false };
   let stopped = false;
 
@@ -307,6 +328,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       lit.clear();
       speech.clear();
     }
+    // whatever the room has to say, the park may not be as it was when a cell was pointed at
+    fingered = null;
     const wasMine = myTurn() || choosing();
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
     latest = message;
@@ -383,11 +406,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
-    const clicked = (rect: Box): boolean => clicks.some((p) => inRect(p, rect));
+    const clicked = (rect: Box, finger?: Reach): boolean => clicks.some((p) => hits(p, rect, finger));
     if (pressed("KeyM")) setMuted(!isMuted());
     const was = sheet;
     if (pressed("KeyH")) sheet = sheet === "help" ? "none" : "help";
-    else if (pressed("KeyI")) sheet = sheet === "cards" ? "none" : "cards";
+    else if (pressed("KeyI") || (TOUCH && sheet === "none" && clicked(cardsRect(), CARDS_REACH))) sheet = sheet === "cards" ? "none" : "cards";
     else if (sheet !== "none" && (pressed("Escape", "Enter") || clicks.length > 0)) sheet = "none";
     // the page's own buttons lie over the frame: they give way while a sheet is up
     if ((sheet !== "none") !== (was !== "none")) handlers.covered(sheet !== "none");
@@ -395,9 +418,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
 
     const view = latest.view;
     if (view.phase === "ended") {
-      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT)) {
+      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) handlers.again();
         else say(WORDS.refused["not-host"]);
       }
@@ -433,7 +456,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         else if (isEnter(code) && pointed !== null) send();
       }
       for (const click of clicks) {
-        if (inRect(click, PEEK_RECT)) peek = !peek;
+        if (hits(click, PEEK_RECT, PEEK_REACH)) peek = !peek;
         else if (can()) {
           for (const option of [1, 2] as const) {
             if (!inRect(click, OPTION_RECTS[option - 1])) continue;
@@ -513,9 +536,13 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       cursor = spot;
       for (const click of clicks) {
         const at = cellAt(click);
-        if (at !== null && !pending) {
-          cursor = at;
-          put(at);
+        if (at === null || pending) continue;
+        cursor = at;
+        // a mouse points before it presses; a finger's first press is its pointing
+        if (!click.touch || (fingered !== null && fingered.row === at.row && fingered.col === at.col)) put(at);
+        else {
+          fingered = at;
+          sfx.move();
         }
       }
       return;
@@ -578,15 +605,17 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       }
       for (const click of clicks) {
         if (pending) break;
-        if (inRect(click, CUT_RECT)) toggleCutting();
-        else if (inRect(click, TURN_RECT)) {
+        if (hits(click, CUT_RECT, LAYING_REACH)) toggleCutting();
+        else if (hits(click, TURN_RECT, LAYING_REACH)) {
           turnHand();
           keepInSight();
-        } else if (inRect(click, LAY_RECT)) lay();
+        } else if (hits(click, LAY_RECT, LAYING_REACH)) lay();
         else if (inBox(click)) {
-          // a click on the park lays the tile; while cutting, it cuts the cell clicked off, or puts it back
+          // A click on the park lays the tile; while cutting, it cuts the cell clicked off, or puts it back.
+          // A finger on the park only carries the tile there (see above): it lies under the finger, and
+          // what is laid cannot be taken back, so a finger lays with the button.
           if (cutting) toggleCut({ row: Math.floor((click.y - box.y) / box.cell), col: Math.floor((click.x - box.x) / box.cell) });
-          else lay();
+          else if (!click.touch) lay();
         }
       }
     }
@@ -825,12 +854,19 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     button(PEEK_RECT, WORDS.choice.seePark, "", false, true);
   }
 
+  /** Under a finger: where the button that opens the cards' sheet is. */
+  function cardsRect(): Box {
+    return [CARDS_AT.x, CARDS_AT.y, pen.width(WORDS.button.cards) + 14, CARDS_AT.h];
+  }
+
   function drawScene(): void {
     if (latest === null) return;
     pen.px(0, 0, SCENE_W, BAR_Y, C.night);
     // a night sky's worth of quiet behind the park
     for (let y = 9; y < BAR_Y; y += 17) pen.px(0, y, SCENE_W, 1, C.wallD);
     drawPark();
+    // under a finger there is no I key: the sheet of the cards has a button
+    if (TOUCH && latest.view.phase !== "ended") button(cardsRect(), WORDS.button.cards, "", false, true);
     if (latest.view.phase === "choose") {
       if (peek) button(PEEK_RECT, WORDS.choice.seeCards, "", true, true);
       else drawChoice();
@@ -1215,10 +1251,6 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   canvas.height = H;
   ctx.imageSmoothingEnabled = false;
 
-  function toScreen(event: PointerEvent): { x: number; y: number } {
-    const rect = canvas.getBoundingClientRect();
-    return { x: ((event.clientX - rect.left) * W) / (rect.width || W), y: ((event.clientY - rect.top) * H) / (rect.height || H) };
-  }
   const onKeyDown = (event: KeyboardEvent): void => {
     if (canvas.hidden) return;
     // a key typed into a text box (the chat) is not for the game, and neither is one pressed on a button
@@ -1229,23 +1261,26 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     if (!event.repeat || event.code.startsWith("Arrow")) keys.push(event.code);
     if (event.code === "Space" || event.code === "Backspace" || event.code.startsWith("Arrow")) event.preventDefault();
   };
-  const onPointerMove = (event: PointerEvent): void => {
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    mouse.moved = true;
-  };
-  const onPointerDown = (event: PointerEvent): void => {
-    startAudio();
-    const p = toScreen(event);
-    mouse.x = p.x;
-    mouse.y = p.y;
-    mouse.moved = true;
-    clicks.push(p);
-  };
+  const unwatch = watchPointer(canvas, W, H, {
+    move(p): void {
+      mouse.x = p.x;
+      mouse.y = p.y;
+      mouse.moved = true;
+    },
+    down(p): void {
+      startAudio();
+      mouse.x = p.x;
+      mouse.y = p.y;
+      mouse.moved = true;
+      clicks.push(p);
+    },
+    // a finger that has lifted points at nothing: the tile stays where it was carried to
+    gone(): void {
+      mouse.x = -1;
+      mouse.y = -1;
+    },
+  });
   addEventListener("keydown", onKeyDown);
-  canvas.addEventListener("pointermove", onPointerMove);
-  canvas.addEventListener("pointerdown", onPointerDown);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -1290,11 +1325,13 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (player === undefined) return;
       speech.set(slot, { lines: speechLines(pen, text), t: speechSeconds(text) });
     },
+    press(code: string): void {
+      keys.push(code);
+    },
     destroy(): void {
       stopped = true;
       removeEventListener("keydown", onKeyDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      canvas.removeEventListener("pointerdown", onPointerDown);
+      unwatch();
     },
   };
 }
