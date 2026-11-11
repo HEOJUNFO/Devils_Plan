@@ -104,7 +104,7 @@
 - **한 방에 최대 16명** (러시안 룰렛 방은 6명: 방의 정원은 그 방의 게임이 받는 인원입니다), 게임이 진행 중일 때 들어온 사람은 그 판을 관전
 - **채팅**: 대기실과 게임 중 모두. 서버는 전달만 하고 저장하지 않습니다
 - **음성 채팅**: 비공개 방에서만 (브라우저끼리 직접 연결하는 WebRTC). 사람이 많은 방을 위해 말하지 않는 동안은 소리를 보내지 않도록 요청합니다
-- **재접속**: 새로고침하거나 연결이 끊겨도 같은 자리로 돌아옵니다
+- **재접속**: 새로고침하거나 연결이 끊겨도 같은 자리로 돌아옵니다. 아무 말 없이 죽은 연결(와이파이에서 데이터로 넘어간 휴대폰 같은)은 무언가 누른 뒤 8초쯤이면 알아채고 새로 잇습니다
 - **자리 비움 처리**: 끊긴 사람의 차례는 30초 뒤 자동으로 넘어가고, 3분 동안 돌아오지 않으면 자리를 반납합니다. 게임하던 사람이 모두 끊긴 채 다른 사람이 방에서 기다리면 그 판은 3분 뒤 정리됩니다
 - **차례 제한 시간**: 차례가 있는 게임(러시안 룰렛)은 방에서 없음, 60초, 120초 중에 고릅니다 (공개 방은 60초로 시작)
 
@@ -174,6 +174,7 @@ tests/
   unit/                   # 규칙과 순수 로직
   integration/            # 방을 실제 Workers 런타임에 띄워서 확인
 tools/smoke.mjs           # npm run smoke
+tools/subset-font.py      # 처음 받는 작은 글꼴 파일을 만듭니다 (문장에 새 글자가 생기면 다시 실행, --check 로 확인)
 design/                   # 게임별 설계 기록 (규칙의 출처, 채운 부분)
 assets/                   # 글꼴과 출처 기록 (provenance.yaml)
 vendor/pixelfx/           # 픽셀 이펙트 라이브러리 사본
@@ -222,5 +223,5 @@ production/qa/evidence/   # 화면을 바꿀 때마다 남긴 스크린샷
 ## 출처와 라이선스
 
 - 코드: MIT. [LICENSE](LICENSE) 참고 (템플릿의 저작권 표시 포함)
-- 글꼴: [Galmuri11](https://github.com/quiple/galmuri), SIL Open Font License 1.1 ([`assets/fonts/Galmuri11-LICENSE.txt`](assets/fonts/Galmuri11-LICENSE.txt))
+- 글꼴: [Galmuri11](https://github.com/quiple/galmuri), SIL Open Font License 1.1 ([`assets/fonts/Galmuri11-LICENSE.txt`](assets/fonts/Galmuri11-LICENSE.txt)). 페이지가 처음 받는 것은 자주 쓰는 글자 2,921자만 추린 사본(`assets/fonts/Galmuri11-common.woff2`, 54 KB)이고, 거기 없는 글자가 화면에 나올 때만 전체 글꼴(505 KB)을 받습니다
 - 픽셀 이펙트: [pixelfx](https://github.com/patch-gg/pixelfx), MIT ([`vendor/pixelfx/LICENSE`](vendor/pixelfx/LICENSE))
