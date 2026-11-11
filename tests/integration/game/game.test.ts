@@ -331,7 +331,10 @@ describe("GameRoom: playing a game", () => {
       } else {
         await scheduledAlarm(stub);
         advanceClock(AWAY_MS + 1);
-        await runDurableObjectAlarm(stub);
+        // This test has now and then waited below without an end (2026-11-11:
+        // twice on a build machine, twice here, then not once in 400 runs; not
+        // explained). If the alarm is gone by now, say so instead of waiting.
+        expect(await runDurableObjectAlarm(stub), `an alarm to run at step ${step}`).toBe(true);
       }
       game = await a.gameWhere((next) => next.view.history.length > seen);
     }
@@ -339,7 +342,7 @@ describe("GameRoom: playing a game", () => {
 
     // the end of the game sets this alarm itself: nothing holds the slot any more
     await scheduledAlarm(stub);
-    await runDurableObjectAlarm(stub);
+    expect(await runDurableObjectAlarm(stub), "the alarm the end of the game sets").toBe(true);
 
     // kept while the game lasted, given up once it was over
     expect(away).toMatchObject({ connected: false, left: false });
