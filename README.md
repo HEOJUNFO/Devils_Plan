@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://brain-survival.heojunfo.workers.dev"><b>지금 플레이하기</b></a>
+  <a href="https://play.brain-survival.workers.dev"><b>지금 플레이하기</b></a>
   ·
   <a href="#게임">게임</a>
   ·

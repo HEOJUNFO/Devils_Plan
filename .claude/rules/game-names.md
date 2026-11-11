@@ -41,11 +41,19 @@ assistant translates plainly and says so in its report. Terms and sentences:
   and screen layout are not used.
 - Game ids (`russian-roulette`, `lay-the-grass`, `under-thirteen`) are not
   shown to players and stay as they are.
-- The Worker's name is shown, as the address. It is `brain-survival`, which
-  the user chose on 2026-11-11 ("game-plan 되신 brain-survival로 바꾸자"). It
-  was `game-plan` earlier that day ("game-plan으로하자"), and before that
-  `empty-chamber`, the name of the first build. `wrangler.jsonc`,
-  `package.json` and the browser's storage keys carry it. The address changes
-  only when the Worker is renamed in the Cloudflare dashboard: Workers Builds
-  deploys to the Worker it is connected to, whatever `wrangler.jsonc` says. The folder `prototypes/empty-chamber/` keeps its
-  name.
+- The address is shown: `play.brain-survival.workers.dev`. The user chose it
+  on 2026-11-11 ("play.brain-survival.workers.dev (31자)이걸로하자"), after
+  asking whether `heojunfo` and `workers` could be left out of the address
+  and offering "heojufno잘리에 브래인서바이벌넣으면". It has two parts: the
+  account's subdomain is `brain-survival` and the Worker is `play`.
+  - History, all the same day: the Worker was `empty-chamber` (the first
+    build), then `game-plan` ("game-plan으로하자"), then `brain-survival`
+    ("game-plan 되신 brain-survival로 바꾸자") under the subdomain `heojunfo`.
+  - *Assistant's choice, not the user's words:* the project keeps the name
+    `brain-survival` (`package.json`, the README's title, the browser's
+    storage keys); only `wrangler.jsonc` carries `play`.
+  - Both parts of the address are changed in the Cloudflare dashboard, not
+    here: Workers Builds deploys to the Worker it is connected to, whatever
+    `wrangler.jsonc` says.
+  - `workers.dev` cannot be left out without a domain of the user's own.
+  - The folder `prototypes/empty-chamber/` keeps its name.

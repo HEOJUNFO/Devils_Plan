@@ -7,7 +7,7 @@
  */
 const profile = new URLSearchParams(location.search).get("profile") ?? "";
 
-/** The key `name` is kept under; the Worker's name leads it (CLAUDE.md, Project Rules). */
+/** The key `name` is kept under; the project's name leads it (CLAUDE.md, Project Rules). */
 export function storageKey(name: string): string {
   return `brain-survival.${name}${profile ? `.${profile}` : ""}`;
 }

@@ -1,6 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "brain-survival",
+  // The Worker is `play` and the account's subdomain is `brain-survival`, so
+  // the address reads play.brain-survival.workers.dev. The project keeps the
+  // name brain-survival (package.json, the browser's storage keys).
+  "name": "play",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-11-10",
   // Bots fill empty seats only while developing: players are offered games
