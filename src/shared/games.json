@@ -68,5 +68,19 @@
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false
+  },
+  "under-thirteen": {
+    "title": {
+      "ko": "13 미만",
+      "en": "Under 13"
+    },
+    "summary": {
+      "ko": "바위 카드와 색깔 칩을 몰래 내세요. 내 바위로 받침대가 13 이상이 되면 벌점.",
+      "en": "Secretly play a rock card and a chip. Bring a stand to 13 and you pay."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 16,
+    "teamSize": 0,
+    "turns": false
   }
 }

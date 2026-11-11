@@ -22,6 +22,7 @@ export type RectanglesMessage = Extract<ServerMessage, { type: "game"; game: "co
 export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the-grass" }>;
 export type CubesMessage = Extract<ServerMessage, { type: "game"; game: "count-cubes" }>;
 export type PokerMessage = Extract<ServerMessage, { type: "game"; game: "memory-poker" }>;
+export type UnderMessage = Extract<ServerMessage, { type: "game"; game: "under-thirteen" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -175,6 +176,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "memory-poker" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 13 미만 that satisfies `match`. */
+  async underWhere(match: (game: UnderMessage) => boolean = () => true): Promise<UnderMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "under-thirteen" && match(message)) return message;
     }
   }
 

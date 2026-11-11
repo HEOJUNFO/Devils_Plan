@@ -37,10 +37,10 @@ describe("the games a room can be made for", () => {
     expect(game.teamSize).toBeLessThan(game.maxPlayers);
   });
 
-  it("names each game in Korean as the show does, and in English as its English release does", () => {
-    // CLAUDE.md, Project Rules: a game is shown under the name the show gives it
-    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커"]);
-    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker"]);
+  it("names each game in Korean as the show does, and in English as its English release does: all but the sixth, whose name the show coined", () => {
+    // CLAUDE.md, Project Rules: a game is shown under the name the show gives it; a name the show coined for its game is not copied, and that game has a plain one
+    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "13 미만"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Under 13"]);
   });
 
   it("lets one player alone start the two counting games, and no other game", () => {

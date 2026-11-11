@@ -7,20 +7,28 @@
 // through the choice that follows its race and the contest that choice adds;
 // then two make a room of the third game and lay its first park; then two
 // make a room of the fourth game, one of them wrong before the other is right;
-// then two make a room of the fifth game and play its first round.
+// then two make a room of the fifth game and play its first round; then two
+// make a room of the sixth game and play its first round, one of them passing.
 // It observes and reports; it changes nothing but the rooms it makes, which
-// it leaves. The second game shows each answer for a few seconds, and the
-// fifth lays its board open for half a minute before anything can be chosen,
-// so the whole check takes about forty seconds longer than the moves do.
+// it leaves. The second game shows each answer for a few seconds, the fifth
+// lays its board open for half a minute before anything can be chosen, and
+// the sixth shows the chips for a few seconds before the cards and places the
+// rocks nobody is asked about a moment apart, so the whole check takes about
+// fifty seconds longer than the moves do.
 //
 // Usage: npm run dev (in another terminal), then
 //   npm run smoke                      # http://localhost:5273
 //   npm run smoke -- http://localhost:8787
-// Needs Node 22 or later (it uses the built-in WebSocket).
+//   npm run smoke -- --only=under-thirteen   # one game's part, by its id
+// The part of the first game is also the one that loads the page and reads
+// the list of rooms. Needs Node 22 or later (it uses the built-in WebSocket).
 
 import { readFileSync } from "node:fs";
 
-const base = (process.argv[2] ?? "http://localhost:5273").replace(/\/$/, "");
+const args = process.argv.slice(2);
+const base = (args.find((arg) => !arg.startsWith("--")) ?? "http://localhost:5273").replace(/\/$/, "");
+/** `--only=<game id>`: that game's part alone, for a check of the part that was changed. */
+const only = args.find((arg) => arg.startsWith("--only="))?.slice("--only=".length) ?? null;
 const wsBase = base.replace(/^http/, "ws");
 const GAME = "russian-roulette";
 const PLAYERS = 4;
@@ -28,6 +36,7 @@ const SECOND_GAME = "count-rectangles";
 const THIRD_GAME = "lay-the-grass";
 const FOURTH_GAME = "count-cubes";
 const FIFTH_GAME = "memory-poker";
+const SIXTH_GAME = "under-thirteen";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 const STEP_TIMEOUT_MS = 8000;
@@ -466,7 +475,112 @@ async function fifthGame() {
   for (const p of players) p.close();
 }
 
-async function main() {
+/** The sixth game, in a room of its own: two players, off the list. Its first round is played, with a pass in it; the game goes on for thirteen more, which the check does not wait for. */
+async function sixthGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 2; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `rock${n}`, create: n === 0, game: SIXTH_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  check("a room is made for the sixth game", lobby.game === SIXTH_GAME, lobby.game);
+
+  /** What `player` is refused when they ask for `action`. */
+  const refusalOf = async (player, action) => {
+    const seen = players[player].messages.length;
+    players[player].send({ type: "action", action });
+    return (await players[player].until("the refusal", (m) => m.type === "refused", seen)).reason;
+  };
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the sixth game to start", (m) => m.type === "game" || m.type === "refused")));
+  const cards = games[0].rules?.cards ?? [];
+  check(
+    "the sixth game starts with empty stands and a whole set of cards and chips each, nothing put in",
+    cards.length > 0 &&
+      games.every(
+        (g, n) =>
+          g.type === "game" &&
+          g.game === SIXTH_GAME &&
+          g.view.you === n &&
+          g.view.phase === "submit" &&
+          g.view.round === 1 &&
+          Object.values(g.view.stands).every((rocks) => rocks.length === 0) &&
+          g.view.hand.cards.join() === cards.join() &&
+          g.view.hand.chips.length === cards.length &&
+          g.view.submitted.length === 0 &&
+          g.view.chips === null &&
+          g.view.cards === null,
+      ),
+    `${cards.length} cards and chips, ${games[0].view?.rounds} rounds`,
+  );
+  const early = await refusalOf(0, { type: "place" });
+  check("a rock cannot be placed while the cards are being put in", early === "not-placing", early);
+
+  // one puts in a card and a chip: the other is told that they have, and not what
+  players[0].send({ type: "action", action: { type: "submit", card: 5, chip: "red" } });
+  const mine = await players[0].until("the card to be taken", (m) => m.type === "game" && m.view.mine !== null);
+  const waiting = await players[1].until("the first card to be in", (m) => m.type === "game" && m.view.submitted.length === 1);
+  check(
+    "what one player puts in is kept from the other, who is told only that it is in",
+    mine.view.mine.card === 5 && mine.view.mine.chip === "red" && waiting.view.mine === null && waiting.view.chips === null && waiting.view.cards === null && waiting.view.submitted.join() === "0",
+  );
+  const twice = await refusalOf(0, { type: "submit", card: 4, chip: "green" });
+  check("what is put in cannot be changed", twice === "already-submitted", twice);
+
+  // the other puts theirs in: the chips are shown at once, the cards by the room's own clock
+  players[1].send({ type: "action", action: { type: "submit", card: 3, chip: "red" } });
+  const chips = await Promise.all(players.map((p) => p.until("the chips to be shown", (m) => m.type === "game" && m.view.phase === "chips")));
+  check(
+    "the chips are shown as soon as both are in, and the cards not yet",
+    chips.every((g) => g.view.chips.map((each) => `${each.player}:${each.chip}`).join() === "0:red,1:red" && g.view.cards === null),
+  );
+  const placing = await Promise.all(players.map((p) => p.until("the cards to be shown", (m) => m.type === "game" && m.view.phase === "place", 0, PAUSE_TIMEOUT_MS)));
+  check(
+    "the cards are shown, and the higher card is to be placed first",
+    placing.every((g) => g.view.cards.map((each) => `${each.player}:${each.card}`).join() === "0:5,1:3" && g.view.order.join() === "0,1" && g.view.turn === 0),
+    `order ${placing[0].view.order.join(" ")}`,
+  );
+  const outOfTurn = await refusalOf(1, { type: "place" });
+  check("a rock is not placed out of turn", outOfTurn === "not-your-turn", outOfTurn);
+
+  // the first passes. The other is the last in the order: asked nothing, with no pass to be had, their rock is
+  // placed by the room, and then the rock that was passed, with nothing more asked of anyone
+  check("whoever is not the last in the order is asked to place or pass", placing[0].view.asked === "place-or-pass", placing[0].view.asked);
+  players[0].send({ type: "action", action: { type: "pass" } });
+  const passed = await players[1].until("the pass", (m) => m.type === "game" && m.view.passed.length === 1 && m.view.turn === 1);
+  const again = await refusalOf(1, { type: "pass" });
+  check("the last in the order is asked nothing and cannot pass", passed.view.asked === "nothing" && again === "cannot-pass", `${passed.view.asked}, ${again}`);
+  const over = await Promise.all(players.map((p) => p.until("the round to be over", (m) => m.type === "game" && m.view.placements.length === 2, 0, PAUSE_TIMEOUT_MS)));
+  check(
+    "the room places both rocks itself, the one passed after the other, each on the stand of its chip, and the round is over",
+    over.every(
+      (g) =>
+        g.view.phase === "pause" &&
+        g.view.stands.red.join() === "3,5" &&
+        g.view.stands.green.length === 0 &&
+        g.view.stands.blue.length === 0 &&
+        g.view.placements.map((rock) => `${rock.player}:${rock.stand}:${rock.weight}:${rock.sum}:${rock.cleared}:${rock.passed}:${rock.forced}`).join() ===
+          "1:red:3:3:0:false:false,0:red:5:8:0:true:false" &&
+        g.view.standings.every((each) => each.points === 0),
+    ),
+    `red ${over[0].view.stands.red.join("+")}`,
+  );
+  const hidden = players[1].messages.filter((m) => m.type === "game" && m.view.phase === "submit").every((m) => m.view.chips === null && m.view.cards === null && !JSON.stringify(m.view).includes('"card":5'));
+  check("no card or chip is sent to the other player before it is shown", hidden);
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in the sixth game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
+/** The page, the list of rooms, and the first game: a room on the list, four players, a whole game. */
+async function firstGame() {
   // 1. the page
   const page = await fetch(`${base}/`);
   const html = await page.text();
@@ -569,14 +683,22 @@ async function main() {
   check("the room leaves the list when everyone has left", true);
   for (const p of players) p.close();
   viewer.close();
+}
 
-  // 12. the second game
-  await secondGame();
+/** The parts of the check, each by the game it plays, in the order they run. */
+const PARTS = [
+  [GAME, firstGame],
+  [SECOND_GAME, secondGame],
+  [THIRD_GAME, thirdGame],
+  [FOURTH_GAME, fourthGame],
+  [FIFTH_GAME, fifthGame],
+  [SIXTH_GAME, sixthGame],
+];
 
-  // 13. the third game
-  await thirdGame();
-  await fourthGame();
-  await fifthGame();
+async function main() {
+  const parts = only === null ? PARTS : PARTS.filter(([game]) => game === only);
+  if (parts.length === 0) throw new Error(`--only names no game: ${only} (${PARTS.map(([game]) => game).join(", ")})`);
+  for (const [, part] of parts) await part();
 }
 
 try {
@@ -585,5 +707,5 @@ try {
   check("the check ran to its end", false, error instanceof Error ? error.message : String(error));
 }
 const failed = results.filter((r) => !r.ok).length;
-console.log(`\n${results.length - failed} of ${results.length} checks passed against ${base}`);
+console.log(`\n${results.length - failed} of ${results.length} checks passed against ${base}${only === null ? "" : ` (only ${only})`}`);
 process.exit(failed === 0 ? 0 : 1);

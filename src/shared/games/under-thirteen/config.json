@@ -1,0 +1,12 @@
+{
+  "limit": 13,
+  "cards": [0, 1, 2, 3, 4, 5, 6],
+  "chipsOfEach": 2,
+  "rainbowChips": 1,
+  "sets": 2,
+  "submitSeconds": 180,
+  "chipsSeconds": 4,
+  "turnSeconds": 20,
+  "placeSeconds": 2,
+  "pauseSeconds": 6
+}
