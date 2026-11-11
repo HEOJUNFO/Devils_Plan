@@ -74,6 +74,8 @@ const RESULTS_HOLD = 1.5;
 const NOT_SENT_TEXT = "연결이 끊겨 보내지 못했습니다. 다시 해 주세요";
 /** One colour for each player's grass, by their place in the list of players. */
 const GRASS = ["#6fcf5a", "#3fd0b6", "#ffb43c", "#e8739a", "#7aa2ff", "#c58bff"] as const;
+/** How much of a holed cell's width its hole takes. */
+const HOLE_SHARE = 0.62;
 /** The soil of a park cell nothing lies on. */
 const SOIL = "#3a2a1c";
 const SOIL_D = "#2a1e14";
@@ -382,6 +384,23 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   }
 
   // ---- Drawing ---------------------------------------------------------------------------------------
+  /**
+   * The round hole of a holed cell, in a cell `size` pixels wide whose top
+   * left is `x`, `y`: what lies under the tile shows through it. Drawn row
+   * by row, so that it stays a crisp disc at any size.
+   */
+  function drawHole(x: number, y: number, size: number, colour: string): void {
+    const across = Math.max(2, Math.round(size * HOLE_SHARE));
+    const radius = across / 2;
+    const left = x + Math.floor((size - across) / 2);
+    const top = y + Math.floor((size - across) / 2);
+    for (let i = 0; i < across; i++) {
+      const dy = i + 0.5 - radius;
+      const half = Math.round(Math.sqrt(radius * radius - dy * dy));
+      if (half > 0) pen.px(left + radius - half, top + i, half * 2, 1, colour);
+    }
+  }
+
   /** Draws the cells of a tile lying on the park, with a dark line where it ends. */
   function drawLaid(placement: Placement, box: { x: number; y: number; cell: number }, colour: string, bright: boolean): void {
     const tile = tileOf(placement.tile);
@@ -402,6 +421,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (!own.has(`${cell.row},${cell.col + 1}`)) pen.px(x + box.cell - 1, y, 1, box.cell, edge);
       if (cell.kind === "number" && box.cell >= 13) {
         pen.txt(`${placement.tile}`, x + Math.round(box.cell / 2), y + Math.round((box.cell - 13) / 2), C.ink, "center");
+      }
+      // a holed cell: the park shows through, with a rim of the tile's own shade
+      if (cell.kind === "hole") {
+        drawHole(x, y, box.cell, edge);
+        drawHole(x + 1, y + 1, box.cell - 2, SOIL);
       }
     }
   }
@@ -442,6 +466,10 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       for (const cell of coveredBy(tile, hand.row, hand.col, hand.turns)) {
         const x = box.x + cell.col * box.cell;
         const y = box.y + cell.row * box.cell;
+        if (cell.kind === "hole") drawHole(x + 1, y + 1, box.cell - 2, SOIL_D);
+        if (cell.kind === "number" && box.cell >= 13) {
+          pen.txt(`${number}`, x + Math.round(box.cell / 2), y + Math.round((box.cell - 13) / 2), C.ink, "center");
+        }
         pen.px(x, y, box.cell, 1, colour);
         pen.px(x, y + box.cell - 1, box.cell, 1, colour);
         pen.px(x, y, 1, box.cell, colour);
@@ -577,6 +605,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   function drawTile(tile: Tile, x: number, y: number, size: number, colour: string): void {
     for (const cell of tile.cells) {
       pen.px(x + cell.col * size, y + cell.row * size, size - 1, size - 1, cell.kind === "number" ? shade(colour, 1.35) : colour);
+      // a hole, as large as a tile this small has room for
+      if (cell.kind === "hole") pen.px(x + cell.col * size + 1, y + cell.row * size + 1, size - 3, size - 3, C.ink);
     }
   }
 
