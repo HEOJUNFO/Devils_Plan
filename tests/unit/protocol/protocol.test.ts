@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_GAME } from "../../../src/shared/games";
 import {
   MAX_CLIENT_MESSAGE_LENGTH,
+  MAX_DIRECTORY_REQUEST_LENGTH,
   PING,
   PONG,
   parseClientMessage,
   parseDirectoryMessage,
+  parseDirectoryRequest,
   parseServerMessage,
 } from "../../../src/shared/protocol";
 
@@ -264,5 +266,55 @@ describe("parseDirectoryMessage", () => {
 
   it("rejects text that is not JSON", () => {
     expect(parseDirectoryMessage("rooms")).toBeNull();
+  });
+
+  it("reads how many rooms of each game there are", () => {
+    const counts = { [DEFAULT_GAME]: 42 };
+
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], counts }))).toEqual({ type: "rooms", rooms: [], counts });
+  });
+
+  it("reads a list without counts, as a directory older than them sends it", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [] }))?.counts).toBeUndefined();
+  });
+
+  it("drops counts that are not counts by game, keeping the list", () => {
+    const rooms = [{ code: "ABCDE", game: DEFAULT_GAME, host: "ann", players: 2, maxPlayers: 6, playing: false }];
+
+    for (const counts of [7, "many", null, [1, 2]]) {
+      expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms, counts }))).toEqual({ type: "rooms", rooms });
+    }
+  });
+});
+
+describe("parseDirectoryRequest", () => {
+  it("reads a request for the rooms of one game", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "show", game: DEFAULT_GAME }))).toEqual({ type: "show", game: DEFAULT_GAME });
+  });
+
+  it("reads a request for the rooms of every game", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "show", game: null }))).toEqual({ type: "show", game: null });
+  });
+
+  it("keeps only the fields of a request", () => {
+    const raw = JSON.stringify({ type: "show", game: DEFAULT_GAME, code: "ABCDE", listing: {} });
+
+    expect(parseDirectoryRequest(raw)).toEqual({ type: "show", game: DEFAULT_GAME });
+  });
+
+  it("rejects a request for a game there is not", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "show", game: "no-such-game" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "show", game: 3 }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "show" }))).toBeNull();
+  });
+
+  it("rejects a message of another type", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "rooms", game: DEFAULT_GAME }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ code: "ABCDE", listing: null }))).toBeNull();
+  });
+
+  it("rejects text that is not JSON, and text too long to be a request", () => {
+    expect(parseDirectoryRequest("show")).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "show", game: DEFAULT_GAME, pad: "x".repeat(MAX_DIRECTORY_REQUEST_LENGTH) }))).toBeNull();
   });
 });

@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   beyondLimit,
+  countRooms,
   isStale,
   listRooms,
   listingOf,
   parseReport,
+  roomsShown,
   type DirectoryConfig,
   type DirectoryEntry,
   type RoomListing,
 } from "../../../src/shared/directory";
-import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
+import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import { createLobby, joinLobby, leaveLobby, type LobbyState, type RoomConfig } from "../../../src/shared/lobby";
 
 /** A small room, so the bounds on a report are easy to reach. */
@@ -44,8 +46,11 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
 
 /** A short list and a short memory, so both limits are reached with a few entries. */
 function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryConfig {
-  return { maxListed: 3, maxStored: 5, staleHours: 2, ...overrides };
+  return { maxListed: 3, maxStored: 5, staleHours: 2, showLimit: { burst: 3, windowSeconds: 10 }, ...overrides };
 }
+
+/** A game that is not the one a listing here is of unless it says so. */
+const OTHER_GAME: GameId = "count-rectangles";
 
 /** A game that takes fewer players than the largest room holds. */
 const SMALL_GAME: GameId = "russian-roulette";
@@ -354,5 +359,163 @@ describe("listRooms", () => {
     listRooms(entries, NOW, directoryConfig());
 
     expect(JSON.stringify(entries)).toBe(before);
+  });
+
+  it("shows the rooms of every game to someone who asked for none in particular", () => {
+    const entries = [entry("AAAA", { game: OTHER_GAME }), entry("BBBB")];
+
+    const rooms = listRooms(entries, NOW, directoryConfig(), null);
+
+    expect(rooms.map((room) => room.code).sort()).toEqual(["AAAA", "BBBB"]);
+  });
+
+  it("shows only the rooms of the game asked for", () => {
+    const entries = [entry("AAAA", { game: OTHER_GAME }), entry("BBBB"), entry("CCCC", { game: OTHER_GAME, players: 2 })];
+
+    const rooms = listRooms(entries, NOW, directoryConfig(), OTHER_GAME);
+
+    expect(rooms.map((room) => room.code)).toEqual(["CCCC", "AAAA"]);
+  });
+
+  it("shows a game's rooms that the list of every game had no room for", () => {
+    const config = directoryConfig();
+    const entries = [
+      entry("AAAA", { players: 3 }),
+      entry("BBBB", { players: 3 }),
+      entry("CCCC", { players: 3 }),
+      entry("DDDD", { game: OTHER_GAME, playing: true }),
+    ];
+
+    const all = listRooms(entries, NOW, config);
+    const ofGame = listRooms(entries, NOW, config, OTHER_GAME);
+
+    expect(all.map((room) => room.code)).not.toContain("DDDD");
+    expect(ofGame.map((room) => room.code)).toEqual(["DDDD"]);
+  });
+
+  it("shows no more rooms of one game than the list holds", () => {
+    const config = directoryConfig();
+    const entries = ["AAAA", "BBBB", "CCCC", "DDDD"].map((code) => entry(code, { game: OTHER_GAME }));
+
+    expect(listRooms(entries, NOW, config, OTHER_GAME)).toHaveLength(config.maxListed);
+  });
+});
+
+describe("countRooms", () => {
+  it("counts no rooms when none has reported", () => {
+    expect(countRooms([], NOW, directoryConfig())).toEqual({});
+  });
+
+  it("counts the rooms of each game, leaving out a game with none", () => {
+    const entries = [entry("AAAA"), entry("BBBB", { game: OTHER_GAME }), entry("CCCC")];
+
+    expect(countRooms(entries, NOW, directoryConfig())).toEqual({ [DEFAULT_GAME]: 2, [OTHER_GAME]: 1 });
+  });
+
+  it("counts the rooms the list has no room to show", () => {
+    const config = directoryConfig();
+    const entries = ["AAAA", "BBBB", "CCCC", "DDDD", "AAAB"].map((code) => entry(code));
+
+    expect(countRooms(entries, NOW, config)).toEqual({ [DEFAULT_GAME]: config.maxListed + 2 });
+  });
+
+  it("counts full rooms and rooms in a game: they are on the list too", () => {
+    const entries = [entry("AAAA", { players: 4 }), entry("BBBB", { playing: true })];
+
+    expect(countRooms(entries, NOW, directoryConfig())).toEqual({ [DEFAULT_GAME]: 2 });
+  });
+
+  it("does not count an entry too old to trust", () => {
+    const config = directoryConfig();
+    const entries = [entry("AAAA", {}, NOW - config.staleHours * HOUR - 1), entry("BBBB")];
+
+    expect(countRooms(entries, NOW, config)).toEqual({ [DEFAULT_GAME]: 1 });
+  });
+});
+
+describe("roomsShown", () => {
+  it("shows every room it was sent to someone looking at every game", () => {
+    const rooms = [listing("AAAA"), listing("BBBB", { game: OTHER_GAME })];
+
+    const shown = roomsShown(rooms, { [DEFAULT_GAME]: 1, [OTHER_GAME]: 1 }, null);
+
+    expect(shown.rooms.map((room) => room.code)).toEqual(["AAAA", "BBBB"]);
+    expect(shown.total).toBe(2);
+    expect(shown.more).toBe(0);
+  });
+
+  it("shows only the rooms of the game picked, in the order sent", () => {
+    const rooms = [listing("AAAA", { game: OTHER_GAME }), listing("BBBB"), listing("CCCC", { game: OTHER_GAME })];
+
+    const shown = roomsShown(rooms, { [DEFAULT_GAME]: 1, [OTHER_GAME]: 2 }, OTHER_GAME);
+
+    expect(shown.rooms.map((room) => room.code)).toEqual(["AAAA", "CCCC"]);
+    expect(shown.total).toBe(2);
+    expect(shown.more).toBe(0);
+  });
+
+  it("says how many rooms there are that it was not sent", () => {
+    const rooms = [listing("AAAA"), listing("BBBB", { game: OTHER_GAME })];
+
+    const shown = roomsShown(rooms, { [DEFAULT_GAME]: 30, [OTHER_GAME]: 12 }, null);
+
+    expect(shown.total).toBe(42);
+    expect(shown.more).toBe(40);
+  });
+
+  it("says how many rooms of the game picked it was not sent", () => {
+    const rooms = [listing("AAAA"), listing("BBBB", { game: OTHER_GAME })];
+
+    const shown = roomsShown(rooms, { [DEFAULT_GAME]: 30, [OTHER_GAME]: 12 }, OTHER_GAME);
+
+    expect(shown.total).toBe(12);
+    expect(shown.more).toBe(11);
+  });
+
+  it("gives the count of every game, none for a game without rooms", () => {
+    const shown = roomsShown([listing("AAAA")], { [DEFAULT_GAME]: 1 }, null);
+
+    expect(shown.counts[DEFAULT_GAME]).toBe(1);
+    expect(shown.counts[OTHER_GAME]).toBe(0);
+    expect(Object.keys(shown.counts).sort()).toEqual([...GAME_IDS].sort());
+  });
+
+  it("counts the rooms it was sent when the directory sent no counts", () => {
+    const rooms = [listing("AAAA"), listing("BBBB", { game: OTHER_GAME }), listing("CCCC")];
+
+    const shown = roomsShown(rooms, undefined, DEFAULT_GAME);
+
+    expect(shown.counts[DEFAULT_GAME]).toBe(2);
+    expect(shown.counts[OTHER_GAME]).toBe(1);
+    expect(shown.total).toBe(2);
+    expect(shown.more).toBe(0);
+  });
+
+  it("leaves out a room and a count of a game it has not heard of", () => {
+    const rooms = [listing("AAAA"), { ...listing("BBBB"), game: "a-newer-game" as GameId }];
+
+    const shown = roomsShown(rooms, { [DEFAULT_GAME]: 1, ["a-newer-game" as GameId]: 5 }, null);
+
+    expect(shown.rooms.map((room) => room.code)).toEqual(["AAAA"]);
+    expect(shown.total).toBe(1);
+    expect(shown.more).toBe(0);
+  });
+
+  it("never counts fewer rooms of a game than it shows", () => {
+    const rooms = [listing("AAAA"), listing("BBBB")];
+
+    const shown = roomsShown(rooms, { [DEFAULT_GAME]: 1 }, null);
+
+    expect(shown.total).toBe(2);
+    expect(shown.more).toBe(0);
+  });
+
+  it("takes a count that is not a whole number of rooms for none", () => {
+    const counts = { [DEFAULT_GAME]: -3, [OTHER_GAME]: 1.5 };
+
+    const shown = roomsShown([], counts, null);
+
+    expect(shown.total).toBe(0);
+    expect(shown.more).toBe(0);
   });
 });

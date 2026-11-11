@@ -4,7 +4,7 @@
  * Shared by both sides so a change to the wire format is a type error on the
  * side that was not updated.
  */
-import type { RoomListing } from "./directory";
+import type { RoomCounts, RoomListing } from "./directory";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
@@ -136,13 +136,34 @@ export type PaceRefusal = "too-fast";
 
 /**
  * Directory → client: the rooms anyone can join, best to join first. Sent on
- * connecting and whenever the list changes. The directory reads nothing a
- * client sends.
+ * connecting, whenever the list changes, and in answer to a
+ * `DirectoryRequest`. The rooms are those of the game the viewer last asked
+ * for, or of every game; no more than the list holds either way.
  */
 export interface DirectoryMessage {
   type: "rooms";
   rooms: RoomListing[];
+  /**
+   * How many rooms of each game there are, among `rooms` or not: what a
+   * viewer goes by to see that there are more than the list shows, and of
+   * which game. Not sent by a directory older than the counts.
+   */
+  counts?: RoomCounts;
 }
+
+/**
+ * Client → directory: show the rooms of this game only, or of every game
+ * (`null`, which is what a viewer is shown until they ask). The one thing
+ * the directory reads of what a viewer sends. Asked again on every
+ * reconnect: a new connection starts with every game.
+ */
+export interface DirectoryRequest {
+  type: "show";
+  game: GameId | null;
+}
+
+/** The longest text the directory reads as a request: the longest there is fits several times over. */
+export const MAX_DIRECTORY_REQUEST_LENGTH = 256;
 
 /** Client → server. */
 export type ClientMessage =
@@ -274,9 +295,25 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
   return null;
 }
 
-/** Parses a message from the directory, returning `null` for anything unrecognised. */
+/**
+ * Parses a message from the directory, returning `null` for anything
+ * unrecognised. Counts that are not counts by game are dropped and the list
+ * kept: what each count is worth is for `roomsShown` to say.
+ */
 export function parseDirectoryMessage(raw: unknown): DirectoryMessage | null {
   const data = parseObject(raw, Number.POSITIVE_INFINITY);
   if (data === null || data.type !== "rooms" || !Array.isArray(data.rooms)) return null;
-  return data as unknown as DirectoryMessage;
+  const message: DirectoryMessage = { type: "rooms", rooms: data.rooms as RoomListing[] };
+  if (typeof data.counts === "object" && data.counts !== null && !Array.isArray(data.counts)) {
+    message.counts = data.counts as RoomCounts;
+  }
+  return message;
+}
+
+/** Parses what a viewer sends the directory, returning `null` for anything unrecognised or oversized. */
+export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
+  const data = parseObject(raw, MAX_DIRECTORY_REQUEST_LENGTH);
+  if (data === null || data.type !== "show") return null;
+  if (data.game !== null && !isGameId(data.game)) return null;
+  return { type: "show", game: data.game };
 }

@@ -174,6 +174,7 @@ ul {
 
 #rooms header,
 #rooms-note,
+#rooms-games,
 #room-list {
   position: relative;
 }
@@ -189,12 +190,77 @@ ul {
 }
 
 #rooms h2 {
+  flex: none;
   color: var(--amber);
   font-size: 12px;
 }
 
 #rooms-count {
+  flex: none;
   color: var(--bone-dim);
+}
+
+/*
+ * Whose rooms are listed: a button between the heading and the count, as
+ * wide as the name of its game and no wider than they leave it.
+ */
+#rooms-pick {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 15px;
+  margin: -2px 8px 0 auto;
+  padding: 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The games to pick from, each with how many rooms it has. While they are on
+ * show they lie where the list is (main.ts marks the panel `picking`): eight
+ * rows are what the panel holds, and past that they scroll.
+ */
+#rooms-games {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--night);
+  scrollbar-color: var(--edge) var(--ink);
+  scrollbar-width: thin;
+}
+
+#rooms-games[hidden],
+#rooms.picking #rooms-note,
+#rooms.picking #room-list {
+  display: none;
+}
+
+.game-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--night);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.game-pick:focus-visible {
+  outline-offset: -1px;
+}
+
+.game-count {
+  color: var(--amber);
+}
+
+/* A game nobody has a room of can be picked too: its count is only quieter. */
+.game-count.none {
+  color: var(--dim);
 }
 
 #room-list {
@@ -260,6 +326,14 @@ ul {
 
 #rooms-note:empty {
   display: none;
+}
+
+/* Under the last row: how many rooms there are that the list has no room for. */
+.rooms-more {
+  padding: 6px 6px 7px;
+  border-bottom: 1px solid var(--line);
+  background: var(--night);
+  color: var(--bone-dim);
 }
 
 h1 {
@@ -812,4 +886,16 @@ button.choice[aria-pressed="true"] {
 #frame.covered #chat,
 #frame.covered #voice {
   visibility: hidden;
+}
+
+/* Over the list of rooms the heading grows to hold a button a finger can press. */
+:root.touch #rooms header {
+  align-items: center;
+  height: 28px;
+  padding-top: 0;
+}
+
+:root.touch #rooms-pick {
+  height: 24px;
+  margin-top: 0;
 }

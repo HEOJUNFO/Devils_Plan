@@ -8,18 +8,36 @@
  * it. Pure functions over plain data, so the same code is unit-tested directly
  * and run inside the directory's Durable Object.
  */
-import { isGameId, type GameId } from "./games";
-import { capacityOf, gameOf, hostOf, isValidRoomCode, normalizeNick, type LobbyState, type RoomConfig } from "./lobby";
+import { GAME_IDS, isGameId, type GameId } from "./games";
+import {
+  capacityOf,
+  gameOf,
+  hostOf,
+  isValidRoomCode,
+  normalizeNick,
+  type LobbyState,
+  type MessageLimit,
+  type RoomConfig,
+} from "./lobby";
 
 /** Tunable values of the list. Loaded from `directory-config.json`. */
 export interface DirectoryConfig {
-  /** The most rooms the list shows. */
+  /** The most rooms the list shows at once: of every game, or of the one game a viewer picked. */
   maxListed: number;
   /** The most rooms the directory keeps; past this the one heard from longest ago is dropped. */
   maxStored: number;
   /** Hours an entry is kept without news from its room, in case the room's last word was lost. */
   staleHours: number;
+  /**
+   * How often one viewer may ask for the rooms of another game. Far above
+   * what a page sends by itself (one for each game picked); the limit is for
+   * a page that is not ours.
+   */
+  showLimit: MessageLimit;
 }
+
+/** How many rooms of each game there are to join. A game with none is left out. */
+export type RoomCounts = Partial<Record<GameId, number>>;
 
 /** A room as the list shows it. Nothing here is secret. */
 export interface RoomListing {
@@ -129,11 +147,19 @@ export function isStale(updatedAt: number, now: number, config: DirectoryConfig)
  * rooms in a game, a room with a free place before a full one, then the
  * fullest (it starts soonest), then the one heard from most recently. Entries
  * too old to trust are left out, and the list is cut to the configured length.
+ *
+ * With a `game`, only the rooms of that game, cut to the same length: so a
+ * room the list of every game has no room for is still found by its game.
  */
-export function listRooms(entries: readonly DirectoryEntry[], now: number, config: DirectoryConfig): RoomListing[] {
+export function listRooms(
+  entries: readonly DirectoryEntry[],
+  now: number,
+  config: DirectoryConfig,
+  game: GameId | null = null,
+): RoomListing[] {
   const rank = (listing: RoomListing): number => (listing.playing ? 2 : 0) + (listing.players >= listing.maxPlayers ? 1 : 0);
   return entries
-    .filter((entry) => !isStale(entry.updatedAt, now, config))
+    .filter((entry) => !isStale(entry.updatedAt, now, config) && (game === null || entry.listing.game === game))
     .sort(
       (a, b) =>
         rank(a.listing) - rank(b.listing) ||
@@ -143,4 +169,53 @@ export function listRooms(entries: readonly DirectoryEntry[], now: number, confi
     )
     .slice(0, config.maxListed)
     .map((entry) => entry.listing);
+}
+
+/**
+ * How many rooms of each game there are to join, whether or not the list has
+ * room to show them. Entries too old to trust are not counted.
+ */
+export function countRooms(entries: readonly DirectoryEntry[], now: number, config: DirectoryConfig): RoomCounts {
+  const counts: RoomCounts = {};
+  for (const entry of entries) {
+    if (isStale(entry.updatedAt, now, config)) continue;
+    counts[entry.listing.game] = (counts[entry.listing.game] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** What the lobby shows of the list it was sent. */
+export interface RoomsShown {
+  /** The rows, in the order sent. */
+  rooms: RoomListing[];
+  /** How many rooms of each game there are. */
+  counts: Record<GameId, number>;
+  /** How many rooms there are of the game picked, or of every game. */
+  total: number;
+  /** How many of those are not among the rows. */
+  more: number;
+}
+
+/**
+ * What the lobby shows of the `rooms` and `counts` the directory sent, to
+ * someone who picked `game` (`null` for every game). The rows are chosen
+ * here too, so the list answers a pick before the directory has.
+ *
+ * Nothing is taken on trust: a room or a count of a game this page has not
+ * heard of is left out (a newer server may send one), a count that is not a
+ * whole number of rooms is none, and no game has fewer rooms than are shown
+ * of it. A directory older than the counts sends none: the rooms sent are
+ * then all the rooms there are known to be.
+ */
+export function roomsShown(rooms: readonly RoomListing[], counts: RoomCounts | undefined, game: GameId | null): RoomsShown {
+  const known = rooms.filter((room) => isGameId(room.game));
+  const shown = game === null ? known : known.filter((room) => room.game === game);
+  const sent = (id: GameId): number => known.reduce((sum, room) => sum + (room.game === id ? 1 : 0), 0);
+  const said = (id: GameId): number => {
+    const count = counts?.[id];
+    return typeof count === "number" && Number.isInteger(count) && count > 0 ? count : 0;
+  };
+  const all = Object.fromEntries(GAME_IDS.map((id) => [id, Math.max(said(id), sent(id))])) as Record<GameId, number>;
+  const total = game === null ? GAME_IDS.reduce((sum, id) => sum + all[id], 0) : all[game];
+  return { rooms: shown, counts: all, total, more: total - shown.length };
 }

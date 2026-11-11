@@ -12,7 +12,7 @@
  * written here or in the markup: the page's own are in `words.ts`.
  */
 import { PartySocket } from "partysocket";
-import type { RoomListing } from "../shared/directory";
+import { roomsShown, type RoomListing } from "../shared/directory";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
 import {
   generateRoomCode,
@@ -33,6 +33,8 @@ import {
   parseDirectoryMessage,
   parseServerMessage,
   type ClientMessage,
+  type DirectoryMessage,
+  type DirectoryRequest,
   type RejectReason,
 } from "../shared/protocol";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
@@ -86,6 +88,8 @@ const frame = el<HTMLElement>("frame");
 const roomsPanel = el<HTMLElement>("rooms");
 const roomList = el<HTMLOListElement>("room-list");
 const roomsCount = el<HTMLElement>("rooms-count");
+const roomsPick = el<HTMLButtonElement>("rooms-pick");
+const roomsGames = el<HTMLElement>("rooms-games");
 const roomsNote = el<HTMLElement>("rooms-note");
 const entry = el<HTMLElement>("entry");
 const newRoom = el<HTMLElement>("new-room");
@@ -472,10 +476,63 @@ function standing(listing: RoomListing, game: GameId): string {
   return short > 0 ? WORDS.rooms.waitingFor(short) : WORDS.rooms.waiting;
 }
 
-/** Draws the list of rooms; `null` while it is not known (connecting, or the connection dropped). */
-function renderRooms(listings: RoomListing[] | null): void {
-  // a newer server may list a game this page has not heard of: it cannot be played here
-  const known = (listings ?? []).filter((listing) => isGameId(listing.game));
+/** The game whose rooms the lobby lists, `null` for every game: what the player last picked while the page has been open. */
+let listedGame: GameId | null = null;
+/** The list of rooms as the directory last sent it; `null` while it is not known (connecting, or the connection dropped). */
+let roomsSent: DirectoryMessage | null = null;
+
+/**
+ * The games to pick from over the list, every game first, each with how many
+ * rooms it has. Made once; `renderRooms` keeps the counts and which is picked.
+ */
+const gamePicks = [null, ...GAME_IDS].map((game) => {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "choice game-pick";
+  const name = document.createElement("span");
+  name.textContent = game === null ? WORDS.rooms.everyGame : GAMES[game].title[lang];
+  const count = document.createElement("span");
+  button.append(name, count);
+  button.addEventListener("click", () => pickGame(game));
+  roomsGames.append(button);
+  return { game, button, count };
+});
+roomsGames.setAttribute("aria-label", WORDS.rooms.pick);
+
+/** Shows the games to pick from where the list is, or the list again. */
+function showGamePicks(open: boolean): void {
+  roomsGames.hidden = !open;
+  roomsPanel.classList.toggle("picking", open);
+  roomsPick.setAttribute("aria-expanded", String(open));
+}
+
+/** Lists the rooms of `game` only, or of every game (`null`). */
+function pickGame(game: GameId | null): void {
+  showGamePicks(false);
+  roomsPick.focus();
+  if (game === listedGame) return;
+  listedGame = game;
+  askForGame();
+  // the rows of that game already sent are shown at once; the directory's answer has the rest
+  renderRooms();
+  roomList.scrollTop = 0;
+}
+
+/**
+ * Tells the directory whose rooms this page lists. Only over a connection
+ * that is open: one that is not yet asks when it opens (`watchRooms`).
+ */
+function askForGame(): void {
+  if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return;
+  const request: DirectoryRequest = { type: "show", game: listedGame };
+  listSocket.send(JSON.stringify(request));
+}
+
+/** Draws the list of rooms as last sent, for the game picked. */
+function renderRooms(): void {
+  // what is shown is worked out from what was sent: a newer server may list a game this page has not heard of, which cannot be played here
+  const shown = roomsSent === null ? null : roomsShown(roomsSent.rooms, roomsSent.counts, listedGame);
+  const known = shown?.rooms ?? [];
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement.dataset.code : undefined;
   const rows = known.map((listing) => {
     const game = listing.game;
@@ -502,26 +559,57 @@ function renderRooms(listings: RoomListing[] | null): void {
     item.append(button);
     return item;
   });
+  // There are rooms the list has no room for: said under the last row. With no row yet, they are on their way (below).
+  if (shown !== null && shown.more > 0 && known.length > 0) {
+    const more = document.createElement("li");
+    more.className = "rooms-more";
+    more.textContent = listedGame === null ? WORDS.rooms.moreOfAll(shown.more) : WORDS.rooms.moreOfGame(shown.more);
+    rows.push(more);
+  }
   roomList.replaceChildren(...rows);
   // the list is redrawn whole: the row the keyboard was on stays the one it is on
   if (focused !== undefined) roomList.querySelector<HTMLElement>(`[data-code="${focused}"]`)?.focus();
-  roomsCount.textContent = listings === null ? "" : WORDS.rooms.count(known.length);
-  roomsNote.textContent = listings === null ? WORDS.rooms.loading : known.length === 0 ? WORDS.rooms.none : "";
+  roomsCount.textContent = shown === null ? "" : WORDS.rooms.total(shown.total);
+  // A game was picked none of whose rooms were among those sent, though it has some: the directory's answer is on its way.
+  roomsNote.textContent =
+    shown === null || (known.length === 0 && shown.total > 0)
+      ? WORDS.rooms.loading
+      : known.length > 0
+        ? ""
+        : listedGame === null
+          ? WORDS.rooms.none
+          : WORDS.rooms.noneOf(GAMES[listedGame].title[lang]);
+  roomsPick.textContent = `${listedGame === null ? WORDS.rooms.everyGame : GAMES[listedGame].title[lang]} ▾`;
+  for (const pick of gamePicks) {
+    const rooms = shown === null ? null : pick.game === null ? GAME_IDS.reduce((sum, id) => sum + shown.counts[id], 0) : shown.counts[pick.game];
+    pick.button.setAttribute("aria-pressed", String(pick.game === listedGame));
+    pick.count.textContent = rooms === null ? "" : WORDS.rooms.count(rooms);
+    pick.count.className = rooms === 0 ? "game-count none" : "game-count";
+  }
 }
 
 /** Starts listening to the list of rooms, if not already. */
 function watchRooms(): void {
   if (listSocket !== null) return;
-  renderRooms(null);
+  roomsSent = null;
+  renderRooms();
   const current = new PartySocket({ host: location.host, party: DIRECTORY_PARTY, room: DIRECTORY_NAME, ...reconnecting() });
   listSocket = current;
+  current.addEventListener("open", () => {
+    // every connection starts with the rooms of every game, a reconnection too: the game picked is asked for again
+    if (listSocket === current && listedGame !== null) askForGame();
+  });
   current.addEventListener("message", (event) => {
     const message = parseDirectoryMessage(event.data);
-    if (message !== null && listSocket === current) renderRooms(message.rooms);
+    if (message === null || listSocket !== current) return;
+    roomsSent = message;
+    renderRooms();
   });
   current.addEventListener("close", () => {
     // PartySocket reconnects by itself; until then the list on show may be out of date
-    if (listSocket === current) renderRooms(null);
+    if (listSocket !== current) return;
+    roomsSent = null;
+    renderRooms();
   });
 }
 
@@ -541,6 +629,7 @@ function showLobby(message = ""): void {
   newRoom.hidden = true;
   entry.hidden = false;
   roomsPanel.hidden = false;
+  showGamePicks(false);
   rules.hidden = true;
   notice.textContent = message;
   showScene(null);
@@ -926,6 +1015,12 @@ function leaveRoom(): void {
 }
 
 el<HTMLButtonElement>("create").addEventListener("click", showNewRoom);
+// The games to pick from open and close at the same button; opened, the keyboard is on the game picked.
+roomsPick.addEventListener("click", () => {
+  const open = roomsGames.hidden !== false;
+  showGamePicks(open);
+  if (open) gamePicks.find((pick) => pick.game === listedGame)?.button.focus();
+});
 el<HTMLButtonElement>("create-go").addEventListener("click", createRoom);
 el<HTMLButtonElement>("create-cancel").addEventListener("click", closeNewRoom);
 listedYes.addEventListener("click", () => {
@@ -1083,6 +1178,10 @@ addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!rules.hidden) rules.hidden = true;
   else if (!newRoom.hidden) closeNewRoom();
+  else if (!roomsGames.hidden) {
+    showGamePicks(false);
+    roomsPick.focus();
+  }
 });
 
 /**

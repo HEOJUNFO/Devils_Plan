@@ -26,6 +26,8 @@ const ko = {
   rooms: {
     title: "열린 방",
     count: (rooms: number) => `${rooms}개`,
+    /** Beside the heading, which says what is counted: in English the number alone, so the widest name of a game fits on the button beside it. */
+    total: (rooms: number) => `${rooms}개`,
     loading: "방 목록을 불러오는 중입니다.",
     none: "열린 방이 없습니다. 공개 방을 만들면 여기에 올라와 누구나 들어올 수 있습니다.",
     of: (host: string) => `${host}의 방`,
@@ -33,6 +35,14 @@ const ko = {
     playing: "게임 중 · 들어가면 관전",
     waitingFor: (more: number) => `대기 중 · ${more}명 더 오면 시작`,
     waiting: "대기 중 · 곧 시작",
+    /** On the button that picks whose rooms are listed, and first among the games it offers. */
+    everyGame: "모든 게임",
+    /** What the games to pick from are, said to a screen reader. */
+    pick: "게임별로 보기",
+    noneOf: (game: string) => `${game}의 열린 방이 없습니다. 공개 방을 만들면 여기에 올라옵니다.`,
+    /** Under the last row, when there are more rooms than the list holds: of every game, and of the game picked. */
+    moreOfAll: (rooms: number) => `${rooms}개 더 있습니다. 위에서 게임을 골라 좁혀 보세요.`,
+    moreOfGame: (rooms: number) => `${rooms}개 더 있습니다. 들어가기 좋은 방부터 보여 줍니다.`,
   },
   newRoom: {
     title: "새 방",
@@ -165,6 +175,7 @@ const en: typeof ko = {
   rooms: {
     title: "Open rooms",
     count: (rooms) => (rooms === 1 ? "1 room" : `${rooms} rooms`),
+    total: (rooms) => String(rooms),
     loading: "Loading the rooms.",
     none: "No open rooms. Make a public room and it is listed here for anyone to join.",
     of: (host) => `${host}'s room`,
@@ -172,6 +183,11 @@ const en: typeof ko = {
     playing: "Playing · join to watch",
     waitingFor: (more) => `Waiting · needs ${more} more`,
     waiting: "Waiting · starts soon",
+    everyGame: "Every game",
+    pick: "Rooms by game",
+    noneOf: (game) => `No open rooms of ${game}. Make a public one and it is listed here.`,
+    moreOfAll: (rooms) => `${rooms} more. Pick a game above.`,
+    moreOfGame: (rooms) => `${rooms} more. The best to join are shown first.`,
   },
   newRoom: {
     title: "New room",
