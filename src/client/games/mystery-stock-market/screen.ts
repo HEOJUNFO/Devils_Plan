@@ -12,16 +12,17 @@
  * are this project's. Everything can be done with the pointer; the keys are
  * a shorter way to the same.
  */
-import marketJson from "../../../shared/games/mystery-stock-market/config.json";
-import { STOCKS, type PriceRules, type StockId } from "../../../shared/games/mystery-stock-market/prices";
+import { STOCKS } from "../../../shared/games/mystery-stock-market/prices";
+import { CARD, placeWords, wordsOf, type CardPiece, type HiddenWord } from "../../../shared/games/mystery-stock-market/rule-words";
 import type { MarketEvent, MarketMove, StockView } from "../../../shared/games/mystery-stock-market/rules";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
+import { lang } from "../../lang";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
-import { WORDS, type RulePiece } from "./words";
+import { WORDS } from "./words";
 
 /** What the room sends about a game of 미스터리 거래소. */
 export type MarketMessage = Extract<ServerMessage, { type: "game"; game: "mystery-stock-market" }>;
@@ -52,13 +53,6 @@ export interface MarketScreen {
   destroy(): void;
 }
 
-/**
- * The numbers of the seven price rules, for the rule board. They come with
- * the page and not from the room: the room sends how many words of a rule
- * are open, and never the words or numbers that are not.
- */
-const PRICE_RULES: PriceRules = marketJson.rules;
-
 /** One step of the screen's clock, in seconds. */
 const STEP = 1 / 60;
 /** The table: where its heads are, where its first row is and how far apart the rows are. */
@@ -70,14 +64,11 @@ const NAME_X = 7;
 /** The least space between a column and the numbers of the next, and the room the arrow beside a price takes. */
 const COLUMN_GAP = 5;
 const ARROW_ROOM = 8;
-/** The line across under the table, the stock's name over its rule, and the rule's lines. */
+/** The line across under the table, the stock's name over its rule, and the rule's lines. How wide a rule may be, and how far apart its words are, is `CARD`'s to say. */
 const DETAIL_Y = 167;
 const CARD_X = 6;
 const CARD_Y = 183;
 const CARD_PITCH = 13;
-const CARD_WIDTH = 292;
-/** How wide the space between two words of a rule is. */
-const WORD_GAP = 4;
 /** The emblem over the table, at the top of the scene. */
 const EMBLEM = { x: 238, y: 3, w: 62, h: 18 } as const;
 /** The charts: four to a row under the switch that brings the table back, and the emblem in the last place. */
@@ -99,8 +90,6 @@ const MOST_FIGURES = 6;
 /** A word of a rule that is the next to be opened; and the squares of one that is not open. */
 const NEXT_WORD = "#3b6fd6";
 const HIDDEN_WORD = C.steelD;
-/** What a hidden word shows a low mark for and not a square: a comma, a stop and their like. */
-const MARKS = ".,;:'";
 /** A chart's line and its dots. */
 const CHART_LINE = C.steelD;
 const CHART_DOT = C.bone;
@@ -151,7 +140,6 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   if (context === null) throw new Error("no 2D drawing in this browser");
   const ctx: CanvasRenderingContext2D = context;
   const pen = new Pen(ctx);
-  const cards = WORDS.card(PRICE_RULES);
 
   let latest: MarketMessage | null = null;
   /**
@@ -552,62 +540,36 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
 
   /**
    * A word of a rule that is not open, at the place it will be read at: a
-   * square for each of its letters, set evenly over the room they take, and
-   * a low mark for a comma or a stop.
+   * square for each letter of a run, set evenly over the room they take, and
+   * a low mark for a comma or a stop. The room sends the shape and nothing
+   * of what the word says.
    */
-  function drawHidden(word: string, x: number, y: number): void {
-    const letters = [...word];
-    /** Where the letter at `index` begins: as far in as the letters before it are wide. */
-    const before = (index: number): number => x + pen.width(letters.slice(0, index).join(""));
-    let from = 0;
-    while (from < letters.length) {
-      const mark = MARKS.includes(letters[from]);
-      let to = from + 1;
-      while (!mark && to < letters.length && !MARKS.includes(letters[to])) to += 1;
-      const left = before(from);
-      const width = before(to) - left;
-      if (mark) pen.px(left, y + 9, Math.max(1, width - 1), 3, HIDDEN_WORD);
-      else {
-        const count = to - from;
-        for (let n = 0; n < count; n++) {
-          const at = left + Math.round((n * width) / count);
-          const w = left + Math.round(((n + 1) * width) / count) - at - 1;
-          pen.px(at, y + 1, w, 11, HIDDEN_WORD);
-          // a square too narrow to be hollow stays solid
-          if (w >= 3) pen.px(at + 1, y + 2, w - 2, 9, C.night);
-        }
+  function drawHidden(shape: HiddenWord, x: number, y: number): void {
+    let left = x;
+    for (const [squares, width] of shape) {
+      if (squares === 0) pen.px(left, y + 9, Math.max(1, width - 1), 3, HIDDEN_WORD);
+      for (let n = 0; n < squares; n++) {
+        const at = left + Math.round((n * width) / squares);
+        const w = left + Math.round(((n + 1) * width) / squares) - at - 1;
+        pen.px(at, y + 1, w, 11, HIDDEN_WORD);
+        // a square too narrow to be hollow stays solid
+        if (w >= 3) pen.px(at + 1, y + 2, w - 2, 9, C.night);
       }
-      from = to;
+      left += width;
     }
   }
 
   /** The words of a rule, as far as they are open to this player: a word not open is a row of squares, one to a letter, and the next to be opened is a solid block. */
-  function drawCard(pieces: readonly RulePiece[], parts: number): void {
-    // the words, each with those written against it: a line never ends between the two
-    const groups: { word: string; stage: number; width: number }[][] = [];
-    for (const piece of pieces) {
-      piece.text.split(" ").forEach((word, at) => {
-        const one = { word, stage: piece.stage, width: pen.width(word) };
-        if (at === 0 && piece.glue === true && groups.length > 0) groups[groups.length - 1].push(one);
-        else groups.push([one]);
-      });
-    }
-    let x = CARD_X;
-    let y = CARD_Y;
-    for (const group of groups) {
-      const width = group.reduce((sum, one) => sum + one.width, 0);
-      const gap = x === CARD_X ? 0 : WORD_GAP;
-      if (x + gap + width > CARD_X + CARD_WIDTH) {
-        x = CARD_X;
-        y += CARD_PITCH;
-      } else x += gap;
-      for (const one of group) {
-        if (one.stage <= parts) pen.txt(one.word, x, y, C.bone);
-        else if (one.stage === parts + 1) pen.px(x, y + 1, one.width, 11, NEXT_WORD);
-        else drawHidden(one.word, x, y);
-        x += one.width;
-      }
-    }
+  function drawCard(card: readonly CardPiece[]): void {
+    const words = wordsOf(lang, card, (text) => pen.width(text));
+    const places = placeWords(words, CARD.width, CARD.gap);
+    words.forEach((word, at) => {
+      const x = CARD_X + places[at].x;
+      const y = CARD_Y + places[at].line * CARD_PITCH;
+      if (word.open) pen.txt(word.text, x, y, C.bone);
+      else if (word.next) pen.px(x, y + 1, word.width, 11, NEXT_WORD);
+      else drawHidden(word.shape, x, y);
+    });
   }
 
   function drawDetail(): void {
@@ -631,7 +593,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     const room = SCENE_W - 16 - pen.width(WORDS.name[stock.id]);
     while (beside.length > 1 && pen.width(beside.join(" · ")) > room) beside.pop();
     if (beside.length > 0) pen.txt(pen.fit(beside.join(" · "), room), SCENE_W - 6, DETAIL_Y + 2, C.boneD, "right");
-    drawCard(cards[stock.id], stock.parts);
+    drawCard(stock.card[lang]);
   }
 
   function drawScene(): void {
@@ -659,7 +621,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   /** The log, made from what has been shown so far. */
   function logLines(): [string, string][] {
     if (latest === null) return [];
-    const lines: [string, string][] = [];
+    // which rules the game is played by comes first: it is settled before the first round
+    const lines: [string, string][] = [[WORDS.log.rulebook[latest.view.rulebook], C.teal]];
     for (const event of latest.view.history.slice(0, seen)) {
       if (event.type === "round") lines.push([WORDS.log.round(event.round), C.dim]);
       else if (event.type === "opened") lines.push([WORDS.log.opened(event.stage, latest.rules.revealRounds.length), C.amber]);
@@ -847,6 +810,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       secretRounds: rules.secretRounds,
       pieceCash: rules.pieceCash,
       pieceRounds: rules.pieceRounds,
+      rulebook: latest.view.rulebook,
     });
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);

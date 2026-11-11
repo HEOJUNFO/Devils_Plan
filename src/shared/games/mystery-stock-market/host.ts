@@ -14,6 +14,7 @@ import botJson from "./bot-config.json";
 import configJson from "./config.json";
 import hostJson from "./host-config.json";
 import { STOCKS } from "./prices";
+import { RULEBOOKS, isRulebook, isValidRules, type Rulebook } from "./rulebook";
 import {
   abandon,
   applyAction,
@@ -117,8 +118,9 @@ export interface MarketTablePlayer {
 export interface MarketSnapshot {
   startedAt: number;
   /**
-   * The numbers of the rules the screen shows or counts with. The numbers of
-   * the seven price rules are not among them: they are what the game hides.
+   * The numbers of the rules the screen shows or counts with. The seven
+   * price rules are not among them: they are what the game hides, and a
+   * player is sent what is open to them of each (`view.stocks`).
    */
   rules: Pick<MarketConfig, "rounds" | "roundSeconds" | "startCash" | "startPrice" | "floorPrice" | "revealRounds" | "secretRounds" | "pieceCash" | "pieceRounds" | "awards" | "prizeAssets">;
   view: MarketView;
@@ -232,7 +234,9 @@ export const marketHost: GameHost<MarketSession, MarketHostRefusal> = {
         seats.push({ id, token: null, nick: `봇 ${seats.filter((seat) => seat.token === null).length + 1}` });
       }
     }
-    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now }, config);
+    // a room asks for the show's rules by name; any other game draws its own
+    const rulebook: Rulebook = isRulebook(request.variant) ? request.variant : RULEBOOKS[0];
+    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now, rulebook, chance: request.chance }, config);
     if (!created.ok) return refuse(created.reason);
     seats.sort((a, b) => a.id - b.id);
     const session: MarketSession = {
@@ -325,11 +329,18 @@ export const marketHost: GameHost<MarketSession, MarketHostRefusal> = {
 
   same: (current, next) => current.state === next.state && current.frozenAt === next.frozenAt && current.rng === next.rng,
 
-  usable: (stored) =>
-    typeof stored === "object" &&
-    stored !== null &&
-    (stored as Partial<MarketSession>).version === VERSION &&
-    (stored as Partial<MarketSession>).state?.version === VERSION &&
-    Array.isArray((stored as Partial<MarketSession>).state?.accounts) &&
-    Array.isArray((stored as Partial<MarketSession>).players),
+  usable: (stored) => {
+    if (typeof stored !== "object" || stored === null) return false;
+    const session = stored as Partial<MarketSession>;
+    const state: Partial<MarketState> | undefined = session.state;
+    return (
+      session.version === VERSION &&
+      state?.version === VERSION &&
+      Array.isArray(state.accounts) &&
+      Array.isArray(session.players) &&
+      // a game stored before a game could draw rules of its own has neither, and is played by the show's
+      (state.rulebook === undefined || isRulebook(state.rulebook)) &&
+      (state.rules === undefined || isValidRules(state.rules))
+    );
+  },
 };

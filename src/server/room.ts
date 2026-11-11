@@ -3,7 +3,7 @@ import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shar
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
 import { HOSTS } from "../shared/hosts";
-import type { Presence } from "../shared/hosting";
+import { CHANCE_WORDS, type Presence } from "../shared/hosting";
 import {
   awayPlayers,
   createLobby,
@@ -18,8 +18,10 @@ import {
   setListed,
   setTeam,
   setTurnSeconds,
+  setVariant,
   slotLapsesAt,
   turnSecondsOf,
+  variantOf,
   viewLobby,
   type LobbyState,
   type RoomConfig,
@@ -252,7 +254,7 @@ export class GameRoom extends Server<Env> {
     }
     // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
     const sort =
-      parsed.type === "listing" || parsed.type === "clock"
+      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant"
         ? "setting"
         : parsed.type === "rtc"
           ? "signal"
@@ -270,6 +272,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "listing") await this.handleListing(connection, seat.slot, parsed.listed);
     else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text);
     else if (parsed.type === "clock") this.handleClock(connection, seat.slot, parsed.seconds);
+    else if (parsed.type === "variant") this.handleVariant(connection, seat.slot, parsed.variant);
     else if (parsed.type === "voice") this.handleVoice(connection, seat, parsed.on, parsed.muted);
     else if (parsed.type === "rtc") this.handleRtc(seat, parsed.to, parsed.signal);
     else if (parsed.type === "poke") this.handlePoke();
@@ -517,6 +520,22 @@ export class GameRoom extends Server<Env> {
     this.broadcastLobby();
   }
 
+  /**
+   * Sets which of the game's variants the games started here are played by,
+   * if the one asking is the host. A game being played keeps the one it
+   * started with.
+   */
+  private handleVariant(connection: Connection<ConnectionState>, slot: number, variant: string): void {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
+    const next = setVariant(lobby, variant);
+    if (next === null) return this.refuse(connection, "bad-setting");
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
+  }
+
   /** Puts a player in the team they chose for the next game, where the room's game has teams. */
   private handleTeam(connection: Connection<ConnectionState>, seat: Seat, team: number): void {
     const lobby = this.lobby;
@@ -624,9 +643,11 @@ export class GameRoom extends Server<Env> {
         bots,
         allowBots: botsAllowed(this.env.ALLOW_BOTS),
         seed: crypto.getRandomValues(new Uint32Array(1))[0],
+        chance: [...crypto.getRandomValues(new Uint32Array(CHANCE_WORDS))],
         now: Date.now(),
         // the length of a turn is the room's own setting; the rest of the rules are the game's
         turnSeconds: turnSecondsOf(lobby),
+        variant: variantOf(lobby) ?? undefined,
       },
       presence,
     );

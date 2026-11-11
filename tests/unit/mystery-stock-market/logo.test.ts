@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import shipped from "../../../src/shared/games/mystery-stock-market/config.json";
-import { emblemOf, pathOf, type LogoConfig } from "../../../src/shared/games/mystery-stock-market/logo";
+import { randomSource, seedFrom } from "../../../src/shared/game/rng";
+import { emblemOf, pathOf, pathWith, type LogoConfig } from "../../../src/shared/games/mystery-stock-market/logo";
 
 const logo: LogoConfig = shipped.logo;
 const ROUNDS = shipped.rounds;
@@ -118,6 +119,22 @@ describe("미스터리 거래소, 알트엔터's path", () => {
     for (let seed = 0; seed < SEEDS; seed++) {
       const prices = pathOf(seed, 24, START, even);
       for (const from of [0, 6, 12, 18]) expect(prices[from + 1], `seed ${seed}, after round ${from}`).not.toBe(prices[from]);
+    }
+  });
+
+  it("is drawn with the numbers it is given: a seed's own where it is drawn from a seed", () => {
+    expect(path(9)).toEqual(pathWith(randomSource(seedFrom(9)).next, ROUNDS, START, logo));
+    expect(pathWith(randomSource(seedFrom(9)).next, ROUNDS, START, logo)).not.toEqual(pathWith(randomSource(seedFrom(10)).next, ROUNDS, START, logo));
+  });
+
+  it("is a path as good as any whatever numbers it is drawn with, the least and the most among them", () => {
+    for (const number of [0, 0.5, 0.999999]) {
+      const drawn = pathWith(() => number, ROUNDS, START, logo);
+
+      expect(drawn, `${number}`).toHaveLength(ROUNDS + 1);
+      expect(drawn[0], `${number}`).toBe(START);
+      expect(drawn.every((price) => price >= logo.low && price <= logo.high && price % logo.step === 0), `${number}`).toBe(true);
+      expect(turnsOf(drawn).length, `${number}`).toBeGreaterThanOrEqual(logo.turnsFrom);
     }
   });
 

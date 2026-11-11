@@ -37,6 +37,24 @@ describe("the games a room can be made for", () => {
     expect(game.teamSize).toBeLessThan(game.maxPlayers);
   });
 
+  it.each(GAME_IDS)("says of %s in how many ways it can be played, each with an id of its own and a name in every language", (id) => {
+    const variants = GAMES[id].variants;
+
+    expect(Array.isArray(variants)).toBe(true);
+    expect(new Set(variants.map((each) => each.id)).size).toBe(variants.length);
+    for (const variant of variants) {
+      expect(variant.id).toMatch(/^[a-z][a-z-]*$/);
+      for (const lang of LANGS) expect(variant.title[lang].trim()).not.toBe("");
+    }
+    // one way only is no choice: such a game has none
+    expect(variants.length).not.toBe(1);
+  });
+
+  it("lets a room of 미스터리 거래소 be played by rules drawn for each game, which it starts with, or by the show's", () => {
+    expect(GAMES["mystery-stock-market"].variants.map((each) => each.id)).toEqual(["fresh", "show"]);
+    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["mystery-stock-market"]);
+  });
+
   it("names each game in Korean as the show does, and in English as its English release does", () => {
     // CLAUDE.md, Project Rules: a game is shown under the name the show gives it, also where the show made the name up for it
     expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소"]);

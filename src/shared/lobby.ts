@@ -134,6 +134,8 @@ export interface LobbyState {
   listed?: boolean;
   /** Seconds a player has for a move in the games started here; 0 or absent for no limit. */
   turnSeconds?: number;
+  /** Which of the game's variants the games started here are played by (`games.json`); absent for the game's first. */
+  variant?: string;
   /** The `seq` the next player to come in gets. */
   nextSeq?: number;
   /** The `teamSince` the next player to take a team gets. */
@@ -164,6 +166,8 @@ export interface LobbyView {
   listed: boolean;
   /** Seconds a player has for a move in the next game started here; 0 for no limit. */
   turnSeconds: number;
+  /** Which of the game's variants the next game started here is played by; `null` where the game has none. */
+  variant: string | null;
   /** Whether the room offers voice chat (see `voice.ts`). */
   voice: boolean;
   /** The slot of the host, who starts games and sets the room; `null` when nobody is connected. */
@@ -206,6 +210,27 @@ export function setTurnSeconds(state: LobbyState, seconds: number, config: RoomC
   if (!config.turnSecondsChoices.includes(seconds)) return null;
   if (seconds !== 0 && !GAMES[gameOf(state)].turns) return null;
   return turnSecondsOf(state) === seconds ? state : { ...state, turnSeconds: seconds };
+}
+
+/**
+ * Which of its game's variants the games started in this room are played by:
+ * the one the host chose, or the game's first; `null` where the game has
+ * none. A choice the game no longer has counts as none made.
+ */
+export function variantOf(state: LobbyState): string | null {
+  const variants = GAMES[gameOf(state)].variants;
+  if (variants.length === 0) return null;
+  return variants.find((each) => each.id === state.variant)?.id ?? variants[0].id;
+}
+
+/**
+ * Sets the variant the games started in this room are played by. Returns
+ * `null` for one the room's game does not have, and the state unchanged when
+ * it is already so. The input state is not modified.
+ */
+export function setVariant(state: LobbyState, variant: string): LobbyState | null {
+  if (!GAMES[gameOf(state)].variants.some((each) => each.id === variant)) return null;
+  return variantOf(state) === variant ? state : { ...state, variant };
 }
 
 /** The game a room was made for. */
@@ -453,6 +478,7 @@ export function viewLobby(
     game: gameOf(state),
     listed: state.listed === true,
     turnSeconds: turnSecondsOf(state),
+    variant: variantOf(state),
     voice,
     host: hostOf(state, connectedSlots)?.slot ?? null,
     players: state.players.map((p) => ({

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { chanceOf, randomSource, seedFrom } from "../../../src/shared/game/rng";
 import shipped from "../../../src/shared/games/mystery-stock-market/config.json";
-import { emblemOf, pathOf } from "../../../src/shared/games/mystery-stock-market/logo";
-import { STOCKS, perStock, type StockId } from "../../../src/shared/games/mystery-stock-market/prices";
+import { emblemOf, pathOf, pathWith } from "../../../src/shared/games/mystery-stock-market/logo";
+import { STOCKS, nextPrices, perStock, type PerStock, type RoundFacts, type StockId } from "../../../src/shared/games/mystery-stock-market/prices";
+import { cardOf, sentenceOf } from "../../../src/shared/games/mystery-stock-market/rule-words";
+import { drawRules, drawRulesWith, isValidRules, rulesNumbers, showRules } from "../../../src/shared/games/mystery-stock-market/rulebook";
 import {
   abandon,
   applyAction,
@@ -15,6 +18,7 @@ import {
   moveOn,
   parseAction,
   priceOf,
+  rulebookOf,
   shiftClock,
   stageOf,
   standingsOf,
@@ -24,6 +28,8 @@ import {
   type MarketMove,
   type MarketState,
 } from "../../../src/shared/games/mystery-stock-market/rules";
+import { CHANCE_WORDS } from "../../../src/shared/hosting";
+import { LANGS } from "../../../src/shared/lang";
 
 const config: MarketConfig = shipped;
 
@@ -37,9 +43,9 @@ const FLOOR = config.floorPrice;
 /** How many parts every rule has beyond the one that is open from the start. */
 const STAGES = config.revealRounds.length;
 
-/** A game of `count` players, numbered from nought, started at `T0`. */
+/** A game of `count` players, numbered from nought, started at `T0` and played by the show's rules: its prices are worked out from those. */
 function game(count: number, seed = 7): MarketState {
-  const created = createGame({ players: Array.from({ length: count }, (_, n) => n), seed, now: T0 }, config);
+  const created = createGame({ players: Array.from({ length: count }, (_, n) => n), seed, now: T0, rulebook: "show" }, config);
   if (!created.ok) throw new Error(`fixture game refused: ${created.reason}`);
   return created.state;
 }
@@ -166,16 +172,16 @@ describe("미스터리 거래소: starting", () => {
   });
 
   it("takes the players in the order of their numbers, whatever order they are given in", () => {
-    const created = createGame({ players: [5, 2, 9], seed: 1, now: T0 }, config);
+    const created = createGame({ players: [5, 2, 9], seed: 1, now: T0, rulebook: "show" }, config);
 
     expect(created.ok && created.state.players).toEqual([2, 5, 9]);
   });
 
   it("refuses a game for one player, for the same player twice, and with numbers that cannot be played", () => {
-    expect(createGame({ players: [0], seed: 1, now: T0 }, config)).toEqual({ ok: false, reason: "too-few" });
-    expect(createGame({ players: [0, 0], seed: 1, now: T0 }, config)).toEqual({ ok: false, reason: "bad-players" });
-    expect(createGame({ players: [0, 1.5], seed: 1, now: T0 }, config)).toEqual({ ok: false, reason: "bad-players" });
-    expect(createGame({ players: [0, 1], seed: 1, now: T0 }, { ...config, rounds: 0 })).toEqual({ ok: false, reason: "bad-config" });
+    expect(createGame({ players: [0], seed: 1, now: T0, rulebook: "show" }, config)).toEqual({ ok: false, reason: "too-few" });
+    expect(createGame({ players: [0, 0], seed: 1, now: T0, rulebook: "show" }, config)).toEqual({ ok: false, reason: "bad-players" });
+    expect(createGame({ players: [0, 1.5], seed: 1, now: T0, rulebook: "show" }, config)).toEqual({ ok: false, reason: "bad-players" });
+    expect(createGame({ players: [0, 1], seed: 1, now: T0, rulebook: "show" }, { ...config, rounds: 0 })).toEqual({ ok: false, reason: "bad-config" });
   });
 });
 
@@ -799,7 +805,7 @@ describe("미스터리 거래소: pieces", () => {
 
   it("takes no piece for a rule that is open to the player already", () => {
     const all = { ...config, pieces: STAGES + 1 };
-    const created = createGame({ players: [0, 1], seed: 7, now: T0 }, all);
+    const created = createGame({ players: [0, 1], seed: 7, now: T0, rulebook: "show" }, all);
     if (!created.ok) throw new Error("fixture game refused");
     let next = created.state;
     for (let n = 0; n < STAGES; n++) {
@@ -961,5 +967,265 @@ describe("미스터리 거래소: a whole game", () => {
     state = sell(sell(state, 0, "coyo", 1), 2, "steel", 3);
 
     expect(total(state)).toBe(before);
+  });
+});
+
+describe("미스터리 거래소: the rules a game is played by", () => {
+  /** How many seeds a property of every game with rules of its own is tried on. */
+  const SEEDS = 60;
+
+  /** A game of `count` players that draws its own rules from `seed`, started at `T0`. */
+  function fresh(count: number, seed = 7): MarketState {
+    const created = createGame({ players: Array.from({ length: count }, (_, n) => n), seed, now: T0, rulebook: "fresh" }, config);
+    if (!created.ok) throw new Error(`fixture game refused: ${created.reason}`);
+    return created.state;
+  }
+
+  /** `count` of one thing for each stock named, and nought for the rest. */
+  const counts = (of: Partial<PerStock<number>>): PerStock<number> => ({ ...perStock(() => 0), ...of });
+  const pricesNow = (state: MarketState): PerStock<number> => perStock((stock) => priceOf(state, stock));
+
+  it("keeps the show's seven rules for a game played by them", () => {
+    const state = game(2);
+
+    expect(rulebookOf(state)).toBe("show");
+    expect(state.rules).toEqual(showRules(config.rules));
+  });
+
+  it("draws seven rules of its own for a game that is not, from the game's seed", () => {
+    const state = fresh(2, 11);
+
+    expect(rulebookOf(state)).toBe("fresh");
+    expect(state.rules).toEqual(drawRules(11, config.draw));
+    expect(isValidRules(state.rules)).toBe(true);
+    expect(fresh(2, 11).rules).toEqual(state.rules);
+    expect(fresh(2, 12).rules).not.toEqual(state.rules);
+  });
+
+  it("draws the same path whichever rules the game is played by", () => {
+    expect(fresh(2, 11).path).toEqual(game(2, 11).path);
+  });
+
+  /** Numbers such as a room gives a game to draw its secrets from: `count` 32-bit numbers, the same for the same `from`. */
+  function roomChance(from: number, count = CHANCE_WORDS): number[] {
+    const random = randomSource(seedFrom(from));
+    return Array.from({ length: count }, () => Math.floor(random.next() * 2 ** 32));
+  }
+  /** A game of two that draws its own rules, given `chance` by its room. */
+  function given(chance: readonly number[], seed = 7, rulebook: "fresh" | "show" = "fresh"): MarketState {
+    const created = createGame({ players: [0, 1], seed, now: T0, rulebook, chance }, config);
+    if (!created.ok) throw new Error(`fixture game refused: ${created.reason}`);
+    return created.state;
+  }
+  const never = (): number => {
+    throw new Error("the seed's numbers were asked for");
+  };
+
+  it("draws its path and its rules from the chance its room gives it: the seed then changes nothing, and neither is what the seed gives", () => {
+    const chance = roomChance(1);
+    const one = given(chance, 11);
+    const other = given(chance, 12);
+
+    expect(other.path).toEqual(one.path);
+    expect(other.rules).toEqual(one.rules);
+    expect(one.path).not.toEqual(fresh(2, 11).path);
+    expect(one.rules).not.toEqual(fresh(2, 11).rules);
+    expect(isValidRules(one.rules)).toBe(true);
+  });
+
+  it("draws another path and other rules from another chance", () => {
+    const one = given(roomChance(1));
+    const other = given(roomChance(2));
+
+    expect(other.path).not.toEqual(one.path);
+    expect(other.rules).not.toEqual(one.rules);
+  });
+
+  it("draws the path first and the rules after it, each number of the chance once", () => {
+    const chance = roomChance(3);
+    const numbers = chanceOf(chance)(never);
+    const path = pathWith(numbers, ROUNDS, START, config.logo);
+    const rules = drawRulesWith(numbers, config.draw);
+
+    expect(given(chance).path).toEqual(path);
+    expect(given(chance).rules).toEqual(rules);
+  });
+
+  it("draws the path of a game played by the show's rules from the chance too, and leaves its rules the show's", () => {
+    const chance = roomChance(4);
+    const state = given(chance, 7, "show");
+
+    expect(state.path).toEqual(pathWith(chanceOf(chance)(never), ROUNDS, START, config.logo));
+    expect(state.rules).toEqual(showRules(config.rules));
+  });
+
+  it("never draws more numbers than a room gives: with half of them no game goes back to its seed", () => {
+    for (let from = 0; from < SEEDS; from++) {
+      const half = roomChance(from, CHANCE_WORDS / 2);
+
+      expect(given(half, 1), `chance ${from}`).toEqual(given(half, 2));
+    }
+  });
+
+  it("goes on with the seed's own numbers where the chance runs out: those of the path for the path, those of the rules for the rules", () => {
+    const few = roomChance(5, 3);
+    const chance = chanceOf(few);
+    const path = pathWith(chance(randomSource(seedFrom(11)).next), ROUNDS, START, config.logo);
+    const rules = drawRulesWith(chance(rulesNumbers(11)), config.draw);
+
+    expect(given(few, 11).path).toEqual(path);
+    expect(given(few, 11).rules).toEqual(rules);
+    expect(given(few, 11).rules).toEqual(drawRules(11, config.draw));
+    expect(given([], 11).path).toEqual(pathOf(11, ROUNDS, START, config.logo));
+  });
+
+  it("does not take numbers no rules can be drawn from", () => {
+    expect(isValidConfig({ ...config, draw: { ...config.draw, selfPercent: 101 } })).toBe(false);
+    expect(isValidConfig({ ...config, draw: { ...config.draw, wonUp: { from: 900, to: 800, step: 100 } } })).toBe(false);
+    expect(createGame({ players: [0, 1], seed: 1, now: T0, rulebook: "fresh" }, { ...config, draw: { ...config.draw, selfPercent: 101 } })).toEqual({ ok: false, reason: "bad-config" });
+  });
+
+  it("moves every stock by the rule the game drew for it: what was bought and sold, what is held, what a secret hides and the path all count", () => {
+    for (let seed = 0; seed < SEEDS; seed++) {
+      let state = fresh(3, seed);
+      const book = { floorPrice: FLOOR, rules: drawRules(seed, config.draw) };
+      const opening = pricesNow(state);
+
+      state = buy(buy(buy(state, 0, "coyo", 3), 1, "steel", 2), 2, "open", 1);
+      state = sell(state, 0, "coyo", 1);
+      state = act(state, 2, { type: "secret", stock: "latter" });
+      const first = endRound(state);
+      const firstFacts: RoundFacts = {
+        heldBefore: counts({}),
+        heldAfter: counts({ coyo: 2, steel: 2, open: 1 }),
+        bought: counts({ coyo: 3, steel: 2, open: 1 }),
+        sold: counts({ coyo: 1 }),
+        // the secret used in this round hides its stock from the next
+        hidden: perStock((stock) => stock === "latter"),
+        path: state.path[1],
+      };
+      expect(pricesNow(first), `seed ${seed}, round 1`).toEqual(nextPrices(opening, null, firstFacts, book));
+
+      // sold where there is money for nothing more: prices may have risen past what anyone can pay
+      let next = sell(sell(first, 1, "steel", 2), 2, "open", 1);
+      next = buy(next, 0, "finance", 1);
+      const second = endRound(next);
+      const secondFacts: RoundFacts = {
+        heldBefore: counts({ coyo: 2, steel: 2, open: 1 }),
+        heldAfter: counts({ coyo: 2, finance: 1 }),
+        bought: counts({ finance: 1 }),
+        sold: counts({ steel: 2, open: 1 }),
+        hidden: perStock((stock) => stock === "latter"),
+        path: state.path[2],
+      };
+      expect(pricesNow(second), `seed ${seed}, round 2`).toEqual(nextPrices(pricesNow(first), opening, secondFacts, book));
+    }
+  });
+
+  it("moves the stock that has the emblem's rule along the path, whichever company that is", () => {
+    for (let seed = 0; seed < SEEDS; seed++) {
+      const state = fresh(2, seed);
+      const emblem = STOCKS.find((stock) => state.rules?.[stock].kind === "emblem");
+      if (emblem === undefined) throw new Error("a drawn game has no emblem");
+
+      const over = toEnd(state);
+
+      expect(over.prices[emblem], `seed ${seed}`).toEqual(state.path);
+    }
+  });
+
+  it("gives the emblem's rule to other companies than the show does", () => {
+    const companies = new Set(Array.from({ length: SEEDS }, (_, seed) => STOCKS.find((stock) => fresh(2, seed).rules?.[stock].kind === "emblem")));
+
+    expect(companies.size).toBe(STOCKS.length);
+  });
+
+  it("plays a game stored before games drew rules of their own by the show's", () => {
+    const { rules: _rules, rulebook: _rulebook, ...stored } = game(3, 5);
+    let old: MarketState = stored;
+    let now = game(3, 5);
+    for (const each of [0, 1]) {
+      old = buy(buy(old, 0, "coyo", 3 + each), 1, "steel", 2);
+      now = buy(buy(now, 0, "coyo", 3 + each), 1, "steel", 2);
+      old = endRound(old);
+      now = endRound(now);
+    }
+
+    expect(rulebookOf(old)).toBe("show");
+    expect(old.prices).toEqual(now.prices);
+    expect(viewFor(old, 0, config).rulebook).toBe("show");
+    expect(viewFor(old, 0, config).stocks).toEqual(viewFor(now, 0, config).stocks);
+  });
+
+  it("tells everyone which rules the game is played by, and nobody the rules", () => {
+    for (const state of [fresh(2, 11), game(2, 11), toEnd(fresh(2, 11))]) {
+      for (const viewer of [0, 1, null]) {
+        const view = viewFor(state, viewer, config);
+
+        expect(view.rulebook).toBe(rulebookOf(state));
+        expect(view).not.toHaveProperty("rules");
+        expect(view).not.toHaveProperty("path");
+        expect(JSON.stringify(view)).not.toContain('"kind"');
+      }
+    }
+  });
+
+  it("sends each rule in each language as far as it is open to everyone: its first pieces from the start, more at rounds 5, 10 and 15, all of it at 20", () => {
+    for (const rulebook of ["fresh", "show"] as const) {
+      const start = rulebook === "fresh" ? fresh(2, 11) : game(2, 11);
+      const rules = rulebook === "fresh" ? drawRules(11, config.draw) : showRules(config.rules);
+      for (const round of [1, 4, 5, 10, 15, 19, 20]) {
+        const state = toRound(start, round);
+        for (const viewer of [0, null]) {
+          for (const stock of STOCKS) {
+            const view = shown(state, viewer, stock);
+
+            expect(view.parts).toBe(stageOf(round, config));
+            for (const lang of LANGS) expect(view.card[lang], `${rulebook} round ${round} ${stock} ${lang}`).toEqual(cardOf(lang, sentenceOf(lang, stock, rules[stock], rulebook), stageOf(round, config)));
+          }
+        }
+      }
+    }
+  });
+
+  it("covers what is not open: at the start most pieces of every rule are shapes, and at round 20 none is", () => {
+    const state = fresh(2, 11);
+    const covered = (now: MarketState): number => viewFor(now, 0, config).stocks.reduce((sum, stock) => sum + stock.card.ko.filter((piece) => !piece.open).length, 0);
+    const pieces = viewFor(state, 0, config).stocks.reduce((sum, stock) => sum + stock.card.ko.length, 0);
+
+    expect(covered(state)).toBeGreaterThan(pieces / 2);
+    expect(covered(toRound(state, 19))).toBeGreaterThan(0);
+    expect(covered(toRound(state, 20))).toBe(0);
+  });
+
+  it("opens the next piece of one rule to the player who gave a piece for it, and to nobody else", () => {
+    const state = act(fresh(2, 11), 0, { type: "peek", stock: "coyo" });
+    const rule = drawRules(11, config.draw).coyo;
+
+    for (const lang of LANGS) {
+      expect(shown(state, 0, "coyo").card[lang]).toEqual(cardOf(lang, sentenceOf(lang, "coyo", rule, "fresh"), 1));
+      expect(shown(state, 1, "coyo").card[lang]).toEqual(cardOf(lang, sentenceOf(lang, "coyo", rule, "fresh"), 0));
+      expect(shown(state, null, "coyo").card[lang]).toEqual(cardOf(lang, sentenceOf(lang, "coyo", rule, "fresh"), 0));
+    }
+    expect(shown(state, 0, "steel").card).toEqual(shown(state, 1, "steel").card);
+  });
+
+  it("shows every rule whole once the game is over, however early that is", () => {
+    for (const state of [abandon(fresh(2, 11)), closeIfLeft(fresh(2, 11), () => false), abandon(game(2))]) {
+      for (const viewer of [0, null]) {
+        const view = viewFor(state, viewer, config);
+
+        expect(view.stocks.every((stock) => stock.parts === STAGES)).toBe(true);
+        expect(view.stocks.every((stock) => LANGS.every((lang) => stock.card[lang].every((piece) => piece.open)))).toBe(true);
+      }
+    }
+  });
+
+  it("keeps a game's rules as they are from its first round to its last", () => {
+    const state = fresh(2, 11);
+    const over = toEnd(buy(state, 0, "coyo", 1));
+
+    expect(over.rules).toEqual(state.rules);
+    expect(rulebookOf(over)).toBe("fresh");
   });
 });

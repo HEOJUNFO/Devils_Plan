@@ -21,6 +21,12 @@ This is a project rule the user set on 2026-11-11, in their words:
 - A screen's sentences are in a `words.ts` beside it, Korean and English side
   by side, taken through `words()` of `src/client/lang.ts`. None is written in
   the markup or in a screen's code.
+- One set of words is not beside its screen: the rule board of 미스터리 거래소
+  (`src/shared/games/mystery-stock-market/rule-words.ts`, both languages,
+  beside the game's rules). A word a player may not read yet is not sent to
+  them, so the room has to know how long each covered word is in each
+  language. It still sends no sentence: of an open word the key of the table
+  and what it is filled with, of a covered one only its shape.
 - The type check holds the two to one shape, so a sentence missing in one
   language does not compile.
 - A game's name and summary are in `src/shared/games.json`, by language.

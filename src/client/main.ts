@@ -106,6 +106,7 @@ const players = el<HTMLOListElement>("players");
 const startButton = el<HTMLButtonElement>("start");
 const copyButton = el<HTMLButtonElement>("copy");
 const clockButton = el<HTMLButtonElement>("clock");
+const variantButton = el<HTMLButtonElement>("variant");
 const teamButton = el<HTMLButtonElement>("team");
 const chatBox = el<HTMLElement>("chat");
 const chatInput = el<HTMLInputElement>("chat-input");
@@ -668,6 +669,12 @@ function renderRoom(code: string, view: LobbyView): void {
   clockButton.textContent = WORDS.room.clock(view.turnSeconds);
   clockButton.disabled = !isHost;
   clockButton.title = isHost ? WORDS.room.clockHost : WORDS.room.clockGuest;
+  // which way the game is played here, where it has more than one: the host's to choose
+  const variant = game?.variants.find((each) => each.id === view.variant);
+  variantButton.hidden = variant === undefined;
+  variantButton.textContent = variant?.title[lang] ?? "";
+  variantButton.disabled = !isHost;
+  variantButton.title = isHost ? WORDS.room.variantHost : WORDS.room.variantGuest;
   if (game === null) {
     startButton.disabled = true;
     hint = WORDS.room.reloadForGame;
@@ -925,6 +932,16 @@ clockButton.addEventListener("click", () => {
   const choices = config.turnSecondsChoices;
   const at = choices.indexOf(currentView.turnSeconds);
   send({ type: "clock", seconds: choices[(at + 1) % choices.length] });
+});
+
+variantButton.addEventListener("click", () => {
+  // each press moves to the next way the game can be played, round to the first
+  const view = currentView;
+  if (view === null || !isGameId(view.game)) return;
+  const variants = GAMES[view.game].variants;
+  if (variants.length === 0) return;
+  const at = variants.findIndex((each) => each.id === view.variant);
+  send({ type: "variant", variant: variants[(at + 1) % variants.length].id });
 });
 
 // Leaving a game hands the seat to the room, so it takes a second press: the

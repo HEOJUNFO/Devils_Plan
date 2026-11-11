@@ -1,29 +1,20 @@
 /**
  * The words of 미스터리 거래소 (Mystery Stock Market), in each language
- * (`lang.ts`): its rules as the page shows them before a game, everything its
- * screen says, and the seven price rules as the rule board shows them, word
- * by word as they are opened.
+ * (`lang.ts`): its rules as the page shows them before a game and everything
+ * its screen says. The words of the price rules on the rule board are taken
+ * from `rule-words.ts`, beside the game's rules: the room has to know how
+ * long each covered word is, so they are kept where it can read them.
  *
  * The screen is 480 by 270 pixels and its lines are placed by the pixel: a
  * sentence changed here is looked at on the screen it is drawn on.
  */
-import type { PriceRules, StockId } from "../../../shared/games/mystery-stock-market/prices";
+import type { StockId } from "../../../shared/games/mystery-stock-market/prices";
+import { STOCK_NAMES, textOf, type RuleArg } from "../../../shared/games/mystery-stock-market/rule-words";
+import type { Rulebook } from "../../../shared/games/mystery-stock-market/rulebook";
 import type { MarketEnd } from "../../../shared/games/mystery-stock-market/rules";
 import { englishOrdinal } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
-
-/**
- * A piece of a price rule as the rule board has it: one word or a few that
- * are opened together. `stage` is when: 0 from the start, then one more at
- * each of the rounds the rules are opened in. `glue` sets it against the
- * piece before it with no space between.
- */
-export interface RulePiece {
-  text: string;
-  stage: number;
-  glue?: boolean;
-}
 
 /** The numbers of the room's rules the sheet over the screen is written with. */
 export interface HelpNumbers {
@@ -37,14 +28,14 @@ export interface HelpNumbers {
   secretRounds: number;
   pieceCash: number;
   pieceRounds: number;
+  /** Which rules the game on the screen is played by. */
+  rulebook: Rulebook;
 }
 
 /** `n` with its thousands apart: 1,234,567. */
 const grouped = (n: number): string => n.toLocaleString("en-US");
 /** The rounds the rules are opened in but the last, and the last: "5·10·15" and "20". */
 const opened = (rounds: number[], between: string): [string, string] => [rounds.slice(0, -1).join(between), `${rounds[rounds.length - 1] ?? ""}`];
-
-const piece = (text: string, stage: number, glue = false): RulePiece => (glue ? { text, stage, glue } : { text, stage });
 
 const ko = {
   sheet: {
@@ -54,6 +45,7 @@ const ko = {
       [
         "모든 주식은 10,000원에서 시작하고 100원 아래로는 내려가지 않습니다. 라운드는 5분이고, 그동안 그 라운드의 가격으로 원하는 만큼 사고팔 수 있습니다.",
         "주가는 라운드가 끝날 때 회사마다 다른 규칙으로 움직입니다. 규칙은 처음에 일부만 보입니다. 5·10·15라운드가 시작될 때 가려진 낱말이 더 열리고, 20라운드에 모두 열립니다.",
+        "규칙은 판마다 새로 뽑습니다: 어느 회사가 어떤 규칙인지, 숫자가 얼마인지 판마다 다릅니다. 방장은 대기실에서 방송의 규칙 그대로 하는 판으로 바꿀 수 있습니다.",
         "라운드가 시작되면 바뀐 주가, 지난 라운드에 사고판 수량, 모두가 가진 수량의 합(총 보유), 모든 사람의 자산과 순위가 공개됩니다.",
         "시크릿: 게임 중 한 번, 한 종목에 쓸 수 있습니다. 쓴 다음 두 라운드 동안 그 종목의 주가와 수량이 모두에게 가려지고, 그동안 모든 사람의 자산도 가려집니다 (순위는 보입니다). 그 종목을 가졌거나 거래한 사람은 자기 현금과 자산도 볼 수 없습니다. 누가 썼는지는 알려지지 않습니다.",
         "피스: 모두 3개씩 가지고 시작합니다. 20라운드까지, 1개로 한 종목의 다음에 열릴 규칙 낱말을 혼자 미리 보거나 현금 10,000원으로 바꿀 수 있습니다.",
@@ -92,8 +84,10 @@ const ko = {
     abandoned: "이어갈 사람이 없어 끝",
   } as Record<MarketEnd, string>,
   /** The companies: in full, and as the table has room for (58 pixels). */
-  name: { finance: "맛소금융", build: "무조건설", steel: "방어제철", alt: "알트엔터", open: "열림보안", coyo: "코요테크", latter: "후자전자" } as Record<StockId, string>,
-  short: { finance: "맛소금융", build: "무조건설", steel: "방어제철", alt: "알트엔터", open: "열림보안", coyo: "코요테크", latter: "후자전자" } as Record<StockId, string>,
+  name: STOCK_NAMES.ko.name as Record<StockId, string>,
+  short: STOCK_NAMES.ko.short as Record<StockId, string>,
+  /** The words of a piece of a price rule that is open: `key` and `args` are what the room sends of it. */
+  rule: (key: string, args: readonly RuleArg[]): string => textOf("ko", key, args),
   /** The heads of the table's columns: each ends where its numbers end. */
   column: { price: "주가", bought: "매수", sold: "매도", held: "총 보유", mine: "내 보유" },
   /**
@@ -180,6 +174,8 @@ const ko = {
     lobby: "Esc 대기실로",
   },
   log: {
+    /** The first line of the log: which rules the game is played by. A line of the column, 168 pixels. */
+    rulebook: { fresh: "이 판만의 새 규칙", show: "방송의 규칙" } as Record<Rulebook, string>,
     round: (round: number) => `라운드 ${round}`,
     opened: (stage: number, of: number) => `규칙 추가 공개 (${stage}/${of})`,
     hidden: (name: string, from: number, until: number) => (from === until ? `시크릿: ${name} ${from}R` : `시크릿: ${name} ${from}~${until}R`),
@@ -196,66 +192,6 @@ const ko = {
     hostNext: "같은 사람들과 한 판 더 하거나 대기실로",
     waitHost: "방장이 새 판을 시작하기를 기다리는 중",
   },
-  /** The seven price rules, word by word, with the room's own numbers. */
-  card: (n: PriceRules): Record<StockId, RulePiece[]> => ({
-    finance: [
-      piece(`${n.finance.count}개 이상의`, 4),
-      piece("주식이", 1),
-      piece("상승할", 3),
-      piece("경우", 1),
-      piece(`다음 라운드 +${n.finance.upPercent}%,`, 2),
-      piece(`${n.finance.count}개 이상의`, 4),
-      piece("주식이", 1),
-      piece("하락할", 3),
-      piece("경우", 2),
-      piece("다음", 0),
-      piece("라운드", 2),
-      piece(`-${n.finance.downPercent}%`, 3),
-    ],
-    build: [piece("방어제철의", 4), piece("가격이", 0), piece("올랐으면", 2), piece(`+${n.build.upPercent}%,`, 2), piece("그렇지 않으면", 1), piece(`-${n.build.downPercent}%`, 3)],
-    steel: [
-      piece("방어제철의", 4),
-      piece("보유 총량이", 1),
-      piece("증가한 만큼", 3),
-      piece("1주당", 2),
-      piece(`-${n.steel.perShare}원,`, 0),
-      piece("감소한 만큼", 3),
-      piece("1주당", 2),
-      piece(`+${n.steel.perShare}원`, 0),
-    ],
-    alt: [piece("알트엔터의", 1), piece("주가 변동 그래프는", 2), piece("미스터리 거래소 로고", 4), piece("와 일치", 3, true), piece("한다", 0, true)],
-    open: [
-      piece("후자전자에", 3),
-      piece("시크릿이 걸려", 4),
-      piece("있으면", 0),
-      piece(`+${n.open.upPercent}%`, 1),
-      piece(", 그렇지", 0, true),
-      piece("않으면", 1),
-      piece(`-${n.open.down}원`, 2),
-    ],
-    coyo: [
-      piece("코요테크의", 1),
-      piece("매수량이", 3),
-      piece("후자전자의", 4),
-      piece("매수량", 0),
-      piece("보다", 3, true),
-      piece("많을 경우", 0),
-      piece(`+${n.coyo.up}원,`, 2),
-      piece("그렇지 않으면", 1),
-      piece(`-${n.coyo.down}원`, 2),
-    ],
-    latter: [
-      piece("후자전자의", 3),
-      piece("보유 총량이", 2),
-      piece(`${n.latter.from}주`, 4),
-      piece("이상", 1),
-      piece(`${n.latter.to}주`, 4),
-      piece("이하이면", 1),
-      piece(`+${n.latter.up}원,`, 0),
-      piece("그렇지 않으면", 1),
-      piece(`-${n.latter.down}원`, 2),
-    ],
-  }),
   /** The rules over the screen (H), by the room's own numbers. */
   help: (n: HelpNumbers): HelpLine[] => {
     const [early, last] = opened(n.revealRounds, "·");
@@ -265,7 +201,7 @@ const ko = {
       { text: `${grouped(n.startCash)}원으로 시작. 주식은 ${grouped(n.startPrice)}원에서 시작, 최저 ${grouped(n.floorPrice)}원.` },
       { text: "주가는 라운드가 끝날 때 종목마다 제 규칙으로 움직입니다." },
       { text: `규칙은 ${early}라운드에 더 열리고 ${last}라운드에 다 열립니다.`, tone: "dim" },
-      { text: "파란 칸이 다음에 열릴 낱말입니다.", tone: "dim" },
+      { text: n.rulebook === "show" ? "파란 칸이 다음에 열릴 낱말입니다. 규칙은 방송의 것입니다." : "파란 칸이 다음에 열릴 낱말입니다. 규칙은 이 판에서 새로 뽑았습니다.", tone: "dim" },
       { text: "" },
       { text: `시크릿 (한 번): 한 종목을 다음 ${n.secretRounds}라운드 동안 모니터에서 가립니다.` },
       { text: "그동안 모두의 자산도 가려지고, 그 종목을 가졌거나 거래했으면", tone: "dim" },
@@ -288,6 +224,7 @@ const en: typeof ko = {
       [
         "Every stock opens at 10,000 won and never goes under 100 won. A round lasts 5 minutes, and in it you may buy and sell as much as you like at the round's price.",
         "Prices move when a round ends, each company's by a rule of its own. Only part of each rule is shown at first. More of its words open at the start of rounds 5, 10 and 15, and all of them at round 20.",
+        "The rules are drawn afresh for every game: which company has which rule, and its numbers, differ from game to game. In the room the host can switch to a game played by the show's own rules.",
         "At the start of a round the monitor shows the new prices, what was bought and sold in the round before, the total holdings of all players, and everyone's assets and rank.",
         "Secret: once in the game you may use it on one stock. For the two rounds after, that stock's price and volumes are hidden from everyone, and so are everyone's assets (ranks stay). Whoever holds or trades that stock cannot see their own cash and assets either. Nobody is told who used it.",
         "Pieces: everyone starts with 3. Until round 20, one Piece shows you alone the next word to open in one stock's rule, or turns into 10,000 won.",
@@ -323,17 +260,9 @@ const en: typeof ko = {
     left: "Over: nobody left to play",
     abandoned: "Over: everyone has gone",
   },
-  // the names of the show's English release, as its closed captions have them; in the table, the first word of each
-  name: {
-    finance: "Seasoned Financial",
-    build: "Airtight Construction",
-    steel: "Defense Steel",
-    alt: "Alt Entertainment",
-    open: "Open Security",
-    coyo: "CoyoTech",
-    latter: "Latter Electronics",
-  },
-  short: { finance: "Seasoned", build: "Airtight", steel: "Defense", alt: "Alt Ent", open: "Open", coyo: "CoyoTech", latter: "Latter" },
+  name: STOCK_NAMES.en.name,
+  short: STOCK_NAMES.en.short,
+  rule: (key, args) => textOf("en", key, args),
   column: { price: "Price", bought: "Bought", sold: "Sold", held: "Held", mine: "Mine" },
   columnAt: { name: 70, price: 127, bought: 181, sold: 220, held: 259, mine: 298 },
   figure: (n) => (n < 1000000 ? `${Math.floor(n / 1000)}K` : n < 100000000 ? `${Math.floor(n / 100000) / 10}M` : `${grouped(Math.floor(n / 1000000))}M`),
@@ -400,6 +329,7 @@ const en: typeof ko = {
     lobby: "Esc to room",
   },
   log: {
+    rulebook: { fresh: "New rules this game", show: "The show's rules" },
     round: (round) => `Round ${round}`,
     opened: (stage, of) => `More rules open (${stage}/${of})`,
     hidden: (name, from, until) => (from === until ? `Secret: ${name} R${from}` : `Secret: ${name} R${from}-${until}`),
@@ -414,70 +344,6 @@ const en: typeof ko = {
     hostNext: "Play again with these players or go back",
     waitHost: "Waiting for the host to start a new game",
   },
-  // (gap) The sentences are translated here: the show's English release never shows the rule board whole.
-  card: (n) => ({
-    finance: [
-      piece("If", 1),
-      piece(`${n.finance.count} or more`, 4),
-      piece("stocks", 1),
-      piece("rise,", 3),
-      piece(`+${n.finance.upPercent}% next round;`, 2),
-      piece("if", 2),
-      piece(`${n.finance.count} or more`, 4),
-      piece("stocks", 1),
-      piece("fall,", 3),
-      piece(`-${n.finance.downPercent}%`, 3),
-      piece("next", 0),
-      piece("round.", 2),
-    ],
-    build: [piece("If", 2), piece("Defense Steel's", 4), piece("price", 0), piece("rose,", 2), piece(`+${n.build.upPercent}%;`, 2), piece("otherwise", 1), piece(`-${n.build.downPercent}%.`, 3)],
-    steel: [
-      piece("Defense Steel's", 4),
-      piece("total holdings:", 1),
-      piece("for each share", 2),
-      piece("more,", 3),
-      piece(`-${n.steel.perShare} won;`, 0),
-      piece("for each share", 2),
-      piece("fewer,", 3),
-      piece(`+${n.steel.perShare} won.`, 0),
-    ],
-    alt: [piece("Alt Entertainment's", 1), piece("price chart", 2), piece("is", 0), piece("the same as", 3), piece("the Mystery Stock Market logo.", 4)],
-    open: [
-      piece("If", 0),
-      piece("a secret is on", 4),
-      piece("Latter Electronics,", 3),
-      piece(`+${n.open.upPercent}%;`, 1),
-      piece("if", 0),
-      piece("not,", 1),
-      piece(`-${n.open.down} won.`, 2),
-    ],
-    coyo: [
-      piece("If", 0),
-      piece("CoyoTech's", 1),
-      piece("bought volume", 3),
-      piece("is higher", 0),
-      piece("than", 3),
-      piece("Latter Electronics'", 4),
-      piece("bought volume,", 0),
-      piece(`+${n.coyo.up} won;`, 2),
-      piece("otherwise", 1),
-      piece(`-${n.coyo.down} won.`, 2),
-    ],
-    latter: [
-      piece("If", 1),
-      piece("Latter Electronics'", 3),
-      piece("total holdings", 2),
-      piece("are", 1),
-      piece(`${n.latter.from} shares`, 4),
-      piece("or more", 1),
-      piece("and", 1),
-      piece(`${n.latter.to} shares`, 4),
-      piece("or fewer,", 1),
-      piece(`+${n.latter.up} won;`, 0),
-      piece("otherwise", 1),
-      piece(`-${n.latter.down} won.`, 2),
-    ],
-  }),
   help: (n) => {
     const [early, last] = opened(n.revealRounds, ", ");
     return [
@@ -486,7 +352,7 @@ const en: typeof ko = {
       { text: `You start with ${grouped(n.startCash)} won. Stocks open at ${grouped(n.startPrice)}; floor ${grouped(n.floorPrice)}.` },
       { text: "Prices move when a round ends, each stock by its own rule." },
       { text: `More of each rule opens at rounds ${early}; all of it at ${last}.`, tone: "dim" },
-      { text: "A blue block is the word that opens next.", tone: "dim" },
+      { text: n.rulebook === "show" ? "Blue blocks open next. These are the show's own rules." : "Blue blocks open next. These rules were drawn for this game.", tone: "dim" },
       { text: "" },
       { text: `Secret (once): takes a stock off the monitor for ${n.secretRounds} rounds.` },
       { text: "Assets are hidden meanwhile; if you hold or trade that stock,", tone: "dim" },

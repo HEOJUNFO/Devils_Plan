@@ -22,9 +22,17 @@
  * round a secret hid never put back into the chart; whoever used a secret
  * told to nobody. What a room needs beyond that is filled in, and marked
  * (gap).
+ *
+ * (gap) Which rules the prices move by is the game's own: the show's seven,
+ * or seven drawn for this game alone (`rulebook.ts`). A game that is about
+ * finding rules out has nothing to find in rules everyone has seen.
  */
-import { emblemOf, pathOf, type LogoConfig } from "./logo";
-import { STOCKS, isStock, nextPrices, perStock, type PerStock, type PriceConfig, type StockId } from "./prices";
+import { chanceOf, randomSource, seedFrom } from "../../game/rng";
+import { LANGS, type Lang } from "../../lang";
+import { emblemOf, pathWith, type LogoConfig } from "./logo";
+import { STOCKS, isStock, nextPrices, perStock, type PerStock, type PriceConfig, type Rule, type StockId } from "./prices";
+import { cardOf, sentenceOf, type CardPiece } from "./rule-words";
+import { isValidDraw, rulesFor, rulesNumbers, showRules, type DrawConfig, type Rulebook } from "./rulebook";
 
 /** The numbers of the game. Loaded from `config.json`. */
 export interface MarketConfig extends PriceConfig {
@@ -48,8 +56,10 @@ export interface MarketConfig extends PriceConfig {
   awards: number[];
   /** The final assets from which the show gives its prize token (10 million won). */
   prizeAssets: number;
-  /** How 알트엔터's path is drawn. */
+  /** How the path of the stock whose chart is the emblem is drawn (the show's 알트엔터). */
   logo: LogoConfig;
+  /** (gap) What a game's own rules are drawn from, where it is not played by the show's. */
+  draw: DrawConfig;
 }
 
 const isWhole = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value);
@@ -94,7 +104,8 @@ export function isValidConfig(config: MarketConfig): boolean {
     logo.high >= config.startPrice &&
     logo.swingFrom > 1 &&
     logo.swingTo >= logo.swingFrom &&
-    logo.levels >= 2
+    logo.levels >= 2 &&
+    isValidDraw(config.draw)
   );
 }
 
@@ -164,8 +175,16 @@ export interface MarketState {
   bought: PerStock<number>;
   sold: PerStock<number>;
   accounts: Account[];
-  /** 알트엔터's price after each round, the opening first. Never sent: the emblem is. */
+  /** The price after each round of the stock whose chart is the emblem (the show's 알트엔터), the opening first. Never sent: the emblem is. */
   path: number[];
+  /**
+   * Which rules the game is played by, and the rule each stock has. The rules
+   * are never sent: a player is sent what is open to them of each
+   * ({@link viewFor}). Both are absent in a game stored before a game could
+   * draw rules of its own: that one is played by the show's.
+   */
+  rulebook?: Rulebook;
+  rules?: PerStock<Rule>;
   history: MarketEvent[];
 }
 
@@ -248,6 +267,12 @@ export interface StockView {
   chart: (number | null)[];
   /** How many parts of its rule beyond the first this player may read. */
   parts: number;
+  /**
+   * Its rule as far as this player may read it, in each language: the words
+   * that are open, and of the rest only their shape (`rule-words.ts`). The
+   * page takes the one in its own language.
+   */
+  card: Record<Lang, CardPiece[]>;
 }
 
 /** What one player, or someone watching, is sent of a game. */
@@ -260,6 +285,8 @@ export interface MarketView {
   players: number[];
   /** How many parts of every rule beyond the first are open to everyone. */
   stage: number;
+  /** Which rules the game is played by: its own, or the show's. */
+  rulebook: Rulebook;
   /** The stocks, in the monitor's order. */
   stocks: StockView[];
   /** The exchange's emblem: a height for the opening and for each round. */
@@ -347,9 +374,26 @@ export function hiddenIn(state: MarketState, stock: StockId, round: number, conf
   return state.accounts.some((account) => account.secret !== null && account.secret.stock === stock && round - account.secret.round >= 1 && round - account.secret.round <= config.secretRounds);
 }
 
-/** Starts a game for `players`. */
+/** The rules a game is played by: its own, or the show's. */
+export function rulebookOf(state: MarketState): Rulebook {
+  return state.rulebook ?? "show";
+}
+
+/** The rule each stock of a game has. */
+function rulesOf(state: MarketState, config: MarketConfig): PerStock<Rule> {
+  return state.rules ?? showRules(config.rules);
+}
+
+/**
+ * Starts a game for `players`, played by `rulebook`. Its path, and its rules
+ * where they are its own, are what it keeps from its players: they are drawn
+ * from `chance` (the room's numbers that nobody could have guessed), the
+ * path first, and from `seed` only where there is none or it runs out. The
+ * emblem shows everyone the shape of the path, and from that alone a seed
+ * could be found by trying every one.
+ */
 export function createGame(
-  start: { players: readonly number[]; seed: number; now: number },
+  start: { players: readonly number[]; seed: number; now: number; rulebook: Rulebook; chance?: readonly number[] },
   config: MarketConfig,
 ): { ok: true; state: MarketState } | { ok: false; reason: MarketStartRefusal } {
   if (!isValidConfig(config)) return { ok: false, reason: "bad-config" };
@@ -357,6 +401,9 @@ export function createGame(
   if (new Set(start.players).size !== start.players.length) return { ok: false, reason: "bad-players" };
   if (start.players.length < 2) return { ok: false, reason: "too-few" };
   const players = [...start.players].sort((a, b) => a - b);
+  const chance = chanceOf(start.chance ?? []);
+  const path = pathWith(chance(randomSource(seedFrom(start.seed)).next), config.rounds, config.startPrice, config.logo);
+  const rules = rulesFor(start.rulebook, chance(rulesNumbers(start.seed)), config.rules, config.draw);
   return {
     ok: true,
     state: {
@@ -383,7 +430,9 @@ export function createGame(
         opening: config.startCash,
         lowest: config.startCash,
       })),
-      path: pathOf(start.seed, config.rounds, config.startPrice, config.logo),
+      path,
+      rulebook: start.rulebook,
+      rules,
       history: [{ type: "round", round: 1 }],
     },
   };
@@ -475,9 +524,16 @@ function endRound(state: MarketState, now: number, config: MarketConfig): void {
   const next = nextPrices(
     current,
     earlier,
-    // 열림보안 goes by whether 후자전자 is off the monitor that the next round opens with
-    { heldBefore: state.held, heldAfter: heldNow, bought: state.bought, latterHidden: hiddenIn(state, "latter", round + 1, config), alt: state.path[round] },
-    config,
+    {
+      heldBefore: state.held,
+      heldAfter: heldNow,
+      bought: state.bought,
+      sold: state.sold,
+      // a rule about a secret goes by whether its stock is off the monitor that the next round opens with
+      hidden: perStock((stock) => hiddenIn(state, stock, round + 1, config)),
+      path: state.path[round],
+    },
+    { floorPrice: config.floorPrice, rules: rulesOf(state, config) },
   );
   for (const stock of STOCKS) state.prices[stock].push(next[stock]);
   state.held = heldNow;
@@ -584,14 +640,17 @@ export function standingsOf(state: MarketState): Standing[] {
  * The game as `player` may see it (`null`: someone watching). What others
  * hold and what is being traded in the round are never in it; a stock a
  * secret hides has no price in it, and while one does nobody's assets are
- * told. Once the game is over nothing is kept back but 알트엔터's path,
- * which by then is its chart.
+ * told. Of a rule only what is open to this player is in it, and of the
+ * rest the shape. Once the game is over nothing is kept back: every rule is
+ * open, and the path is by then a chart.
  */
 export function viewFor(state: MarketState, player: number | null, config: MarketConfig): MarketView {
   const you = player !== null && state.players.includes(player) ? player : null;
   const account = you === null ? undefined : state.accounts.find((each) => each.player === you);
   const over = state.phase === "ended";
   const stage = stageOf(state.round, config);
+  const rulebook = rulebookOf(state);
+  const rules = rulesOf(state, config);
   // the round whose monitor a price was, or is, shown on: the price after round n opens round n + 1
   const hidden = (stock: StockId, after: number): boolean => !over && hiddenIn(state, stock, after + 1, config);
   const latest = (stock: StockId): number => state.prices[stock].length - 1;
@@ -603,6 +662,8 @@ export function viewFor(state: MarketState, player: number | null, config: Marke
     const off = hidden(stock, at);
     const chart = prices.map((price, after) => (hidden(stock, after) ? null : price));
     const before = at >= 1 ? chart[at - 1] : null;
+    // (gap) a game that is over has nothing left to find out: its rules are shown whole
+    const parts = over ? config.revealRounds.length : partsFor(account, stock, stage);
     return {
       id: stock,
       price: off ? null : prices[at],
@@ -611,7 +672,8 @@ export function viewFor(state: MarketState, player: number | null, config: Marke
       sold: off ? null : state.lastSold[stock],
       held: off ? null : state.held[stock],
       chart,
-      parts: partsFor(account, stock, stage),
+      parts,
+      card: Object.fromEntries(LANGS.map((lang) => [lang, cardOf(lang, sentenceOf(lang, stock, rules[stock], rulebook), parts)])) as Record<Lang, CardPiece[]>,
     };
   });
 
@@ -633,6 +695,7 @@ export function viewFor(state: MarketState, player: number | null, config: Marke
     you,
     players: [...state.players],
     stage,
+    rulebook,
     stocks,
     emblem: emblemOf(state.path, config.logo.levels),
     veiled,

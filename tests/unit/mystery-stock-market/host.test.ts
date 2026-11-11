@@ -4,7 +4,8 @@ import shipped from "../../../src/shared/games/mystery-stock-market/config.json"
 import hostJson from "../../../src/shared/games/mystery-stock-market/host-config.json";
 import { marketHost, type MarketSession, type MarketSnapshot } from "../../../src/shared/games/mystery-stock-market/host";
 import { STOCKS } from "../../../src/shared/games/mystery-stock-market/prices";
-import type { Candidate, Presence, StartRequest } from "../../../src/shared/hosting";
+import { drawRules, showRules } from "../../../src/shared/games/mystery-stock-market/rulebook";
+import { CHANCE_WORDS, type Candidate, type Presence, type StartRequest } from "../../../src/shared/hosting";
 
 const host = marketHost;
 
@@ -39,8 +40,9 @@ function presenceOf(players: Candidate[], away: number[] = [], left: number[] = 
   };
 }
 
+/** What the room asks a game to start with: by the show's rules unless a test says otherwise, as the prices here are worked out from those. */
 function request(overrides: Partial<StartRequest> = {}): StartRequest {
-  return { by: tokenOf(0), bots: false, allowBots: false, seed: 7, now: T0, turnSeconds: 0, ...overrides };
+  return { by: tokenOf(0), bots: false, allowBots: false, seed: 7, now: T0, turnSeconds: 0, variant: "show", ...overrides };
 }
 
 /** A game just started by player 0 for `players`, all connected. */
@@ -409,6 +411,107 @@ describe("미스터리 거래소 in a room: what is kept", () => {
     expect(act(stored, players, 1, { type: "done" }, T0 + 2000).state.accounts[1].done).toBe(true);
     for (const other of [null, 7, {}, { version: 2, state: stored.state, players: [] }, { version: 1, state: { version: 1 }, players: [] }, { version: 1, state: stored.state }]) {
       expect(host.usable(other)).toBe(false);
+    }
+  });
+});
+
+describe("미스터리 거래소 in a room: a stored game's rules", () => {
+  /** A game of two as the room stores it, with `change` made to its state. */
+  function storedWith(change: (state: Record<string, unknown>) => void, variant = "fresh"): unknown {
+    const stored = JSON.parse(JSON.stringify(started(candidates(2), { variant, seed: 5 }))) as { state: Record<string, unknown> };
+    change(stored.state);
+    return stored;
+  }
+
+  it("carries on with a game stored with the rules it drew, and with one stored by the show's", () => {
+    expect(host.usable(storedWith(() => undefined))).toBe(true);
+    expect(host.usable(storedWith(() => undefined, "show"))).toBe(true);
+  });
+
+  it("carries on with a game stored before a game could draw its own rules: it has none stored, and is played by the show's", () => {
+    const old = storedWith((state) => {
+      delete state.rulebook;
+      delete state.rules;
+    }, "show") as MarketSession;
+
+    expect(host.usable(old)).toBe(true);
+    expect(seenBy(old, candidates(2), 0, T0 + 1000).view.rulebook).toBe("show");
+  });
+
+  it.each<[string, (state: Record<string, unknown>) => void]>([
+    ["a rulebook there is not", (state) => (state.rulebook = "house")],
+    ["rules that are no rules", (state) => (state.rules = "show")],
+    ["a stock without a rule", (state) => (state.rules = { ...(state.rules as object), coyo: undefined })],
+    ["a rule of a kind there is not", (state) => (state.rules = { ...(state.rules as object), coyo: { kind: "luck", up: 1, down: 1 } })],
+  ])("does not carry on with a game stored with %s", (_what, change) => {
+    expect(host.usable(storedWith(change))).toBe(false);
+  });
+});
+
+describe("미스터리 거래소 in a room: the rules a game is played by", () => {
+  it("draws rules of its own for a game, from the game's seed, unless the room asks for the show's", () => {
+    const players = candidates(2);
+
+    expect(started(players, { variant: undefined, seed: 5 }).state).toMatchObject({ rulebook: "fresh", rules: drawRules(5, shipped.draw) });
+    expect(started(players, { variant: "fresh", seed: 6 }).state).toMatchObject({ rulebook: "fresh", rules: drawRules(6, shipped.draw) });
+    expect(started(players, { variant: "show", seed: 5 }).state).toMatchObject({ rulebook: "show", rules: showRules(shipped.rules) });
+  });
+
+  it("draws a game's path and rules from the chance the room gives with the start, whatever the seed", () => {
+    const players = candidates(2);
+    const chance = Array.from({ length: CHANCE_WORDS }, (_, n) => Math.imul(n + 1, 0x9e3779b1) >>> 0);
+    const one = started(players, { variant: "fresh", seed: 5, chance }).state;
+    const other = started(players, { variant: "fresh", seed: 6, chance }).state;
+
+    expect(other.rules).toEqual(one.rules);
+    expect(other.path).toEqual(one.path);
+    expect(one.rules).not.toEqual(drawRules(5, shipped.draw));
+    expect(one.path).not.toEqual(started(players, { variant: "fresh", seed: 5 }).state.path);
+  });
+
+  it("takes a way of playing it has never heard of for none asked: the game draws its own", () => {
+    expect(started(candidates(2), { variant: "no-such-way" }).state.rulebook).toBe("fresh");
+    expect(started(candidates(2), { variant: "" }).state.rulebook).toBe("fresh");
+  });
+
+  it("draws rules for the next game in the room anew", () => {
+    const players = candidates(2);
+    const first = started(players, { variant: "fresh", seed: 5 });
+    const over = host.attend(first, presenceOf(players, [], [0, 1]), T0 + 1000);
+    const again = host.start(over, players, request({ variant: "fresh", seed: 9, now: T0 + 2000 }), presenceOf(players));
+    if (!again.ok) throw new Error(`fixture start refused: ${again.reason}`);
+
+    expect(over.state.phase).toBe("ended");
+    expect(again.session.state.rules).toEqual(drawRules(9, shipped.draw));
+    expect(again.session.state.rules).not.toEqual(first.state.rules);
+  });
+
+  it("sends every player which rules the game is played by and each rule as far as it is open, and nothing of the rest", () => {
+    const players = candidates(2);
+    const session = started(players, { variant: "fresh", seed: 5 });
+    const rules = drawRules(5, shipped.draw);
+
+    for (const viewer of [0, 1, null]) {
+      const sent = seenBy(session, players, viewer, T0 + 1000);
+      const text = JSON.stringify(sent);
+
+      expect(sent.view.rulebook).toBe("fresh");
+      expect(sent).not.toHaveProperty("state");
+      expect(sent.rules).not.toHaveProperty("draw");
+      expect(sent.rules).not.toHaveProperty("rules");
+      expect(text).not.toContain('"kind"');
+      for (const stock of sent.view.stocks) {
+        for (const piece of [...stock.card.ko, ...stock.card.en]) {
+          if (!piece.open) expect(Object.keys(piece).filter((key) => key !== "glue").sort()).toEqual(["next", "open", "words"]);
+        }
+      }
+      // a number of a rule that is not open yet is nowhere in what is sent: a band's two ends are the last of it to be opened
+      for (const stock of STOCKS) {
+        const rule = rules[stock];
+        if (rule.kind !== "band") continue;
+        const card = sent.view.stocks.find((each) => each.id === stock)?.card.ko ?? [];
+        expect(card.filter((piece) => piece.open && piece.key === "shares")).toEqual([]);
+      }
     }
   });
 });

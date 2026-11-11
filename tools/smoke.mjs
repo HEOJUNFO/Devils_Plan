@@ -584,17 +584,47 @@ async function sixthGame() {
 
 /** The seventh game, in a room of its own: two players, off the list, all of its rounds. */
 async function seventhGame() {
-  const code = roomCode();
-  const players = [];
-  for (let n = 0; n < 2; n++) {
-    const client = new Client(`${wsBase}/parties/game-room/${code}`);
-    await client.opened;
-    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `trader${n}`, create: n === 0, game: SEVENTH_GAME, listed: false });
-    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
-    players.push(client);
-  }
-  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  /** Two players in a new room of the seventh game, and the lobby as the second sees it with both in. */
+  const enter = async () => {
+    const code = roomCode();
+    const players = [];
+    for (let n = 0; n < 2; n++) {
+      const client = new Client(`${wsBase}/parties/game-room/${code}`);
+      await client.opened;
+      client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `trader${n}`, create: n === 0, game: SEVENTH_GAME, listed: false });
+      await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+      players.push(client);
+    }
+    const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+    return { players, lobby };
+  };
+
+  // a room starts with rules drawn for each game: nobody is sent them, only what is open of each
+  const own = await enter();
+  check("a room of the seventh game starts with rules drawn for each game", own.lobby.variant === "fresh", own.lobby.variant);
+  own.players[0].send({ type: "start", bots: false });
+  const drawn = await Promise.all(own.players.map((p) => p.until("a game with rules of its own to start", (m) => m.type === "game" || m.type === "refused")));
+  const pieces = drawn.flatMap((g) => (g.view?.stocks ?? []).flatMap((stock) => [...(stock.card?.ko ?? []), ...(stock.card?.en ?? [])]));
+  const covered = pieces.filter((piece) => !piece.open);
+  check(
+    "such a game sends each rule as the words open so far and the shape of the rest, in both languages",
+    drawn.every((g) => g.type === "game" && g.view.rulebook === "fresh" && g.view.stocks.every((stock) => stock.card.ko.length > 0 && stock.card.en.length > 0)) &&
+      pieces.some((piece) => piece.open && typeof piece.key === "string") &&
+      covered.length > pieces.length / 2 &&
+      covered.every((piece) => Object.keys(piece).every((key) => ["open", "next", "words", "glue"].includes(key))),
+    `${pieces.length - covered.length} of ${pieces.length} pieces open`,
+  );
+  const ownSent = own.players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("the rules it drew are never sent", !ownSent.includes('"kind"') && !ownSent.includes('"draw"'));
+  for (const p of own.players) p.send({ type: "leave" });
+  for (const p of own.players) p.close();
+
+  // the rest is played by the show's rules, which the host asks for: its prices are known
+  const { players, lobby } = await enter();
   check("a room is made for the seventh game", lobby.game === SEVENTH_GAME, lobby.game);
+  players[0].send({ type: "variant", variant: "show" });
+  const asked = await Promise.all(players.map((p) => p.until("the show's rules to be chosen", (m) => (m.type === "lobby" && m.variant === "show") || m.type === "refused")));
+  check("the host can ask for the show's rules, and everyone in the room is told", asked.every((m) => m.type === "lobby" && m.variant === "show"), asked.map((m) => m.variant ?? m.reason).join(", "));
 
   /** What `player` is refused when they ask for `action`. */
   const refusalOf = async (player, action) => {
@@ -630,6 +660,7 @@ async function seventhGame() {
         g.view.you === n &&
         g.view.phase === "trading" &&
         g.view.round === 1 &&
+        g.view.rulebook === "show" &&
         g.view.stocks.length === 7 &&
         g.view.stocks.every((stock) => stock.price === rules.startPrice && stock.parts === 0) &&
         g.view.mine.cash === rules.startCash &&
@@ -706,7 +737,8 @@ async function seventhGame() {
     last[0].view.standings.map((each) => `${each.rank}: ${each.assets}`).join(", "),
   );
   const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
-  check("the numbers of the price rules and the path of 알트엔터 are never sent", !sentAll.includes('"path"') && !sentAll.includes('"perShare"') && !sentAll.includes('"upPercent"'));
+  const leaked = ['"path"', '"perShare"', '"upPercent"', '"kind"'].filter((word) => sentAll.includes(word));
+  check("the price rules and the path of 알트엔터 are never sent", leaked.length === 0, leaked.join(" "));
   check("no token is sent in the seventh game either", !sentAll.includes("smoke-check-token"));
 
   for (const p of players) p.send({ type: "leave" });

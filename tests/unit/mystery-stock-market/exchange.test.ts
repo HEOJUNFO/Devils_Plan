@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import shipped from "../../../src/shared/games/mystery-stock-market/config.json";
-import { STOCKS, moveOf, nextPrices, perStock, startPrices, type PerStock, type PriceConfig } from "../../../src/shared/games/mystery-stock-market/prices";
+import { STOCKS, moveOf, nextPrices, perStock, startPrices, type PerStock, type PriceBook, type PriceConfig } from "../../../src/shared/games/mystery-stock-market/prices";
+import { showRules } from "../../../src/shared/games/mystery-stock-market/rulebook";
 import { EXCHANGE, FILLED_LATTER_ROUNDS, SECRETS_ON_LATTER, SHOWN } from "./documented";
 
 const config: PriceConfig = shipped;
+/** The show's seven rules, with the numbers the game ships. */
+const book: PriceBook = { floorPrice: config.floorPrice, rules: showRules(config.rules) };
 /** Holdings of 후자전자 inside the range in which it rises, and outside it. */
 const WITHIN = config.rules.latter.from;
 const OUTSIDE = config.rules.latter.to + 1;
@@ -22,10 +25,11 @@ function replayed(change: (round: number, record: (typeof EXCHANGE)[number]) => 
       heldBefore: { ...perStock(() => 0), steel: steelHeld },
       heldAfter: { ...perStock(() => 0), steel: record.steelHeld, latter: record.latterWithin ? WITHIN : OUTSIDE },
       bought: { ...perStock(() => 0), coyo: record.coyoBoughtMore ? 1 : 0 },
-      latterHidden: record.latterHidden,
-      alt: record.alt,
+      sold: perStock(() => 0),
+      hidden: { ...perStock(() => false), latter: record.latterHidden },
+      path: record.alt,
     };
-    prices.push(nextPrices(prices[at], at === 0 ? null : prices[at - 1], facts, config));
+    prices.push(nextPrices(prices[at], at === 0 ? null : prices[at - 1], facts, book));
     steelHeld = record.steelHeld;
   });
   return prices;

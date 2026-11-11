@@ -25,6 +25,12 @@ export interface GameInfo {
   teamSize: number;
   /** Whether players move in turn: only then does the room's limit on a turn mean anything, and only then is it offered. */
   turns: boolean;
+  /**
+   * The ways the game can be played that a room's host chooses between
+   * before a game starts, each with the name players see; the first is what
+   * a room starts with. Empty where the game is played one way only.
+   */
+  variants: { id: string; title: Record<Lang, string> }[];
 }
 
 /** A game's id: its key in `games.json`. Stored with a room and sent on the wire. */

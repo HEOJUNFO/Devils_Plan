@@ -6,8 +6,8 @@ import {
   createLobby,
   dropLapsed,
   gameOf,
-  hostOf,
   generateRoomCode,
+  hostOf,
   isValidRoomCode,
   isValidToken,
   joinLobby,
@@ -18,9 +18,11 @@ import {
   setListed,
   setTeam,
   setTurnSeconds,
+  setVariant,
   slotLapsesAt,
   teamsIn,
   turnSecondsOf,
+  variantOf,
   viewLobby,
   type LobbyState,
   type RoomConfig,
@@ -378,6 +380,79 @@ describe("the length of a turn", () => {
     const next = leaveLobby(set, tokenFor(1));
 
     expect(turnSecondsOf(next)).toBe(40);
+  });
+});
+
+describe("how a room's games are played", () => {
+  /** A game that can be played in more ways than one, and the ways. */
+  const VARIED_GAME = "mystery-stock-market" as const;
+  const [FIRST, SECOND] = GAMES[VARIED_GAME].variants.map((each) => each.id);
+
+  it("is the first of the game's ways in a new room", () => {
+    expect(GAMES[VARIED_GAME].variants.length).toBeGreaterThan(1);
+    expect(variantOf(createLobby(VARIED_GAME, false, testConfig()))).toBe(FIRST);
+    expect(variantOf(createLobby(VARIED_GAME, true, testConfig()))).toBe(FIRST);
+  });
+
+  it("is none in a room of a game that is played one way only, and cannot be set there", () => {
+    const state = createLobby(DEFAULT_GAME, false, testConfig());
+
+    expect(GAMES[DEFAULT_GAME].variants).toEqual([]);
+    expect(variantOf(state)).toBeNull();
+    expect(setVariant(state, FIRST)).toBeNull();
+  });
+
+  it("can be set to any of the game's ways, and back", () => {
+    const state = createLobby(VARIED_GAME, false, testConfig());
+
+    const set = setVariant(state, SECOND);
+    if (set === null) throw new Error("fixture setting refused");
+
+    expect(variantOf(set)).toBe(SECOND);
+    expect(variantOf(state)).toBe(FIRST);
+    const back = setVariant(set, FIRST);
+    expect(back === null ? null : variantOf(back)).toBe(FIRST);
+  });
+
+  it.each(["", "Show", "no-such-way"])("cannot be set to %j, which the game does not have", (variant) => {
+    expect(setVariant(createLobby(VARIED_GAME, false, testConfig()), variant)).toBeNull();
+  });
+
+  it("changes nothing when it is already so", () => {
+    const state = createLobby(VARIED_GAME, false, testConfig());
+    const set = setVariant(state, SECOND);
+    if (set === null) throw new Error("fixture setting refused");
+
+    expect(setVariant(state, FIRST)).toBe(state);
+    expect(setVariant(set, SECOND)).toBe(set);
+  });
+
+  it("is the game's first way in a room stored with one the game no longer has", () => {
+    const old: LobbyState = { ...createLobby(VARIED_GAME, false, testConfig()), variant: "gone" };
+
+    expect(variantOf(old)).toBe(FIRST);
+  });
+
+  it("is shown to everyone in the room, and as none where the game has one way only", () => {
+    const config = testConfig();
+    const joined = joinLobby(createLobby(VARIED_GAME, false, config), { token: tokenFor(0), nick: "p0" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+    const set = setVariant(joined.state, SECOND);
+    if (set === null) throw new Error("fixture setting refused");
+
+    expect(viewLobby(joined.state, new Set([0]), 0, config).variant).toBe(FIRST);
+    expect(viewLobby(set, new Set([0]), 0, config).variant).toBe(SECOND);
+    expect(viewLobby(lobbyWith(1, config), new Set([0]), 0, config).variant).toBeNull();
+  });
+
+  it("stays as it is while players come and go", () => {
+    const config = testConfig();
+    const joined = joinLobby(createLobby(VARIED_GAME, false, config), { token: tokenFor(0), nick: "p0" }, config);
+    if (!joined.ok) throw new Error("fixture join refused");
+    const set = setVariant(joined.state, SECOND);
+    if (set === null) throw new Error("fixture setting refused");
+
+    expect(variantOf(leaveLobby(set, tokenFor(0)))).toBe(SECOND);
   });
 });
 

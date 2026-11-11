@@ -1,9 +1,13 @@
 import { env } from "cloudflare:workers";
-import { evictDurableObject, runDurableObjectAlarm } from "cloudflare:test";
+import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import shipped from "../../../src/shared/games/mystery-stock-market/config.json";
+import type { MarketSession } from "../../../src/shared/games/mystery-stock-market/host";
+import { pathWith } from "../../../src/shared/games/mystery-stock-market/logo";
 import { STOCKS, type StockId } from "../../../src/shared/games/mystery-stock-market/prices";
+import { drawRulesWith, type Rulebook } from "../../../src/shared/games/mystery-stock-market/rulebook";
 import type { MarketMove } from "../../../src/shared/games/mystery-stock-market/rules";
+import { CHANCE_WORDS } from "../../../src/shared/hosting";
 import { advanceClock, closeAll, join, scheduledAlarm, type MarketMessage, type TestClient } from "../support";
 
 const GAME = "mystery-stock-market" as const;
@@ -30,8 +34,17 @@ async function players(room: string, count: number): Promise<TestClient[]> {
   return clients;
 }
 
-/** Starts a game at `clients` and returns each client's first view of it, in client order. */
-async function startGame(clients: TestClient[]): Promise<MarketMessage[]> {
+/**
+ * Starts a game at `clients` and returns each client's first view of it, in
+ * client order. The host first asks for the show's rules, which the prices
+ * of this file are worked out from, unless the test is of a game that draws
+ * its own (`"fresh"`, which is what a room starts with).
+ */
+async function startGame(clients: TestClient[], rulebook: Rulebook = "show"): Promise<MarketMessage[]> {
+  if (rulebook !== "fresh") {
+    clients[0].send({ type: "variant", variant: rulebook });
+    await Promise.all(clients.map((client) => client.lobbyWhere((lobby) => lobby.variant === rulebook)));
+  }
   clients[0].send({ type: "start", bots: false });
   return Promise.all(clients.map((client) => client.marketWhere()));
 }
@@ -368,5 +381,122 @@ describe("GameRoom: a full room of 미스터리 거래소", () => {
       expect(game.view.standings.every((each) => each.rank === 1 && each.assets === CASH - START + fallen)).toBe(true);
     }
     closeAll(clients);
+  });
+});
+
+describe("GameRoom: the rules a room of 미스터리 거래소 plays by", () => {
+  it("starts with rules drawn for each game: whoever comes in is told so, and so is everyone in a game started there", async () => {
+    const clients = await players("MSAAQ", 2);
+    const late = await open("MSAAQ", 2);
+    const lobby = await late.lobbyWhere();
+
+    const games = await startGame([...clients, late], "fresh");
+
+    expect(lobby.variant).toBe("fresh");
+    for (const game of games) expect(game.view.rulebook).toBe("fresh");
+    closeAll([...clients, late]);
+  });
+
+  it("is played by the show's rules once the host has asked for them: everyone is told, and the prices move as the show's do", async () => {
+    const clients = await players("MSAAR", 2);
+    clients[0].send({ type: "variant", variant: "show" });
+    const told = await Promise.all(clients.map((client) => client.lobbyWhere((lobby) => lobby.variant === "show")));
+    clients[0].send({ type: "start", bots: false });
+    const games = await Promise.all(clients.map((client) => client.marketWhere()));
+    act(clients[0], { type: "buy", stock: "steel", shares: 3 }, 1);
+    await clients[0].marketWhere((game) => game.view.mine?.shares.steel === 3);
+
+    const next = await allDone(clients, 1);
+
+    expect(told.map((lobby) => lobby.variant)).toEqual(["show", "show"]);
+    for (const game of games) expect(game.view.rulebook).toBe("show");
+    expect(shown(next[1], "steel").price).toBe(START - 3 * RULES.steel.perShare);
+    closeAll(clients);
+  });
+
+  it("gives a game numbers nobody could guess to draw its path and its rules from: the seed alone does not say what they are", async () => {
+    // the platform's numbers, made known for this test: the seed is one number, the chance many, and each is told apart by how many are asked for
+    const HALF = 2 ** 31;
+    const asked: number[] = [];
+    const platform = vi.spyOn(crypto, "getRandomValues").mockImplementation((numbers) => {
+      const words = numbers as unknown as Uint32Array;
+      asked.push(words.length);
+      // the seed is nought; every number of the chance is a half
+      words.fill(words.length === 1 ? 0 : HALF);
+      return numbers;
+    });
+    const stub = env.GameRoom.getByName("MSAAW");
+    const clients = await players("MSAAW", 2);
+
+    await startGame(clients, "fresh");
+    platform.mockRestore();
+    const stored = await runInDurableObject(stub, (room) => (room as unknown as { session: MarketSession }).session);
+
+    expect(asked).toContain(CHANCE_WORDS);
+    expect(stored.state.path).toEqual(pathWith(() => 0.5, shipped.rounds, START, shipped.logo));
+    expect(stored.state.rules).toEqual(drawRulesWith(() => 0.5, shipped.draw));
+    closeAll(clients);
+  });
+
+  it("is the host's alone to choose, and only from the ways the game has", async () => {
+    const clients = await players("MSAAS", 2);
+    clients[1].send({ type: "variant", variant: "show" });
+    const guest = await clients[1].refusal();
+    clients[0].send({ type: "variant", variant: "no-such-way" });
+    const unknown = await clients[0].refusal();
+    const late = await open("MSAAS", 2);
+    const lobby = await late.lobbyWhere();
+    const other = await join("MSAAT", { player: 0, create: true });
+    await other.lobbyOf(1);
+    other.send({ type: "variant", variant: "show" });
+    const oneWay = await other.refusal();
+
+    expect(guest.reason).toBe("not-host");
+    expect(unknown.reason).toBe("bad-setting");
+    expect(lobby.variant).toBe("fresh");
+    expect(oneWay.reason).toBe("bad-setting");
+    closeAll([...clients, late, other]);
+  });
+
+  it("keeps what the host chose through the room's sleep, and for the game after", async () => {
+    const stub = env.GameRoom.getByName("MSAAU");
+    const clients = await players("MSAAU", 2);
+    const first = await startGame(clients, "show");
+    clients[1].send({ type: "leave" });
+    await clients[0].marketWhere((game) => game.view.phase === "ended");
+
+    await evictDurableObject(stub);
+    const back = await open("MSAAU", 1);
+    const lobby = await back.lobbyWhere((seen) => seen.players.length === 2);
+    clients[0].send({ type: "start", bots: false });
+    const again = await back.marketWhere((game) => game.startedAt !== first[0].startedAt);
+
+    expect(lobby.variant).toBe("show");
+    expect(again.view.rulebook).toBe("show");
+    closeAll([clients[0], back]);
+  });
+
+  it("sends nobody the rules of a game that drew its own: each rule comes as the words open so far and the shape of the rest, in each language", async () => {
+    const clients = await players("MSAAV", 2);
+    const watcher = await open("MSAAV", 2);
+    await watcher.lobbyWhere();
+
+    const games = await startGame(clients, "fresh");
+    const watched = await watcher.marketWhere();
+
+    for (const game of [...games, watched]) {
+      for (const stock of game.view.stocks) {
+        expect(stock.card.ko.some((piece) => piece.open)).toBe(true);
+        expect(stock.card.en.some((piece) => piece.open)).toBe(true);
+        for (const piece of [...stock.card.ko, ...stock.card.en]) {
+          if (!piece.open) expect(Object.keys(piece).filter((key) => key !== "glue").sort()).toEqual(["next", "open", "words"]);
+        }
+      }
+    }
+    for (const client of [...clients, watcher]) {
+      expect(client.raw.some((text) => text.includes('"kind"'))).toBe(false);
+      expect(client.raw.some((text) => text.includes('"rules":{"finance"'))).toBe(false);
+    }
+    closeAll([...clients, watcher]);
   });
 });

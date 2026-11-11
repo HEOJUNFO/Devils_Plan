@@ -171,6 +171,8 @@ export type ClientMessage =
    * lengths the room offers.
    */
   | { type: "clock"; seconds: number }
+  /** Choose which of the game's variants the games started in this room are played by (`games.json`); only the host may. */
+  | { type: "variant"; variant: string }
   /** Come into the room's voice chat or go out of it, and say whether the microphone is off. */
   | { type: "voice"; on: boolean; muted: boolean }
   /** A signal for the player in slot `to`, who is also in voice: see {@link RtcSignal}. */
@@ -220,6 +222,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   }
   if (data.type === "clock") {
     return typeof data.seconds === "number" && Number.isFinite(data.seconds) ? { type: "clock", seconds: data.seconds } : null;
+  }
+  if (data.type === "variant") {
+    return typeof data.variant === "string" ? { type: "variant", variant: data.variant } : null;
   }
   if (data.type === "voice") {
     return { type: "voice", on: data.on === true, muted: data.muted === true };

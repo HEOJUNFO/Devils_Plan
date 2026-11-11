@@ -58,5 +58,53 @@
     "swingTo": 3,
     "step": 100,
     "levels": 16
+  },
+  "draw": {
+    "selfPercent": 50,
+    "count": {
+      "from": 4,
+      "to": 5,
+      "step": 1
+    },
+    "percentUp": {
+      "from": 8,
+      "to": 20,
+      "step": 1
+    },
+    "percentDown": {
+      "from": 5,
+      "to": 15,
+      "step": 1
+    },
+    "wonUp": {
+      "from": 800,
+      "to": 2000,
+      "step": 100
+    },
+    "wonDown": {
+      "from": 500,
+      "to": 1500,
+      "step": 100
+    },
+    "perShare": {
+      "from": 100,
+      "to": 300,
+      "step": 100
+    },
+    "bandFrom": {
+      "from": 5,
+      "to": 20,
+      "step": 1
+    },
+    "bandWidth": {
+      "from": 10,
+      "to": 30,
+      "step": 5
+    },
+    "volume": {
+      "from": 5,
+      "to": 30,
+      "step": 5
+    }
   }
 }

@@ -54,6 +54,21 @@ export function randomSource(state: number): RandomSource {
   };
 }
 
+/**
+ * Numbers in [0, 1) for what a game must keep from its players. `words` are
+ * 32-bit numbers nobody could have guessed (a room has them from the
+ * platform); each number drawn uses up one of them, whoever draws it, and
+ * once they are used up, or where there were none, a draw is `fallback`'s.
+ *
+ * Why not the seed: a seed is one of 2^32, few enough to try every one. A
+ * player who is shown anything drawn from it can find it that way, and with
+ * it everything else that was drawn from it.
+ */
+export function chanceOf(words: readonly number[]): (fallback: () => number) => () => number {
+  let used = 0;
+  return (fallback) => () => (used < words.length ? (words[used++] >>> 0) / 4294967296 : fallback());
+}
+
 /** A whole number in [0, bound), drawn with `random`. */
 export function randomInt(random: () => number, bound: number): number {
   return Math.min(bound - 1, Math.floor(random() * bound));

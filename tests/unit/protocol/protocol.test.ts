@@ -81,6 +81,17 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage('{"type":"clock","seconds":1e999}')).toBeNull();
   });
 
+  it("reads a choice of how the room's games are played", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "variant", variant: "show" }))).toEqual({ type: "variant", variant: "show" });
+    expect(parseClientMessage(JSON.stringify({ type: "variant", variant: "" }))).toEqual({ type: "variant", variant: "" });
+  });
+
+  it("rejects such a choice that is not a word", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "variant" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "variant", variant: 1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "variant", variant: null }))).toBeNull();
+  });
+
   it("reads coming into voice and going out of it", () => {
     expect(parseClientMessage(JSON.stringify({ type: "voice", on: true, muted: true }))).toEqual({ type: "voice", on: true, muted: true });
     expect(parseClientMessage(JSON.stringify({ type: "voice" }))).toEqual({ type: "voice", on: false, muted: false });

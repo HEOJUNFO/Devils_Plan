@@ -36,27 +36,27 @@ export interface LogoConfig {
 }
 
 /**
- * The path of a game: the price 알트엔터 opens at and its price after each of
- * `rounds` rounds. It goes up and down in turn, a few rounds each way, by
- * steps that are not all alike; the first round of each way always moves.
+ * The path of a game, drawn with `random` (each call a number from 0 up to
+ * 1): the price 알트엔터 opens at and its price after each of `rounds`
+ * rounds. It goes up and down in turn, a few rounds each way, by steps that
+ * are not all alike; the first round of each way always moves.
  */
-export function pathOf(seed: number, rounds: number, startPrice: number, config: LogoConfig): number[] {
-  const random = randomSource(seedFrom(seed));
+export function pathWith(random: () => number, rounds: number, startPrice: number, config: LogoConfig): number[] {
   const stepped = (price: number): number => Math.min(config.high, Math.max(config.low, Math.round(price / config.step) * config.step));
   // as many turns as there is room for, each way lasting its fewest rounds at the least
   const room = Math.max(0, Math.floor(rounds / config.legRounds) - 1);
-  const turns = Math.min(room, config.turnsFrom + randomInt(random.next, config.turnsTo - config.turnsFrom + 1));
+  const turns = Math.min(room, config.turnsFrom + randomInt(random, config.turnsTo - config.turnsFrom + 1));
   const lengths = Array.from({ length: turns + 1 }, () => config.legRounds);
-  for (let spare = rounds - lengths.length * config.legRounds; spare > 0; spare--) lengths[randomInt(random.next, lengths.length)] += 1;
+  for (let spare = rounds - lengths.length * config.legRounds; spare > 0; spare--) lengths[randomInt(random, lengths.length)] += 1;
 
   const path = [startPrice];
-  let up = random.next() < 0.5;
+  let up = random() < 0.5;
   for (const length of lengths) {
     const from = path[path.length - 1];
-    const swing = config.swingFrom + random.next() * (config.swingTo - config.swingFrom);
+    const swing = config.swingFrom + random() * (config.swingTo - config.swingFrom);
     const to = stepped(up ? from * swing : from / swing);
     // how far along its way the price is after each round: by uneven steps
-    const weights = Array.from({ length }, () => 0.4 + random.next());
+    const weights = Array.from({ length }, () => 0.4 + random());
     const whole = weights.reduce((sum, weight) => sum + weight, 0);
     let gone = 0;
     let last = from;
@@ -73,6 +73,11 @@ export function pathOf(seed: number, rounds: number, startPrice: number, config:
     up = !up;
   }
   return path;
+}
+
+/** The path of a game, drawn from `seed` alone. */
+export function pathOf(seed: number, rounds: number, startPrice: number, config: LogoConfig): number[] {
+  return pathWith(randomSource(seedFrom(seed)).next, rounds, startPrice, config);
 }
 
 /**

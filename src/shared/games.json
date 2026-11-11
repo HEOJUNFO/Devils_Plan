@@ -11,7 +11,8 @@
     "minPlayers": 4,
     "maxPlayers": 6,
     "teamSize": 0,
-    "turns": true
+    "turns": true,
+    "variants": []
   },
   "count-rectangles": {
     "title": {
@@ -25,7 +26,8 @@
     "minPlayers": 1,
     "maxPlayers": 16,
     "teamSize": 3,
-    "turns": false
+    "turns": false,
+    "variants": []
   },
   "lay-the-grass": {
     "title": {
@@ -39,7 +41,8 @@
     "minPlayers": 2,
     "maxPlayers": 16,
     "teamSize": 0,
-    "turns": false
+    "turns": false,
+    "variants": []
   },
   "count-cubes": {
     "title": {
@@ -53,7 +56,8 @@
     "minPlayers": 1,
     "maxPlayers": 16,
     "teamSize": 0,
-    "turns": false
+    "turns": false,
+    "variants": []
   },
   "memory-poker": {
     "title": {
@@ -67,7 +71,8 @@
     "minPlayers": 2,
     "maxPlayers": 16,
     "teamSize": 0,
-    "turns": false
+    "turns": false,
+    "variants": []
   },
   "under-thirteen": {
     "title": {
@@ -81,7 +86,8 @@
     "minPlayers": 2,
     "maxPlayers": 16,
     "teamSize": 0,
-    "turns": false
+    "turns": false,
+    "variants": []
   },
   "mystery-stock-market": {
     "title": {
@@ -95,6 +101,22 @@
     "minPlayers": 2,
     "maxPlayers": 16,
     "teamSize": 0,
-    "turns": false
+    "turns": false,
+    "variants": [
+      {
+        "id": "fresh",
+        "title": {
+          "ko": "판마다 새 규칙",
+          "en": "New rules"
+        }
+      },
+      {
+        "id": "show",
+        "title": {
+          "ko": "방송의 규칙",
+          "en": "Show's rules"
+        }
+      }
+    ]
   }
 }

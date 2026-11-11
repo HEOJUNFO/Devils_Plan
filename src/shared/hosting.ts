@@ -32,6 +32,9 @@ export interface Candidate {
   teamSince?: number;
 }
 
+/** How many numbers a room gives a game to draw its secrets from when it starts: more than any game draws. */
+export const CHANCE_WORDS = 256;
+
 /** What a room tells a game when asking it to start. */
 export interface StartRequest {
   /** The token of whoever asked. Only the host may start. */
@@ -42,10 +45,19 @@ export interface StartRequest {
   allowBots: boolean;
   /** A number to seed the game's own random sequence with. */
   seed: number;
+  /**
+   * {@link CHANCE_WORDS} 32-bit numbers nobody could have guessed, fresh for
+   * this game. A game draws from them what its players must not be able to
+   * work out (`chanceOf` in `game/rng.ts` says why the seed will not do).
+   * Absent where a game is started without a room, as in a test.
+   */
+  chance?: readonly number[];
   /** The time, in ms since the epoch. */
   now: number;
   /** The room's own limit on a turn, in seconds; 0 for none. A game without turns ignores it. */
   turnSeconds: number;
+  /** Which of the game's variants the room asks for (`games.json`); absent for the game's first. A game without variants ignores it. */
+  variant?: string;
 }
 
 /** What comes of asking a game for something: what to keep now, or why not. */

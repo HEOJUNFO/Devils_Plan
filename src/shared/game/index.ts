@@ -44,5 +44,5 @@ export type {
 } from "./rules";
 export { botTurn, chooseAction } from "./bots";
 export type { BotConfig } from "./bots";
-export { nextRandom, randomInt, randomSource, seedFrom } from "./rng";
+export { chanceOf, nextRandom, randomInt, randomSource, seedFrom } from "./rng";
 export type { RandomSource, RandomStep } from "./rng";
