@@ -44,6 +44,18 @@ defaults in this file, these win.
   open rooms and can join one, make one, or enter a code. The user, on
   2026-11-11: "내가말한로비는 여러방리스트가 있는 로비말한거야". A screen with
   only a nickname and a code is not the lobby.
+- **Check what was changed, not everything.** No whole-project checks: no run
+  of the entire test suite, no mutation run over a whole list, no walk through
+  every screen. After a change, check the part that was changed: the tests of
+  the files touched, the screen that was touched. The user, on 2026-11-11,
+  while waiting for a deploy that such runs were holding up: "전체검사는하지마
+  앞으로도계속 수정한부분에대한 부분검사해 프로젝트룰에추가". Where this differs
+  from the testing standards in this file, this wins.
+  *Assistant's reading, not the user's words:* the type check stays, because
+  it is one command of a few seconds that cannot be pointed at a part; the
+  whole suite still runs on every push, in CI, which is the pipeline's doing
+  and not a run made here. What was not checked is said in the commit and in
+  the report, never passed over.
 
 ## Project Structure
 
