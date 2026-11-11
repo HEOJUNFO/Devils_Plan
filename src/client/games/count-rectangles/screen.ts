@@ -6,6 +6,7 @@
  * Design: design/games/count-rectangles.md. The room decides everything;
  * this screen shows what it sends and asks for a buzz or an answer.
  */
+import { LIT_SECONDS, litSeconds } from "../../../shared/games/count-rectangles/reveal";
 import { GAP, type Card, type Option, type Rect, type RectEvent, type ScoreLine } from "../../../shared/games/count-rectangles/rules";
 import { afterBuzz, typeAnswer } from "../../../shared/games/count-rectangles/typing";
 import type { ServerMessage } from "../../../shared/protocol";
@@ -97,8 +98,6 @@ const NAMED_MOST = 8;
 const UNIT_ROWS = 3;
 /** In a crowded game: the room kept under the list for the two lines that say what it takes to win. */
 const TERMS_ROOM = 28;
-/** Seconds each rectangle of a closed problem is lit before the next. */
-const REVEAL_SECONDS = 0.7;
 /** With this many seconds or fewer to answer, the player's own count is ticked aloud. */
 const TICK_FROM = 3;
 /**
@@ -217,6 +216,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   let flash: { colour: string; t: number } | null = null;
   /** `time` when the closed problem's rectangles began to be shown. */
   let revealFrom = 0;
+  /** Seconds each of them is lit: fewer when there are many, so that the last is shown before the next problem comes. */
+  let revealEach = LIT_SECONDS;
   /** `time` when the game on show was first seen to be over. */
   let endedAt = 0;
   /** The last second of the player's own answer that was ticked aloud. */
@@ -364,7 +365,10 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       pointed = null;
     }
     const wasClosed = latest !== null && latest.view.outcome !== null && !fresh;
-    if (message.view.outcome !== null && !wasClosed) revealFrom = time;
+    if (message.view.outcome !== null && !wasClosed) {
+      revealFrom = time;
+      revealEach = litSeconds(message.clock.next, message.view.solutions?.length ?? 0);
+    }
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
     latest = message;
     receivedAt = performance.now();
@@ -549,7 +553,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   function lit(): { rect: Rect; at: number; of: number } | null {
     const solutions = latest?.view.solutions ?? null;
     if (solutions === null || solutions.length === 0) return null;
-    const at = Math.floor((time - revealFrom) / REVEAL_SECONDS) % solutions.length;
+    const at = Math.floor((time - revealFrom) / revealEach) % solutions.length;
     return { rect: solutions[at], at, of: solutions.length };
   }
 

@@ -420,8 +420,11 @@ export function solutions(board: Board): Rect[] {
 /** A board that always works, for the rare draw that finds none. Not one of the show's. */
 const FALLBACK: Board = { rows: 3, cols: 3, cells: [2, -3, 5, 4, null, -1, -2, 3, 1], target: 4 };
 
-/** How many boards are drawn before giving up on finding one whose answer is in range. */
-const DRAWS = 200;
+/**
+ * How many boards are drawn in the search for one with the answer wanted,
+ * before the nearest found is taken instead.
+ */
+const DRAWS = 1000;
 
 /** The four places that share a side with a place. */
 const SIDES: readonly (readonly [number, number])[] = [
@@ -483,47 +486,70 @@ function cutOutline(random: () => number, rows: number, cols: number, percent: n
 }
 
 /**
- * Draws a problem: a board and a target such that the answer lies in the
- * configured range. Returns the board with its answer.
+ * Draws a board's outline and numbers, without a target yet, and counts how
+ * many of its rectangles make each sum.
  */
-export function drawBoard(random: () => number, config: RectConfig): { board: Board; answer: number } {
-  for (let attempt = 0; attempt < DRAWS; attempt++) {
-    const irregular = random() * 100 < config.irregularPercent;
-    const sizes = irregular ? config.irregularBoards : config.boards;
-    const size = sizes[randomInt(random, sizes.length)];
-    const there = irregular ? cutOutline(random, size.rows, size.cols, config.cutPercent) : Array.from({ length: size.rows * size.cols }, () => true);
-    // the box is drawn close round what is left
-    const rowsLeft = Array.from({ length: size.rows }, (_, row) => row).filter((row) => there.slice(row * size.cols, (row + 1) * size.cols).some(Boolean));
-    const colsLeft = Array.from({ length: size.cols }, (_, col) => col).filter((col) => rowsLeft.some((row) => there[row * size.cols + col]));
-    const cells: Cell[] = [];
-    for (const row of rowsLeft) {
-      for (const col of colsLeft) {
-        if (!there[row * size.cols + col]) {
-          cells.push(GAP);
-        } else if (random() * 100 < config.blankPercent) {
-          cells.push(null);
-        } else {
-          const magnitude = 1 + randomInt(random, config.maxNumber);
-          cells.push(random() < 0.5 ? -magnitude : magnitude);
-        }
+function drawNumbers(random: () => number, config: RectConfig): { board: Board; counts: Map<number, number> } {
+  const irregular = random() * 100 < config.irregularPercent;
+  const sizes = irregular ? config.irregularBoards : config.boards;
+  const size = sizes[randomInt(random, sizes.length)];
+  const there = irregular ? cutOutline(random, size.rows, size.cols, config.cutPercent) : Array.from({ length: size.rows * size.cols }, () => true);
+  // the box is drawn close round what is left
+  const rowsLeft = Array.from({ length: size.rows }, (_, row) => row).filter((row) => there.slice(row * size.cols, (row + 1) * size.cols).some(Boolean));
+  const colsLeft = Array.from({ length: size.cols }, (_, col) => col).filter((col) => rowsLeft.some((row) => there[row * size.cols + col]));
+  const cells: Cell[] = [];
+  for (const row of rowsLeft) {
+    for (const col of colsLeft) {
+      if (!there[row * size.cols + col]) {
+        cells.push(GAP);
+      } else if (random() * 100 < config.blankPercent) {
+        cells.push(null);
+      } else {
+        const magnitude = 1 + randomInt(random, config.maxNumber);
+        cells.push(random() < 0.5 ? -magnitude : magnitude);
       }
     }
-    // how many rectangles make each sum
-    const counts = new Map<number, number>();
-    const board: Board = { rows: rowsLeft.length, cols: colsLeft.length, cells, target: 0 };
-    for (const rect of everyRect(board.rows, board.cols)) {
-      const sum = sumIn(board, rect);
-      if (sum !== null) counts.set(sum, (counts.get(sum) ?? 0) + 1);
-    }
-    const targets = [...counts]
-      .filter(([sum, count]) => Math.abs(sum) <= config.maxTarget && count >= config.minAnswer && count <= config.maxAnswer)
-      .map(([sum]) => sum)
-      .sort((a, b) => a - b);
-    if (targets.length === 0) continue;
-    const target = targets[randomInt(random, targets.length)];
-    return { board: { ...board, target }, answer: counts.get(target) ?? 0 };
   }
-  return { board: FALLBACK, answer: solutions(FALLBACK).length };
+  const counts = new Map<number, number>();
+  const board: Board = { rows: rowsLeft.length, cols: colsLeft.length, cells, target: 0 };
+  for (const rect of everyRect(board.rows, board.cols)) {
+    const sum = sumIn(board, rect);
+    if (sum !== null) counts.set(sum, (counts.get(sum) ?? 0) + 1);
+  }
+  return { board, counts };
+}
+
+/**
+ * Draws a problem: a board and a target such that the answer lies in the
+ * configured range. Returns the board with its answer.
+ *
+ * The answer is drawn first, every one in the range as likely as another, and
+ * boards are drawn until one has a target with that answer. Drawing the board
+ * first and then a target for it made the lowest answer the right one on
+ * nearly half of all problems, so a player who said it without looking won
+ * about as often as one who counted.
+ *
+ * Should no board in {@link DRAWS} have the answer wanted, the problem is the
+ * one that came nearest to it.
+ */
+export function drawBoard(random: () => number, config: RectConfig): { board: Board; answer: number } {
+  const wanted = config.minAnswer + randomInt(random, config.maxAnswer - config.minAnswer + 1);
+  let nearest: { board: Board; answer: number } | null = null;
+  for (let attempt = 0; attempt < DRAWS; attempt++) {
+    const { board, counts } = drawNumbers(random, config);
+    const inRange = [...counts]
+      .filter(([sum, count]) => Math.abs(sum) <= config.maxTarget && count >= config.minAnswer && count <= config.maxAnswer)
+      .sort((a, b) => a[0] - b[0]);
+    if (inRange.length === 0) continue;
+    const off = Math.min(...inRange.map(([, count]) => Math.abs(count - wanted)));
+    if (nearest !== null && off >= Math.abs(nearest.answer - wanted)) continue;
+    // of the targets as near to the answer wanted as this board comes, one at random
+    const best = inRange.filter(([, count]) => Math.abs(count - wanted) === off);
+    const [target, answer] = best[randomInt(random, best.length)];
+    nearest = { board: { ...board, target }, answer };
+    if (off === 0) break;
+  }
+  return nearest ?? { board: FALLBACK, answer: solutions(FALLBACK).length };
 }
 
 /** How many units must win for the game to end: half of them, the next whole number up when they are odd. */

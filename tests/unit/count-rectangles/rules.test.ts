@@ -257,6 +257,93 @@ describe("drawBoard", () => {
     }
   });
 
+  it("draws every answer of the range about as often as any other, so that one said without counting is seldom right", () => {
+    const problems = 900;
+    const answers = CONFIG.maxAnswer - CONFIG.minAnswer + 1;
+    const drawn = new Map<number, number>();
+
+    for (let seed = 1; seed <= problems; seed++) {
+      const { answer } = drawBoard(randomSource(seed).next, CONFIG);
+      drawn.set(answer, (drawn.get(answer) ?? 0) + 1);
+    }
+
+    // when the board was drawn first and a target picked for it, the lowest answer was right on 45 problems in a hundred
+    for (let answer = CONFIG.minAnswer; answer <= CONFIG.maxAnswer; answer++) {
+      expect((drawn.get(answer) ?? 0) / problems, `answer ${answer}`).toBeGreaterThan(0.6 / answers);
+      expect((drawn.get(answer) ?? 0) / problems, `answer ${answer}`).toBeLessThan(1.5 / answers);
+    }
+  });
+
+  it("takes the answer nearest to the one it wanted when no board has that one", () => {
+    // two cells of 1 or -1 side by side: alike, one sum is made twice and another once; unlike, three sums once each.
+    // No sum is made three times, so of the answers 1, 2 and 3 the last is never there to be found.
+    const narrow: RectConfig = { ...CONFIG, boards: [{ rows: 1, cols: 2 }], irregularPercent: 0, irregularBoards: [], maxNumber: 1, blankPercent: 0, minAnswer: 1, maxAnswer: 3 };
+    const problems = 300;
+    let twos = 0;
+
+    for (let seed = 1; seed <= problems; seed++) {
+      const { board, answer } = drawBoard(randomSource(seed).next, narrow);
+
+      expect(answer).toBe(solutions(board).length);
+      expect(answer).toBeLessThan(narrow.maxAnswer);
+      if (answer === 2) twos++;
+    }
+
+    // each is wanted one time in three: 1 is found, 2 is found, and 3 becomes 2, the nearest there is.
+    // Were the first board found taken instead, 3 would become 1 as often as 2, and half the answers would be 2.
+    expect(twos / problems).toBeGreaterThan(0.6);
+    expect(twos / problems).toBeLessThan(0.74);
+  });
+
+  it("draws a target below 0 about as often as one above", () => {
+    const problems = 2000;
+    let below = 0;
+    let above = 0;
+
+    for (let seed = 1; seed <= problems; seed++) {
+      const { target } = drawBoard(randomSource(seed).next, CONFIG).board;
+      if (target < 0) below++;
+      if (target > 0) above++;
+    }
+
+    // a number is as often below 0 as above, and of the targets with the answer wanted any one may be taken:
+    // were it always the lowest of them, 58 targets in a hundred would be below 0
+    expect(below / (below + above)).toBeGreaterThan(0.45);
+    expect(below / (below + above)).toBeLessThan(0.55);
+  });
+
+  it("draws targets out to the limit on both sides of 0", () => {
+    const targets = new Set<number>();
+
+    for (let seed = 1; seed <= 300; seed++) targets.add(drawBoard(randomSource(seed).next, CONFIG).board.target);
+
+    expect(targets).toContain(CONFIG.maxTarget);
+    expect(targets).toContain(-CONFIG.maxTarget);
+  });
+
+  it("draws the target 0 for a cut board as for any other: a rectangle over a missing cell adds up to nothing", () => {
+    const always: RectConfig = { ...CONFIG, irregularPercent: 100 };
+    const problems = 300;
+    let zero = 0;
+
+    for (let seed = 1; seed <= problems; seed++) {
+      if (drawBoard(randomSource(seed).next, always).board.target === 0) zero++;
+    }
+
+    // were such a rectangle counted as adding up to 0, a cut board would have far too many of those for 0 to be drawn
+    expect(zero / problems).toBeGreaterThan(0.15);
+  });
+
+  it("takes no answer above its range, even when every board drawn has more than that", () => {
+    // two cells without a number: all three rectangles add up to 0, one more than the range allows
+    const blank: RectConfig = { ...CONFIG, boards: [{ rows: 1, cols: 2 }], irregularPercent: 0, irregularBoards: [], blankPercent: 100, minAnswer: 1, maxAnswer: 2 };
+
+    const { board, answer } = drawBoard(randomSource(3).next, blank);
+
+    expect(board.cells).not.toEqual([null, null]);
+    expect(answer).toBe(solutions(board).length);
+  });
+
   it("keeps the answer within its range on boards where far more rectangles would fit", () => {
     // with only 1 and -1 on a four by four board, dozens of rectangles add up to 0
     const crowded: RectConfig = { ...CONFIG, boards: [{ rows: 4, cols: 4 }], maxNumber: 1, blankPercent: 0, minAnswer: 1, maxAnswer: 3 };
