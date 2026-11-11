@@ -3,24 +3,26 @@ import type { Solid } from "../../../src/shared/games/count-cubes/rules";
 import {
   DEGREES_PER_PIXEL,
   FIRST_VIEW,
-  MAX_HALF,
-  MIN_HALF,
+  MAX_EDGE,
   PITCH_MAX,
   PITCH_MIN,
   SHADE,
-  cubeSize,
+  cubeEdge,
   dragged,
-  faceMap,
   facesOf,
+  pictureOf,
   settled,
-  shadesOf,
   turned,
+  type Face,
+  type Shown,
   type View,
 } from "../../../src/shared/games/count-cubes/view";
 
 /** The picture the game's screen draws the solid on. */
 const WIDTH = 288;
 const HEIGHT = 190;
+/** Half the line the screen draws round a face: the solid's outermost corners stay this far inside the picture. */
+const HALF_LINE = 0.5;
 
 /** One cube. */
 const CUBE: Solid = { rows: 1, cols: 1, heights: [1] };
@@ -30,30 +32,74 @@ const PAIR: Solid = { rows: 1, cols: 2, heights: [1, 1] };
 const STAIRS: Solid = { rows: 3, cols: 3, heights: [3, 3, 2, 3, 2, 1, 2, 1, 1] };
 /** A row of three columns: a tall one, and two low ones behind it when looked at from its end. */
 const WALL: Solid = { rows: 1, cols: 3, heights: [5, 1, 1] };
+/** Columns of every height in no order, with a gap in the middle: from any side something stands before something. */
+const JUMBLE: Solid = { rows: 3, cols: 3, heights: [1, 4, 2, 5, 0, 3, 2, 6, 1] };
 /** The largest solid the game makes: nine by nine, six high. */
 const LARGEST: Solid = { rows: 9, cols: 9, heights: Array.from({ length: 81 }, () => 6) };
 /** A long low one and a narrow tall one. */
 const LONG: Solid = { rows: 5, cols: 9, heights: Array.from({ length: 45 }, () => 3) };
 
 const view = (yaw: number, pitch = FIRST_VIEW.pitch): View => ({ yaw, pitch });
+const picture = (solid: Solid, from: View): Shown[] => pictureOf(solid, from, WIDTH, HEIGHT);
 
-/** Which faces show anywhere in the picture of `solid` from `from`. */
-function shown(solid: Solid, from: View): Set<number> {
-  return new Set([...faceMap(solid, from, WIDTH, HEIGHT)].filter((face) => face >= 0));
-}
-
-/** Which shades are in the picture of `solid` from `from`, the line and the empty left out. */
+/** Which shades are in the picture of `solid` from `from`. */
 function shadesIn(solid: Solid, from: View): number[] {
-  const faces = facesOf(solid);
-  return [...new Set([...shown(solid, from)].map((face) => faces[face].shade))].sort((a, b) => a - b);
+  return [...new Set(picture(solid, from).map((shape) => shape.shade))].sort((a, b) => a - b);
 }
 
-/** The picture as text, a letter to a pixel: for looking at, and for a test to hold a picture to. */
-function drawn(solid: Solid, from: View, width: number, height: number): string[] {
-  const letters = ".#TESWN";
-  const shades = shadesOf(solid, from, width, height);
-  return Array.from({ length: height }, (_, y) => [...shades.subarray(y * width, (y + 1) * width)].map((shade) => letters[shade]).join(""));
+/** The corners of every shape of a picture, as points. */
+function cornersOf(shapes: readonly Shown[]): { x: number; y: number }[] {
+  return shapes.flatMap((shape) => [0, 2, 4, 6].map((at) => ({ x: shape.corners[at], y: shape.corners[at + 1] })));
 }
+
+/** How far the picture reaches: its leftmost, rightmost, highest and lowest corner. */
+function reach(shapes: readonly Shown[]): { left: number; right: number; top: number; bottom: number } {
+  const points = cornersOf(shapes);
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  return { left: Math.min(...xs), right: Math.max(...xs), top: Math.min(...ys), bottom: Math.max(...ys) };
+}
+
+/** The farthest any corner of a face in both pictures lies in one from where it lies in the other, in pixels. */
+function farthestMove(before: readonly Shown[], after: readonly Shown[]): number {
+  const was = new Map(before.map((shape) => [shape.face, shape.corners]));
+  let farthest = 0;
+  for (const shape of after) {
+    const old = was.get(shape.face);
+    if (old === undefined) continue;
+    shape.corners.forEach((value, at) => {
+      farthest = Math.max(farthest, Math.abs(value - old[at]));
+    });
+  }
+  return farthest;
+}
+
+/**
+ * Whether face `front` stands between the eye and the point of face `behind`
+ * that lies `s` along its first edge and `t` along its second: worked out in
+ * the solid itself, along the line from that point to the eye, and not from
+ * the picture.
+ */
+function covers(front: Face, behind: Face, s: number, t: number, from: View): boolean {
+  const yaw = (from.yaw * Math.PI) / 180;
+  const pitch = (from.pitch * Math.PI) / 180;
+  // the way to the eye
+  const eye = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
+  const point = [behind.x + s * behind.u[0] + t * behind.v[0], behind.y + s * behind.u[1] + t * behind.v[1], behind.z + s * behind.u[2] + t * behind.v[2]];
+  const dot = (a: readonly number[], b: readonly number[]): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const towards = dot(eye, front.n);
+  if (Math.abs(towards) < 1e-9) return false;
+  const corner = [front.x, front.y, front.z];
+  const steps = dot([corner[0] - point[0], corner[1] - point[1], corner[2] - point[2]], front.n) / towards;
+  if (steps <= 1e-6) return false;
+  const hit = [point[0] + steps * eye[0] - corner[0], point[1] + steps * eye[1] - corner[1], point[2] + steps * eye[2] - corner[2]];
+  const along = dot(hit, front.u);
+  const up = dot(hit, front.v);
+  return along > 1e-6 && along < 1 - 1e-6 && up > 1e-6 && up < 1 - 1e-6;
+}
+
+/** Points of a face well inside it: its middle, and towards each corner. */
+const INSIDE: readonly (readonly [number, number])[] = [[0.5, 0.5], [0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8]];
 
 describe("큐브 세기, the solid from any side: its faces", () => {
   it("gives one cube its top and its four sides", () => {
@@ -103,6 +149,14 @@ describe("큐브 세기, the solid from any side: its faces", () => {
     expect(facesOf(block)).toHaveLength(6 + 2 * (2 * 2) + 2 * (3 * 2));
   });
 
+  it("says of each face which column its cube stands in", () => {
+    const faces = facesOf(STAIRS);
+
+    // nine columns, and every face of a column begins at that column's own square or on its far edge
+    expect(new Set(faces.map((face) => `${face.row},${face.col}`)).size).toBe(9);
+    expect(faces.every((face) => [0, 1].includes(face.x - face.col) && [0, 1].includes(face.z - face.row))).toBe(true);
+  });
+
   it("has no face for a place where nothing stands", () => {
     expect(facesOf({ rows: 1, cols: 2, heights: [0, 0] })).toEqual([]);
   });
@@ -143,17 +197,18 @@ describe("큐브 세기, the solid from any side: the view", () => {
 });
 
 describe("큐브 세기, the solid from any side: its size", () => {
-  it("draws a small solid with the largest cubes, and the largest solid with cubes that still fit", () => {
-    expect(cubeSize(CUBE, WIDTH, HEIGHT)).toBe(MAX_HALF);
-    expect(cubeSize(STAIRS, WIDTH, HEIGHT)).toBe(MAX_HALF);
-    expect(cubeSize(LARGEST, WIDTH, HEIGHT)).toBe(10);
+  it("draws a small solid with the longest edge, and the largest solid with cubes that still fit", () => {
+    expect(cubeEdge(CUBE, WIDTH, HEIGHT)).toBe(MAX_EDGE);
+    expect(cubeEdge(STAIRS, WIDTH, HEIGHT)).toBe(MAX_EDGE);
+    // nine by nine and six high, in a picture 190 high: looked at, and kept
+    expect(cubeEdge(LARGEST, WIDTH, HEIGHT)).toBeCloseTo(14.2, 1);
   });
 
-  it("draws every cube an even number of pixels, and none smaller than the smallest", () => {
-    expect(cubeSize(LARGEST, 8, 8)).toBe(MIN_HALF);
-    for (const solid of [CUBE, PAIR, STAIRS, WALL, LARGEST, LONG]) {
-      for (const height of [60, 97, 131, HEIGHT]) expect(cubeSize(solid, WIDTH, height) % 2, `picture ${height} high`).toBe(0);
-    }
+  it("draws a solid too wide for the picture by its width, not its height", () => {
+    // one row of thirty in a picture a hundred wide: from corner to corner it has the width less a pixel's margin on each side
+    const row: Solid = { rows: 1, cols: 30, heights: Array.from({ length: 30 }, () => 1) };
+
+    expect(cubeEdge(row, 100, HEIGHT)).toBeCloseTo(98 / Math.hypot(1, 30), 6);
   });
 
   it.each([
@@ -164,56 +219,95 @@ describe("큐브 세기, the solid from any side: its size", () => {
   ])("keeps %s inside the picture from every side and at every tilt allowed", (_what, solid) => {
     for (let yaw = 0; yaw < 360; yaw += 15) {
       for (const pitch of [PITCH_MIN, FIRST_VIEW.pitch, 38, PITCH_MAX]) {
-        const map = faceMap(solid, view(yaw, pitch), WIDTH, HEIGHT);
-        let seen = 0;
-        // the first pixel of the solid on the picture's outermost pixels, where it would be cut off
-        let cutOff: string | undefined;
-        for (let y = 0; y < HEIGHT; y++) {
-          for (let x = 0; x < WIDTH; x++) {
-            if (map[y * WIDTH + x] < 0) continue;
-            seen++;
-            if (x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1) continue;
-            cutOff ??= `pixel ${x},${y}`;
-          }
-        }
-        // one check for a view, not one for a pixel: a check for each pixel took the test past its time on CI
-        expect(cutOff, `yaw ${yaw}, pitch ${pitch}`).toBeUndefined();
-        expect(seen, `yaw ${yaw}, pitch ${pitch}`).toBeGreaterThan(0);
+        const shapes = picture(solid, view(yaw, pitch));
+        const { left, right, top, bottom } = reach(shapes);
+
+        expect(shapes.length, `yaw ${yaw}, pitch ${pitch}`).toBeGreaterThan(0);
+        expect(Math.min(left, top), `yaw ${yaw}, pitch ${pitch}`).toBeGreaterThanOrEqual(HALF_LINE);
+        expect(right, `yaw ${yaw}, pitch ${pitch}`).toBeLessThanOrEqual(WIDTH - HALF_LINE);
+        expect(bottom, `yaw ${yaw}, pitch ${pitch}`).toBeLessThanOrEqual(HEIGHT - HALF_LINE);
       }
     }
   });
 
-  it("draws a cube's top at the first view as pixel art does: a lozenge that steps one pixel down for two across", () => {
-    const half = cubeSize(CUBE, WIDTH, HEIGHT);
-    const faces = facesOf(CUBE);
-    const map = faceMap(CUBE, FIRST_VIEW, WIDTH, HEIGHT);
-    const xs: number[] = [];
-    const ys: number[] = [];
-    map.forEach((face, at) => {
-      if (face >= 0 && faces[face].shade === SHADE.top) {
-        xs.push(at % WIDTH);
-        ys.push(Math.floor(at / WIDTH));
-      }
-    });
+  it("draws the largest solid as large as the picture lets it: at the view it stands tallest from, it reaches the margins", () => {
+    const { top, bottom } = reach(picture(LARGEST, view(45, PITCH_MAX)));
 
-    // its rows are 2, 6, 10 … pixels wide to the middle and back again: two short of twice the size at the widest
-    const rows = [...new Set(ys)].sort((a, b) => a - b).map((y) => xs.filter((_, at) => ys[at] === y).length);
+    expect(top).toBeCloseTo(1, 6);
+    expect(bottom).toBeCloseTo(HEIGHT - 1, 6);
+  });
 
-    expect(rows).toHaveLength(half);
-    expect(rows).toEqual([...Array.from({ length: half / 2 }, (_, i) => 4 * i + 2), ...Array.from({ length: half / 2 }, (_, i) => 4 * (half / 2 - 1 - i) + 2)]);
-    expect(Math.max(...xs) - Math.min(...xs) + 1).toBe(2 * half - 2);
+  it("keeps the middle of a block in the middle of the picture from every side", () => {
+    for (const from of [FIRST_VIEW, view(100, 20), view(200, PITCH_MAX), view(333, PITCH_MIN)]) {
+      const { left, right, top, bottom } = reach(picture(LONG, from));
+
+      expect((left + right) / 2, `yaw ${from.yaw}`).toBeCloseTo(WIDTH / 2, 6);
+      expect((top + bottom) / 2, `yaw ${from.yaw}`).toBeCloseTo(HEIGHT / 2, 6);
+    }
+  });
+
+  it("draws a cube's top at the first view as a lozenge twice as wide as it is high", () => {
+    const top = picture(CUBE, FIRST_VIEW).filter((shape) => shape.shade === SHADE.top);
+
+    const { left, right, top: highest, bottom } = reach(top);
+
+    expect(top).toHaveLength(1);
+    expect(right - left).toBeCloseTo(MAX_EDGE * Math.SQRT2, 6);
+    expect(bottom - highest).toBeCloseTo((right - left) / 2, 6);
+  });
+});
+
+describe("큐브 세기, the solid from any side: turning it", () => {
+  it("moves no corner more than a hair for a hair's turn, all the way round: nothing jumps a pixel", () => {
+    // a twentieth of a degree at a time; the corner farthest from the middle is some 60 pixels out
+    const step = 0.05;
+    let farthest = 0;
+    let before = picture(STAIRS, view(0));
+    for (let turn = 1; turn <= 360 / step; turn++) {
+      const after = picture(STAIRS, view(turn * step));
+      farthest = Math.max(farthest, farthestMove(before, after));
+      before = after;
+    }
+
+    expect(farthest).toBeGreaterThan(0);
+    expect(farthest).toBeLessThan(0.1);
+  });
+
+  it("moves no corner more than a hair for a hair's tilt, from the lowest to the highest", () => {
+    const step = 0.05;
+    let farthest = 0;
+    let before = picture(STAIRS, view(70, PITCH_MIN));
+    for (let pitch = PITCH_MIN + step; pitch <= PITCH_MAX; pitch += step) {
+      const after = picture(STAIRS, view(70, pitch));
+      farthest = Math.max(farthest, farthestMove(before, after));
+      before = after;
+    }
+
+    expect(farthest).toBeGreaterThan(0);
+    expect(farthest).toBeLessThan(0.1);
+  });
+
+  it("is the same picture for the same view, and after a whole turn", () => {
+    expect(picture(STAIRS, view(100, 20))).toEqual(picture(STAIRS, view(100, 20)));
+    expect(picture(STAIRS, view(405))).toEqual(picture(STAIRS, view(45)));
+  });
+
+  it("is another picture from another side", () => {
+    expect(picture(STAIRS, view(60))).not.toEqual(picture(STAIRS, view(45)));
+    expect(picture(STAIRS, view(45, 40))).not.toEqual(picture(STAIRS, view(45, 30)));
   });
 });
 
 describe("큐브 세기, the solid from any side: what shows", () => {
   it("shows the top of every column from the first view: no column hides another", () => {
     const faces = facesOf(STAIRS);
-    const tops = faces.flatMap((face, number) => (face.shade === SHADE.top ? [number] : []));
+    const tops = faces.filter((face) => face.shade === SHADE.top);
 
-    const seen = shown(STAIRS, FIRST_VIEW);
+    const hidden = tops.filter((top) => faces.some((other) => other !== top && covers(other, top, 0.5, 0.5, FIRST_VIEW)));
 
     expect(tops).toHaveLength(9);
-    expect(tops.every((top) => seen.has(top))).toBe(true);
+    expect(hidden).toEqual([]);
+    expect(picture(STAIRS, FIRST_VIEW).filter((shape) => shape.shade === SHADE.top)).toHaveLength(9);
   });
 
   it("shows the tops and the two sides that face the eye, and never the two that look away", () => {
@@ -230,159 +324,101 @@ describe("큐브 세기, the solid from any side: what shows", () => {
     expect(shadesIn(STAIRS, view(270))).toEqual([SHADE.top, SHADE.west]);
   });
 
-  it("hides what stands behind something taller: from the tall end of a row, the low columns are out of sight", () => {
+  it("has a shape for every face that looks towards the eye, and each face once", () => {
+    const shapes = picture(LARGEST, FIRST_VIEW);
+
+    // eighty-one tops, and nine columns of six on each of the two sides that show
+    expect(shapes).toHaveLength(81 + 9 * 6 + 9 * 6);
+    expect(new Set(shapes.map((shape) => shape.face)).size).toBe(shapes.length);
+  });
+
+  it("names each shape's face and gives it that face's shade", () => {
+    const faces = facesOf(STAIRS);
+
+    const shapes = picture(STAIRS, view(200, 20));
+
+    expect(shapes.every((shape) => faces[shape.face].shade === shape.shade)).toBe(true);
+  });
+
+  it("draws what stands in front after what it covers: from the tall end of a row, the tall column comes last", () => {
     const faces = facesOf(WALL);
-    const topOfColumn = (col: number): number => faces.findIndex((face) => face.shade === SHADE.top && face.x === col);
+    const columnOf = (shape: Shown): number => faces[shape.face].col;
 
-    const fromTallEnd = shown(WALL, view(270, PITCH_MIN));
-    const fromLowEnd = shown(WALL, view(90, PITCH_MIN));
+    const fromTallEnd = picture(WALL, view(270, PITCH_MIN)).map(columnOf);
+    const fromLowEnd = picture(WALL, view(90, PITCH_MIN)).map(columnOf);
 
-    expect(fromTallEnd.has(topOfColumn(0))).toBe(true);
-    expect(fromTallEnd.has(topOfColumn(1))).toBe(false);
-    expect(fromTallEnd.has(topOfColumn(2))).toBe(false);
-    // and from the other end all three tops show, the tall column behind the low ones
-    expect([0, 1, 2].every((col) => fromLowEnd.has(topOfColumn(col)))).toBe(true);
+    // column 0 is the tall one: from its own end it is drawn over the two low ones behind it, from the other end under them
+    expect([...new Set(fromTallEnd)]).toEqual([2, 1, 0]);
+    expect([...new Set(fromLowEnd)]).toEqual([0, 1, 2]);
   });
 
-  it("shows of two faces at a pixel the one nearer the eye: a cube in front covers the wall behind it", () => {
-    // a wall three high with one cube standing before its middle, looked at from in front
-    const solid: Solid = { rows: 2, cols: 3, heights: [3, 3, 3, 0, 1, 0] };
+  it("draws the rows from the far one to the near one as well as the columns", () => {
+    const solid: Solid = { rows: 3, cols: 1, heights: [5, 1, 1] };
     const faces = facesOf(solid);
-    const wallBehindCube = faces.findIndex((face) => face.shade === SHADE.south && face.z === 1 && face.x === 1 && face.y === 0);
-    const wallAboveCube = faces.findIndex((face) => face.shade === SHADE.south && face.z === 1 && face.x === 1 && face.y === 2);
-    const frontOfCube = faces.findIndex((face) => face.shade === SHADE.south && face.z === 2 && face.x === 1);
+    const rowOf = (shape: Shown): number => faces[shape.face].row;
 
-    const seen = shown(solid, view(0, PITCH_MIN));
-
-    // the wall's lowest square behind the cube is not a face at all: the cube stands against it
-    expect(wallBehindCube).toBe(-1);
-    expect(seen.has(frontOfCube)).toBe(true);
-    expect(seen.has(wallAboveCube)).toBe(true);
+    expect([...new Set(picture(solid, view(0, PITCH_MIN)).map(rowOf))]).toEqual([0, 1, 2]);
+    expect([...new Set(picture(solid, view(180, PITCH_MIN)).map(rowOf))]).toEqual([2, 1, 0]);
   });
 
-  it("leaves the picture empty around the solid", () => {
-    const map = faceMap(STAIRS, FIRST_VIEW, WIDTH, HEIGHT);
+  it.each([
+    ["a staircase", STAIRS],
+    ["a row with a tall end", WALL],
+    ["columns of every height in no order", JUMBLE],
+  ])("never draws a face over one that stands in front of it, from any side: %s", (_what, solid) => {
+    const faces = facesOf(solid);
+    let pairs = 0;
+    // the first face found drawn under one it covers
+    let wrong: string | undefined;
+    for (let yaw = 0; yaw < 360; yaw += 7) {
+      for (const pitch of [PITCH_MIN, FIRST_VIEW.pitch, PITCH_MAX]) {
+        const from = view(yaw, pitch);
+        const order = picture(solid, from).map((shape) => shape.face);
+        order.forEach((behind, drawnAt) => {
+          order.forEach((front, frontAt) => {
+            if (front === behind || !INSIDE.some(([s, t]) => covers(faces[front], faces[behind], s, t, from))) return;
+            pairs++;
+            if (frontAt < drawnAt) wrong ??= `yaw ${yaw}, pitch ${pitch}: face ${front} is in front of face ${behind} and drawn before it`;
+          });
+        });
+      }
+    }
 
-    expect(map[0]).toBe(-1);
-    expect(map[WIDTH - 1]).toBe(-1);
-    expect(map[(HEIGHT - 1) * WIDTH]).toBe(-1);
-    expect(map[HEIGHT * WIDTH - 1]).toBe(-1);
-    // and the solid is in the middle of it
-    expect(map[Math.floor(HEIGHT / 2) * WIDTH + Math.floor(WIDTH / 2)]).toBeGreaterThanOrEqual(0);
-  });
-
-  it("is the same picture for the same view, and after a whole turn", () => {
-    expect(faceMap(STAIRS, view(100, 20), WIDTH, HEIGHT)).toEqual(faceMap(STAIRS, view(100, 20), WIDTH, HEIGHT));
-    expect(faceMap(STAIRS, view(405), WIDTH, HEIGHT)).toEqual(faceMap(STAIRS, view(45), WIDTH, HEIGHT));
-  });
-
-  it("is another picture from another side", () => {
-    expect(faceMap(STAIRS, view(60), WIDTH, HEIGHT)).not.toEqual(faceMap(STAIRS, view(45), WIDTH, HEIGHT));
-    expect(faceMap(STAIRS, view(45, 40), WIDTH, HEIGHT)).not.toEqual(faceMap(STAIRS, view(45, 30), WIDTH, HEIGHT));
+    // one check for all the views, not one for a pair: checks by the thousand took an earlier test past its time on CI
+    expect(wrong).toBeUndefined();
+    expect(pairs).toBeGreaterThan(0);
   });
 });
 
-describe("큐브 세기, the solid from any side: the lines between cubes", () => {
-  it.each([
-    ["the first view", FIRST_VIEW],
-    ["a view from the back", view(200, 20)],
-    ["a view from high up", view(100, PITCH_MAX)],
-  ])("draws a line wherever one face ends and another begins, at %s", (_what, from) => {
-    const map = faceMap(STAIRS, from, WIDTH, HEIGHT);
-    const shades = shadesOf(STAIRS, from, WIDTH, HEIGHT);
+describe("큐브 세기, the solid from any side: the shapes the lines go round", () => {
+  it("gives every face a four-cornered shape whose corners go round it", () => {
+    for (const shape of picture(STAIRS, view(200, 20))) {
+      const [x0, y0, x1, y1, x2, y2, x3, y3] = shape.corners;
 
-    for (let y = 0; y < HEIGHT - 1; y++) {
-      for (let x = 0; x < WIDTH - 1; x++) {
-        const at = y * WIDTH + x;
-        if (map[at] < 0) continue;
-        // the face to the right or below is another: this pixel is the line between them
-        if (map[at + 1] !== map[at] || map[at + WIDTH] !== map[at]) expect(shades[at], `pixel ${x},${y}`).toBe(SHADE.line);
-      }
+      expect(shape.corners).toHaveLength(8);
+      // opposite corners are across the middle from each other: the shape is not twisted
+      expect(x0 + x2).toBeCloseTo(x1 + x3, 6);
+      expect(y0 + y2).toBeCloseTo(y1 + y3, 6);
     }
   });
 
-  it("draws a line around the solid, against the empty picture", () => {
-    const map = faceMap(STAIRS, FIRST_VIEW, WIDTH, HEIGHT);
-    const shades = shadesOf(STAIRS, FIRST_VIEW, WIDTH, HEIGHT);
+  it("parts two cubes that stand flush: each top is a shape of its own, and the two share an edge", () => {
+    const tops = picture(PAIR, FIRST_VIEW).filter((shape) => shape.shade === SHADE.top);
+    const points = tops.map((top) => cornersOf([top]));
 
-    for (let y = 1; y < HEIGHT - 1; y++) {
-      for (let x = 1; x < WIDTH - 1; x++) {
-        const at = y * WIDTH + x;
-        if (map[at] < 0) {
-          expect(shades[at]).toBe(SHADE.none);
-          continue;
-        }
-        const edge = [map[at - 1], map[at + 1], map[at - WIDTH], map[at + WIDTH]].some((face) => face < 0);
-        if (edge) expect(shades[at], `pixel ${x},${y}`).toBe(SHADE.line);
-      }
-    }
-  });
-
-  it("parts two cubes that stand flush: each top keeps its own shade, with a line between", () => {
-    const faces = facesOf(PAIR);
-    const map = faceMap(PAIR, FIRST_VIEW, WIDTH, HEIGHT);
-    const shades = shadesOf(PAIR, FIRST_VIEW, WIDTH, HEIGHT);
-    const tops = faces.flatMap((face, number) => (face.shade === SHADE.top ? [number] : []));
-    let touching = 0;
-    let lined = 0;
-    for (let y = 0; y < HEIGHT; y++) {
-      for (let x = 0; x < WIDTH - 1; x++) {
-        const at = y * WIDTH + x;
-        if (map[at] === tops[0] && map[at + 1] === tops[1]) {
-          touching++;
-          if (shades[at] === SHADE.line) lined++;
-        }
-      }
-    }
+    const shared = points[0].filter((a) => points[1].some((b) => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6));
 
     expect(tops).toHaveLength(2);
-    // the two tops meet along an edge of the picture, and every pixel of the first along it is the line
-    expect(touching).toBeGreaterThan(4);
-    expect(lined).toBe(touching);
-    for (const top of tops) {
-      const own = [...map].filter((face, at) => face === top && shades[at] === SHADE.top).length;
-      expect(own).toBeGreaterThan(50);
+    expect(shared).toHaveLength(2);
+  });
+
+  it("gives every face that shows at the first view a shape with room inside the line round it", () => {
+    for (const shape of picture(LARGEST, FIRST_VIEW)) {
+      const [x0, y0, x1, y1, , , x3, y3] = shape.corners;
+      // the area of a shape with two edges from one corner
+      const area = Math.abs((x1 - x0) * (y3 - y0) - (y1 - y0) * (x3 - x0));
+
+      expect(area, `face ${shape.face}`).toBeGreaterThan(80);
     }
   });
-
-  it("leaves every face that shows at the first view some pixels of its own shade", () => {
-    const faces = facesOf(LARGEST);
-    const map = faceMap(LARGEST, FIRST_VIEW, WIDTH, HEIGHT);
-    const shades = shadesOf(LARGEST, FIRST_VIEW, WIDTH, HEIGHT);
-    const own = new Map<number, number>();
-    map.forEach((face, at) => {
-      if (face >= 0 && shades[at] === faces[face].shade) own.set(face, (own.get(face) ?? 0) + 1);
-    });
-
-    for (const face of shown(LARGEST, FIRST_VIEW)) expect(own.get(face) ?? 0, `face ${face}`).toBeGreaterThan(8);
-  });
-
-  it("draws one cube at the first view as pixel art would: a lozenge over two sides, lined all round", () => {
-    // a picture small enough to be looked at here: T the top, S the side to the left, E the side to the right, # the line
-    expect(drawn(CUBE, FIRST_VIEW, 20, 20)).toEqual(SMALL_CUBE);
-  });
 });
-
-/** One cube at the first view on twenty pixels by twenty: looked at, and kept. */
-const SMALL_CUBE: string[] = [
-  "....................",
-  "....................",
-  "....................",
-  "....................",
-  ".........##.........",
-  ".......##TT##.......",
-  ".....##TTTTTT##.....",
-  "....###TTTTTT###....",
-  "....#S###TT##EE#....",
-  "....#SSS###EEEE#....",
-  "....#SSSS#EEEEE#....",
-  "....#SSSS#EEEEE#....",
-  "....#SSSS#EEEEE#....",
-  "....#SSSS#EEEEE#....",
-  ".....##SS#EEE##.....",
-  ".......###E##.......",
-  ".........##.........",
-  "....................",
-  "....................",
-  "....................",
-];

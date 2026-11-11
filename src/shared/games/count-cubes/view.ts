@@ -1,15 +1,18 @@
 /**
- * The solid of 큐브 세기 as a picture from any side: which face of which
- * cube shows at each pixel, for a solid turned about its upright axis and
+ * The solid of 큐브 세기 as a picture from any side: where each face of each
+ * cube lies on the picture, for a solid turned about its upright axis and
  * looked at from more or less above. Pure arithmetic over plain numbers:
- * the screen (`src/client/games/count-cubes/screen.ts`) gives the pixels
- * their colours and turns the solid with the pointer.
+ * the screen (`src/client/games/count-cubes/screen.ts`) fills the faces in
+ * and turns the solid with the pointer.
  *
- * The way of drawing is that of pixel-art 3D: the solid is drawn small, one
- * sample to a pixel with nothing smoothed, and a line goes wherever two
- * neighbouring pixels belong to different faces. Every square face of every
- * cube is a face of its own here, so the line also falls between two cubes
- * that stand flush with each other: that is what lets them be counted.
+ * The picture is made of shapes, not of pixels: every square face of every
+ * cube is a four-cornered shape of its own, placed to a fraction of a pixel,
+ * and the screen draws them at the sharpness of the display it is on. So an
+ * edge is a straight line at any angle, and a solid turned a little moves a
+ * little: nothing is rounded to a pixel on the way, which is what made an
+ * earlier picture step along its edges and swim while it turned. A line goes
+ * round every face, so it also falls between two cubes that stand flush with
+ * each other: that is what lets them be counted.
  *
  * Design: design/games/count-cubes.md.
  */
@@ -38,14 +41,13 @@ export const PITCH_MIN = 15;
 export const PITCH_MAX = 45;
 /** Degrees the solid turns for each pixel the pointer drags the picture. */
 export const DEGREES_PER_PIXEL = 0.75;
-/** Half the width of a cube's top at the first view, in pixels: the largest it is drawn, and the smallest. Even, as every size is. */
-export const MAX_HALF = 16;
-export const MIN_HALF = 2;
+/** The longest a cube's edge is drawn, in pixels: a small solid does not fill the picture. */
+export const MAX_EDGE = 22;
 /** Pixels left clear at the picture's edges, for the line around the solid. */
 const MARGIN = 1;
 
-/** What shows at a pixel: nothing, a line where a face ends, the top of a cube, or one of its four sides. */
-export const SHADE = { none: 0, line: 1, top: 2, east: 3, south: 4, west: 5, north: 6 } as const;
+/** The way a face looks: the top of a cube, or one of its four sides. */
+export const SHADE = { top: 0, east: 1, south: 2, west: 3, north: 4 } as const;
 export type Shade = (typeof SHADE)[keyof typeof SHADE];
 
 /**
@@ -56,6 +58,9 @@ export type Shade = (typeof SHADE)[keyof typeof SHADE];
  */
 export interface Face {
   shade: Shade;
+  /** The column the cube stands in. */
+  row: number;
+  col: number;
   /** The corner. */
   x: number;
   y: number;
@@ -97,13 +102,12 @@ function topOf(solid: Solid): number {
 }
 
 /**
- * Half the width, in pixels, of a cube's top as the first view shows it: an
- * even number, so that at the first view the corners of every top fall on
- * whole pixels, as pixel art has them. The largest at which the solid stays
- * inside `width` by `height` from every side and at every tilt allowed, so
- * that turning it never changes its size.
+ * How long a cube's edge is drawn, in pixels: the longest at which the solid
+ * stays inside `width` by `height` from every side and at every tilt allowed,
+ * so that turning it never changes its size, and no longer than
+ * {@link MAX_EDGE}. Not a whole number: nothing in the picture is.
  */
-export function cubeSize(solid: Solid, width: number, height: number): number {
+export function cubeEdge(solid: Solid, width: number, height: number): number {
   // from the side its floor shows widest at: corner to corner
   const across = Math.hypot(solid.rows, solid.cols);
   const top = Math.max(1, topOf(solid));
@@ -111,8 +115,7 @@ export function cubeSize(solid: Solid, width: number, height: number): number {
   // most at the tilt where the two are in step, or at the end of the tilts allowed that is nearest to it.
   const worst = Math.min(PITCH_MAX, Math.max(PITCH_MIN, (Math.atan2(across, top) * 180) / Math.PI));
   const tall = across * Math.sin((worst * Math.PI) / 180) + top * Math.cos((worst * Math.PI) / 180);
-  const edge = Math.min((width - 2 * MARGIN) / across, (height - 2 * MARGIN) / tall);
-  return Math.max(MIN_HALF, Math.min(MAX_HALF, 2 * Math.floor(edge / Math.SQRT2 / 2)));
+  return Math.min(MAX_EDGE, (width - 2 * MARGIN) / across, (height - 2 * MARGIN) / tall);
 }
 
 /**
@@ -126,115 +129,80 @@ export function facesOf(solid: Solid): Face[] {
     for (let col = 0; col < solid.cols; col++) {
       const height = heightAt(solid, row, col);
       if (height <= 0) continue;
-      faces.push({ shade: SHADE.top, x: col, y: height, z: row, u: ALONG_X, v: ALONG_Z, n: UP });
+      faces.push({ shade: SHADE.top, row, col, x: col, y: height, z: row, u: ALONG_X, v: ALONG_Z, n: UP });
       for (let level = heightAt(solid, row, col + 1); level < height; level++) {
-        faces.push({ shade: SHADE.east, x: col + 1, y: level, z: row, u: ALONG_Z, v: UP, n: [1, 0, 0] });
+        faces.push({ shade: SHADE.east, row, col, x: col + 1, y: level, z: row, u: ALONG_Z, v: UP, n: [1, 0, 0] });
       }
       for (let level = heightAt(solid, row + 1, col); level < height; level++) {
-        faces.push({ shade: SHADE.south, x: col, y: level, z: row + 1, u: ALONG_X, v: UP, n: [0, 0, 1] });
+        faces.push({ shade: SHADE.south, row, col, x: col, y: level, z: row + 1, u: ALONG_X, v: UP, n: [0, 0, 1] });
       }
       for (let level = heightAt(solid, row, col - 1); level < height; level++) {
-        faces.push({ shade: SHADE.west, x: col, y: level, z: row, u: ALONG_Z, v: UP, n: [-1, 0, 0] });
+        faces.push({ shade: SHADE.west, row, col, x: col, y: level, z: row, u: ALONG_Z, v: UP, n: [-1, 0, 0] });
       }
       for (let level = heightAt(solid, row - 1, col); level < height; level++) {
-        faces.push({ shade: SHADE.north, x: col, y: level, z: row, u: ALONG_X, v: UP, n: [0, 0, -1] });
+        faces.push({ shade: SHADE.north, row, col, x: col, y: level, z: row, u: ALONG_X, v: UP, n: [0, 0, -1] });
       }
     }
   }
   return faces;
 }
 
-/** A pixel whose middle lies this close to a face's edge, in the face's own measure, still belongs to the face: no pixel falls between two faces that meet. */
-const ON_EDGE = 1e-7;
-/** Two faces as near as this to the eye at a pixel are level there: the one drawn first keeps it. */
-const LEVEL = 1e-7;
+/** A face that looks this little towards the eye is seen along its own plane, and does not show. */
+const EDGE_ON = 1e-9;
+
+/** A face as it lies on the picture. */
+export interface Shown {
+  /** Which face: its place in {@link facesOf}. */
+  face: number;
+  shade: Shade;
+  /**
+   * Its four corners, one after another round it: x and y of each, eight
+   * numbers, in pixels from the picture's top left corner and not rounded.
+   */
+  corners: readonly number[];
+}
 
 /**
- * The picture of `solid` from `view`, `width` by `height` pixels: for each
- * pixel, row after row, the number of the face that shows there (its place
- * in {@link facesOf}), or -1 where nothing does. The solid is in the middle
- * of the picture, and of two faces at a pixel the nearer to the eye shows.
+ * The picture of `solid` from `view` on `width` by `height` pixels: every
+ * face that looks towards the eye, the farthest first. Drawn in that order,
+ * each over what was drawn before it, what is nearer covers what it stands in
+ * front of. The middle of the box the solid stands in is the middle of the
+ * picture, from every side.
+ *
+ * The order goes by columns, from the far corner of the floor to the near
+ * one: a column can only stand in front of one that is behind it along the
+ * rows, along the columns, or both, and the eye is never below the floor.
+ * The faces of one column never cover each other.
  */
-export function faceMap(solid: Solid, view: View, width: number, height: number, faces: readonly Face[] = facesOf(solid)): Int32Array {
-  const map = new Int32Array(width * height).fill(-1);
-  const nearest = new Float64Array(width * height).fill(-Infinity);
+export function pictureOf(solid: Solid, view: View, width: number, height: number, faces: readonly Face[] = facesOf(solid)): Shown[] {
   const { yaw, pitch } = settled(view);
   const sinYaw = Math.sin((yaw * Math.PI) / 180);
   const cosYaw = Math.cos((yaw * Math.PI) / 180);
   const sinPitch = Math.sin((pitch * Math.PI) / 180);
   const cosPitch = Math.cos((pitch * Math.PI) / 180);
-  const scale = cubeSize(solid, width, height) * Math.SQRT2;
-  // Each level of cubes is a whole number of pixels high, so that every level is drawn like the next.
-  const rise = Math.max(1, Math.floor(scale * cosPitch + 1e-9));
+  const edge = cubeEdge(solid, width, height);
   // A step of the solid as it falls on the picture: to the right, downwards, and towards the eye.
-  const right = (x: number, z: number): number => (x * cosYaw - z * sinYaw) * scale;
-  const down = (x: number, y: number, z: number): number => (x * sinYaw + z * cosYaw) * sinPitch * scale - y * rise;
+  const right = (x: number, z: number): number => (x * cosYaw - z * sinYaw) * edge;
+  const down = (x: number, y: number, z: number): number => ((x * sinYaw + z * cosYaw) * sinPitch - y * cosPitch) * edge;
   const near = (x: number, y: number, z: number): number => (x * sinYaw + z * cosYaw) * cosPitch + y * sinPitch;
-  // The middle of the box the solid stands in is the middle of the picture, to the whole pixel: at the
-  // first view the corners of every cube then fall on whole pixels, and all its cubes are drawn alike.
-  const originX = Math.round(width / 2 - right(solid.cols / 2, solid.rows / 2));
-  const originY = Math.round(height / 2 - down(solid.cols / 2, topOf(solid) / 2, solid.rows / 2));
+  const originX = width / 2 - right(solid.cols / 2, solid.rows / 2);
+  const originY = height / 2 - down(solid.cols / 2, topOf(solid) / 2, solid.rows / 2);
 
+  const shown: Shown[] = [];
   faces.forEach((face, number) => {
     // a face that looks away from the eye, or along its line of sight, does not show
-    if (near(face.n[0], face.n[1], face.n[2]) <= LEVEL) return;
+    if (near(face.n[0], face.n[1], face.n[2]) <= EDGE_ON) return;
     const x0 = originX + right(face.x, face.z);
     const y0 = originY + down(face.x, face.y, face.z);
-    const d0 = near(face.x, face.y, face.z);
     const ux = right(face.u[0], face.u[2]);
     const uy = down(face.u[0], face.u[1], face.u[2]);
-    const ud = near(face.u[0], face.u[1], face.u[2]);
     const vx = right(face.v[0], face.v[2]);
     const vy = down(face.v[0], face.v[1], face.v[2]);
-    const vd = near(face.v[0], face.v[1], face.v[2]);
-    const area = ux * vy - uy * vx;
-    if (Math.abs(area) < 1e-9) return;
-    const fromX = Math.max(0, Math.floor(Math.min(x0, x0 + ux, x0 + vx, x0 + ux + vx)));
-    const toX = Math.min(width - 1, Math.ceil(Math.max(x0, x0 + ux, x0 + vx, x0 + ux + vx)));
-    const fromY = Math.max(0, Math.floor(Math.min(y0, y0 + uy, y0 + vy, y0 + uy + vy)));
-    const toY = Math.min(height - 1, Math.ceil(Math.max(y0, y0 + uy, y0 + vy, y0 + uy + vy)));
-    for (let py = fromY; py <= toY; py++) {
-      for (let px = fromX; px <= toX; px++) {
-        // where the middle of the pixel lies on the face, along each of its two edges: 0 to 1 is on it
-        const rx = px + 0.5 - x0;
-        const ry = py + 0.5 - y0;
-        const s = (rx * vy - ry * vx) / area;
-        const t = (ux * ry - uy * rx) / area;
-        if (s < -ON_EDGE || s > 1 + ON_EDGE || t < -ON_EDGE || t > 1 + ON_EDGE) continue;
-        const depth = d0 + s * ud + t * vd;
-        const at = py * width + px;
-        if (depth > nearest[at] + LEVEL) {
-          nearest[at] = depth;
-          map[at] = number;
-        }
-      }
-    }
+    shown.push({ face: number, shade: face.shade, corners: [x0, y0, x0 + ux, y0 + uy, x0 + ux + vx, y0 + uy + vy, x0 + vx, y0 + vy] });
   });
-  return map;
-}
-
-/**
- * The picture of `solid` from `view` as shades, a {@link SHADE} for each
- * pixel, row after row: each face in the shade of the way it looks, and a
- * line one pixel wide wherever a face ends: against another face, another
- * cube, or nothing.
- */
-export function shadesOf(solid: Solid, view: View, width: number, height: number): Uint8Array {
-  const faces = facesOf(solid);
-  const map = faceMap(solid, view, width, height, faces);
-  const shades = new Uint8Array(width * height);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const at = y * width + x;
-      const face = map[at];
-      if (face < 0) continue;
-      const rightOf = x + 1 < width ? map[at + 1] : -1;
-      const below = y + 1 < height ? map[at + width] : -1;
-      const leftOf = x > 0 ? map[at - 1] : -1;
-      const above = y > 0 ? map[at - width] : -1;
-      // the line is the last pixel of a face before the next one, and its first after nothing
-      shades[at] = rightOf !== face || below !== face || leftOf < 0 || above < 0 ? SHADE.line : faces[face].shade;
-    }
-  }
-  return shades;
+  // towards the eye the rows go up or down, and so do the columns: by the side the solid is looked at from
+  const rowsUp = cosYaw >= 0 ? 1 : -1;
+  const colsUp = sinYaw >= 0 ? 1 : -1;
+  // faces of one column stay in the order they came in
+  return shown.sort((a, b) => (faces[a.face].row - faces[b.face].row) * rowsUp || (faces[a.face].col - faces[b.face].col) * colsUp);
 }
