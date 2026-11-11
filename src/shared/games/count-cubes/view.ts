@@ -33,12 +33,13 @@ export interface View {
 /** The view a solid is first shown from. */
 export const FIRST_VIEW: View = { yaw: 45, pitch: 30 };
 /**
- * How far the eye can be lowered and raised, in degrees. From higher up the
- * floor of a large solid takes more of the picture's height than there is,
- * at a size its cubes can still be counted at.
+ * How far the eye can be lowered and raised, in degrees: from the level of
+ * the floor, where the solid is seen from the side and no top shows, to
+ * straight above it, where the tops alone show as a plan of the floor. Not
+ * below the floor: the solid has no faces underneath.
  */
-export const PITCH_MIN = 15;
-export const PITCH_MAX = 45;
+export const PITCH_MIN = 0;
+export const PITCH_MAX = 90;
 /** Degrees the solid turns for each pixel the pointer drags the picture. */
 export const DEGREES_PER_PIXEL = 0.75;
 /** The longest a cube's edge is drawn, in pixels: a small solid does not fill the picture. */

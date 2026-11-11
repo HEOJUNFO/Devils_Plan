@@ -167,8 +167,8 @@ describe("큐브 세기, the solid from any side: the view", () => {
     expect(settled(view(-30))).toEqual(view(330));
     expect(settled(view(370))).toEqual(view(10));
     expect(settled(view(360))).toEqual(view(0));
-    expect(settled(view(45, 5))).toEqual(view(45, PITCH_MIN));
-    expect(settled(view(45, 89))).toEqual(view(45, PITCH_MAX));
+    expect(settled(view(45, -20))).toEqual(view(45, PITCH_MIN));
+    expect(settled(view(45, 120))).toEqual(view(45, PITCH_MAX));
     expect(settled(FIRST_VIEW)).toEqual(FIRST_VIEW);
   });
 
@@ -189,6 +189,14 @@ describe("큐브 세기, the solid from any side: the view", () => {
     expect(dragged(FIRST_VIEW, 0, -500).pitch).toBe(PITCH_MIN);
   });
 
+  it("lets the eye go all the way down to the floor's level and all the way up over the solid", () => {
+    expect(PITCH_MIN).toBe(0);
+    expect(PITCH_MAX).toBe(90);
+    // a view from low down and one from high up are left as they are
+    expect(settled(view(45, 5))).toEqual(view(45, 5));
+    expect(settled(view(45, 85))).toEqual(view(45, 85));
+  });
+
   it("first shows the solid from its low corner", () => {
     expect(FIRST_VIEW).toEqual({ yaw: 45, pitch: 30 });
     expect(FIRST_VIEW.pitch).toBeGreaterThanOrEqual(PITCH_MIN);
@@ -201,7 +209,7 @@ describe("큐브 세기, the solid from any side: its size", () => {
     expect(cubeEdge(CUBE, WIDTH, HEIGHT)).toBe(MAX_EDGE);
     expect(cubeEdge(STAIRS, WIDTH, HEIGHT)).toBe(MAX_EDGE);
     // nine by nine and six high, in a picture 190 high: looked at, and kept
-    expect(cubeEdge(LARGEST, WIDTH, HEIGHT)).toBeCloseTo(14.2, 1);
+    expect(cubeEdge(LARGEST, WIDTH, HEIGHT)).toBeCloseTo(13.36, 2);
   });
 
   it("draws a solid too wide for the picture by its width, not its height", () => {
@@ -218,7 +226,7 @@ describe("큐브 세기, the solid from any side: its size", () => {
     ["a single cube", CUBE],
   ])("keeps %s inside the picture from every side and at every tilt allowed", (_what, solid) => {
     for (let yaw = 0; yaw < 360; yaw += 15) {
-      for (const pitch of [PITCH_MIN, FIRST_VIEW.pitch, 38, PITCH_MAX]) {
+      for (const pitch of [PITCH_MIN, 15, FIRST_VIEW.pitch, 38, 45, 65, 80, PITCH_MAX]) {
         const shapes = picture(solid, view(yaw, pitch));
         const { left, right, top, bottom } = reach(shapes);
 
@@ -231,7 +239,10 @@ describe("큐브 세기, the solid from any side: its size", () => {
   });
 
   it("draws the largest solid as large as the picture lets it: at the view it stands tallest from, it reaches the margins", () => {
-    const { top, bottom } = reach(picture(LARGEST, view(45, PITCH_MAX)));
+    // from the corner, and at the tilt where its floor seen from above and its height seen from the side add up to the most
+    const tallest = (Math.atan2(Math.hypot(9, 9), 6) * 180) / Math.PI;
+
+    const { top, bottom } = reach(picture(LARGEST, view(45, tallest)));
 
     expect(top).toBeCloseTo(1, 6);
     expect(bottom).toBeCloseTo(HEIGHT - 1, 6);
@@ -324,6 +335,30 @@ describe("큐브 세기, the solid from any side: what shows", () => {
     expect(shadesIn(STAIRS, view(270))).toEqual([SHADE.top, SHADE.west]);
   });
 
+  it("shows the tops alone from straight above: a plan of the floor, one square to a column", () => {
+    const shapes = picture(STAIRS, view(45, PITCH_MAX));
+
+    expect(shapes).toHaveLength(9);
+    expect(shadesIn(STAIRS, view(45, PITCH_MAX))).toEqual([SHADE.top]);
+    // every top is a square: as wide as it is high, at the size of a cube's edge
+    for (const shape of shapes) {
+      const { left, right, top, bottom } = reach([shape]);
+      expect(right - left).toBeCloseTo(MAX_EDGE * Math.SQRT2, 6);
+      expect(bottom - top).toBeCloseTo(MAX_EDGE * Math.SQRT2, 6);
+    }
+  });
+
+  it("shows no top from the level of the floor: the sides alone, each level as high as a cube's edge", () => {
+    const shapes = picture(STAIRS, view(0, PITCH_MIN));
+
+    expect(shadesIn(STAIRS, view(0, PITCH_MIN))).toEqual([SHADE.south]);
+    for (const shape of shapes) {
+      const { left, right, top, bottom } = reach([shape]);
+      expect(right - left).toBeCloseTo(MAX_EDGE, 6);
+      expect(bottom - top).toBeCloseTo(MAX_EDGE, 6);
+    }
+  });
+
   it("has a shape for every face that looks towards the eye, and each face once", () => {
     const shapes = picture(LARGEST, FIRST_VIEW);
 
@@ -344,8 +379,8 @@ describe("큐브 세기, the solid from any side: what shows", () => {
     const faces = facesOf(WALL);
     const columnOf = (shape: Shown): number => faces[shape.face].col;
 
-    const fromTallEnd = picture(WALL, view(270, PITCH_MIN)).map(columnOf);
-    const fromLowEnd = picture(WALL, view(90, PITCH_MIN)).map(columnOf);
+    const fromTallEnd = picture(WALL, view(270, 15)).map(columnOf);
+    const fromLowEnd = picture(WALL, view(90, 15)).map(columnOf);
 
     // column 0 is the tall one: from its own end it is drawn over the two low ones behind it, from the other end under them
     expect([...new Set(fromTallEnd)]).toEqual([2, 1, 0]);
@@ -357,8 +392,8 @@ describe("큐브 세기, the solid from any side: what shows", () => {
     const faces = facesOf(solid);
     const rowOf = (shape: Shown): number => faces[shape.face].row;
 
-    expect([...new Set(picture(solid, view(0, PITCH_MIN)).map(rowOf))]).toEqual([0, 1, 2]);
-    expect([...new Set(picture(solid, view(180, PITCH_MIN)).map(rowOf))]).toEqual([2, 1, 0]);
+    expect([...new Set(picture(solid, view(0, 15)).map(rowOf))]).toEqual([0, 1, 2]);
+    expect([...new Set(picture(solid, view(180, 15)).map(rowOf))]).toEqual([2, 1, 0]);
   });
 
   it.each([
@@ -371,7 +406,7 @@ describe("큐브 세기, the solid from any side: what shows", () => {
     // the first face found drawn under one it covers
     let wrong: string | undefined;
     for (let yaw = 0; yaw < 360; yaw += 7) {
-      for (const pitch of [PITCH_MIN, FIRST_VIEW.pitch, PITCH_MAX]) {
+      for (const pitch of [PITCH_MIN, 15, FIRST_VIEW.pitch, 60, 80, PITCH_MAX]) {
         const from = view(yaw, pitch);
         const order = picture(solid, from).map((shape) => shape.face);
         order.forEach((behind, drawnAt) => {
