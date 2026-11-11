@@ -633,6 +633,11 @@ button.choice[aria-pressed="true"] {
   opacity: 1;
 }
 
+/* Asked to press again, the button is wider than the room the voice controls leave it. */
+#frame.leaving #voice.in-game {
+  visibility: hidden;
+}
+
 #rules {
   position: absolute;
   left: 8px;

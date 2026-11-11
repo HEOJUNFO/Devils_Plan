@@ -233,6 +233,7 @@ function disarmLeave(): void {
   if (leaveArmed !== null) clearTimeout(leaveArmed);
   leaveArmed = null;
   leaveGameButton.textContent = LEAVE_TEXT;
+  frame.classList.remove("leaving");
 }
 
 /**
@@ -888,6 +889,8 @@ leaveGameButton.addEventListener("click", () => {
     return;
   }
   leaveGameButton.textContent = LEAVE_CONFIRM_TEXT;
+  // the longer words reach over where the voice controls sit beside the button: they give way meanwhile
+  frame.classList.add("leaving");
   leaveArmed = setTimeout(disarmLeave, LEAVE_CONFIRM_MS);
 });
 
