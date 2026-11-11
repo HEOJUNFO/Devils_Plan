@@ -24,7 +24,7 @@ local server (`http://localhost:5273`) the same day, and both do it.
 |---|---|---|
 | a phone's screen | `Emulation.setDeviceMetricsOverride` through `page.cdp()` | `bsk emulate --width … --height … --dpr … --mobile --touch`, or a preset (`--device iphone-14`) |
 | what the page then says | 750 by 340, ratio 3, `(pointer: coarse)` yes, `(hover: hover)` no, 5 touch points | the same, 1 touch point |
-| a finger | `Input.dispatchTouchEvent` through `page.cdp()`: the page gets `pointerdown` and `pointerup` of type `touch`, `touchstart`, `touchend`, `click` | not tried: whether its clicks arrive as touch is not known |
+| a finger | `Input.dispatchTouchEvent` through `page.cdp()`: the page gets `pointerdown` and `pointerup` of type `touch`, `touchstart`, `touchend`, `click` | none of its own: `bsk click` reaches the page as mouse events, on an element it lays over the page (`BROWSER-SKILL-OVERLAY`), and a canvas under it hears nothing. A finger is stood in for by `PointerEvent`s of type `touch` made in the page with `bsk evaluate` |
 | how long the phone lasts | one script: the next script is a desktop again (1512 by 838, ratio 2) unless it sets the phone first | the tab, for the session |
 | a screenshot of 750 by 340 at 3x | 750 by 340 | 2250 by 1020 |
 | which browser | Ego Lite | the user's own Chrome, in an Agent Window (`bsk browsers` listed two; a session names one with `--browser`) |
@@ -77,6 +77,41 @@ bsk session stop $SID
 750 by 340 is a phone of 844 by 390 held sideways in Safari, with the
 browser's bars and the notch taken off. It is the size the first checks were
 made at, not the only one to look at.
+
+## What the two tools were found to do
+
+*Found while the phone's screens were looked at, 2026-11-12. The assistant's
+notes, not the user's words.*
+
+ego-browser:
+
+- **A question the browser itself asks stops the job.** A press that asks for
+  the microphone brings up the browser's own prompt; the tool then hands its
+  window to the user and says to wait for them. A script that presses its way
+  through a game is kept off "음성 채팅 켜기", or the page is opened with
+  `?fakemic=1`.
+- Once, for about a minute, presses reached the page as mouse and click events
+  only, and a game's screen did not answer. The same presses made again did.
+  Cause not found.
+
+browser-skill:
+
+- **A new session's first `navigate` takes no `--context`.** `cooperate sync`
+  refuses a tab that has no page yet ("Page frames cannot be observed"), and
+  `emulate` needs the sync of a page that has loaded.
+- **The page is loaded again after `emulate`.** The page decides once, as it
+  loads, whether it is played with a finger.
+- **Its tab is not in front, and the page's frames stand still** until a
+  screenshot is taken. A game's screen takes its presses in at the next frame:
+  one press, one screenshot, or two presses are read as one.
+- **A made-up finger is not a browser's.** `setPointerCapture` refuses the
+  pointer id of an event made in the page, so the handler that asks for it
+  ends there with an error a real finger never causes; a drag still turns
+  what it turns, inside the screen.
+- `document.querySelector("#frame canvas")` is the lobby's picture, not the
+  game: the game's screen is `#table`.
+- `bsk emulate --off` gives the tab back its own size: the same session then
+  looks at the page with a mouse.
 
 ## What neither of them is
 

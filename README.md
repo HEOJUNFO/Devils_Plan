@@ -19,6 +19,7 @@
 
 설치 없이 브라우저에서 엽니다. 로비에서 열린 방을 골라 들어가거나, 방을
 만들거나, 친구가 준 방 코드를 넣으면 됩니다. 사람끼리 하는 게임만 제공합니다.
+컴퓨터에서는 마우스와 키보드로, 휴대폰에서는 가로로 돌려 손가락으로 합니다.
 
 방송에서 가져온 것은 **게임의 규칙과 게임 이름**뿐입니다. 방송의 제목 로고,
 출연자, 세트, 화면 구성은 쓰지 않습니다. 방송사·제작사와 관계없는 개인
@@ -107,13 +108,14 @@
 - **재접속**: 새로고침하거나 연결이 끊겨도 같은 자리로 돌아옵니다. 아무 말 없이 죽은 연결(와이파이에서 데이터로 넘어간 휴대폰 같은)은 무언가 누른 뒤 8초쯤이면 알아채고 새로 잇습니다
 - **자리 비움 처리**: 끊긴 사람의 차례는 30초 뒤 자동으로 넘어가고, 3분 동안 돌아오지 않으면 자리를 반납합니다. 게임하던 사람이 모두 끊긴 채 다른 사람이 방에서 기다리면 그 판은 3분 뒤 정리됩니다
 - **차례 제한 시간**: 차례가 있는 게임(러시안 룰렛)은 방에서 없음, 60초, 120초 중에 고릅니다 (공개 방은 60초로 시작)
+- **휴대폰**: 가로 화면에서 일곱 게임을 모두 손가락으로 할 수 있습니다. 화면과 버튼을 휴대폰에 맞게 키우고, 게임 중에는 왼쪽 위 "메뉴"에 규칙, 소리, 음성, 전체 화면, 나가기를 모았습니다. 게임하는 동안은 화면이 꺼지지 않게 하고, 세로로 들면 가로로 돌려 달라고 안내합니다. 크롬의 휴대폰 흉내로 확인한 것이고, 실제 휴대폰(사파리, 화면 키보드)에서는 아직 확인하지 못했습니다
 
 ## 기술 구성
 
 | 부분 | 쓰는 것 |
 |---|---|
 | 서버 | Cloudflare Workers + Durable Objects, [PartyServer](https://github.com/cloudflare/partykit/tree/main/packages/partyserver) |
-| 클라이언트 | TypeScript, Canvas (480×270 픽셀 화면을 정수 배율로), [pixelfx](https://github.com/patch-gg/pixelfx) |
+| 클라이언트 | TypeScript, Canvas (480×270 픽셀 화면을 마우스에서는 정수 배율로, 손가락으로 누르는 기기에서는 화면에 꽉 차게), [pixelfx](https://github.com/patch-gg/pixelfx) |
 | 빌드 | Vite + Cloudflare Vite 플러그인 |
 | 테스트 | Vitest (Workers 런타임에서 돌리는 통합 테스트 포함) |
 
@@ -166,8 +168,10 @@ src/
     game/                 #   러시안 룰렛 규칙, 기본 봇
     games/<게임 id>/       #   네모 세기, 잔디 깔기, 큐브 세기, 기억 포커, 무거운 13, 미스터리 거래소의 규칙과 설정
     protocol.ts           #   소켓 메시지
+    frame.ts              #   게임 화면을 기기 화면에 놓는 크기와 자리, 손가락이 버튼 둘레까지 닿는 범위
     *-config.json         #   방, 채팅, 음성, 방 목록의 설정값
   client/                 # 브라우저: 로비, 대기실, 채팅, 음성
+    touch.ts              #   손가락으로 하는 기기인지, 그때 키 이름 대신 보여 줄 문구
     game/                 #   러시안 룰렛 화면, 공통 그리기
     games/<게임 id>/       #   게임별 화면
 tests/
@@ -190,7 +194,7 @@ production/qa/evidence/   # 화면을 바꿀 때마다 남긴 스크린샷
 
 1. `src/shared/games.json` 에 id, 이름, 설명, 인원을 추가
 2. `src/shared/games/<id>/` 에 규칙(`rules.ts`)과 호스트(`host.ts`)를 만들고 `src/shared/hosts.ts` 에 등록
-3. `src/client/games/<id>/screen.ts` 에 화면을, `words.ts` 에 그 화면의 문구(한국어와 영어)와 규칙 시트를 만들고 `src/client/games/index.ts` 에 등록
+3. `src/client/games/<id>/screen.ts` 에 화면을, `words.ts` 에 그 화면의 문구(한국어와 영어)와 규칙 시트를 만들고 `src/client/games/index.ts` 에 등록. 키로 하는 일은 누를 곳도 함께 두고, 키 이름이 들어가는 문구는 손가락용 문구를 같이 적습니다 (`src/client/touch.ts` 의 `byInput`, `keyed`)
 4. `tests/unit/<id>/`, `tests/integration/` 에 테스트, `design/games/<id>.md` 에 규칙의 출처
 
 방(`src/server/room.ts`)은 게임 안을 들여다보지 않고 호스트에 맡기므로, 방
