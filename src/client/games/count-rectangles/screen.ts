@@ -28,6 +28,7 @@ import { FIGURE_COUNT, figureRects } from "../../game/figures";
 import { C } from "../../game/palette";
 import * as fxlib from "../../game/pixelfx.js";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
+import { LIST_PITCH, LOG_PITCH, PANEL_WIDTH, isCrowded, panelLayout, underList } from "../panel";
 
 /** What the room sends about a game of 네모 세기. */
 export type RectMessage = Extract<ServerMessage, { type: "game"; game: "count-rectangles" }>;
@@ -44,6 +45,8 @@ export interface RectHandlers {
   voice(slot: number): VoiceMark;
   /** The rules sheet covers the whole screen, or has been put away. */
   covered(covered: boolean): void;
+  /** The game has more teams than the column lists above its moves, or no longer has. */
+  crowded(crowded: boolean): void;
 }
 
 /** The game screen. */
@@ -82,9 +85,17 @@ const NAMES_Y = 202;
 /** The widest a name is drawn under a figure and in the lists, in pixels. */
 const NAME_WIDTH = 46;
 const LIST_NAME_WIDTH = 52;
-/** The log on screen: where it starts, under the row the page keeps for its tabs, and its rows. */
-const LOG_TOP = 106;
-const LOG_ROWS = 8;
+/**
+ * The most players whose names are written under their figures. With more,
+ * the figures stand shoulder to shoulder and a name has no room: only the
+ * player's own is written there, the rest are in the list and in what a
+ * player says.
+ */
+const NAMED_MOST = 8;
+/** The most rows of teams the column lists above its moves: a team takes a row, players alone go two to a row. */
+const UNIT_ROWS = 3;
+/** In a crowded game: the room kept under the list for the two lines that say what it takes to win. */
+const TERMS_ROOM = 28;
 /** Seconds each rectangle of a closed problem is lit before the next. */
 const REVEAL_SECONDS = 0.7;
 /** With this many seconds or fewer to answer, the player's own count is ticked aloud. */
@@ -131,6 +142,35 @@ const ERASE_RECT: [number, number, number, number] = [380, 242, 30, 24];
 const SAY_RECT: [number, number, number, number] = [414, 242, 62, 24];
 const AGAIN_RECT: [number, number, number, number] = [386, 225, 90, 15];
 const LOBBY_RECT: [number, number, number, number] = [386, 250, 90, 15];
+
+/**
+ * Where each unit goes in the list: its row, and for a player alone which
+ * half of the row. A team takes a whole row; players alone go two to a row.
+ */
+function unitPlaces(units: readonly { members: readonly number[] }[]): { row: number; half: number }[] {
+  const places: { row: number; half: number }[] = [];
+  let row = 0;
+  let half = 0;
+  for (const unit of units) {
+    const team = unit.members.length > 1;
+    if (team && half === 1) {
+      row++;
+      half = 0;
+    }
+    places.push({ row, half: team ? 0 : half });
+    if (team || half === 1) {
+      row++;
+      half = 0;
+    } else half = 1;
+  }
+  return places;
+}
+
+/** How many rows the list of `units` takes. */
+function unitRows(units: readonly { members: readonly number[] }[]): number {
+  const places = unitPlaces(units);
+  return places.length === 0 ? 0 : places[places.length - 1].row + 1;
+}
 
 interface Bubble {
   text: string;
@@ -316,6 +356,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     receivedAt = performance.now();
     pending = false;
     offline = false;
+    handlers.crowded(isCrowded(unitRows(message.view.units), UNIT_ROWS));
     if (buzzed) {
       const view = message.view;
       const me = mine();
@@ -541,12 +582,18 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     if (latest === null) return;
     const view = latest.view;
     const me = mine();
+    const count = lineUp().length;
+    // each player's share of the row: a name is cut to it, and past a number of players is left out
+    const share = Math.floor(SCENE_W / Math.max(1, count));
+    const named = count <= NAMED_MOST;
+    const nameRoom = Math.min(NAME_WIDTH, share - 3);
+    const gap = Math.min(14, Math.floor(share / 2));
     view.units.forEach((unit, index) => {
       const xs = unit.members.map(standsAt);
       const middle = Math.round((xs[0] + xs[xs.length - 1]) / 2);
       if (unit.members.length > 1) {
         // a team stands together, joined underneath
-        pen.px(xs[0] - 14, NAMES_Y + 14, xs[xs.length - 1] - xs[0] + 28, 1, C.tealD);
+        pen.px(xs[0] - gap, NAMES_Y + 14, xs[xs.length - 1] - xs[0] + gap * 2, 1, C.tealD);
       }
       // right answers so far, and how the unit stands in this problem
       for (let i = 0; i < latest!.rules.winsNeeded; i++) {
@@ -558,30 +605,51 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         const hop = hops.get(player) ?? 0;
         const lift = hop > 0 ? Math.round(Math.sin((hop / 0.35) * Math.PI) * 5) : 0;
         pen.rects(figureRects(player % FIGURE_COUNT, false, 1), x, FIGURES_Y - lift);
-        const name = pen.fit(info?.nick ?? "", NAME_WIDTH);
-        const nx = x - Math.round(pen.width(name) / 2);
         const gone = info !== undefined && (info.left || !info.connected);
-        pen.txt(name, nx, NAMES_Y, gone ? C.dim : me?.player === player ? C.amber : C.bone);
         const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
-        if (voice !== "out") drawVoiceMark(pen, nx - VOICE_MARK_W, NAMES_Y, voice, time);
+        if (named || me?.player === player) {
+          // in a crowd the player's own name is the only one: it may be wider than its share, and is kept inside the scene
+          const name = pen.fit(info?.nick ?? "", named ? nameRoom : NAME_WIDTH);
+          const width = pen.width(name);
+          const nx = Math.max(1 + (voice !== "out" ? VOICE_MARK_W : 0), Math.min(SCENE_W - 1 - width, x - Math.round(width / 2)));
+          pen.txt(name, nx, NAMES_Y, gone ? C.dim : me?.player === player ? C.amber : C.bone);
+          if (voice !== "out") drawVoiceMark(pen, nx - VOICE_MARK_W, NAMES_Y, voice, time);
+        } else if (voice !== "out") {
+          // nameless, the mark of the voice chat stands under the figure by itself
+          drawVoiceMark(pen, x - 3, NAMES_Y, voice, time);
+        }
       });
       // what one of them has just said takes this place for as long as it is on show
       if (unit.members.some((player) => said.has(player))) return;
       if (unit.place > 0) {
-        pen.px(middle - 12, SAID_Y + 1, 25, 13, C.amberD);
-        pen.px(middle - 11, SAID_Y + 2, 23, 11, C.ink);
-        pen.txt(`${unit.place}위`, middle + 1, SAID_Y + 2, C.amber, "center");
+        // the place: with its word where there is room for it
+        const words = named ? `${unit.place}위` : `${unit.place}`;
+        const w = pen.width(words) + 5;
+        pen.px(middle - Math.floor(w / 2), SAID_Y + 1, w, 13, C.amberD);
+        pen.px(middle - Math.floor(w / 2) + 1, SAID_Y + 2, w - 2, 11, C.ink);
+        pen.txt(words, middle + 1, SAID_Y + 2, C.amber, "center");
       } else if (view.wrong.includes(index) && view.outcome === null) {
-        pen.txt("오답", middle + 1, SAID_Y + 2, C.crim, "center");
+        if (named) pen.txt("오답", middle + 1, SAID_Y + 2, C.crim, "center");
+        else {
+          // a cross, where the word has no room
+          for (let i = 0; i < 7; i++) {
+            pen.px(middle - 3 + i, SAID_Y + 5 + i, 1, 1, C.crim);
+            pen.px(middle + 3 - i, SAID_Y + 5 + i, 1, 1, C.crim);
+          }
+        }
       }
     });
-    // what was said, over the head of who said it
+    // what was said, over the head of who said it: in a crowd with the name of who it was
     for (const [player, bubble] of said) {
-      const x = standsAt(player);
-      const w = Math.max(15, pen.width(bubble.text) + 8);
-      pen.px(x - Math.ceil(w / 2) - 1, SAID_Y - 1, w + 2, 17, C.ink);
-      pen.px(x - Math.ceil(w / 2), SAID_Y, w, 15, C.bone);
-      pen.txt(bubble.text, x, SAID_Y + 1, bubble.colour === C.amber ? C.ink : bubble.colour === C.teal ? C.tealD : C.crimD, "center");
+      const words = named ? bubble.text : `${pen.fit(nickOf(player), NAME_WIDTH)} ${bubble.text}`;
+      const w = Math.max(15, pen.width(words) + 8);
+      const half = Math.ceil(w / 2);
+      const x = Math.max(half + 2, Math.min(SCENE_W - half - 2, standsAt(player)));
+      pen.px(x - half - 1, SAID_Y - 1, w + 2, 17, C.ink);
+      pen.px(x - half, SAID_Y, w, 15, C.bone);
+      pen.txt(words, x, SAID_Y + 1, bubble.colour === C.amber ? C.ink : bubble.colour === C.teal ? C.tealD : C.crimD, "center");
+      // a tail down to the speaker, who may not be right under a bubble kept inside the scene
+      if (!named) pen.px(standsAt(player), SAID_Y + 16, 1, 5, C.bone);
     }
     // a chat line starts at the same height and runs down over its speaker, never up over the board
     for (const [player, line] of speech) {
@@ -677,41 +745,32 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       const seconds = Math.ceil(problem / 1000);
       pen.txt(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`, W - 5, 3, seconds <= 15 ? C.crim : C.boneD, "right");
     }
-    pen.px(x, 16, 168, 1, C.steelDD);
     // the units: a team takes a whole row, players alone go two to a row
-    let row = 0;
-    let half = 0;
+    const places = unitPlaces(view.units);
+    const rows = unitRows(view.units);
+    const layout = panelLayout(rows, { room: UNIT_ROWS, listRows: rows, below: TERMS_ROOM });
+    // in a crowded game the page's tabs are where the line under the heading would be
+    if (!layout.crowded) pen.px(x, 16, PANEL_WIDTH, 1, C.steelDD);
     view.units.forEach((unit, index) => {
       const team = unit.members.length > 1;
-      if (team && half === 1) {
-        row++;
-        half = 0;
-      }
-      const ux = x + (team ? 0 : half * 86);
-      const uy = 19 + row * 13;
+      const ux = x + places[index].half * 86;
+      const uy = layout.listTop + places[index].row * LIST_PITCH;
       const name = unitName(index, team ? 104 : LIST_NAME_WIDTH);
       const colour = unit.place > 0 ? C.amber : view.wrong.includes(index) && view.outcome === null ? C.dim : mine()?.unit === index ? C.bone : C.boneD;
       pen.txt(name, ux, uy, colour);
       const px = ux + (team ? 108 : LIST_NAME_WIDTH + 4);
       if (unit.place > 0) pen.txt(`${unit.place}위`, px, uy, C.amber);
       else for (let i = 0; i < latest!.rules.winsNeeded; i++) pen.px(px + i * 8, uy + 4, 6, 5, i < unit.wins ? C.brass : C.steelDD);
-      if (team) {
-        row++;
-        half = 0;
-      } else if (half === 1) {
-        row++;
-        half = 0;
-      } else {
-        half = 1;
-      }
     });
-    pen.px(x, 60, 168, 1, C.steelDD);
+    // under the list: where it ends in a crowded game, where the longest ends otherwise
+    const under = layout.crowded ? underList(layout) : 60;
+    pen.px(x, under, PANEL_WIDTH, 1, C.steelDD);
     // what it takes to win and to end; how the game stands this moment is said in the bar, by the buzzer
-    pen.txt(`${latest.rules.winsNeeded}번 맞히면 승리 · H 규칙`, x, 63, C.boneD);
-    pen.txt(`${view.units.length}팀 중 ${view.winnersNeeded}팀이 이기면 끝`, x, 76, C.boneD);
+    pen.txt(`${latest.rules.winsNeeded}번 맞히면 승리 · H 규칙`, x, under + 3, C.boneD);
+    pen.txt(`${view.units.length}팀 중 ${view.winnersNeeded}팀이 이기면 끝`, x, under + 16, C.boneD);
     const lines = logLines();
-    const from = Math.max(0, lines.length - LOG_ROWS);
-    for (let i = from; i < lines.length; i++) pen.txt(lines[i][0], x, LOG_TOP + (i - from) * 14, lines[i][1]);
+    const from = Math.max(0, lines.length - layout.logRows);
+    for (let i = from; i < lines.length; i++) pen.txt(lines[i][0], x, layout.logTop + (i - from) * LOG_PITCH, lines[i][1]);
   }
 
   function button(rect: readonly [number, number, number, number], label: string, sub: string, lit: boolean, live: boolean): void {

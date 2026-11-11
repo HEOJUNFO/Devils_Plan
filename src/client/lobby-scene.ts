@@ -2,7 +2,8 @@
  * The lobby's picture: the back room with its table, drawn as the game draws
  * it. Before a room is joined the chairs are empty; in a room each player sits
  * in the figure of their slot, so everyone sees who is there before the game
- * starts.
+ * starts. A room with more players than a table seats is drawn as rows of
+ * chairs instead, one for each place the room has.
  */
 import type { LobbyView } from "../shared/lobby";
 import type { VoiceMark } from "../shared/voice";
@@ -25,6 +26,7 @@ import {
   speechLines,
   speechSeconds,
   VOICE_MARK_W,
+  type SeatLayout,
 } from "./game/draw";
 import { FIGURE_COUNT } from "./game/figures";
 import { C } from "./game/palette";
@@ -42,7 +44,62 @@ export interface LobbyScene {
 /** The widest a name is drawn beside a seat, in pixels. */
 const NAME_WIDTH = 66;
 /** What each team's tag is written in. */
-const TEAM_COLOURS = [C.teal, C.crim];
+const TEAM_COLOURS = [C.teal, C.crim, "#7aa2ff", "#c58bff", "#6fcf5a"];
+/** The chairs a table has when nobody needs more, and the most it seats. */
+const TABLE_SEATS = 6;
+const TABLE_MOST = 8;
+/**
+ * The rows of chairs: how many to a row, how far apart, where the first chair
+ * of a row stands (a little left of the middle of its share, which leaves the
+ * last chair room for the tag to its right), where the first row starts, and
+ * the tallest a row is drawn.
+ */
+const HALL_COLS = 4;
+const HALL_PITCH = 76;
+const HALL_LEFT = 36;
+const HALL_TOP = 27;
+const HALL_ROW_MOST = 56;
+/** The widest a name and its marks are together under a chair, in pixels. */
+const HALL_NAME_ROOM = 74;
+/** How wide the host's mark is, with the gap before it. */
+const HOST_MARK_W = 29;
+/** How far the lamp's light reaches over the rows of chairs, against 1 over a table: nobody sits in the dark. */
+const HALL_LIGHT = 1.6;
+/** In a row of chairs: how far under the top of its row a figure's shoulders are, and its name. */
+const HALL_FIGURE = 21;
+const HALL_NAME = 36;
+
+/** A place in the picture: whose it is, where, and whether it is one of a row of chairs. */
+interface Place {
+  slot: number;
+  at: SeatLayout;
+  row: boolean;
+}
+
+/**
+ * Where place `slot` of `seats` is in the rows of chairs: left to right, the
+ * first row at the back. The name goes under the chair.
+ */
+function hallLayout(slot: number, seats: number): SeatLayout {
+  const rows = Math.ceil(seats / HALL_COLS);
+  const height = Math.min(HALL_ROW_MOST, Math.floor((BAR_Y - HALL_TOP) / rows));
+  const x = HALL_LEFT + (slot % HALL_COLS) * HALL_PITCH;
+  const top = HALL_TOP + Math.floor(slot / HALL_COLS) * height;
+  const label = { x, y: top + HALL_NAME, align: "center" as const };
+  return { x, y: top + HALL_FIGURE, back: false, side: x < CX ? -1 : 1, label, bubble: { x, y: top + HALL_NAME } };
+}
+
+/**
+ * How many places the picture shows for a room of `capacity` whose highest
+ * slot in use is `highest` (-1 for nobody), and whether as rows of chairs:
+ * a table of six, or of up to eight when that many are needed, and past that
+ * every place the room has.
+ */
+function placesFor(capacity: number, highest: number): { seats: number; rows: boolean } {
+  const needed = Math.max(TABLE_SEATS, highest + 1);
+  if (needed > TABLE_MOST) return { seats: Math.max(capacity, needed), rows: true };
+  return { seats: Math.min(Math.max(capacity, highest + 1), needed), rows: false };
+}
 
 /**
  * Draws the lobby's picture on `canvas`, which must be the size of the game's
@@ -72,43 +129,60 @@ export function createLobbyScene(
   function draw(): void {
     const time = performance.now() / 1000 - started;
     const sway = Math.sin(time * 1.3) * 3;
-    const seats = lobby?.maxPlayers ?? FIGURE_COUNT;
     const me = lobby?.you ?? 0;
     const bySlot = new Map((lobby?.players ?? []).map((player) => [player.slot, player]));
-    const places = Array.from({ length: seats }, (_, slot) => ({ slot, at: seatLayout((((slot - me) % seats) + seats) % seats, seats) }));
+    const { seats, rows } = placesFor(lobby?.maxPlayers ?? TABLE_SEATS, Math.max(-1, ...bySlot.keys()));
+    // at a table the viewer sits nearest; in the rows everyone keeps the chair of their slot
+    const places: Place[] = Array.from({ length: seats }, (_, slot) => ({
+      slot,
+      at: rows ? hallLayout(slot, seats) : seatLayout((((slot - me) % seats) + seats) % seats, seats),
+      row: rows,
+    }));
 
     drawRoom(pen);
     drawLamp(pen, sway);
-    const seat = (place: (typeof places)[number]): void => {
+    const seat = (place: Place): void => {
       const player = bySlot.get(place.slot);
       if (player) drawFigure(pen, place.slot % FIGURE_COUNT, place.at.x, place.at.y, place.at.back, place.at.side);
       else drawChair(pen, place.at.x, place.at.y, place.at.back);
     };
     for (const place of places) if (!place.at.back) seat(place);
-    drawTable(pen);
-    if (look.device) drawDevice(pen, seats, time * 0.25, time * 0.25, () => [null, null]);
+    if (!rows) {
+      drawTable(pen);
+      if (look.device) drawDevice(pen, seats, time * 0.25, time * 0.25, () => [null, null]);
+    }
     for (const place of places) if (place.at.back) seat(place);
-    light.draw(pen, CX + sway, CY - 4, 1);
+    light.draw(pen, CX + sway, CY - 4, rows ? HALL_LIGHT : 1);
 
     if (lobby === null) return;
     const host = lobby.host;
     for (const place of places) {
       const player = bySlot.get(place.slot);
       if (!player) continue;
-      const name = pen.fit(player.nick, NAME_WIDTH);
       const lead = place.slot === host;
-      const width = pen.width(name) + (lead ? 29 : 0);
-      const x = place.at.label.align === "center" ? place.at.label.x - Math.round(width / 2) : place.at.label.x;
       const y = place.at.label.y;
+      if (place.row) {
+        // under the chair: the name with its marks, cut to the chair's share of the row; the team goes beside the figure
+        const mark = voice(place.slot);
+        const marks = (lead ? HOST_MARK_W : 0) + (mark !== "out" ? VOICE_MARK_W : 0);
+        const name = pen.fit(player.nick, Math.min(NAME_WIDTH, HALL_NAME_ROOM - marks));
+        const width = pen.width(name) + (lead ? HOST_MARK_W : 0);
+        const x = place.at.label.x - Math.round((width - (mark !== "out" ? VOICE_MARK_W : 0)) / 2);
+        pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
+        if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
+        if (lead) drawHostMark(x + width - 26, y);
+        const beside = place.at.y - 6;
+        if (!player.connected) pen.txt("끊김", place.at.x + 15, beside, C.dim);
+        else if (player.team > 0) pen.txt(`팀 ${player.team}`, place.at.x + 15, beside, TEAM_COLOURS[(player.team - 1) % TEAM_COLOURS.length]);
+        continue;
+      }
+      const name = pen.fit(player.nick, NAME_WIDTH);
+      const width = pen.width(name) + (lead ? HOST_MARK_W : 0);
+      const x = place.at.label.align === "center" ? place.at.label.x - Math.round(width / 2) : place.at.label.x;
       pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
       const mark = voice(place.slot);
       if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
-      if (lead) {
-        // the host starts the game
-        pen.px(x + width - 26, y, 26, 13, C.amberD);
-        pen.px(x + width - 25, y + 1, 24, 11, C.ink);
-        pen.txt("방장", x + width - 25, y + 1, C.amber);
-      }
+      if (lead) drawHostMark(x + width - 26, y);
       if (!player.connected) pen.txt("끊김", place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
       else if (player.team > 0) {
         // the team chosen for the next game, each team in its own colour
@@ -124,6 +198,13 @@ export function createLobbyScene(
       if (line.until <= time || !bySlot.has(place.slot)) speech.delete(place.slot);
       else drawSpeech(pen, place.at, line.lines);
     }
+  }
+
+  /** The mark of the host, who starts the game: its top left at `x`, `y`. */
+  function drawHostMark(x: number, y: number): void {
+    pen.px(x, y, 26, 13, C.amberD);
+    pen.px(x + 1, y + 1, 24, 11, C.ink);
+    pen.txt("방장", x + 1, y + 1, C.amber);
   }
 
   function frame(): void {

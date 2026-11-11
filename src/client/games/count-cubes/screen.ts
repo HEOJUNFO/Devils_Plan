@@ -11,9 +11,10 @@ import { heightAt, type CubesEvent, type Solid } from "../../../shared/games/cou
 import { typeAnswer } from "../../../shared/games/count-rectangles/typing";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
-import { BAR_Y, H, PANEL_X, Pen, SCENE_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
+import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
+import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 
 /** What the room sends about a game of 큐브 세기. */
 export type CubesMessage = Extract<ServerMessage, { type: "game"; game: "count-cubes" }>;
@@ -30,6 +31,8 @@ export interface CubesHandlers {
   voice(slot: number): VoiceMark;
   /** The rules sheet covers the whole screen, or has been put away. */
   covered(covered: boolean): void;
+  /** The game has more players than the column lists one to a row, or no longer has. */
+  crowded(crowded: boolean): void;
 }
 
 /** The game screen. */
@@ -49,9 +52,6 @@ const PICTURE = { x: 8, y: 24, w: 288, h: 190 };
 /** Half the width of a cube's top, in pixels: the largest and the smallest it is drawn. Even, so that its edges fall on whole pixels. */
 const MAX_CUBE = 16;
 const MIN_CUBE = 6;
-/** The log on screen: where it starts, under the row the page keeps for its tabs, and its rows. */
-const LOG_TOP = 106;
-const LOG_ROWS = 8;
 /** The widest a name is drawn in the list of players, in pixels. */
 const NAME_WIDTH = 62;
 /** With this many seconds or fewer of the problem left, the clock turns red. */
@@ -290,6 +290,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     receivedAt = performance.now();
     pending = false;
     offline = false;
+    handlers.crowded(isCrowded(message.players.length));
     if (picture === null || picture.of !== message.startedAt) picture = { of: message.startedAt, canvas: pictureOf(message.view.solid) };
   }
 
@@ -430,36 +431,66 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       const words = `${Math.floor(all / 60)}:${`${all % 60}`.padStart(2, "0")}`;
       pen.txt(words, W - 5, 3, all <= HURRY_FROM ? C.crim : C.boneD, "right");
     }
-    pen.px(x, 16, 168, 1, C.steelDD);
     const order = listOrder();
-    const pitch = order.length > 4 ? 11 : 13;
+    const layout = panelLayout(order.length);
+    // in a crowded game the page's tabs are where the line under the heading would be
+    if (!layout.crowded) pen.px(x, 16, PANEL_WIDTH, 1, C.steelDD);
     order.forEach((player, at) => {
-      const y = 19 + at * pitch;
+      const { dx, y } = entryAt(layout, at);
+      const ex = x + dx;
+      const right = ex + layout.entryWidth - 1;
       const info = latest!.players.find((each) => each.id === player);
       const gone = info !== undefined && (info.left || !info.connected);
       const place = placeOf(player);
-      pen.txt(place === null ? "-" : `${place}`, x, y, place === null ? C.dim : C.brass);
-      const name = pen.fit(info?.nick ?? "", NAME_WIDTH);
-      pen.txt(name, x + 12, y, gone ? C.dim : me() === player ? C.amber : C.bone);
+      // a place of two figures needs more room than one
+      if (layout.crowded) pen.txt(place === null ? "-" : `${place}`, ex + 12, y, place === null ? C.dim : C.brass, "right");
+      else pen.txt(place === null ? "-" : `${place}`, ex, y, place === null ? C.dim : C.brass);
+      const nameX = ex + (layout.crowded ? 16 : 12);
+      const [ways, colour] = stateOf(player, layout.crowded);
       const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
-      if (voice !== "out") drawVoiceMark(pen, x + 12 + pen.width(name) + 2, y, voice, time);
-      const took = view.ranked.find((entry) => entry.player === player)?.took;
-      const lock = lockOf(player);
-      const wrong = view.wrong.find((entry) => entry.player === player)?.count ?? 0;
-      if (took !== undefined) pen.txt(seconds1(took), W - 5, y, C.teal, "right");
-      else if (lock > 0 && view.phase === "open") pen.txt(`잠김 ${Math.ceil(lock / 1000)}초`, W - 5, y, C.crim, "right");
-      else if (view.phase === "ended") pen.txt("미정답", W - 5, y, C.dim, "right");
-      else pen.txt(wrong > 0 ? `오답 ${wrong}번` : "세는 중", W - 5, y, wrong > 0 ? C.boneD : C.dim, "right");
+      // the name comes first: of the ways to say the rest, the first that leaves the name whole, or else the shortest
+      const whole = Math.min(NAME_WIDTH, pen.width(info?.nick ?? ""));
+      const roomBeside = (said: string): number => right - nameX - (said === "" ? 0 : pen.width(said) + 3) - (voice !== "out" ? VOICE_MARK_W + 2 : 0);
+      const words = ways.find((said) => roomBeside(said) >= whole) ?? ways[ways.length - 1];
+      const name = pen.fit(info?.nick ?? "", Math.min(NAME_WIDTH, roomBeside(words)));
+      pen.txt(name, nameX, y, gone ? C.dim : me() === player ? C.amber : C.bone);
+      if (voice !== "out") drawVoiceMark(pen, nameX + pen.width(name) + 2, y, voice, time);
+      if (words !== "") pen.txt(words, right, y, colour, "right");
     });
-    pen.px(x, 86, 168, 1, C.steelDD);
+    pen.px(x, layout.crowded ? underList(layout) : 86, PANEL_WIDTH, 1, C.steelDD);
     const lines = logLines();
-    const from = Math.max(0, lines.length - LOG_ROWS);
-    for (let i = from; i < lines.length; i++) pen.txt(pen.fit(lines[i][0], 168), x, LOG_TOP + (i - from) * 14, lines[i][1]);
+    const from = Math.max(0, lines.length - layout.logRows);
+    for (let i = from; i < lines.length; i++) pen.txt(pen.fit(lines[i][0], PANEL_WIDTH), x, layout.logTop + (i - from) * LOG_PITCH, lines[i][1]);
     // a chat line beside its speaker's name, over the edge of the scene
     for (const [player, line] of speech) {
       const at = order.indexOf(player);
-      if (at >= 0) drawSpeech(pen, { label: { x: SCENE_W, y: 19 + at * pitch, align: "left" } }, line.lines);
+      if (at >= 0) drawSpeech(pen, { label: { x: SCENE_W, y: entryAt(layout, at).y, align: "left" } }, line.lines);
     }
+  }
+
+  /**
+   * What the list says of `player` beside their name, and its colour: how
+   * long they took, how long they are locked, how often they were wrong.
+   * Several ways of saying it, the longest first; `short` is for a crowded
+   * list, where an entry has half the width and the name needs most of it.
+   */
+  function stateOf(player: number, short: boolean): [string[], string] {
+    if (latest === null) return [[""], C.dim];
+    const view = latest.view;
+    const took = view.ranked.find((entry) => entry.player === player)?.took;
+    const lock = lockOf(player);
+    const wrong = view.wrong.find((entry) => entry.player === player)?.count ?? 0;
+    if (took !== undefined) {
+      const whole = Math.floor(took / 1000);
+      return [short ? [`${whole}초`, `${whole}`] : [seconds1(took)], C.teal];
+    }
+    if (lock > 0 && view.phase === "open") {
+      const still = Math.ceil(lock / 1000);
+      return [short ? [`잠김 ${still}`, `${still}초`, `${still}`] : [`잠김 ${still}초`], C.crim];
+    }
+    if (view.phase === "ended") return [short ? ["-"] : ["미정답"], C.dim];
+    if (wrong > 0) return [short ? [`오답 ${wrong}`, `×${wrong}`] : [`오답 ${wrong}번`], C.boneD];
+    return [short ? [""] : ["세는 중"], C.dim];
   }
 
   function button(rect: Box, label: string, lit: boolean, live: boolean): void {

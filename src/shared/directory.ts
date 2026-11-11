@@ -8,8 +8,8 @@
  * it. Pure functions over plain data, so the same code is unit-tested directly
  * and run inside the directory's Durable Object.
  */
-import { GAMES, isGameId, type GameId } from "./games";
-import { gameOf, hostOf, isValidRoomCode, normalizeNick, type LobbyState, type RoomConfig } from "./lobby";
+import { isGameId, type GameId } from "./games";
+import { capacityOf, gameOf, hostOf, isValidRoomCode, normalizeNick, type LobbyState, type RoomConfig } from "./lobby";
 
 /** Tunable values of the list. Loaded from `directory-config.json`. */
 export interface DirectoryConfig {
@@ -30,7 +30,7 @@ export interface RoomListing {
   host: string;
   /** Players connected now. */
   players: number;
-  /** The most players a game in the room can have. */
+  /** How many players the room holds: no more than a game of its game takes. */
   maxPlayers: number;
   /** Whether a game is being played; someone who joins now watches until the next one. */
   playing: boolean;
@@ -71,7 +71,7 @@ export function listingOf(
     game,
     host: host.nick,
     players: connected.length,
-    maxPlayers: Math.min(config.maxPlayers, GAMES[game].maxPlayers),
+    maxPlayers: capacityOf(game, config),
     playing,
   };
 }
@@ -80,7 +80,7 @@ export function listingOf(
  * Checks a report, returning `null` for anything malformed. The directory
  * shows these values to everyone, so nothing is taken on trust: a room code
  * must be well-formed, the name is cleaned like any nickname, and the counts
- * must be whole numbers that make sense together.
+ * must be whole numbers that make sense together and with the room's game.
  */
 export function parseReport(raw: unknown, config: RoomConfig): RoomReport | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -98,7 +98,7 @@ export function parseReport(raw: unknown, config: RoomConfig): RoomReport | null
   const maxPlayers = listing.maxPlayers;
   if (typeof players !== "number" || !Number.isInteger(players)) return null;
   if (typeof maxPlayers !== "number" || !Number.isInteger(maxPlayers)) return null;
-  if (maxPlayers < 1 || maxPlayers > config.maxPlayers || players < 1 || players > maxPlayers) return null;
+  if (maxPlayers < 1 || maxPlayers > capacityOf(listing.game, config) || players < 1 || players > maxPlayers) return null;
   if (typeof listing.playing !== "boolean") return null;
   return {
     code: data.code,

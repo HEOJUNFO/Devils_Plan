@@ -1,8 +1,9 @@
 /**
- * The six figures who can sit at the table, and their chairs, drawn as
- * rectangles: one pixel size, a one-pixel dark outline, two tones.
- * Design: design/game-brief.md (Look and references). Every figure has its
- * own outline, so players can tell each other apart at a glance.
+ * The figures who can sit in a room, and their chairs, drawn as rectangles:
+ * one pixel size, a one-pixel dark outline, two tones.
+ * Design: design/game-brief.md (Look and references). There are six
+ * outlines, so the six at a table can tell each other apart at a glance; a
+ * room of more than six has the same outlines again in other clothes.
  */
 import { C, shade } from "./palette";
 
@@ -17,7 +18,14 @@ interface Look {
   accent: string;
 }
 
-/** The six looks. A player keeps one for the whole game. */
+/** How many outlines there are: a figure's outline is its number modulo this. */
+const SHAPE_COUNT = 6;
+
+/**
+ * The looks, six to a set: each set is the six outlines in order (the hat,
+ * the beard, the spikes, the long hair, the hood, the bun), and each set has
+ * its own clothes. A player keeps one for as long as they are in the room.
+ */
 const LOOKS: Look[] = [
   { coat: "#44547c", hair: "#3a2c36", skin: "#e6b48c", hat: "#2b3350", accent: "#ffb43c" },
   { coat: "#8a343a", hair: "#4a3428", skin: "#d9a070", hat: "#4a3428", accent: "#d8c9a0" },
@@ -25,6 +33,20 @@ const LOOKS: Look[] = [
   { coat: "#6a4690", hair: "#8a4a30", skin: "#edc19a", hat: "#8a4a30", accent: "#e08ab4" },
   { coat: "#8fa3b8", hair: "#8fa3b8", skin: "#e2ac84", hat: "#8fa3b8", accent: "#bfeaff" },
   { coat: "#566a42", hair: "#cfc8ba", skin: "#e2ac84", hat: "#cfc8ba", accent: "#3fd0b6" },
+
+  { coat: "#7a5a3a", hair: "#2a2420", skin: "#d9a070", hat: "#4e3a26", accent: "#3fd0b6" },
+  { coat: "#2f5f6a", hair: "#cfc8ba", skin: "#e6b48c", hat: "#cfc8ba", accent: "#efe6cc" },
+  { coat: "#7a3a4a", hair: "#d8b45a", skin: "#edc19a", hat: "#d8b45a", accent: "#ffb43c" },
+  { coat: "#2f6a4a", hair: "#20222e", skin: "#f0c9a4", hat: "#20222e", accent: "#ffd27a" },
+  { coat: "#7a4a4a", hair: "#7a4a4a", skin: "#e2ac84", hat: "#7a4a4a", accent: "#ffb43c" },
+  { coat: "#44547c", hair: "#5a3a28", skin: "#edc19a", hat: "#5a3a28", accent: "#e08ab4" },
+
+  { coat: "#5c5c6a", hair: "#8a4a30", skin: "#f0c9a4", hat: "#8a3a3e", accent: "#efe6cc" },
+  { coat: "#566a42", hair: "#20222e", skin: "#c98f62", hat: "#20222e", accent: "#ffb43c" },
+  { coat: "#5a4690", hair: "#c85a3a", skin: "#e6b48c", hat: "#c85a3a", accent: "#bfeaff" },
+  { coat: "#8a5a2a", hair: "#cfc8ba", skin: "#d9a070", hat: "#cfc8ba", accent: "#3fd0b6" },
+  { coat: "#4a5a3a", hair: "#4a5a3a", skin: "#e2ac84", hat: "#4a5a3a", accent: "#3fd0b6" },
+  { coat: "#8a343a", hair: "#20222e", skin: "#e6b48c", hat: "#20222e", accent: "#efe6cc" },
 ];
 
 /** How many different figures there are. */
@@ -42,7 +64,7 @@ export function figureRects(kind: number, back: boolean, side: 1 | -1): Rect[] {
   const cached = cache.get(key);
   if (cached) return cached;
   const look = LOOKS[kind % FIGURE_COUNT];
-  const shape = kind % FIGURE_COUNT;
+  const shape = kind % SHAPE_COUNT;
   const rects: Rect[] = [];
   const add = (x: number, y: number, w: number, h: number, colour: string) => {
     rects.push([x, y, w, h, colour]);

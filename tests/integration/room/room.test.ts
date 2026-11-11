@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_GAME } from "../../../src/shared/games";
+import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import type { LobbyView } from "../../../src/shared/lobby";
 import { CLOSE_LEFT, CLOSE_REJECTED, CLOSE_STALE } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
@@ -9,6 +9,12 @@ import { exports } from "cloudflare:workers";
 import { PARTY_NAME } from "../../../src/shared/protocol";
 import { advanceClock, connect, heardWere, join as open, scheduledAlarm, tokenFor, type HeardRecord } from "../support";
 
+/** How many players a room of `game` holds: worked out here, not by the code the tests are about. */
+const holds = (game: GameId): number => Math.min(roomConfig.maxPlayers, GAMES[game].maxPlayers);
+/** How many players a room of the first game holds. */
+const MOST = holds(DEFAULT_GAME);
+/** The game whose rooms hold the most players. */
+const BIG_GAME = GAME_IDS.reduce<GameId>((most, id) => (GAMES[id].maxPlayers > GAMES[most].maxPlayers ? id : most), DEFAULT_GAME);
 const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
 const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
@@ -32,7 +38,7 @@ describe("GameRoom", () => {
       type: "lobby",
       room: "AAAAA",
       you: 0,
-      maxPlayers: roomConfig.maxPlayers,
+      maxPlayers: MOST,
       game: DEFAULT_GAME,
       listed: false,
       turnSeconds: 0,
@@ -178,13 +184,28 @@ describe("GameRoom", () => {
 
   it("refuses the player after the room is full", async () => {
     const clients = [await open("AAAAG", { player: 0, create: true })];
-    for (let n = 1; n < roomConfig.maxPlayers; n++) {
+    for (let n = 1; n < MOST; n++) {
       clients.push(await open("AAAAG", { player: n }));
     }
     await clients.at(-1)!.next();
 
-    const extra = await open("AAAAG", { player: roomConfig.maxPlayers });
+    const extra = await open("AAAAG", { player: MOST });
 
+    expect(await extra.next()).toEqual({ type: "error", reason: "full" });
+    for (const c of clients) c.close();
+  });
+
+  it("holds as many players as its game takes, in a game that takes more than the first", async () => {
+    const most = holds(BIG_GAME);
+    expect(most).toBeGreaterThan(MOST);
+    const clients = [await open("AAAG2", { player: 0, create: true, game: BIG_GAME })];
+    for (let n = 1; n < most; n++) clients.push(await open("AAAG2", { player: n }));
+
+    const lobby = await clients.at(-1)!.next();
+    const extra = await open("AAAG2", { player: most });
+
+    expect(lobby).toMatchObject({ type: "lobby", you: most - 1, maxPlayers: most });
+    expect(lobby.type === "lobby" ? lobby.players : []).toHaveLength(most);
     expect(await extra.next()).toEqual({ type: "error", reason: "full" });
     for (const c of clients) c.close();
   });
@@ -435,18 +456,18 @@ describe("GameRoom", () => {
 
   it("gives the slot of a player who is away to a newcomer when the room is full", async () => {
     const clients = [await open("AAAA2", { player: 0, create: true })];
-    for (let n = 1; n < roomConfig.maxPlayers; n++) {
+    for (let n = 1; n < MOST; n++) {
       clients.push(await open("AAAA2", { player: n }));
     }
     await clients.at(-1)!.next();
     clients[2].close();
     await clients[0].lobbyWhere((l) => connectedBySlot(l)[2] === false);
 
-    const extra = await open("AAAA2", { player: roomConfig.maxPlayers, nick: "new" });
+    const extra = await open("AAAA2", { player: MOST, nick: "new" });
 
     const lobby = await extra.next();
     expect(lobby).toMatchObject({ type: "lobby", you: 2 });
-    expect(lobby.type === "lobby" ? lobby.players : []).toHaveLength(roomConfig.maxPlayers);
+    expect(lobby.type === "lobby" ? lobby.players : []).toHaveLength(MOST);
     expect(lobby.type === "lobby" ? lobby.players[2] : null).toEqual({ slot: 2, nick: "new", connected: true, team: 0 });
     for (const c of clients.filter((_, n) => n !== 2)) c.close();
     extra.close();
@@ -454,7 +475,7 @@ describe("GameRoom", () => {
 
   it("gives the slot of the player away longest to a newcomer first", async () => {
     const clients = [await open("AAAA3", { player: 0, create: true })];
-    for (let n = 1; n < roomConfig.maxPlayers; n++) {
+    for (let n = 1; n < MOST; n++) {
       clients.push(await open("AAAA3", { player: n }));
     }
     await clients.at(-1)!.next();
@@ -464,7 +485,7 @@ describe("GameRoom", () => {
     clients[1].close();
     await clients[0].lobbyWhere((l) => connectedBySlot(l)[1] === false);
 
-    const extra = await open("AAAA3", { player: roomConfig.maxPlayers });
+    const extra = await open("AAAA3", { player: MOST });
 
     expect(await extra.next()).toMatchObject({ type: "lobby", you: 4 });
     for (const c of clients.filter((_, n) => n !== 4 && n !== 1)) c.close();

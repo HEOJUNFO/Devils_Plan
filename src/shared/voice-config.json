@@ -3,5 +3,6 @@
   "stunUrls": ["stun:stun.cloudflare.com:3478", "stun:stun.l.google.com:19302"],
   "maxSdpLength": 6000,
   "maxCandidateLength": 500,
-  "maxMidLength": 32
+  "maxMidLength": 32,
+  "opus": { "dtx": true, "maxAverageBitrate": 24000 }
 }

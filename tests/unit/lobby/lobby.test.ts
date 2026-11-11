@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
 import {
   awayPlayers,
+  capacityOf,
   createLobby,
   dropLapsed,
   gameOf,
@@ -96,6 +97,26 @@ describe("joinLobby", () => {
     const result = joinLobby(state, { token: tokenFor(99), nick: "late" }, config);
 
     expect(result).toEqual({ ok: false, reason: "full" });
+  });
+
+  it("refuses a player when the room's game takes no more, though a room may hold more", () => {
+    const most = GAMES[SOLO_GAME].maxPlayers;
+    const config = testConfig({ maxPlayers: most + 2 });
+    const state = roomOf(SOLO_GAME, most, config);
+
+    const result = joinLobby(state, { token: tokenFor(99), nick: "late" }, config);
+
+    expect(result).toEqual({ ok: false, reason: "full" });
+  });
+
+  it("takes the last player the room's game takes", () => {
+    const most = GAMES[SOLO_GAME].maxPlayers;
+    const config = testConfig({ maxPlayers: most + 2 });
+    const state = roomOf(SOLO_GAME, most - 1, config);
+
+    const result = joinLobby(state, { token: tokenFor(99), nick: "last" }, config);
+
+    expect(result).toMatchObject({ ok: true, slot: most - 1 });
   });
 
   it("returns a known token to the slot it already holds", () => {
@@ -200,6 +221,15 @@ describe("viewLobby", () => {
     const view = viewLobby(lobbyWith(2, config), new Set([1]), 1, config);
 
     expect(view).toMatchObject({ you: 1, maxPlayers: config.maxPlayers });
+  });
+
+  it("says a room holds no more than its game takes", () => {
+    const most = GAMES[SOLO_GAME].maxPlayers;
+    const config = testConfig({ maxPlayers: most + 2 });
+
+    const view = viewLobby(roomOf(SOLO_GAME, 1, config), new Set([0]), 0, config);
+
+    expect(view.maxPlayers).toBe(most);
   });
 
   it("says which game the room is for and whether it is on the list", () => {
@@ -576,6 +606,20 @@ function roomOf(game: GameId, count: number, config: RoomConfig): LobbyState {
   }
   return state;
 }
+
+describe("capacityOf", () => {
+  it("is what a room holds, for a game that would take more", () => {
+    const most = GAMES[SOLO_GAME].maxPlayers;
+
+    expect(capacityOf(SOLO_GAME, testConfig({ maxPlayers: most - 1 }))).toBe(most - 1);
+  });
+
+  it("is what the game takes, in a room that could hold more", () => {
+    const most = GAMES[SOLO_GAME].maxPlayers;
+
+    expect(capacityOf(SOLO_GAME, testConfig({ maxPlayers: most + 1 }))).toBe(most);
+  });
+});
 
 describe("teamsIn", () => {
   it("is as many teams of the game's size as fit in the room", () => {

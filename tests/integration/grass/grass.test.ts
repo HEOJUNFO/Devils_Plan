@@ -7,6 +7,8 @@ import { parkSize, waysToLay, type ChoiceNo, type Option } from "../../../src/sh
 import { advanceClock, closeAll, join, scheduledAlarm, tokenFor, type GrassMessage, type TestClient } from "../support";
 
 const GAME = "lay-the-grass" as const;
+/** How many play the game in the document: the numbers on its cards are for that many. */
+const SHOW_PLAYERS = 16;
 const CHOOSE_MS = shipped.chooseSeconds * 1000;
 const PICK_MS = shipped.pickSeconds * 1000;
 const AWAY_MS = hostJson.awaySeconds * 1000;
@@ -352,6 +354,25 @@ describe("GameRoom: a room of 잔디 깔기", () => {
     for (const client of clients) {
       for (const n of [0, 1]) expect(client.raw.join("\n")).not.toContain(tokenFor(n));
     }
+    closeAll(clients);
+  });
+});
+
+describe("GameRoom: a full room of 잔디 깔기", () => {
+  it("puts up a park for the sixteen the game is documented for, and lets 견제 pay when nine of them lay", async () => {
+    const clients = await gardeners("GAS96", SHOW_PLAYERS);
+
+    const games = await startGame(clients);
+
+    const cells = games[0].view.park.rows.join("").split("#").length - 1;
+    expect(games[0].players).toHaveLength(SHOW_PLAYERS);
+    expect(cells).toBe(SHOW_PLAYERS * shipped.cellsPerPlayer + shipped.extraCells);
+    expect(games[0].view.checkAtMost).toBe(shipped.checkAtMost);
+    games.forEach((game, n) => {
+      expect(game.view.you).toBe(n);
+      expect(game.view.park).toEqual(games[0].view.park);
+      expect(game.view.choosing).toMatchObject({ which: 5, chosen: [] });
+    });
     closeAll(clients);
   });
 });

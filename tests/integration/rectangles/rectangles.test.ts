@@ -16,6 +16,10 @@ const PAUSE_MS = shipped.pauseSeconds * 1000;
 const STAND_MS = hostJson.standSeconds * 1000;
 /** How many changes of team a player may make before the room asks them to slow down. */
 const CHOICES = roomConfig.messageLimits.choice.burst;
+/** The game as the show played it: sixteen players, three teams among them, over once five sides have won. */
+const SHOW_PLAYERS = 16;
+const SHOW_TEAMS = 3;
+const SHOW_WINNERS = 5;
 
 /** Connects to `room`, a room of 네모 세기, and joins as player `player`. */
 function open(room: string, player: number, create = false): Promise<TestClient> {
@@ -444,6 +448,24 @@ describe("GameRoom: teams in 네모 세기", () => {
     expect(asked(CHOICES)).not.toBe(asked(CHOICES - 1));
     expect(lobby.players[1].team).toBe(asked(CHOICES - 1));
     closeAll([...clients, late]);
+  });
+});
+
+describe("GameRoom: a full room of 네모 세기", () => {
+  it("makes ten sides of the sixteen the game is documented for, three teams and seven alone, and ends at five winners", async () => {
+    const clients = await racers("NBS96", SHOW_PLAYERS);
+    const teamed = SHOW_TEAMS * TEAM_SIZE;
+    for (let n = 0; n < teamed; n++) clients[n].send({ type: "team", team: Math.floor(n / TEAM_SIZE) + 1 });
+    await clients[0].lobbyWhere((lobby) => lobby.players.filter((player) => player.team > 0).length === teamed);
+
+    const games = await startGame(clients);
+
+    const sizes = games[0].view.units.map((unit) => unit.members.length).sort((a, b) => a - b);
+    expect(games[0].players).toHaveLength(SHOW_PLAYERS);
+    expect(sizes).toEqual([...Array.from({ length: SHOW_PLAYERS - teamed }, () => 1), ...Array.from({ length: SHOW_TEAMS }, () => TEAM_SIZE)]);
+    expect(games[0].view.winnersNeeded).toBe(SHOW_WINNERS);
+    for (const game of games) expect(game.view.board).toEqual(games[0].view.board);
+    closeAll(clients);
   });
 });
 

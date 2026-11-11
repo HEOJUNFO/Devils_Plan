@@ -31,9 +31,10 @@ import {
 } from "../../../shared/games/lay-the-grass/rules";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
-import { BAR_Y, H, PANEL_X, Pen, SCENE_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
+import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C, shade } from "../../game/palette";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
+import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 
 /** What the room sends about a game of 잔디 깔기. */
 export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the-grass" }>;
@@ -50,6 +51,8 @@ export interface GrassHandlers {
   voice(slot: number): VoiceMark;
   /** A sheet covers the whole screen, or has been put away. */
   covered(covered: boolean): void;
+  /** The game has more players than the column lists one to a row, or no longer has. */
+  crowded(crowded: boolean): void;
 }
 
 /** The game screen. */
@@ -68,9 +71,6 @@ const STEP = 1 / 60;
 const PARK_AREA = { x: 8, y: 24, w: 288, h: 190 };
 /** The largest a cell of the park is drawn, in pixels. */
 const MAX_CELL = 28;
-/** The log on screen: where it starts, under the row the page keeps for its tabs, and its rows. */
-const LOG_TOP = 106;
-const LOG_ROWS = 8;
 /** The widest a name is drawn in the list of players, in pixels. */
 const NAME_WIDTH = 54;
 /** With this many seconds or fewer of the player's own turn left, each is ticked aloud. */
@@ -82,8 +82,33 @@ const TICK_FROM = 5;
 const RESULTS_HOLD = 1.5;
 /** Said when something could not be sent because the connection is down. */
 const NOT_SENT_TEXT = "연결이 끊겨 보내지 못했습니다. 다시 해 주세요";
-/** One colour for each player's grass, by their place in the list of players. */
-const GRASS = ["#6fcf5a", "#3fd0b6", "#ffb43c", "#e8739a", "#7aa2ff", "#c58bff"] as const;
+/**
+ * One colour for each player's grass, by their place in the list of players:
+ * as many as a game has players, the first six as they were when six was the
+ * most. None is the green of a tree or the brown of the soil.
+ */
+const GRASS = [
+  "#6fcf5a",
+  "#3fd0b6",
+  "#ffb43c",
+  "#e8739a",
+  "#7aa2ff",
+  "#c58bff",
+  "#f2e85c",
+  "#ff7a4a",
+  "#5ad1ff",
+  "#d9d9e6",
+  "#a8a03c",
+  "#ff5fd2",
+  "#5a64e0",
+  "#d8b088",
+  "#8a4ab8",
+  "#c8504a",
+] as const;
+/** The marks of those who have picked a tile, on its button: how many to a row. */
+const PICK_MARKS_ROW = 3;
+/** Behind the entry of whoever's turn it is, in a crowded list. */
+const TURN_ROW = "#3a2a12";
 /** How much of a holed cell's width its hole takes. */
 const HOLE_SHARE = 0.62;
 /** The soil of a park cell nothing lies on. */
@@ -331,6 +356,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     receivedAt = performance.now();
     pending = false;
     offline = false;
+    handlers.crowded(isCrowded(message.players.length));
     // a new choice is looked at afresh: nothing pointed at, the cards up
     const choice = `${message.startedAt}:${message.view.round}:${message.view.choosing?.which ?? "-"}`;
     if (choice !== choiceFor) {
@@ -910,7 +936,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       else if (event.type === "choice") {
         for (const option of [1, 2] as const) {
           const those = event.chosen.filter((each) => each.option === option).map((each) => each.player);
-          if (those.length > 0) lines.push([`${OPTION_NAMES[event.which][option - 1]}: ${names(those)}`, C.brass]);
+          if (those.length === 0) continue;
+          const label = OPTION_NAMES[event.which][option - 1];
+          const whole = `${label}: ${names(those)}`;
+          // too many to name in one line: how many they are comes first, so that the line still says it where it is cut
+          lines.push([pen.width(whole) <= PANEL_WIDTH ? whole : `${label} ${those.length}명: ${names(those)}`, C.brass]);
         }
       } else if (event.type === "pick") lines.push([`${who}: ${event.tile}번 선택${event.forced ? " (자동)" : ""}`, C.bone]);
       else if (event.type === "pair") lines.push([`상생 팀: ${names(event.players)}`, C.teal]);
@@ -951,43 +981,95 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const seconds = Math.ceil(turn / 1000);
       pen.txt(`${seconds}초`, W - 5, 3, seconds <= TICK_FROM ? C.crim : C.boneD, "right");
     }
-    pen.px(x, 16, 168, 1, C.steelDD);
     const order = listOrder();
-    const pitch = order.length > 4 ? 11 : 13;
+    const layout = panelLayout(order.length);
+    // in a crowded game the page's tabs are where the line under the heading would be
+    if (!layout.crowded) pen.px(x, 16, PANEL_WIDTH, 1, C.steelDD);
     order.forEach((player, at) => {
-      const y = 19 + at * pitch;
+      const { dx, y } = entryAt(layout, at);
+      const ex = x + dx;
+      const right = ex + layout.entryWidth - 1;
       const info = latest!.players.find((each) => each.id === player);
       const score = view.players.find((each) => each.id === player)?.score ?? 0;
       const tile = tileOfPlayer(player);
       const gone = info !== undefined && (info.left || !info.connected);
       const onTurn = view.turn === player;
-      // the place in the priority, which decides between equals; then the colour of their grass
-      pen.txt(`${view.players.findIndex((each) => each.id === player) + 1}`, x, y, C.dim);
-      pen.px(x + 9, y + 2, 5, 8, grassOf(player));
+      const laid = view.placed.some((placement) => placement.player === player);
+      const failed = view.failed.includes(player);
+      const chose = view.phase === "choose" && view.choosing?.chosen.includes(player) === true;
+      const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
+      const nameColour = gone ? C.dim : me() === player ? C.amber : C.bone;
+      const tileColour = optionOf(player, 6) === 1 ? C.crim : C.boneD;
       // a pair: the partner's colour beside their own
       const pair = view.pairs.find((each) => each.includes(player));
-      if (pair !== undefined) pen.px(x + 9, y + 7, 5, 3, grassOf(pair[0] === player ? pair[1] : pair[0]));
-      if (onTurn) pen.txt("▶", x + 15, y, C.amber);
+      const partner = pair === undefined ? null : pair[0] === player ? pair[1] : pair[0];
+      if (layout.crowded) {
+        // half the width: the colour, the name, the tile with a mark for how it went, the points
+        if (onTurn) pen.px(ex - 1, y, layout.entryWidth + 1, 12, TURN_ROW);
+        pen.px(ex, y + 2, 5, 8, grassOf(player));
+        if (partner !== null) pen.px(ex, y + 7, 5, 3, grassOf(partner));
+        const points = `${score}`;
+        pen.txt(points, right, y, C.brass, "right");
+        // the points keep room for two figures, so that the tiles stand under each other
+        let end = right - Math.max(13, pen.width(points)) - 3;
+        if (laid || failed || chose) {
+          drawMark(end - 5, y + 4, laid ? "done" : failed ? "failed" : "chosen");
+          end -= 7;
+        }
+        if (tile !== null) {
+          pen.txt(`${tile}`, end, y, tileColour, "right");
+          end -= pen.width(`${tile}`) + 2;
+        }
+        const room = end - (ex + 7) - (voice !== "out" ? VOICE_MARK_W + 2 : 0);
+        const name = pen.fit(info?.nick ?? "", Math.min(NAME_WIDTH, room));
+        pen.txt(name, ex + 7, y, nameColour);
+        if (voice !== "out") drawVoiceMark(pen, ex + 7 + pen.width(name) + 2, y, voice, time);
+        return;
+      }
+      // the place in the priority, which decides between equals; then the colour of their grass
+      pen.txt(`${view.players.findIndex((each) => each.id === player) + 1}`, ex, y, C.dim);
+      pen.px(ex + 9, y + 2, 5, 8, grassOf(player));
+      if (partner !== null) pen.px(ex + 9, y + 7, 5, 3, grassOf(partner));
+      if (onTurn) pen.txt("▶", ex + 15, y, C.amber);
       const name = pen.fit(info?.nick ?? "", NAME_WIDTH);
-      pen.txt(name, x + 27, y, gone ? C.dim : me() === player ? C.amber : C.bone);
-      const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
-      if (voice !== "out") drawVoiceMark(pen, x + 27 + pen.width(name) + 2, y, voice, time);
-      if (tile !== null) pen.txt(`${tile}번`, x + 112, y, optionOf(player, 6) === 1 ? C.crim : C.boneD, "right");
-      const laid = view.placed.some((placement) => placement.player === player);
-      if (laid) pen.txt("놓음", x + 117, y, C.teal);
-      else if (view.failed.includes(player)) pen.txt("실패", x + 117, y, C.crim);
-      else if (view.phase === "choose") pen.txt(view.choosing?.chosen.includes(player) ? "고름" : "…", x + 117, y, C.boneD);
-      pen.txt(`${score}`, W - 5, y, C.brass, "right");
+      pen.txt(name, ex + 27, y, nameColour);
+      if (voice !== "out") drawVoiceMark(pen, ex + 27 + pen.width(name) + 2, y, voice, time);
+      if (tile !== null) pen.txt(`${tile}번`, ex + 112, y, tileColour, "right");
+      if (laid) pen.txt("놓음", ex + 117, y, C.teal);
+      else if (failed) pen.txt("실패", ex + 117, y, C.crim);
+      else if (view.phase === "choose") pen.txt(chose ? "고름" : "…", ex + 117, y, C.boneD);
+      pen.txt(`${score}`, right, y, C.brass, "right");
     });
-    pen.px(x, 86, 168, 1, C.steelDD);
+    pen.px(x, layout.crowded ? underList(layout) : 86, PANEL_WIDTH, 1, C.steelDD);
     const lines = logLines();
-    const from = Math.max(0, lines.length - LOG_ROWS);
-    for (let i = from; i < lines.length; i++) pen.txt(pen.fit(lines[i][0], 168), x, LOG_TOP + (i - from) * 14, lines[i][1]);
+    const from = Math.max(0, lines.length - layout.logRows);
+    for (let i = from; i < lines.length; i++) pen.txt(pen.fit(lines[i][0], PANEL_WIDTH), x, layout.logTop + (i - from) * LOG_PITCH, lines[i][1]);
     // a chat line beside its speaker's name, over the edge of the scene
     for (const [player, line] of speech) {
       const at = order.indexOf(player);
       // the bubble is kept inside the scene: asked for at its right edge, it ends there
-      if (at >= 0) drawSpeech(pen, { label: { x: SCENE_W, y: 19 + at * pitch, align: "left" } }, line.lines);
+      if (at >= 0) drawSpeech(pen, { label: { x: SCENE_W, y: entryAt(layout, at).y, align: "left" } }, line.lines);
+    }
+  }
+
+  /**
+   * A mark five pixels square, its top left at `x`, `y`: a tick for a tile
+   * laid, a cross for one that found no room, a dot for a choice made. In a
+   * crowded list they stand for the words there is no room for.
+   */
+  function drawMark(x: number, y: number, what: "done" | "failed" | "chosen"): void {
+    if (what === "chosen") {
+      pen.px(x + 1, y + 1, 3, 3, C.boneD);
+      return;
+    }
+    for (let i = 0; i < 5; i++) {
+      if (what === "failed") {
+        pen.px(x + i, y + i, 1, 1, C.crim);
+        pen.px(x + 4 - i, y + i, 1, 1, C.crim);
+      } else {
+        // a short stroke down, then a longer one up to the right
+        pen.px(x + i, y + (i < 2 ? 2 + i : 4 - i), 1, 2, C.teal);
+      }
     }
   }
 
@@ -1026,10 +1108,12 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       drawTile(tile, x + 3, y + Math.floor((h - tile.rows * 5) / 2), 5, room ? "#6fcf5a" : C.dim);
       pen.txt(`${tile.number}점`, x + 27, y + 1, picked ? C.amber : mine ? C.bone : C.boneD);
       pen.txt(room ? `${tile.cells.length}칸` : "불가", x + 27, y + 14, room ? C.boneD : C.crim);
-      // who has picked it, a mark each
+      // who has picked it, a mark each: in rows down the right of the button, clear of its words
       view.picks
         .filter((pick) => pick.tile === tile.number)
-        .forEach((pick, at) => pen.px(x + w - 6 - at * 5, y + 3, 4, 4, grassOf(pick.player)));
+        .forEach((pick, at) => {
+          pen.px(x + w - 5 - (at % PICK_MARKS_ROW) * 4, y + 3 + Math.floor(at / PICK_MARKS_ROW) * 4, 3, 3, grassOf(pick.player));
+        });
     });
   }
 

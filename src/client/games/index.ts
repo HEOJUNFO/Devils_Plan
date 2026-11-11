@@ -35,6 +35,12 @@ export interface GameHandlers {
    * away: the page's own controls over the frame get out of its way.
    */
   covered(covered: boolean): void;
+  /**
+   * The game has more players than its column lists one to a row, or no
+   * longer has: the page's tabs then sit at the top of the column, out of the
+   * list's way (see `panel.ts`).
+   */
+  crowded(crowded: boolean): void;
 }
 
 /** A game's screen, covering the frame while a game is on. */

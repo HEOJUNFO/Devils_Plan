@@ -218,6 +218,8 @@ let heardAt = Date.now();
 let gameOn = false;
 /** During a game: whether the right-hand column shows the chat rather than the moves. */
 let chatOpen = false;
+/** During a game of many players: the tabs sit at the top of the column, and the first shows the players with the moves. */
+let crowded = false;
 /** Lines others said during a game while the chat was not on show. */
 let unread = 0;
 
@@ -294,6 +296,8 @@ function syncChat(): void {
   tabs.hidden = !inGame;
   chatBox.hidden = currentCode === "" || (inGame && !chatOpen);
   chatBox.classList.toggle("in-game", inGame);
+  frame.classList.toggle("crowd", inGame && crowded);
+  tabLog.textContent = crowded ? "현황" : "기록";
   tabLog.setAttribute("aria-pressed", String(!chatOpen));
   tabChat.setAttribute("aria-pressed", String(chatOpen));
   tabChat.classList.toggle("unread", unread > 0);
@@ -341,6 +345,7 @@ function showTable(game: GameId): GameScreen {
   if (table !== null && tableGame !== game) {
     table.destroy();
     table = null;
+    crowded = false;
     frame.classList.remove("covered");
   }
   if (table === null) {
@@ -355,6 +360,11 @@ function showTable(game: GameId): GameScreen {
       },
       voice: (slot) => voice.mark(slot),
       covered: (covered) => frame.classList.toggle("covered", covered),
+      crowded: (value) => {
+        if (crowded === value) return;
+        crowded = value;
+        syncChat();
+      },
     });
     table.setHost(isHost);
   }
@@ -378,6 +388,7 @@ function hideTable(): void {
   table?.destroy();
   table = null;
   tableGame = null;
+  crowded = false;
   frame.classList.remove("covered");
   room.inert = false;
   tableCanvas.hidden = true;
@@ -635,7 +646,7 @@ function renderRoom(code: string, view: LobbyView): void {
       ? "두 팀(혼자도 한 팀) 이상이 모이면 방장이 시작할 수 있습니다."
       : `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
     : broken !== undefined
-      ? `팀 ${broken[0]}은 ${broken[1]}명이라 팀이 되지 않습니다 (정확히 ${game.teamSize}명). 이대로 시작하면 각자 혼자 합니다.`
+      ? `팀 ${broken[0]}은 ${broken[1]}명이라 팀이 아닙니다 (${game.teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`
       : isHost
         ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}준비되면 시작하세요.`
         : "방장이 시작하기를 기다리는 중입니다.";

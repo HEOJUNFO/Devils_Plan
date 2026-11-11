@@ -11,7 +11,10 @@ import { cleanLine, cutTo } from "./text";
 
 /** Tunable lobby values. Loaded from `room-config.json`. */
 export interface RoomConfig {
-  /** Players a room holds. */
+  /**
+   * The most players any room holds. A room of a game that takes fewer holds
+   * that many (see {@link capacityOf}).
+   */
   maxPlayers: number;
   /** Characters in a room code. */
   roomCodeLength: number;
@@ -143,6 +146,7 @@ export interface PublicPlayer {
 export interface LobbyView {
   /** The viewer's own slot. */
   you: number;
+  /** How many players the room holds (see {@link capacityOf}). */
   maxPlayers: number;
   /** The game the room was made for. */
   game: GameId;
@@ -199,6 +203,15 @@ export function gameOf(state: LobbyState): GameId {
   return state.game ?? DEFAULT_GAME;
 }
 
+/**
+ * How many players a room of `game` holds: as many as any room holds, and no
+ * more than a game of it takes. Everyone in a room can then be in its next
+ * game; nobody is let in only to be told the game is full.
+ */
+export function capacityOf(game: GameId, config: RoomConfig): number {
+  return Math.min(config.maxPlayers, GAMES[game].maxPlayers);
+}
+
 /** Whether `token` has the shape of a player token (16–64 URL-safe characters). */
 export function isValidToken(token: string): boolean {
   return TOKEN_PATTERN.test(token);
@@ -243,7 +256,8 @@ export function findPlayer(state: LobbyState, token: string): LobbyPlayer | unde
  *
  * A token already in the lobby rejoins its slot (taking the new nickname).
  * Otherwise the player gets the lowest free slot, or is refused when the room
- * is full. The input state is not modified.
+ * is full: it holds as many as its game takes ({@link capacityOf}). The input
+ * state is not modified.
  */
 export function joinLobby(
   state: LobbyState,
@@ -266,7 +280,7 @@ export function joinLobby(
   const taken = new Set(state.players.map((p) => p.slot));
   let slot = 0;
   while (taken.has(slot)) slot++;
-  if (slot >= config.maxPlayers) return { ok: false, reason: "full" };
+  if (slot >= capacityOf(gameOf(state), config)) return { ok: false, reason: "full" };
 
   // later than everyone who is or has been here
   const seq = Math.max(state.nextSeq ?? 0, ...state.players.map((p) => seqOf(p) + 1));
@@ -364,7 +378,7 @@ export function dropLapsed(
 /** How many teams a room of `game` can hold: as many as fit, each of the game's team size; 0 where there are none. */
 export function teamsIn(game: GameId, config: RoomConfig): number {
   const size = GAMES[game].teamSize;
-  return size > 0 ? Math.floor(Math.min(config.maxPlayers, GAMES[game].maxPlayers) / size) : 0;
+  return size > 0 ? Math.floor(capacityOf(game, config) / size) : 0;
 }
 
 /**
@@ -398,7 +412,7 @@ export function viewLobby(
 ): LobbyView {
   return {
     you: viewerSlot,
-    maxPlayers: config.maxPlayers,
+    maxPlayers: capacityOf(gameOf(state), config),
     game: gameOf(state),
     listed: state.listed === true,
     turnSeconds: turnSecondsOf(state),

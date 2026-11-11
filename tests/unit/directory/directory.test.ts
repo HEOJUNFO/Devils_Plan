@@ -9,7 +9,7 @@ import {
   type DirectoryEntry,
   type RoomListing,
 } from "../../../src/shared/directory";
-import { DEFAULT_GAME, GAMES } from "../../../src/shared/games";
+import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
 import { createLobby, joinLobby, leaveLobby, type LobbyState, type RoomConfig } from "../../../src/shared/lobby";
 
 /** A small room, so the bounds on a report are easy to reach. */
@@ -42,6 +42,9 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
 function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryConfig {
   return { maxListed: 3, maxStored: 5, staleHours: 2, ...overrides };
 }
+
+/** A game that takes fewer players than the largest room holds. */
+const SMALL_GAME: GameId = "russian-roulette";
 
 const HOUR = 3_600_000;
 /** An arbitrary moment the tests call "now". */
@@ -108,6 +111,22 @@ describe("parseReport", () => {
     ["nothing", null],
   ])("refuses a report with %s", (_what, report) => {
     expect(parseReport(report, roomConfig())).toBeNull();
+  });
+
+  it("refuses a report of a room larger than its game takes, where a room may hold more", () => {
+    const most = GAMES[SMALL_GAME].maxPlayers;
+    const report = { code: "ABCD", listing: listing("ABCD", { game: SMALL_GAME, maxPlayers: most + 1 }) };
+
+    expect(parseReport(report, roomConfig({ maxPlayers: most + 2 }))).toBeNull();
+  });
+
+  it("accepts a room as large as its game takes, where a room may hold more", () => {
+    const most = GAMES[SMALL_GAME].maxPlayers;
+    const report = { code: "ABCD", listing: listing("ABCD", { game: SMALL_GAME, players: most, maxPlayers: most }) };
+
+    const parsed = parseReport(report, roomConfig({ maxPlayers: most + 2 }));
+
+    expect(parsed).toEqual(report);
   });
 });
 

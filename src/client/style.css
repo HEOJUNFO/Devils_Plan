@@ -580,6 +580,19 @@ button.choice[aria-pressed="true"] {
   line-height: 12px;
 }
 
+/*
+ * A game of many players: its list is too long to sit above the tabs, so the
+ * tabs go to the top of the column and what they choose between fills the rest.
+ */
+#frame.crowd #tabs {
+  top: 17px;
+}
+
+#frame.crowd #chat.in-game {
+  top: 31px;
+  height: 190px;
+}
+
 /* Lines said while the chat was not on show. */
 #tab-chat.unread {
   border-color: var(--teal);

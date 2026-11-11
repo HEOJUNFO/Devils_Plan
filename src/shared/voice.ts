@@ -22,6 +22,15 @@ export interface VoiceConfig {
   maxCandidateLength: number;
   /** Longest media id passed on with a candidate, in characters. */
   maxMidLength: number;
+  /**
+   * How voices are asked to be sent (see {@link frugalSdp}). A player in voice
+   * is connected to every other one, so in a room of sixteen each sends their
+   * voice fifteen times over: `dtx` asks that nothing be sent while a player
+   * is silent, which is most of the time for most of them, and
+   * `maxAverageBitrate` is the most bits a second a voice is sent at (0: as
+   * the browser likes). Speech is clear well below what browsers use unasked.
+   */
+  opus: { dtx: boolean; maxAverageBitrate: number };
 }
 
 /** A player in the room's voice chat, as everyone in the room may see them. */
@@ -46,6 +55,42 @@ export type RtcSignal =
 /** Whether a room offers voice: one reached by its code always, one on the list only if configured so. */
 export function voiceOffered(listed: boolean, config: VoiceConfig): boolean {
   return !listed || config.listedRooms;
+}
+
+/**
+ * The description `sdp` of the other end of a connection, changed to ask what
+ * `config.opus` says of how voice is sent to that end: applied in place of
+ * the description as it came, it makes this page send its voice that way.
+ * Only the line of the voice codec (Opus) is touched, and added when there
+ * is none; a description without that codec comes back as it is.
+ */
+export function frugalSdp(sdp: string, config: VoiceConfig): string {
+  const asked: [string, string][] = [];
+  if (config.opus.dtx) asked.push(["usedtx", "1"]);
+  if (config.opus.maxAverageBitrate > 0) asked.push(["maxaveragebitrate", `${config.opus.maxAverageBitrate}`]);
+  if (asked.length === 0) return sdp;
+  // the lines and what ends each, so that the description keeps its own line endings
+  const parts = sdp.split(/(\r?\n)/);
+  for (let at = 0; at < parts.length; at += 2) {
+    const codec = /^a=rtpmap:(\d+) opus\//i.exec(parts[at]);
+    if (codec === null) continue;
+    const start = `a=fmtp:${codec[1]} `;
+    let line = -1;
+    for (let other = 0; other < parts.length; other += 2) if (parts[other].startsWith(start)) line = other;
+    if (line < 0) {
+      // right after the line that names the codec, ended as that line is
+      parts.splice(at + 2, 0, `${start}${asked.map(([name, value]) => `${name}=${value}`).join(";")}`, parts[at + 1] ?? "\r\n");
+      continue;
+    }
+    const said = parts[line].slice(start.length).split(";").map((each) => each.trim()).filter((each) => each !== "");
+    for (const [name, value] of asked) {
+      const found = said.findIndex((each) => each.split("=")[0] === name);
+      if (found >= 0) said[found] = `${name}=${value}`;
+      else said.push(`${name}=${value}`);
+    }
+    parts[line] = `${start}${said.join(";")}`;
+  }
+  return parts.join("");
 }
 
 /** Checks a signal, returning `null` for anything malformed or oversized. Only the known fields are kept. */

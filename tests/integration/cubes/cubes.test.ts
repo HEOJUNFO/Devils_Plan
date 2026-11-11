@@ -12,6 +12,8 @@ const PROBLEM_MS = shipped.problemSeconds * 1000;
 const STAND_MS = hostJson.standSeconds * 1000;
 /** With bots asked for, the room fills up to this many players. */
 const WITH_BOTS = 4;
+/** How many play the game in the document: fifteen of them answering right ends it. */
+const SHOW_PLAYERS = 16;
 
 /** Connects to `room`, a room of 큐브 세기, and joins as player `player`. */
 function open(room: string, player: number, create = false): Promise<TestClient> {
@@ -331,6 +333,30 @@ describe("GameRoom: a room of 큐브 세기", () => {
 
     const again = await clients[1].cubesWhere((game) => game.startedAt !== games[0].startedAt);
     expect(again.view).toMatchObject({ phase: "open", ranked: [], wrong: [], answer: null, history: [] });
+    closeAll(clients);
+  });
+});
+
+describe("GameRoom: a full room of 큐브 세기", () => {
+  it("takes the sixteen the game is documented for, and ends once fifteen of them have the answer", async () => {
+    const clients = await counters("QAS96", SHOW_PLAYERS);
+    const games = await startGame(clients);
+    const count = answerOf(games[0]);
+
+    // everyone but the maker answers right, the last to come in first; what the maker sees after each is kept
+    const seen: CubesMessage[] = [];
+    for (let n = SHOW_PLAYERS - 1; n >= 1; n--) {
+      answer(clients[n], count);
+      seen.push(await clients[0].cubesWhere((game) => game.view.ranked.length === SHOW_PLAYERS - n));
+    }
+    const last = seen[seen.length - 1];
+
+    expect(games[0].players).toHaveLength(SHOW_PLAYERS);
+    expect(games[0].view.needed).toBe(SHOW_PLAYERS - 1);
+    expect(seen.slice(0, -1).every((game) => game.view.phase === "open")).toBe(true);
+    expect(last.view.phase).toBe("ended");
+    expect(last.view.ranked.map((entry) => entry.player)).toEqual(Array.from({ length: SHOW_PLAYERS - 1 }, (_, at) => SHOW_PLAYERS - 1 - at));
+    expect(last.view.answer).toBe(count);
     closeAll(clients);
   });
 });

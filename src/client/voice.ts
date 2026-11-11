@@ -7,7 +7,7 @@
  * two players, the one in the lower slot calls and the other answers, so the
  * two never call each other at once.
  */
-import type { RtcSignal, VoiceConfig, VoiceMark, VoiceMember } from "../shared/voice";
+import { frugalSdp, type RtcSignal, type VoiceConfig, type VoiceMark, type VoiceMember } from "../shared/voice";
 
 /** What this page sends the room about voice. */
 type Outgoing = { type: "voice"; on: boolean; muted: boolean } | { type: "rtc"; to: number; signal: RtcSignal };
@@ -157,7 +157,8 @@ export function createVoice(options: {
     // a new call from someone already connected replaces the old connection
     const peer = connectTo(from);
     try {
-      await peer.pc.setRemoteDescription({ type: "offer", sdp });
+      // the other end's description, asking this page to send its voice frugally: there may be fifteen such connections
+      await peer.pc.setRemoteDescription({ type: "offer", sdp: frugalSdp(sdp, options.config) });
       for (const candidate of peer.early.splice(0)) await take(peer, candidate);
       await peer.pc.setLocalDescription(await peer.pc.createAnswer());
       const local = peer.pc.localDescription?.sdp;
@@ -271,7 +272,7 @@ export function createVoice(options: {
         return;
       }
       void peer.pc
-        .setRemoteDescription({ type: "answer", sdp: signal.sdp })
+        .setRemoteDescription({ type: "answer", sdp: frugalSdp(signal.sdp, options.config) })
         .then(async () => {
           for (const candidate of peer.early.splice(0)) await take(peer, candidate);
         })

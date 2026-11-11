@@ -1,5 +1,5 @@
 {
-  "maxPlayers": 6,
+  "maxPlayers": 16,
   "roomCodeLength": 5,
   "roomCodeAlphabet": "ABCDEFGHJKLMNPQRSTUVWXYZ23456789",
   "nickMaxLength": 12,
