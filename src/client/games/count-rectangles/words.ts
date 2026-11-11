@@ -188,7 +188,7 @@ const ko = {
   typed: "답",
   /** Beside the buzzer: two lines of 312 pixels. */
   brief: ["네모: 판 위의 칸으로 된 모든 직사각형 (한 칸도).", "합이 타깃이면 셉니다. 빈칸은 0. 틀리면 이 문제는 끝."],
-  /** The rules over the screen (H), by the room's own numbers: 17 lines at most. */
+  /** The rules over the screen (H), by the room's own numbers: 16 lines of 436 pixels at most (a seventeenth would lie on the sheet's frame). */
   help: (rules: {
     answerSeconds: number;
     teamSize: number;
@@ -214,14 +214,13 @@ const ko = {
     { text: "" },
     { text: `다 세었으면 버저를 누르고 ${rules.answerSeconds}초 안에 개수를 답합니다.` },
     { text: "틀리면 (또는 답하지 못하면) 그 문제에서는 다시 답할 수 없습니다." },
-    { text: `${rules.teamSize}명이 팀을 맺었으면 팀 전체가 그렇습니다.`, tone: "dim" },
-    { text: "" },
+    { text: `${rules.teamSize}명이 팀을 맺었으면 팀 전체가 그렇습니다. 문제마다 제한 시간은 ${Math.round(rules.problemSeconds / 60)}분입니다.`, tone: "dim" },
     { text: `${rules.winsNeeded}번 맞히면 승리하고 이후 문제에서 빠집니다.` },
     { text: "전체 팀(혼자도 한 팀)의 절반이 승리하면 끝납니다." },
-    { text: `문제마다 제한 시간은 ${Math.round(rules.problemSeconds / 60)}분입니다.`, tone: "dim" },
-    { text: `끝나면 선택 3: 승리 팀은 승점 ${rules.winPoints}점을 독식(대표 ${rules.hogLeader}, 팀원 ${rules.hogMember}씩)·헌신(대표 ${rules.devoteLeader}, 팀원 ${rules.devoteMember}씩)으로,` },
-    { text: `패배 팀은 희생(대표만 -${rules.sacrificeLeader})·질책(두 팀원 -${rules.blameMember}씩)으로 나눕니다. 팀의 다수결이고, 대표는 팀을 먼저 고른 사람.` },
-    { text: `개인은 승리 +${rules.winPoints}, 패배 -${rules.losePoints}. 안전은 -${rules.safeLoss}, 도전은 추가 대결: 이기면 피스 ${rules.duelPieces}개, 지면 -${rules.duelLoss}.` },
+    { text: `끝나면 선택 3. 승리 팀은 승점 ${rules.winPoints}점을 독식(대표 ${rules.hogLeader}, 팀원 ${rules.hogMember}씩)이나` },
+    { text: `헌신(대표 ${rules.devoteLeader}, 팀원 ${rules.devoteMember}씩)으로 나누고, 패배 팀은 희생(대표만 -${rules.sacrificeLeader})이나` },
+    { text: `질책(두 팀원 -${rules.blameMember}씩)으로 나눕니다. 팀의 다수결, 대표는 팀을 먼저 고른 사람.` },
+    { text: `개인: 승리 +${rules.winPoints}, 패배 -${rules.losePoints}. 안전 -${rules.safeLoss}. 도전: 추가 대결, 이기면 피스 ${rules.duelPieces}개, 지면 -${rules.duelLoss}.` },
     { text: "H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", tone: "title" },
   ],
 };
