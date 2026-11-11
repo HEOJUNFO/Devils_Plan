@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import hostConfig from "../../../src/shared/game/host-config.json";
 import rulesConfig from "../../../src/shared/game/rules-config.json";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
 import type { ClientMessage } from "../../../src/shared/protocol";
@@ -24,6 +25,8 @@ const SMALLEST = Math.min(...Object.keys(tableSizes).map(Number));
 const LARGEST = Math.max(...Object.keys(tableSizes).map(Number));
 const AWAY_MS = roomConfig.awayTurnSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
+/** How long a table none of whose players is connected goes on, with someone else in the room, before the room plays it out. */
+const STAND_MS = hostConfig.standSeconds * 1000;
 const STALE_MS = roomConfig.staleConnectionSeconds * 1000;
 
 /** Connects to `room` and joins as player `player`. */
@@ -230,6 +233,32 @@ describe("GameRoom: playing a game", () => {
     expect(waiting.players[games[acting].view.seat!]).toMatchObject({ connected: false, left: false });
     expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, amount: 1, forced: true });
     closeAll(clients.filter((_, n) => n !== acting));
+  });
+
+  it("plays the game out for someone waiting in the room once all its players have been away long enough", async () => {
+    const stub = env.GameRoom.getByName("GAAA3");
+    const clients = await table("GAAA3", SMALLEST);
+    await startGame(clients);
+    const late = await open("GAAA3", SMALLEST);
+    await late.gameWhere();
+
+    closeAll(clients);
+    await late.gameWhere((game) => game.players.every((player) => !player.connected));
+    const since = Date.now();
+    // the room makes the awaited moves one at a time, each when its alarm is due, until the table has been deserted long enough
+    let alarms = 0;
+    for (; alarms < 12 && Date.now() - since <= STAND_MS; alarms++) {
+      const due = await scheduledAlarm(stub);
+      advanceClock(Math.max(0, due - Date.now()) + 1);
+      await runDurableObjectAlarm(stub);
+    }
+    const ended = await late.gameWhere((game) => game.view.phase === "ended");
+
+    // every move was the room's, and the last alarm made all that were left: a game has far more moves than there were alarms
+    expect(ended.view.history.length).toBeGreaterThan(alarms * 2);
+    expect(Date.now() - since).toBeLessThan(STAND_MS + AWAY_MS);
+    expect(ended.turnEndsIn).toBeNull();
+    late.close();
   });
 
   it("plays on at once for a player who leaves the room", async () => {

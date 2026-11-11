@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Action, BotConfig, RulesConfig, TableSizes } from "../../../src/shared/game";
 import botJson from "../../../src/shared/game/bot-config.json";
+import hostJson from "../../../src/shared/game/host-config.json";
 import rulesJson from "../../../src/shared/game/rules-config.json";
 import sizesJson from "../../../src/shared/game/table-sizes.json";
 import roomJson from "../../../src/shared/room-config.json";
@@ -21,11 +22,15 @@ const SIZES: TableSizes = sizesJson;
 const BOTS: BotConfig = botJson;
 
 /** Hosting as shipped. */
-const CONFIG: SessionConfig = { rules: RULES, sizes: SIZES, bots: BOTS, awayTurnSeconds: roomJson.awayTurnSeconds };
+const CONFIG: SessionConfig = { rules: RULES, sizes: SIZES, bots: BOTS, awayTurnSeconds: roomJson.awayTurnSeconds, standSeconds: hostJson.standSeconds };
 
 /** The time the fixtures start at, in ms since the epoch. */
 const T0 = 1_800_000_000_000;
 const AWAY_MS = CONFIG.awayTurnSeconds * 1000;
+/** How long a table none of whose players is connected goes on, with someone else in the room, before the room plays it out. */
+const STAND_MS = CONFIG.standSeconds * 1000;
+/** The token of someone in the room who is not at the table. */
+const WATCHER = "token-of-a-watcher";
 /** The smallest and the largest table offered. */
 const SMALLEST = Math.min(...Object.keys(SIZES).map(Number));
 const LARGEST = Math.max(...Object.keys(SIZES).map(Number));
@@ -341,6 +346,111 @@ describe("the away clock", () => {
     const empty = sessionPresence(session, presenceOf(players, everyone), T0 + 1000, CONFIG);
 
     expect(empty.deadline).toBeNull();
+  });
+});
+
+/** `presence` with someone who is not at the table connected to the room as well. */
+function watched(presence: Presence): Presence {
+  return { seated: new Set([...presence.seated, WATCHER]), connected: new Set([...presence.connected, WATCHER]) };
+}
+
+describe("a table all of whose players are away", () => {
+  const players = candidates(SMALLEST);
+  const everyone = players.map((p) => p.slot);
+  /** Nobody of the table is connected; someone else is in the room. */
+  const deserted = watched(presenceOf(players, everyone));
+
+  it("is noted as deserted from the moment someone else is in the room with none of its players", () => {
+    const session = started();
+
+    const next = sessionPresence(session, deserted, T0 + 2000, CONFIG);
+
+    expect(next.desertedAt).toBe(T0 + 2000);
+    // the awaited player's own short time still comes first
+    expect(next.deadline).toBe(T0 + 2000 + AWAY_MS);
+  });
+
+  it("goes on a move at a time, as for any player who is away, until it has been deserted for the configured time", () => {
+    const session = sessionPresence(started(), deserted, T0, CONFIG);
+
+    const next = sessionTimeout(session, deserted, T0 + AWAY_MS, CONFIG);
+
+    expect(next.state.history).toHaveLength(1);
+    expect(next.state.phase).not.toBe("ended");
+    expect(next.desertedAt).toBe(T0);
+  });
+
+  it("is played out by the room at once when it has been deserted for the configured time", () => {
+    let session = sessionPresence(started(), deserted, T0, CONFIG);
+    // the moves the room makes one at a time on the way there
+    for (let step = 0; step < 100 && session.deadline !== null && session.deadline < T0 + STAND_MS; step++) {
+      session = sessionTimeout(session, deserted, session.deadline, CONFIG);
+    }
+    const before = session.state.history.length;
+
+    const ended = sessionTimeout(session, deserted, T0 + STAND_MS, CONFIG);
+
+    expect(session.state.phase).not.toBe("ended");
+    expect(session.deadline).toBe(T0 + STAND_MS);
+    expect(ended.state.phase).toBe("ended");
+    expect(ended.state.history.length).toBeGreaterThan(before + 1);
+    expect(ended.deadline).toBeNull();
+    expect(ended.desertedAt ?? null).toBeNull();
+  });
+
+  it("is looked at again when it has been deserted long enough, though no move falls due before then", () => {
+    // a table where the awaited player's own time is far longer than the time a deserted table is given
+    const patient: SessionConfig = { ...CONFIG, awayTurnSeconds: CONFIG.standSeconds * 10 };
+
+    const session = sessionPresence(started(SMALLEST, patient), deserted, T0, patient);
+    const ended = sessionTimeout(session, deserted, T0 + STAND_MS, patient);
+
+    expect(session.deadline).toBe(T0 + STAND_MS);
+    expect(ended.state.phase).toBe("ended");
+  });
+
+  it("is not played out while one of its players is connected, however long the others are away", () => {
+    const session = started();
+    const stayer = playerIn(session, awaited(session));
+    const presence = watched(presenceOf(players, everyone.filter((slot) => slot !== stayer)));
+
+    const noted = sessionPresence(session, presence, T0, CONFIG);
+    const later = sessionPresence(noted, presence, T0 + STAND_MS * 3, CONFIG);
+
+    expect(noted.desertedAt ?? null).toBeNull();
+    expect(later.state.phase).not.toBe("ended");
+    expect(later.state.history).toHaveLength(0);
+  });
+
+  it("is deserted afresh when one of its players was back in between", () => {
+    const session = sessionPresence(started(), deserted, T0, CONFIG);
+    const stayer = playerIn(session, awaited(session));
+
+    const back = sessionPresence(session, watched(presenceOf(players, everyone.filter((slot) => slot !== stayer))), T0 + 5000, CONFIG);
+    const gone = sessionPresence(back, deserted, T0 + 9000, CONFIG);
+
+    expect(back.desertedAt ?? null).toBeNull();
+    expect(gone.desertedAt).toBe(T0 + 9000);
+  });
+
+  it("waits for its players, without a clock, while nobody at all is in the room: a game can be put down and taken up", () => {
+    const session = started();
+
+    const empty = sessionPresence(session, presenceOf(players, everyone), T0 + 1000, CONFIG);
+    const much = sessionPresence(empty, presenceOf(players, everyone), T0 + STAND_MS * 5, CONFIG);
+
+    expect(empty.desertedAt ?? null).toBeNull();
+    expect(much.deadline).toBeNull();
+    expect(much.state.history).toHaveLength(0);
+  });
+
+  it("is not counted as deserted for the time the room stood empty before someone else came in", () => {
+    const session = sessionPresence(started(), presenceOf(players, everyone), T0, CONFIG);
+
+    const next = sessionPresence(session, deserted, T0 + STAND_MS * 2, CONFIG);
+
+    expect(next.desertedAt).toBe(T0 + STAND_MS * 2);
+    expect(next.state.phase).not.toBe("ended");
   });
 });
 

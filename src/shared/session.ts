@@ -36,6 +36,13 @@ export interface SessionConfig {
   bots: BotConfig;
   /** Seconds a player with no live connection has for a move before the room makes it. */
   awayTurnSeconds: number;
+  /**
+   * Seconds a table goes on with none of its players connected while someone
+   * else is in the room, before the room plays the game out at once. Until
+   * then it goes a move at a time (`awayTurnSeconds`), which for a whole game
+   * is a long wait for whoever wants the room for another.
+   */
+  standSeconds: number;
 }
 
 /**
@@ -59,6 +66,12 @@ export interface Session {
   awaySince: number | null;
   /** When the room makes the awaited move itself; `null` while no clock runs. */
   deadline: number | null;
+  /**
+   * Since when none of the table's players has been connected while someone
+   * else is in the room; `null` or absent otherwise (a game stored before
+   * this was kept has none).
+   */
+  desertedAt?: number | null;
 }
 
 export type { Candidate, Presence } from "./hosting";
@@ -124,6 +137,13 @@ function awaitedSeat(state: GameState): number {
  * bot's seat, the seat of a player who has left) and sets the clock for the
  * move that is then awaited. `moved` says a move has just been made, so the
  * awaited move's time starts now.
+ *
+ * A table none of whose players is connected, with someone else in the room,
+ * is deserted: it goes on a move at a time as for any player who is away, and
+ * once that has lasted `standSeconds` the room plays the rest of it out at
+ * once, so that whoever is waiting can have the room for another game. With
+ * nobody at all in the room nothing runs: a game can be put down and taken
+ * up again.
  */
 function settle(session: Session, presence: Presence, now: number, config: SessionConfig, moved: boolean): Session {
   let state = session.state;
@@ -146,6 +166,24 @@ function settle(session: Session, presence: Presence, now: number, config: Sessi
     roomMoved = true;
   }
 
+  // Deserted: someone is in the room, and it is none of the table's players.
+  const playerHere = session.tokens.some((token) => token !== null && presence.connected.has(token));
+  let desertedAt: number | null = null;
+  if (state.phase !== "ended" && !playerHere && presence.connected.size > 0) {
+    desertedAt = session.desertedAt ?? now;
+    if (now - desertedAt >= config.standSeconds * 1000) {
+      // long enough: every move still to come is the room's, and it makes them all now
+      for (let i = 0; i < MOVES_GUARD && state.phase !== "ended"; i++) {
+        const result = session.tokens[awaitedSeat(state)] === null ? botTurn(state, session.rules, config.bots) : applyTimeout(state, session.rules);
+        if (!result.ok) break;
+        state = result.state;
+        turnStartedAt = now;
+        roomMoved = true;
+      }
+      desertedAt = null;
+    }
+  }
+
   let awaySince: number | null = null;
   let deadline: number | null = null;
   // With nobody connected the game waits: no clock runs in an empty room.
@@ -160,8 +198,13 @@ function settle(session: Session, presence: Presence, now: number, config: Sessi
     } else {
       deadline = full;
     }
+    // a deserted table is looked at again when it has been deserted long enough
+    if (desertedAt !== null) {
+      const over = desertedAt + config.standSeconds * 1000;
+      deadline = deadline === null ? over : Math.min(deadline, over);
+    }
   }
-  return { ...session, state, turnStartedAt, awaySince, deadline };
+  return { ...session, state, turnStartedAt, awaySince, deadline, desertedAt };
 }
 
 /**
@@ -244,6 +287,7 @@ export function sessionTimeout(session: Session, presence: Presence, now: number
   if (session.deadline === null || now < session.deadline || session.state.phase === "ended") return session;
   const result = applyTimeout(session.state, session.rules);
   if (!result.ok) return session;
+  // a table deserted long enough has the rest of its moves made in the same breath (see `settle`)
   return settle({ ...session, state: result.state }, presence, now, config, true);
 }
 

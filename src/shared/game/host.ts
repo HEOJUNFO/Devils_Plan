@@ -16,6 +16,7 @@ import {
   type StartRefusal,
 } from "../session";
 import botConfig from "./bot-config.json";
+import hostConfig from "./host-config.json";
 import { parseAction } from "./rules";
 import rulesConfig from "./rules-config.json";
 import tableSizes from "./table-sizes.json";
@@ -25,6 +26,7 @@ const config: SessionConfig = {
   sizes: tableSizes,
   bots: botConfig,
   awayTurnSeconds: roomConfig.awayTurnSeconds,
+  standSeconds: hostConfig.standSeconds,
 };
 
 /** The version of a stored game this code can carry on with. */
@@ -57,7 +59,8 @@ export const rouletteHost: GameHost<Session, StartRefusal | MoveRefusal> = {
     current.state === next.state &&
     current.deadline === next.deadline &&
     current.awaySince === next.awaySince &&
-    current.turnStartedAt === next.turnStartedAt,
+    current.turnStartedAt === next.turnStartedAt &&
+    (current.desertedAt ?? null) === (next.desertedAt ?? null),
   usable: (stored) =>
     typeof stored === "object" && stored !== null && (stored as Partial<Session>).state?.version === VERSION,
 };
