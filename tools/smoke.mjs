@@ -3,7 +3,8 @@
 // Drives a server over its real HTTP and WebSocket addresses, as browsers
 // would: the page loads, the list of rooms answers, four players make and
 // join a room, talk, play a whole game to its end and leave; then two more
-// make a room of the second game, team up and part, and play it to its end.
+// make a room of the second game, team up and part, and play it to its end;
+// then two make a room of the third game and lay its first park.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, so the
 // whole check takes about ten seconds longer than the moves do.
@@ -13,11 +14,16 @@
 //   npm run smoke -- http://localhost:8787
 // Needs Node 22 or later (it uses the built-in WebSocket).
 
+import { readFileSync } from "node:fs";
+
 const base = (process.argv[2] ?? "http://localhost:5273").replace(/\/$/, "");
 const wsBase = base.replace(/^http/, "ws");
 const GAME = "russian-roulette";
 const PLAYERS = 4;
 const SECOND_GAME = "count-rectangles";
+const THIRD_GAME = "lay-the-grass";
+/** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
+const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 const STEP_TIMEOUT_MS = 8000;
 /** Long enough for the second game's pause between problems, which the server's own config sets. */
 const PAUSE_TIMEOUT_MS = 30000;
@@ -172,6 +178,96 @@ async function secondGame() {
   for (const p of players) p.close();
 }
 
+/** The cells of tile `number`, as [row, col] in its own box, after `turns` quarter turns clockwise. */
+function tileCells(number, turns) {
+  const drawing = TILES[String(number)];
+  let rows = drawing.length;
+  let cells = [];
+  drawing.forEach((line, row) => [...line].forEach((mark, col) => mark !== "." && cells.push([row, col])));
+  for (let turn = 0; turn < turns; turn++) {
+    const height = rows;
+    rows = Math.max(...cells.map(([, col]) => col)) + 1;
+    cells = cells.map(([row, col]) => [col, height - 1 - row]);
+  }
+  return cells;
+}
+
+/** The first place tile `number` fits on the park as `view` shows it, or `null`: worked out from what a player sees. */
+function firstWay(view, number) {
+  const taken = new Set();
+  for (const placement of view.placed) {
+    for (const [row, col] of tileCells(placement.tile, placement.turns)) taken.add(`${placement.row + row},${placement.col + col}`);
+  }
+  const free = (row, col) => view.park.rows[row]?.[col] === "#" && !taken.has(`${row},${col}`);
+  for (let turns = 0; turns < 4; turns++) {
+    const cells = tileCells(number, turns);
+    for (let row = 0; row < view.park.rows.length; row++) {
+      for (let col = 0; col < view.park.rows[0].length; col++) {
+        if (cells.every(([r, c]) => free(row + r, col + c))) return { row, col, turns };
+      }
+    }
+  }
+  return null;
+}
+
+/** The third game, in a room of its own: two players, off the list, one park laid. */
+async function thirdGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 2; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `grass${n}`, create: n === 0, game: THIRD_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  check("a room is made for the third game", lobby.game === THIRD_GAME, lobby.game);
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the third game to start", (m) => m.type === "game" || m.type === "refused")));
+  const cells = games[0].type === "game" ? games[0].view.park.rows.join("").split("#").length - 1 : 0;
+  check("the third game starts on a park for two", games.every((g) => g.type === "game" && g.game === THIRD_GAME) && cells === 16, `${cells} cells`);
+
+  // a pick out of turn is refused; then each picks tile 7 in turn
+  const first = games[0].view.turn;
+  players[1 - first].send({ type: "action", action: { type: "pick", tile: 7 } });
+  const early = await players[1 - first].until("the refusal of a pick out of turn", (m) => m.type === "refused");
+  check("a pick out of turn is refused", early.reason === "not-your-turn", early.reason);
+  for (let picked = 0; picked < 2; picked++) {
+    const game = await players[0].until("the next pick", (m) => m.type === "game" && m.view.picks.length === picked);
+    players[game.view.turn].send({ type: "action", action: { type: "pick", tile: 7 } });
+  }
+
+  // a tile laid off the park is refused; then each lays theirs in the first place it fits
+  const laying = await players[0].until("the laying to begin", (m) => m.type === "game" && m.view.phase === "place");
+  const from = players[laying.view.turn].messages.length;
+  players[laying.view.turn].send({ type: "action", action: { type: "lay", row: 50, col: 50, turns: 0 } });
+  const off = await players[laying.view.turn].until("the refusal of a tile off the park", (m) => m.type === "refused", from);
+  check("a tile laid off the park is refused", off.reason === "does-not-fit", off.reason);
+  for (let step = 0; step < 4; step++) {
+    const game = players[0].last("game");
+    if (game.view.phase !== "place") break;
+    const way = firstWay(game.view, 7);
+    if (way === null) throw new Error("the room gave the turn to a player whose tile fits nowhere");
+    const done = game.view.placed.length + game.view.failed.length;
+    players[game.view.turn].send({ type: "action", action: { type: "lay", ...way } });
+    await players[0].until("the tile to be laid", (m) => m.type === "game" && m.view.placed.length + m.view.failed.length > done);
+  }
+  const closed = players[0].last("game");
+  const points = closed.view.players.reduce((sum, player) => sum + player.score, 0);
+  check(
+    "the park is closed with each tile laid counted for its number",
+    closed.view.phase === "pause" && closed.view.placed.length + closed.view.failed.length === 2 && points === 7 * closed.view.placed.length && closed.view.placed.length > 0,
+    `${closed.view.placed.length} laid, ${closed.view.failed.length} failed, ${points} points`,
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in the third game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 async function main() {
   // 1. the page
   const page = await fetch(`${base}/`);
@@ -278,6 +374,9 @@ async function main() {
 
   // 12. the second game
   await secondGame();
+
+  // 13. the third game
+  await thirdGame();
 }
 
 try {
