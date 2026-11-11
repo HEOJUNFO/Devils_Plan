@@ -35,6 +35,7 @@ import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoice
 import { C, shade } from "../../game/palette";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
+import { WORDS } from "./words";
 
 /** What the room sends about a game of 잔디 깔기. */
 export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the-grass" }>;
@@ -80,8 +81,6 @@ const TICK_FROM = 5;
  * may have been pressing Enter to lay a tile at the moment the game ended.
  */
 const RESULTS_HOLD = 1.5;
-/** Said when something could not be sent because the connection is down. */
-const NOT_SENT_TEXT = "연결이 끊겨 보내지 못했습니다. 다시 해 주세요";
 /**
  * One colour for each player's grass, by their place in the list of players:
  * as many as a game has players, the first six as they were when six was the
@@ -119,41 +118,8 @@ const LEAF = "#2f9a4c";
 const LEAF_D = "#1d6a34";
 const TRUNK = "#7a4a26";
 
-const REFUSED_TEXT: Record<string, string> = {
-  "not-your-turn": "지금은 내 차례가 아닙니다",
-  "not-choosing": "지금은 선택하는 때가 아닙니다",
-  "already-chosen": "이미 골랐습니다. 선택은 바꿀 수 없습니다",
-  "not-picking": "지금은 타일을 고르는 때가 아닙니다",
-  "not-laying": "지금은 타일을 놓는 때가 아닙니다",
-  "not-marking": "지금은 맨홀이나 가로수를 놓는 때가 아닙니다",
-  "bad-cell": "그 칸에는 놓을 수 없습니다",
-  "bad-cut": "그렇게는 자를 수 없습니다",
-  "no-such-tile": "그런 타일은 없습니다",
-  "does-not-fit": "거기에는 놓을 수 없습니다",
-  "game-over": "이 판은 끝났습니다",
-  "not-playing": "관전 중에는 참여할 수 없습니다",
-  "not-seated": "관전 중에는 참여할 수 없습니다",
-  "no-game": "진행 중인 판이 없습니다",
-  "not-host": "방장만 새 판을 시작할 수 있습니다",
-  "too-few": "두 명 이상이어야 합니다",
-  "already-playing": "이미 판이 진행 중입니다",
-  "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
-  "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
-};
-
-/** How a game ended, as the log says it. */
-const ENDED_TEXT: Record<"rounds" | "abandoned", string> = {
-  rounds: "마지막 공원까지 끝",
-  abandoned: "이어갈 사람이 없어 끝",
-};
-
 /** The two options of each choice, by the names the document gives them. */
-const OPTION_NAMES: Record<ChoiceNo, [string, string]> = {
-  5: ["점수", "정보"],
-  6: ["공격", "방어"],
-  7: ["상생", "견제"],
-  8: ["가로수", "맨홀"],
-};
+const OPTION_NAMES = WORDS.choice.options;
 
 type Box = readonly [number, number, number, number];
 
@@ -301,20 +267,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const rules = latest?.rules;
     const atMost = latest?.view.checkAtMost ?? 0;
     if (rules === undefined) return [];
-    if (which === 5) return option === 1 ? [`승점 ${rules.scoreBonus}점을 바로 얻습니다.`] : ["다음 선택 6, 7, 8의 내용을", "미리 봅니다."];
-    if (which === 6) {
-      return option === 1
-        ? ["타일을 놓으면 번호의 2배.", `못 놓으면 ${rules.attackLoss}점을 잃습니다.`]
-        : [`놓을 때 타일에서 ${rules.cutMax}칸까지`, "잘라 낼 수 있습니다.", "(번호 칸, 두 동강은 불가)"];
-    }
-    if (which === 7) {
-      return option === 1
-        ? ["둘이 한 팀. 두 타일이 맞닿은", "변의 수만큼 추가 승점을", "나눠 갖습니다."]
-        : [`놓은 사람이 ${atMost}명 이하이면`, `승점 ${rules.checkBonus}점을 더 얻습니다.`];
-    }
-    return option === 1
-      ? ["공원에 가로수 하나를 놓습니다.", "그 위에는 구멍 뚫린 칸만", "놓을 수 있습니다."]
-      : ["+1과 -1 맨홀을 놓습니다.", "덮은 타일은 +1마다 1점,", "-1마다 1점을 잃습니다."];
+    const said = WORDS.choice;
+    if (which === 5) return option === 1 ? said.score(rules.scoreBonus) : said.info;
+    if (which === 6) return option === 1 ? said.attack(rules.attackLoss) : said.defend(rules.cutMax);
+    if (which === 7) return option === 1 ? said.pair : said.check(atMost, rules.checkBonus);
+    return option === 1 ? said.tree : said.manholes;
   }
 
   /** Shows one thing that happened: a sound, and something to see where it happened. */
@@ -417,7 +374,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       cut = [...cut, own];
       sfx.move();
     } else {
-      say(REFUSED_TEXT["bad-cut"]);
+      say(WORDS.refused["bad-cut"]);
       sfx.deny();
     }
   }
@@ -442,7 +399,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
         if (host) handlers.again();
-        else say(REFUSED_TEXT["not-host"]);
+        else say(WORDS.refused["not-host"]);
       }
       return;
     }
@@ -465,7 +422,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const send = (): void => {
         if (pointed === null) return;
         pending = handlers.act({ type: "choose", option: pointed });
-        if (!pending) say(NOT_SENT_TEXT);
+        if (!pending) say(WORDS.notSent);
       };
       for (const code of keys) {
         const digit = digitOf(code);
@@ -492,7 +449,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const send = (): void => {
         if (chosen === null) return;
         pending = handlers.act({ type: "pick", tile: chosen });
-        if (!pending) say(NOT_SENT_TEXT);
+        if (!pending) say(WORDS.notSent);
       };
       // a tile is pointed at first and confirmed second: a pick cannot be taken back
       for (const code of keys) {
@@ -532,12 +489,12 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const put = (at: { row: number; col: number }): void => {
         const here = (each: { row: number; col: number }): boolean => each.row === at.row && each.col === at.col;
         if (view.manholes.some(here) || (tree && view.trees.some(here))) {
-          say(REFUSED_TEXT["bad-cell"]);
+          say(WORDS.refused["bad-cell"]);
           sfx.deny();
           return;
         }
         pending = handlers.act({ type: tree ? "tree" : "manhole", row: at.row, col: at.col });
-        if (!pending) say(NOT_SENT_TEXT);
+        if (!pending) say(WORDS.notSent);
       };
       let spot: { row: number; col: number } = (mouse.moved ? cellAt(mouse) : null) ?? cursor;
       for (const code of keys) {
@@ -587,9 +544,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         if (hand === null) return;
         if (fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees })) {
           pending = handlers.act({ type: "lay", row: hand.row, col: hand.col, turns: hand.turns, ...(cut.length > 0 ? { cut } : {}) });
-          if (!pending) say(NOT_SENT_TEXT);
+          if (!pending) say(WORDS.notSent);
         } else {
-          say(REFUSED_TEXT["does-not-fit"]);
+          say(WORDS.refused["does-not-fit"]);
           sfx.deny();
         }
       };
@@ -839,8 +796,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const mine = me();
     pen.px(4, 22, SCENE_W - 8, BAR_Y - 26, C.ink);
     pen.px(5, 23, SCENE_W - 10, BAR_Y - 28, C.bar);
-    pen.txt(`선택 ${up.which}`, 12, 27, C.amber);
-    pen.txt("하나를 고릅니다. 바꿀 수 없습니다.", 12 + pen.width(`선택 ${up.which}`) + 8, 27, C.boneD);
+    pen.txt(WORDS.choice.name(up.which), 12, 27, C.amber);
+    pen.txt(WORDS.choice.once, 12 + pen.width(WORDS.choice.name(up.which)) + 8, 27, C.boneD);
     for (const option of [1, 2] as const) {
       const rect = OPTION_RECTS[option - 1];
       const [x, y, w, h] = rect;
@@ -850,20 +807,22 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       pen.px(x, y, w, h, lit_ ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, lit_ ? "#3a2a12" : live && inRect(mouse, rect) ? C.btnH : C.btn);
       pen.txt(`${option}`, x + 7, y + 24, C.dim);
-      pen.txt(OPTION_NAMES[up.which][option - 1], x + 20, y + 18, lit_ ? C.amber : up.mine === null ? C.bone : C.dim, "left", 24);
+      // the option's name, as large as its language leaves room for, level with the middle of the card
+      const size = WORDS.choice.optionSize;
+      pen.txt(OPTION_NAMES[up.which][option - 1], x + 20, y + Math.round((h - size - 2) / 2), lit_ ? C.amber : up.mine === null ? C.bone : C.dim, "left", size);
       cardLines(up.which, option).forEach((line, at) => pen.txt(line, x + 104, y + 8 + at * 15, lit_ || up.mine === null ? C.bone : C.dim));
     }
-    pen.txt(`${up.chosen.length}/${latest.players.length}명이 골랐습니다`, 12, 180, C.boneD);
+    pen.txt(WORDS.choice.picked(up.chosen.length, latest.players.length), 12, 180, C.boneD);
     const words =
       mine === null
-        ? "관전 중입니다"
+        ? WORDS.choice.watching
         : up.mine !== null
-          ? "골랐습니다. 모두 고르면 공개됩니다."
+          ? WORDS.choice.done
           : pointed !== null
-            ? "한 번 더 누르거나 Enter로 확정"
-            : "1 또는 2, 또는 카드를 누르세요";
+            ? WORDS.choice.confirm
+            : WORDS.choice.how;
     pen.txt(words, 12, 196, up.mine !== null || mine === null ? C.boneD : C.amber);
-    button(PEEK_RECT, "V 공원 보기", "", false, true);
+    button(PEEK_RECT, WORDS.choice.seePark, "", false, true);
   }
 
   function drawScene(): void {
@@ -873,13 +832,13 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     for (let y = 9; y < BAR_Y; y += 17) pen.px(0, y, SCENE_W, 1, C.wallD);
     drawPark();
     if (latest.view.phase === "choose") {
-      if (peek) button(PEEK_RECT, "V 선택 카드", "", true, true);
+      if (peek) button(PEEK_RECT, WORDS.choice.seeCards, "", true, true);
       else drawChoice();
     }
     if (latest.frozen) {
       // the game's own clocks stand still; this one runs, and ends the game at nought
       const stand = latest.clock.stand === null ? null : Math.max(0, latest.clock.stand - (performance.now() - receivedAt));
-      const words = stand === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${Math.ceil(stand / 1000)}초`;
+      const words = WORDS.waitingBack(stand === null ? null : Math.ceil(stand / 1000));
       const plate = Math.max(160, pen.width(words) + 16);
       const middle = PARK_AREA.y + Math.round(PARK_AREA.h / 2);
       pen.px(Math.round(SCENE_W / 2 - plate / 2), middle - 9, plate, 17, C.ink);
@@ -892,37 +851,33 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     if (latest === null) return ["", C.boneD];
     const view = latest.view;
     if (noteT > 0) return [note, C.amber];
-    if (offline) return ["연결이 끊겼습니다. 다시 연결하는 중", C.crim];
-    if (view.phase === "ended") return ["판이 끝났습니다", C.amber];
+    if (offline) return [WORDS.standing.offline, C.crim];
+    if (view.phase === "ended") return [WORDS.standing.over, C.amber];
     if (view.phase === "pause") {
       const seconds = Math.ceil((left(latest.clock.next) ?? 0) / 1000);
-      return [`공원 ${view.round} 끝 · 다음 공원까지 ${seconds}초`, C.teal];
+      return [WORDS.standing.nextPark(view.round, seconds), C.teal];
     }
     const seconds = Math.ceil((left(latest.clock.turn) ?? 0) / 1000);
     const hurry = seconds <= TICK_FROM ? C.crim : C.amber;
     const who = view.turn === null ? "" : pen.fit(nickOf(view.turn), NAME_WIDTH);
-    if (pending) return ["보내는 중", C.boneD];
+    if (pending) return [WORDS.standing.sending, C.boneD];
     if (view.phase === "choose") {
       const which = view.choosing?.which ?? 0;
-      if (choosing()) return [`선택 ${which}: 하나를 고르세요 · ${seconds}초`, hurry];
-      return [`선택 ${which}: 모두 고르기를 기다리는 중 · ${seconds}초`, C.bone];
+      if (choosing()) return [WORDS.standing.choose(which, seconds), hurry];
+      return [WORDS.standing.chooseWait(which, seconds), C.bone];
     }
-    if (picking()) {
-      const words = chosen === null ? "타일을 고르세요 (한 번 고르면 못 바꿉니다)" : `${chosen}번으로 정하려면 Enter, 또는 한 번 더 누르기`;
-      return [`${words} · ${seconds}초`, hurry];
-    }
+    if (picking()) return [WORDS.standing.pick(chosen, seconds), hurry];
     if (marking()) {
       const mine = me();
       const down = view.manholes.filter((manhole) => manhole.by === mine).length;
-      const what = view.phase === "trees" ? "가로수를" : down === 0 ? "+1 맨홀을" : "-1 맨홀을";
-      return [`${what} 놓을 칸을 누르세요 · ${seconds}초`, hurry];
+      return [WORDS.standing.mark(view.phase === "trees" ? "tree" : down === 0 ? "plus" : "minus", seconds), hurry];
     }
     if (laying()) {
-      if (cutting) return [`자를 칸을 누르세요 (${cut.length}/${latest.rules.cutMax}칸) · X로 끝 · ${seconds}초`, hurry];
-      return [`타일을 놓으세요 · ${seconds}초`, hurry];
+      if (cutting) return [WORDS.standing.cut(cut.length, latest.rules.cutMax, seconds), hurry];
+      return [WORDS.standing.lay(seconds), hurry];
     }
-    const doing = view.phase === "pick" ? "고르는 중" : view.phase === "manholes" ? "맨홀 놓는 중" : view.phase === "trees" ? "가로수 놓는 중" : "놓는 중";
-    return [`${me() === null ? "관전 중 · " : ""}${who} ${doing} · ${seconds}초`, C.bone];
+    const doing = view.phase === "pick" ? "pick" : view.phase === "manholes" ? "manholes" : view.phase === "trees" ? "trees" : "lay";
+    return [WORDS.standing.other(me() === null, who, doing, seconds), C.bone];
   }
 
   /** The log, made from what has been shown so far. */
@@ -932,29 +887,27 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const names = (players: number[]): string => players.map((player) => pen.fit(nickOf(player), 40)).join(", ");
     for (const event of latest.view.history.slice(0, seen)) {
       const who = "player" in event ? pen.fit(nickOf(event.player), NAME_WIDTH) : "";
-      if (event.type === "park") lines.push([`공원 ${event.round}`, C.boneD]);
+      if (event.type === "park") lines.push([WORDS.log.park(event.round), C.boneD]);
       else if (event.type === "choice") {
         for (const option of [1, 2] as const) {
           const those = event.chosen.filter((each) => each.option === option).map((each) => each.player);
           if (those.length === 0) continue;
           const label = OPTION_NAMES[event.which][option - 1];
-          const whole = `${label}: ${names(those)}`;
+          const whole = WORDS.log.took(label, names(those));
           // too many to name in one line: how many they are comes first, so that the line still says it where it is cut
-          lines.push([pen.width(whole) <= PANEL_WIDTH ? whole : `${label} ${those.length}명: ${names(those)}`, C.brass]);
+          lines.push([pen.width(whole) <= PANEL_WIDTH ? whole : WORDS.log.tookMany(label, those.length, names(those)), C.brass]);
         }
-      } else if (event.type === "pick") lines.push([`${who}: ${event.tile}번 선택${event.forced ? " (자동)" : ""}`, C.bone]);
-      else if (event.type === "pair") lines.push([`상생 팀: ${names(event.players)}`, C.teal]);
-      else if (event.type === "alone") lines.push([`${who}: 상생 짝 없음`, C.boneD]);
-      else if (event.type === "manhole") lines.push([`${who}: ${event.value > 0 ? "+1" : "-1"} 맨홀 놓음`, C.bone]);
-      else if (event.type === "tree") lines.push([`${who}: 가로수 놓음`, C.bone]);
-      else if (event.type === "skip") lines.push([`${who}: ${event.what === "tree" ? "가로수" : "맨홀"} 안 놓음`, C.boneD]);
-      else if (event.type === "lay") {
-        const more = `${event.cut > 0 ? ` (${event.cut}칸 자름)` : ""}${event.forced ? " (자동)" : ""}`;
-        lines.push([`${who}: ${event.tile}번 놓음${more}`, C.teal]);
-      } else if (event.type === "fail") lines.push([`${who}: ${event.tile}번 자리 없음`, C.crim]);
+      } else if (event.type === "pick") lines.push([WORDS.log.pick(who, event.tile, event.forced === true), C.bone]);
+      else if (event.type === "pair") lines.push([WORDS.log.pair(names(event.players)), C.teal]);
+      else if (event.type === "alone") lines.push([WORDS.log.alone(who), C.boneD]);
+      else if (event.type === "manhole") lines.push([WORDS.log.manhole(who, event.value > 0), C.bone]);
+      else if (event.type === "tree") lines.push([WORDS.log.tree(who), C.bone]);
+      else if (event.type === "skip") lines.push([WORDS.log.skip(who, event.what === "tree"), C.boneD]);
+      else if (event.type === "lay") lines.push([WORDS.log.lay(who, event.tile, event.cut, event.forced === true), C.teal]);
+      else if (event.type === "fail") lines.push([WORDS.log.fail(who, event.tile), C.crim]);
       else if (event.type === "score") {
-        for (const line of event.lines) lines.push([`${pen.fit(nickOf(line.player), NAME_WIDTH)}: ${signed(line.total)}점`, line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD]);
-      } else lines.push([ENDED_TEXT[event.reason], C.amber]);
+        for (const line of event.lines) lines.push([WORDS.log.score(pen.fit(nickOf(line.player), NAME_WIDTH), line.total), line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD]);
+      } else lines.push([WORDS.ended[event.reason], C.amber]);
     }
     return lines;
   }
@@ -975,11 +928,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    pen.txt(view.rounds > 1 ? `공원 ${view.round}/${view.rounds}` : "잔디 깔기", x, 3, C.bone);
+    pen.txt(view.rounds > 1 ? WORDS.panel.park(view.round, view.rounds) : WORDS.panel.game, x, 3, C.bone);
     const turn = left(latest.clock.turn);
     if (turn !== null && view.phase !== "ended" && view.phase !== "pause") {
       const seconds = Math.ceil(turn / 1000);
-      pen.txt(`${seconds}초`, W - 5, 3, seconds <= TICK_FROM ? C.crim : C.boneD, "right");
+      pen.txt(WORDS.panel.seconds(seconds), W - 5, 3, seconds <= TICK_FROM ? C.crim : C.boneD, "right");
     }
     const order = listOrder();
     const layout = panelLayout(order.length);
@@ -1034,10 +987,10 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const name = pen.fit(info?.nick ?? "", NAME_WIDTH);
       pen.txt(name, ex + 27, y, nameColour);
       if (voice !== "out") drawVoiceMark(pen, ex + 27 + pen.width(name) + 2, y, voice, time);
-      if (tile !== null) pen.txt(`${tile}번`, ex + 112, y, tileColour, "right");
-      if (laid) pen.txt("놓음", ex + 117, y, C.teal);
-      else if (failed) pen.txt("실패", ex + 117, y, C.crim);
-      else if (view.phase === "choose") pen.txt(chose ? "고름" : "…", ex + 117, y, C.boneD);
+      if (tile !== null) pen.txt(WORDS.panel.tile(tile), ex + 112, y, tileColour, "right");
+      if (laid) pen.txt(WORDS.panel.laid, ex + 117, y, C.teal);
+      else if (failed) pen.txt(WORDS.panel.failed, ex + 117, y, C.crim);
+      else if (view.phase === "choose") pen.txt(chose ? WORDS.panel.chose : "…", ex + 117, y, C.boneD);
       pen.txt(`${score}`, right, y, C.brass, "right");
     });
     pen.px(x, layout.crowded ? underList(layout) : 86, PANEL_WIDTH, 1, C.steelDD);
@@ -1106,8 +1059,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       pen.px(x, y, w, h, picked ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, picked ? "#3a2a12" : mine && inRect(mouse, rect) ? C.btnH : C.btn);
       drawTile(tile, x + 3, y + Math.floor((h - tile.rows * 5) / 2), 5, room ? "#6fcf5a" : C.dim);
-      pen.txt(`${tile.number}점`, x + 27, y + 1, picked ? C.amber : mine ? C.bone : C.boneD);
-      pen.txt(room ? `${tile.cells.length}칸` : "불가", x + 27, y + 14, room ? C.boneD : C.crim);
+      pen.txt(WORDS.tile.points(tile.number), x + 27, y + 1, picked ? C.amber : mine ? C.bone : C.boneD);
+      pen.txt(room ? WORDS.tile.cells(tile.cells.length) : WORDS.tile.noRoom, x + 27, y + 14, room ? C.boneD : C.crim);
       // who has picked it, a mark each: in rows down the right of the button, clear of its words
       view.picks
         .filter((pick) => pick.tile === tile.number)
@@ -1119,10 +1072,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
 
   /** How `line` came about, in words: each part that is not nought. */
   function breakdown(line: ScoreLine): string {
-    const parts = [line.laid ? `타일 ${signed(line.tile)}` : line.tile < 0 ? `공격 실패 ${signed(line.tile)}` : "타일 못 놓음"];
-    if (line.manholes !== 0) parts.push(`맨홀 ${signed(line.manholes)}`);
-    if (line.pair !== 0) parts.push(`상생 ${signed(line.pair)}`);
-    if (line.check !== 0) parts.push(`견제 ${signed(line.check)}`);
+    const said = WORDS.result;
+    const parts = [line.laid ? said.tile(signed(line.tile)) : line.tile < 0 ? said.attackFailed(signed(line.tile)) : said.notLaid];
+    if (line.manholes !== 0) parts.push(said.manholes(signed(line.manholes)));
+    if (line.pair !== 0) parts.push(said.pair(signed(line.pair)));
+    if (line.check !== 0) parts.push(said.check(signed(line.check)));
     return parts.join(" · ");
   }
 
@@ -1132,18 +1086,18 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const mine = me();
     const best = Math.max(...view.players.map((player) => player.score));
     const won = mine !== null && view.players.find((player) => player.id === mine)?.score === best;
-    pen.txt(mine === null ? "종료" : won ? "승리!" : "패배", 10, 234, mine === null ? C.bone : won ? C.teal : C.crim, "left", 24);
+    pen.txt(WORDS.result.verdict(mine !== null, won), 10, 234, mine === null ? C.bone : won ? C.teal : C.crim, "left", 24);
     // equal points share a place
     const ranked = [...view.players].sort((a, b) => b.score - a.score);
-    const places = ranked.map((player) => `${ranked.findIndex((other) => other.score === player.score) + 1}위 ${pen.fit(nickOf(player.id), 48)} ${player.score}`);
+    const places = ranked.map((player) => WORDS.result.place(ranked.findIndex((other) => other.score === player.score) + 1, pen.fit(nickOf(player.id), 48), player.score));
     pen.txt(pen.fit(places.join("  "), 280), 96, 226, C.bone);
     const line = mine === null ? null : scoreOf(mine);
-    const five = optionOf(mine, 5) === 1 ? `점수 ${signed(latest.rules.scoreBonus)} · ` : "";
-    pen.txt(pen.fit(line === null ? "판이 끝났습니다" : `${five}${breakdown(line)}`, 280), 96, 240, C.boneD);
+    const five = optionOf(mine, 5) === 1 ? `${WORDS.result.bonus(signed(latest.rules.scoreBonus))} · ` : "";
+    pen.txt(pen.fit(line === null ? WORDS.result.over : `${five}${breakdown(line)}`, 280), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? "같은 사람들과 한 판 더 하거나 대기실로" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, "Enter 새 판", "", true, true);
-    button(LOBBY_RECT, "Esc 대기실로", "", false, true);
+    else pen.txt(host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, "", true, true);
+    button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
   }
 
   function drawBar(): void {
@@ -1168,30 +1122,29 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     if (tile !== undefined && mine !== null) {
       drawTile(turned(tile, hand?.turns ?? 0), 8, 240, 5, grassOf(mine));
       const six = optionOf(mine, 6);
-      const tag = six === 1 ? " · 공격" : six === 2 ? " · 방어" : "";
-      pen.txt(`내 타일 ${tile.number}번 · ${tile.number}점${tag}`, 40, 240, C.bone);
+      pen.txt(WORDS.hand.mine(tile.number, six === null ? null : OPTION_NAMES[6][six - 1]), 40, 240, C.bone);
     }
     if (view.phase === "choose") {
-      pen.txt("I: 지금까지 나온 선택 카드 보기", 40, 253, C.boneD);
+      pen.txt(WORDS.hand.cards, 40, 253, C.boneD);
     } else if (marking()) {
-      pen.txt("마우스·화살표로 칸을 고르고 눌러서 놓기", 40, 253, C.boneD);
+      pen.txt(WORDS.hand.mark, 40, 253, C.boneD);
     } else if (view.phase === "manholes" || view.phase === "trees") {
-      pen.txt("맨홀을 덮으면 +1/-1점. 가로수 위에는 구멍 칸만.", 40, 253, C.boneD);
+      pen.txt(WORDS.hand.marks, 40, 253, C.boneD);
     } else if (laying()) {
       // with 방어 the button for cutting takes the room the longer hint would
-      pen.txt(defending() ? "옮겨서 놓기 · X 자르기" : "마우스·화살표로 옮기고 눌러서 놓기", 40, 253, C.boneD);
-      if (defending()) button(CUT_RECT, cutting ? "X 자르기 끝" : "X 자르기", "", cutting, true);
-      button(TURN_RECT, "R 돌리기", "", false, true);
+      pen.txt(defending() ? WORDS.hand.layCut : WORDS.hand.lay, 40, 253, C.boneD);
+      if (defending()) button(CUT_RECT, cutting ? WORDS.button.cutDone : WORDS.button.cut, "", cutting, true);
+      button(TURN_RECT, WORDS.button.turn, "", false, true);
       const ok = hand !== null && number !== null && fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees });
-      button(LAY_RECT, "Enter 놓기", "", ok && Math.sin(time * 5) > 0, ok);
+      button(LAY_RECT, WORDS.button.lay, "", ok && Math.sin(time * 5) > 0, ok);
     } else if (view.phase === "place") {
-      pen.txt("번호가 작은 타일부터 놓습니다. 자리가 없으면 0점.", 40, 253, C.boneD);
+      pen.txt(WORDS.hand.order, 40, 253, C.boneD);
     } else if (mine !== null && view.failed.includes(mine)) {
-      pen.txt("놓을 자리가 없어 이번 공원은 0점입니다.", 40, 253, C.crim);
+      pen.txt(WORDS.hand.failed, 40, 253, C.crim);
     } else if (mine !== null && tile !== undefined && view.placed.some((placement) => placement.player === mine)) {
-      pen.txt(`타일을 놓아 ${tile.number}점을 얻었습니다.`, 40, 253, C.teal);
+      pen.txt(WORDS.hand.scored(tile.number), 40, 253, C.teal);
     } else {
-      pen.txt("놓은 타일의 번호만큼 승점을 얻습니다.", 40, 253, C.boneD);
+      pen.txt(WORDS.hand.worth, 40, 253, C.boneD);
     }
   }
 
@@ -1202,22 +1155,24 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);
-    pen.txt("선택 카드", 22, 16, C.amber);
-    pen.txt("I 또는 Esc: 닫기", W - 22, 16, C.boneD, "right");
+    pen.txt(WORDS.choice.sheet, 22, 16, C.amber);
+    pen.txt(WORDS.choice.sheetClose, W - 22, 16, C.boneD, "right");
+    // the first option starts clear of the choice's name, which is as long as the language makes it
+    const first = Math.max(92, 22 + pen.width(WORDS.choice.name(8)) + 8);
     let y = 34;
     for (const which of CHOICES) {
       const met = view.choosing?.which === which || view.choices.some((each) => each.which === which);
       const ahead = view.preview.includes(which);
       const mine = optionOf(me(), which);
-      pen.txt(`선택 ${which}`, 22, y, met || ahead ? C.bone : C.dim);
+      pen.txt(WORDS.choice.name(which), 22, y, met || ahead ? C.bone : C.dim);
       if (!met && !ahead) {
-        pen.txt("아직 공개되지 않았습니다", 92, y, C.dim);
+        pen.txt(WORDS.choice.notYet, first, y, C.dim);
         y += 20;
         continue;
       }
-      if (ahead) pen.txt("(미리보기)", 22, y + 14, C.teal);
+      if (ahead) pen.txt(WORDS.choice.ahead, 22, y + 14, C.teal);
       for (const option of [1, 2] as const) {
-        const x = option === 1 ? 92 : 288;
+        const x = option === 1 ? first : 288;
         pen.txt(`${option} ${OPTION_NAMES[which][option - 1]}`, x, y, mine === option ? C.amber : C.brass);
         cardLines(which, option).forEach((line, at) => pen.txt(line, x, y + 14 + at * 13, mine === option ? C.bone : C.boneD));
       }
@@ -1228,28 +1183,13 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   function drawHelp(): void {
     if (latest === null) return;
     const rules = latest.rules;
-    const lines: [string, string][] = [
-      ["잔디 깔기: 규칙", C.amber],
-      ["공원 위에 내 잔디 타일을 놓아 승점을 얻습니다.", C.bone],
-      ["먼저 타일 일곱 종류 중 하나를 모두가 보는 앞에서 고릅니다. 승점이 낮은", C.bone],
-      ["사람부터 고르고, 한 번 고르면 바꿀 수 없습니다. 같은 타일을 골라도 됩니다.", C.bone],
-      ["그다음 타일에 적힌 번호가 작은 사람부터 공원에 놓습니다. 타일은 돌릴 수", C.bone],
-      ["있지만 뒤집을 수 없고, 공원 밖으로 나가거나 다른 타일과 겹칠 수 없습니다.", C.bone],
-      ["놓으면 타일의 번호만큼 승점을 얻고, 놓을 자리가 없으면 0점입니다.", C.bone],
-      ["", C.bone],
-      ["사이사이에 둘 중 하나를 고르는 선택이 네 번 나옵니다 (선택 5~8).", C.teal],
-      ["모두 동시에 고르고, 다 고른 뒤에 누가 무엇을 골랐는지 공개됩니다.", C.boneD],
-      ["선택의 내용은 나올 때 공개됩니다. I 키로 나온 카드를 다시 볼 수 있습니다.", C.boneD],
-      ["", C.bone],
-      [`고르기 ${rules.pickSeconds}초, 놓기 ${rules.placeSeconds}초. 시간이 지나면 자동으로 넘어갑니다.`, C.boneD],
-      ["숫자: 고르기 · R: 돌리기 · X: 자르기(방어) · 화살표: 옮기기 · Enter: 정하기", C.boneD],
-      ["H 또는 Esc: 닫기 · I: 선택 카드 · V: 공원 보기 · M: 음소거 · T: 채팅", C.amber],
-    ];
+    const lines = WORDS.help(rules.pickSeconds, rules.placeSeconds);
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);
-    lines.forEach(([text, colour], i) => {
-      if (text !== "") pen.txt(text, 22, 20 + i * 15, colour);
+    lines.forEach((line, i) => {
+      const colour = line.tone === "title" ? C.amber : line.tone === "dim" ? C.boneD : line.tone === "mark" ? C.teal : C.bone;
+      if (line.text !== "") pen.txt(line.text, 22, 20 + i * 15, colour);
     });
   }
 
@@ -1330,7 +1270,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     update,
     refused(reason: string): void {
       pending = false;
-      say(REFUSED_TEXT[reason] ?? "지금은 할 수 없습니다");
+      say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {

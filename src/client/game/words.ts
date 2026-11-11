@@ -6,13 +6,7 @@
  * sentence changed here is looked at on the screen it is drawn on.
  */
 import { words } from "../lang";
-import type { RulesSheet } from "../sheet";
-
-/** A line of the rules drawn over the table: plain, the sheet's title and its last line, or dimmer for the list of moves. */
-export interface HelpLine {
-  text: string;
-  tone?: "title" | "dim";
-}
+import type { HelpLine, RulesSheet } from "../sheet";
 
 const ko = {
   sheet: {

@@ -29,6 +29,7 @@ import { C } from "../../game/palette";
 import * as fxlib from "../../game/pixelfx.js";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LIST_PITCH, LOG_PITCH, PANEL_WIDTH, isCrowded, panelLayout, underList } from "../panel";
+import { WORDS } from "./words";
 
 /** What the room sends about a game of 네모 세기. */
 export type RectMessage = Extract<ServerMessage, { type: "game"; game: "count-rectangles" }>;
@@ -106,35 +107,8 @@ const TICK_FROM = 3;
  * ended this one.
  */
 const RESULTS_HOLD = 1.5;
-/** Said when something could not be sent because the connection is down. */
-const NOT_SENT_TEXT = "연결이 끊겨 보내지 못했습니다. 다시 눌러 주세요";
-
-const REFUSED_TEXT: Record<string, string> = {
-  "not-choosing": "지금은 선택하는 때가 아닙니다",
-  "already-chosen": "이미 골랐습니다. 선택은 바꿀 수 없습니다",
-  "not-in-duel": "추가 대결은 도전을 고른 사람끼리 합니다",
-  "not-open": "지금은 버저를 누를 수 없습니다",
-  "shut-out": "이 문제는 이미 틀렸습니다",
-  "already-won": "이미 승리했습니다",
-  "not-your-answer": "버저를 누른 사람만 답합니다",
-  "game-over": "이 판은 끝났습니다",
-  "not-playing": "관전 중에는 참여할 수 없습니다",
-  "not-seated": "관전 중에는 참여할 수 없습니다",
-  "no-game": "진행 중인 판이 없습니다",
-  "not-host": "방장만 새 판을 시작할 수 있습니다",
-  "bad-teams": "팀 인원이 맞지 않습니다",
-  "too-few": "시작할 사람이 없습니다",
-  "already-playing": "이미 판이 진행 중입니다",
-  "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
-  "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
-};
-
-/** How a game ended, as the log says it. */
-const ENDED_TEXT: Record<"half" | "problems" | "abandoned", string> = {
-  half: "절반이 승리: 끝!",
-  problems: "마지막 문제까지 끝",
-  abandoned: "이어갈 사람이 없어 끝",
-};
+/** What the two options of each card are called. */
+const OPTION_NAMES = WORDS.choice.options;
 
 const inRect = (p: { x: number; y: number }, r: readonly [number, number, number, number]): boolean =>
   p.x >= r[0] && p.x < r[0] + r[2] && p.y >= r[1] && p.y < r[1] + r[3];
@@ -150,19 +124,6 @@ const OPTION_RECTS: readonly [[number, number, number, number], [number, number,
   [8, 42, 288, 50],
   [8, 95, 288, 50],
 ];
-/** What the two options of each card are called. */
-const OPTION_NAMES: Record<Card, readonly [string, string]> = {
-  winners: ["독식", "헌신"],
-  losers: ["희생", "질책"],
-  alone: ["도전", "안전"],
-};
-/** Whom each card is for, as its heading says. */
-const CARD_FOR: Record<Card, string> = {
-  winners: "승리 팀 · 팀의 다수결로 정합니다",
-  losers: "패배 팀 · 팀의 다수결로 정합니다",
-  alone: "개인 플레이어",
-};
-
 /** `value` with its sign, as points are written. */
 const signed = (value: number): string => (value > 0 ? `+${value}` : `${value}`);
 
@@ -315,15 +276,10 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   /** What the two options of `card` do, in a line or two each, with the numbers of the rules. */
   function cardLines(card: Card, option: Option): string[] {
     const rules = latest!.rules;
-    if (card === "winners") {
-      return option === 1
-        ? [`대표 승점 ${rules.hogLeader}점 획득,`, `두 팀원 승점 각 ${rules.hogMember}점씩 획득`]
-        : [`대표 승점 ${rules.devoteLeader}점 획득,`, `두 팀원 승점 각 ${rules.devoteMember}점씩 획득`];
-    }
-    if (card === "losers") return option === 1 ? [`대표만 승점 ${rules.sacrificeLeader}점 차감`] : [`두 팀원만 승점 ${rules.blameMember}점씩 차감`];
-    return option === 1
-      ? ["추가 대결을 진행한다.", `승리 시 피스 ${rules.duelPieces}개 획득,`, `패배 시 승점 ${rules.duelLoss}점 차감`]
-      : ["대결하지 않고,", `승점 ${rules.safeLoss}점 차감`];
+    const said = WORDS.choice;
+    if (card === "winners") return option === 1 ? said.hog(rules.hogLeader, rules.hogMember) : said.devote(rules.devoteLeader, rules.devoteMember);
+    if (card === "losers") return option === 1 ? said.sacrifice(rules.sacrificeLeader) : said.blame(rules.blameMember);
+    return option === 1 ? said.dare(rules.duelPieces, rules.duelLoss) : said.safe(rules.safeLoss);
   }
   function answering(): boolean {
     const me = mine();
@@ -453,7 +409,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
         if (host) handlers.again();
-        else say(REFUSED_TEXT["not-host"]);
+        else say(WORDS.refused["not-host"]);
       }
       return;
     }
@@ -466,7 +422,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       const send = (): void => {
         if (pointed === null || pending) return;
         pending = handlers.act({ type: "choose", option: pointed });
-        if (!pending) say(NOT_SENT_TEXT);
+        if (!pending) say(WORDS.notSent);
       };
       // an option is pointed at first and confirmed second: a choice cannot be taken back. The keys
       // are taken in the order pressed, so that Enter confirms what was pointed at when it came.
@@ -495,7 +451,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         const me = mine();
         if (me !== null && view.phase === "problem" && !pending) {
           const outside = view.duel !== null && !view.duel.players.includes(me.player);
-          say(outside ? REFUSED_TEXT["not-in-duel"] : view.duel === null && view.units[me.unit].place > 0 ? REFUSED_TEXT["already-won"] : REFUSED_TEXT["shut-out"]);
+          say(outside ? WORDS.refused["not-in-duel"] : view.duel === null && view.units[me.unit].place > 0 ? WORDS.refused["already-won"] : WORDS.refused["shut-out"]);
           sfx.deny();
         }
         return;
@@ -504,7 +460,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       typed = "";
       if (!handlers.act({ type: "buzz" })) {
         // nothing went: the buzzer is not left waiting for an answer that cannot come
-        say(NOT_SENT_TEXT);
+        say(WORDS.notSent);
         sfx.deny();
         return;
       }
@@ -531,7 +487,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       queued = true;
     } else if (!pending) {
       if (handlers.act({ type: "answer", count: result.said })) pending = true;
-      else say(NOT_SENT_TEXT);
+      else say(WORDS.notSent);
     }
   }
 
@@ -648,10 +604,10 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     pen.px(x - 1, y - 1, w + 2, h + 2, C.ink);
     pen.px(x, y, w, h, C.brassD);
     pen.px(x + 1, y + 1, w - 2, h - 2, C.wallD);
-    pen.txt("타깃", x + Math.round(w / 2), y + 3, C.boneD, "center");
+    pen.txt(WORDS.target, x + Math.round(w / 2), y + 3, C.boneD, "center");
     pen.txt(`${view.board.target}`, x + Math.round(w / 2), y + 18, C.amber, "center", 24);
     // once the problem is closed: the answer, and which of its rectangles is lit
-    if (view.answer !== null) pen.txt(`정답 ${view.answer}개`, x + Math.round(w / 2), y + h + 6, C.teal, "center");
+    if (view.answer !== null) pen.txt(WORDS.answer(view.answer), x + Math.round(w / 2), y + h + 6, C.teal, "center");
     const shown = lit();
     if (shown !== null) pen.txt(`${shown.at + 1}/${shown.of}`, x + Math.round(w / 2), y + h + 20, C.amber, "center");
     // how long the problem has left, under the plate: it is gone by the time the answer takes that place
@@ -709,19 +665,19 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       if (unit.members.some((player) => said.has(player))) return;
       if (view.duel !== null && view.phase !== "ended") {
         // the added contest: who is in it, over their heads
-        if (view.duel.players.includes(unit.members[0]) && !view.wrong.includes(index)) pen.txt(named ? "도전" : "!", middle + 1, SAID_Y + 2, C.amber, "center");
-        else if (view.duel.players.includes(unit.members[0])) pen.txt(named ? "오답" : "×", middle + 1, SAID_Y + 2, C.crim, "center");
+        if (view.duel.players.includes(unit.members[0]) && !view.wrong.includes(index)) pen.txt(named ? WORDS.mark.duel : "!", middle + 1, SAID_Y + 2, C.amber, "center");
+        else if (view.duel.players.includes(unit.members[0])) pen.txt(named ? WORDS.mark.wrong : "×", middle + 1, SAID_Y + 2, C.crim, "center");
         return;
       }
       if (unit.place > 0) {
         // the place: with its word where there is room for it
-        const words = named ? `${unit.place}위` : `${unit.place}`;
+        const words = named ? WORDS.mark.place(unit.place) : `${unit.place}`;
         const w = pen.width(words) + 5;
         pen.px(middle - Math.floor(w / 2), SAID_Y + 1, w, 13, C.amberD);
         pen.px(middle - Math.floor(w / 2) + 1, SAID_Y + 2, w - 2, 11, C.ink);
         pen.txt(words, middle + 1, SAID_Y + 2, C.amber, "center");
       } else if (view.wrong.includes(index) && view.outcome === null) {
-        if (named) pen.txt("오답", middle + 1, SAID_Y + 2, C.crim, "center");
+        if (named) pen.txt(WORDS.mark.wrong, middle + 1, SAID_Y + 2, C.crim, "center");
         else {
           // a cross, where the word has no room
           for (let i = 0; i < 7; i++) {
@@ -773,7 +729,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     if (latest.frozen) {
       // the game's own clocks stand still; this one runs, and ends the game at nought
       const stand = latest.clock.stand === null ? null : Math.max(0, latest.clock.stand - (performance.now() - receivedAt));
-      const words = stand === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${Math.ceil(stand / 1000)}초`;
+      const words = WORDS.waitingBack(stand === null ? null : Math.ceil(stand / 1000));
       // as wide as the words at their longest, so the plate does not twitch as the seconds go
       const plate = Math.max(160, pen.width(words) + 16);
       const middle = BOARD_TOP + Math.round(BOARD_BAND / 2);
@@ -791,16 +747,18 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const me = mine();
     pen.px(4, 22, SCENE_W - 8, 142, C.ink);
     pen.px(5, 23, SCENE_W - 10, 140, C.bar);
-    pen.txt("선택 3", 12, 26, C.amber);
+    pen.txt(WORDS.choice.name, 12, 26, C.amber);
+    // what follows the choice's name on its line
+    const after = 12 + pen.width(WORDS.choice.name) + 8;
     const total = view.units.reduce((sum, unit) => sum + unit.members.length, 0);
-    const count = `${up.chosen.length}/${total}명이 골랐습니다`;
+    const count = WORDS.choice.picked(up.chosen.length, total);
     if (up.card === null || me === null) {
       // someone watching has no card: only how the choosing stands
-      pen.txt("모두 고르는 중입니다", 12 + pen.width("선택 3") + 8, 26, C.boneD);
+      pen.txt(WORDS.choice.everyone, after, 26, C.boneD);
       pen.txt(count, 12, 148, C.boneD);
       return;
     }
-    pen.txt(CARD_FOR[up.card], 12 + pen.width("선택 3") + 8, 26, C.boneD);
+    pen.txt(WORDS.choice.cardFor[up.card], after, 26, C.boneD);
     for (const option of [1, 2] as const) {
       const rect = OPTION_RECTS[option - 1];
       const [x, y, w, h] = rect;
@@ -810,14 +768,16 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       pen.px(x, y, w, h, lit ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, lit ? "#3a2a12" : live && inRect(mouse, rect) ? C.btnH : C.btn);
       pen.txt(`${option}`, x + 7, y + 18, C.dim);
-      pen.txt(OPTION_NAMES[up.card][option - 1], x + 20, y + 12, lit ? C.amber : up.mine === null ? C.bone : C.dim, "left", 24);
+      // the option's name, as large as its language leaves room for, level with the middle of the card
+      const size = WORDS.choice.optionSize;
+      pen.txt(OPTION_NAMES[up.card][option - 1], x + 20, y + Math.round((h - size - 2) / 2), lit ? C.amber : up.mine === null ? C.bone : C.dim, "left", size);
       const lines = cardLines(up.card, option);
       const top = y + Math.round((h - lines.length * 15) / 2) + 1;
       lines.forEach((line, at) => pen.txt(line, x + 100, top + at * 15, lit || up.mine === null ? C.bone : C.dim));
     }
     // a team's leader, whose share differs from the others': named under the cards
     const leader = view.units[me.unit].leader;
-    const who = leader === null ? "" : leader === me.player ? "우리 팀 대표: 나 · " : `우리 팀 대표: ${pen.fit(nickOf(leader), NAME_WIDTH)} · `;
+    const who = leader === null ? "" : WORDS.choice.leader(leader === me.player ? null : pen.fit(nickOf(leader), NAME_WIDTH));
     pen.txt(pen.fit(`${who}${count}`, SCENE_W - 24), 12, 148, C.boneD);
   }
 
@@ -827,37 +787,37 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const view = latest.view;
     const me = mine();
     if (noteT > 0) return [note, C.amber];
-    if (offline) return ["연결이 끊겼습니다. 다시 연결하는 중", C.crim];
+    if (offline) return [WORDS.standing.offline, C.crim];
     if (view.phase === "choose") {
       const seconds = Math.ceil((left(latest.clock.choose) ?? 0) / 1000);
-      if (pending) return ["보내는 중", C.boneD];
-      if (choosing()) return [`선택 3: 하나를 고르세요 · ${seconds}초`, seconds <= TICK_FROM ? C.crim : C.amber];
-      return [`선택 3: 모두 고르기를 기다리는 중 · ${seconds}초`, C.bone];
+      if (pending) return [WORDS.standing.sending, C.boneD];
+      if (choosing()) return [WORDS.standing.choose(seconds), seconds <= TICK_FROM ? C.crim : C.amber];
+      return [WORDS.standing.chooseWait(seconds), C.bone];
     }
     if (view.phase === "answer" && view.floor !== null) {
       const seconds = Math.ceil((left(latest.clock.answer) ?? 0) / 1000);
-      if (answering()) return [`답을 말하세요 · ${seconds}초`, seconds <= TICK_FROM ? C.crim : C.amber];
-      return [`${pen.fit(nickOf(view.floor.player), LIST_NAME_WIDTH)} 답하는 중 · ${seconds}초`, C.bone];
+      if (answering()) return [WORDS.standing.answer(seconds), seconds <= TICK_FROM ? C.crim : C.amber];
+      return [WORDS.standing.answering(pen.fit(nickOf(view.floor.player), LIST_NAME_WIDTH), seconds), C.bone];
     }
     if (view.phase === "pause") {
       const seconds = Math.ceil((left(latest.clock.next) ?? 0) / 1000);
-      const how = view.outcome?.kind === "right" ? `${pen.fit(nickOf(view.outcome.player), LIST_NAME_WIDTH)} 정답!` : view.outcome?.kind === "time" ? "시간 종료" : "모두 오답";
-      return [`${how} · 다음 문제까지 ${seconds}초`, view.outcome?.kind === "right" ? C.teal : C.boneD];
+      const how = view.outcome?.kind === "right" ? { right: pen.fit(nickOf(view.outcome.player), LIST_NAME_WIDTH) } : view.outcome?.kind === "time" ? "time" : "all-wrong";
+      return [WORDS.standing.next(how, seconds), view.outcome?.kind === "right" ? C.teal : C.boneD];
     }
-    if (view.phase === "ended") return ["판이 끝났습니다", C.amber];
-    if (me === null) return ["관전 중입니다. 다음 판부터 함께할 수 있습니다", C.boneD];
+    if (view.phase === "ended") return [WORDS.standing.over, C.amber];
+    if (me === null) return [WORDS.standing.watching, C.boneD];
     if (view.duel !== null) {
       // the added contest: its players race, everyone else looks on
-      const names = view.duel.players.map((player) => pen.fit(nickOf(player), LIST_NAME_WIDTH)).join(" 대 ");
-      if (!view.duel.players.includes(me.player)) return [pen.fit(`추가 대결을 구경합니다: ${names}`, W - 12), C.boneD];
-      if (view.wrong.includes(me.unit)) return ["오답: 이 문제에서는 다시 답할 수 없습니다", C.crim];
-      if (pending) return ["보내는 중", C.boneD];
-      return ["추가 대결! 먼저 맞히면 승리 · 버저 (Space)", C.amber];
+      const names = view.duel.players.map((player) => pen.fit(nickOf(player), LIST_NAME_WIDTH)).join(WORDS.standing.versus);
+      if (!view.duel.players.includes(me.player)) return [pen.fit(WORDS.standing.duelWatch(names), W - 12), C.boneD];
+      if (view.wrong.includes(me.unit)) return [WORDS.standing.wrong, C.crim];
+      if (pending) return [WORDS.standing.sending, C.boneD];
+      return [WORDS.standing.duel, C.amber];
     }
-    if (view.units[me.unit].place > 0) return ["승리! 남은 문제를 구경합니다", C.amber];
-    if (view.wrong.includes(me.unit)) return ["오답: 이 문제에서는 다시 답할 수 없습니다", C.crim];
-    if (pending) return ["보내는 중", C.boneD];
-    return ["다 세었으면 버저! (Space)", C.amber];
+    if (view.units[me.unit].place > 0) return [WORDS.standing.won, C.amber];
+    if (view.wrong.includes(me.unit)) return [WORDS.standing.wrong, C.crim];
+    if (pending) return [WORDS.standing.sending, C.boneD];
+    return [WORDS.standing.buzz, C.amber];
   }
 
   /** The log, made from what has been shown so far. */
@@ -868,33 +828,36 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const unopposed = latest.view.units.length === 1;
     for (const event of latest.view.history.slice(0, seen)) {
       const who = "player" in event ? pen.fit(nickOf(event.player), LIST_NAME_WIDTH) : "";
-      if (event.type === "problem") lines.push([event.duel === undefined ? `문제 ${event.round}` : `추가 대결 문제 ${event.duel}`, C.boneD]);
-      else if (event.type === "buzz") lines.push([`${who} 버저!`, C.bone]);
-      else if (event.type === "right") lines.push([`${who}: ${event.said}개 정답!`, C.teal]);
-      else if (event.type === "wrong") lines.push([`${who}: ${event.said}개 오답`, C.crim]);
-      else if (event.type === "silent") lines.push([`${who}: 답하지 못함`, C.crim]);
-      else if (event.type === "time") lines.push(["제한 시간 종료", C.boneD]);
-      else if (event.type === "all-wrong") lines.push(["모두 오답", C.boneD]);
-      else if (event.type === "won") lines.push([`${unitName(event.unit, 96)} 승리 (${event.place}위)`, C.amber]);
-      else if (event.type === "raced") lines.push([event.reason === "half" ? (unopposed ? "선택 3" : "절반이 승리 · 선택 3") : "마지막 문제까지 · 선택 3", C.amber]);
+      if (event.type === "problem") lines.push([event.duel === undefined ? WORDS.log.problem(event.round) : WORDS.log.duelProblem(event.duel), C.boneD]);
+      else if (event.type === "buzz") lines.push([WORDS.log.buzz(who), C.bone]);
+      else if (event.type === "right") lines.push([WORDS.log.right(who, event.said), C.teal]);
+      else if (event.type === "wrong") lines.push([WORDS.log.wrong(who, event.said), C.crim]);
+      else if (event.type === "silent") lines.push([WORDS.log.silent(who), C.crim]);
+      else if (event.type === "time") lines.push([WORDS.log.time, C.boneD]);
+      else if (event.type === "all-wrong") lines.push([WORDS.log.allWrong, C.boneD]);
+      else if (event.type === "won") lines.push([WORDS.log.won(unitName(event.unit, 96), event.place), C.amber]);
+      else if (event.type === "raced") lines.push([WORDS.log.raced(event.reason, unopposed), C.amber]);
       else if (event.type === "choice") {
         // each team's decision, then who took which of the two alone
         for (const decided of event.decisions) {
           const unit = latest.view.units[decided.unit];
           const card: Card = unit !== undefined && unit.place > 0 ? "winners" : "losers";
-          lines.push([`${unitName(decided.unit, 110)}: ${OPTION_NAMES[card][decided.option - 1]}`, C.brass]);
+          // the team's name is cut to what its decision leaves of the line
+          const option = OPTION_NAMES[card][decided.option - 1];
+          const room = Math.min(110, PANEL_WIDTH - pen.width(WORDS.log.decided("", option)));
+          lines.push([WORDS.log.decided(unitName(decided.unit, room), option), C.brass]);
         }
         const solo = event.chosen.filter((chosen) => latest!.view.units.some((unit) => unit.members.length === 1 && unit.members[0] === chosen.player));
         for (const option of [1, 2] as const) {
           const those = solo.filter((chosen) => chosen.option === option).map((chosen) => pen.fit(nickOf(chosen.player), 40));
-          if (those.length > 0) lines.push([pen.fit(`${OPTION_NAMES.alone[option - 1]} ${those.length}명: ${those.join(", ")}`, PANEL_WIDTH), C.brass]);
+          if (those.length > 0) lines.push([pen.fit(WORDS.log.alone(OPTION_NAMES.alone[option - 1], those), PANEL_WIDTH), C.brass]);
         }
-      } else if (event.type === "duel") lines.push([pen.fit(`추가 대결: ${event.players.map((player) => pen.fit(nickOf(player), 44)).join(" 대 ")}`, PANEL_WIDTH), C.amber]);
+      } else if (event.type === "duel") lines.push([pen.fit(WORDS.log.duel(event.players.map((player) => pen.fit(nickOf(player), 44)).join(WORDS.standing.versus)), PANEL_WIDTH), C.amber]);
       else if (event.type === "duel-over") {
-        const won = event.winner === null ? "추가 대결: 승자 없음" : `대결 승리: ${pen.fit(nickOf(event.winner), 44)} · 피스 ${latest.rules.duelPieces}개`;
+        const won = event.winner === null ? WORDS.log.duelNobody : WORDS.log.duelWon(pen.fit(nickOf(event.winner), 44), latest.rules.duelPieces);
         lines.push([pen.fit(won, PANEL_WIDTH), event.winner === null ? C.boneD : C.teal]);
-      } else if (event.type === "score") lines.push(["승점을 셌습니다", C.boneD]);
-      else lines.push([unopposed && event.reason === "half" ? "끝!" : ENDED_TEXT[event.reason], C.amber]);
+      } else if (event.type === "score") lines.push([WORDS.log.scored, C.boneD]);
+      else lines.push([unopposed && event.reason === "half" ? WORDS.endedUnopposed : WORDS.ended[event.reason], C.amber]);
     }
     return lines;
   }
@@ -905,9 +868,9 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    pen.txt(view.phase === "choose" ? "선택 3" : view.duel !== null ? `추가 대결 ${view.duel.round}` : `문제 ${view.round}`, x, 3, C.bone);
+    pen.txt(view.phase === "choose" ? WORDS.choice.name : view.duel !== null ? WORDS.panel.duel(view.duel.round) : WORDS.panel.problem(view.round), x, 3, C.bone);
     const choose = view.phase === "choose" ? left(latest.clock.choose) : null;
-    if (choose !== null) pen.txt(`${Math.ceil(choose / 1000)}초`, W - 5, 3, choose <= TICK_FROM * 1000 ? C.crim : C.boneD, "right");
+    if (choose !== null) pen.txt(WORDS.panel.seconds(Math.ceil(choose / 1000)), W - 5, 3, choose <= TICK_FROM * 1000 ? C.crim : C.boneD, "right");
     const problem = left(latest.clock.problem);
     if (problem !== null) {
       const seconds = Math.ceil(problem / 1000);
@@ -935,16 +898,16 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       } else if (view.phase === "choose" && view.choosing !== null) {
         // the choice: a mark for each player who has chosen
         unit.members.forEach((player, at) => pen.px(px + at * 8, uy + 4, 6, 5, view.choosing!.chosen.includes(player) ? C.brass : C.steelDD));
-      } else if (unit.place > 0) pen.txt(`${unit.place}위`, px, uy, C.amber);
+      } else if (unit.place > 0) pen.txt(WORDS.panel.place(unit.place), px, uy, C.amber);
       else for (let i = 0; i < latest!.rules.winsNeeded; i++) pen.px(px + i * 8, uy + 4, 6, 5, i < unit.wins ? C.brass : C.steelDD);
     });
     // under the list: where it ends in a crowded game, where the longest ends otherwise
     const under = layout.crowded ? underList(layout) : 60;
     pen.px(x, under, PANEL_WIDTH, 1, C.steelDD);
     // what it takes to win and to end; how the game stands this moment is said in the bar, by the buzzer
-    pen.txt(`${latest.rules.winsNeeded}번 맞히면 승리 · H 규칙`, x, under + 3, C.boneD);
+    pen.txt(WORDS.panel.toWin(latest.rules.winsNeeded), x, under + 3, C.boneD);
     // one side alone has nobody to race: its own win ends the game
-    pen.txt(view.units.length === 1 ? "상대 없는 판: 승리하면 끝" : `${view.units.length}팀 중 ${view.winnersNeeded}팀이 이기면 끝`, x, under + 16, C.boneD);
+    pen.txt(WORDS.panel.toEnd(view.units.length, view.winnersNeeded), x, under + 16, C.boneD);
     const lines = logLines();
     const from = Math.max(0, lines.length - layout.logRows);
     for (let i = from; i < lines.length; i++) pen.txt(lines[i][0], x, layout.logTop + (i - from) * LOG_PITCH, lines[i][1]);
@@ -966,32 +929,35 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const view = latest.view;
     const me = mine();
     const won = me !== null && view.units[me.unit].place > 0;
-    pen.txt(me === null ? "종료" : won ? "승리!" : "패배", 10, 234, me === null ? C.bone : won ? C.teal : C.crim, "left", 24);
+    pen.txt(WORDS.result.verdict(me !== null, won), 10, 234, me === null ? C.bone : won ? C.teal : C.crim, "left", 24);
     const winners = view.units
       .map((unit, index) => ({ unit, index }))
       .filter((each) => each.unit.place > 0)
       .sort((a, b) => a.unit.place - b.unit.place)
-      .map((each) => `${each.unit.place}위 ${unitName(each.index, 70)}`);
-    pen.txt(pen.fit(winners.length > 0 ? winners.join("  ") : "승리한 팀이 없습니다", 280), 96, 226, C.bone);
+      .map((each) => WORDS.result.place(each.unit.place, unitName(each.index, 70)));
+    pen.txt(pen.fit(winners.length > 0 ? winners.join("  ") : WORDS.result.nobody, 280), 96, 226, C.bone);
     const line = me === null ? null : scoreOf(me.player);
-    if (line === null) pen.txt(`문제 ${view.round}까지 했습니다`, 96, 240, C.boneD);
+    if (line === null) pen.txt(WORDS.result.upTo(view.round), 96, 240, C.boneD);
     else {
       // how the viewer's points came about: a team's by what it decided, a player's own by the race and their choice
       const unit = me === null ? undefined : view.units[me.unit];
       const decided = me === null ? undefined : view.decisions.find((each) => each.unit === me.unit);
-      const parts = [`승점 ${signed(line.total)}`];
+      const parts = [WORDS.result.points(signed(line.total))];
       if (unit !== undefined && unit.members.length > 1 && decided !== undefined) {
         const card: Card = unit.place > 0 ? "winners" : "losers";
-        parts.push(`${OPTION_NAMES[card][decided.option - 1]} (${unit.leader === me?.player ? "대표" : "팀원"})`);
-      } else parts.push(`네모 세기 ${signed(line.race)}`);
-      if (line.choice !== 0) parts.push(`${line.choice === -latest.rules.safeLoss && line.pieces === 0 && view.duel?.players.includes(line.player) !== true ? "안전" : "추가 대결"} ${signed(line.choice)}`);
-      if (line.pieces > 0) parts.push(`추가 대결 승리: 피스 ${line.pieces}개`);
+        parts.push(WORDS.result.team(OPTION_NAMES[card][decided.option - 1], unit.leader === me?.player));
+      } else parts.push(WORDS.result.race(signed(line.race)));
+      if (line.choice !== 0) {
+        const safe = line.choice === -latest.rules.safeLoss && line.pieces === 0 && view.duel?.players.includes(line.player) !== true;
+        parts.push(safe ? WORDS.result.safe(signed(line.choice)) : WORDS.result.duel(signed(line.choice)));
+      }
+      if (line.pieces > 0) parts.push(WORDS.result.duelWon(line.pieces));
       pen.txt(pen.fit(parts.join(" · "), 280), 96, 240, line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD);
     }
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? (latest.players.length === 1 ? "한 판 더 하거나 대기실로" : "같은 사람들과 한 판 더 하거나 대기실로") : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, "Enter 새 판", "", true, true);
-    button(LOBBY_RECT, "Esc 대기실로", "", false, true);
+    else pen.txt(host ? WORDS.result.hostNext(latest.players.length === 1) : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, "", true, true);
+    button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
   }
 
   function drawBar(): void {
@@ -1008,60 +974,42 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       const up = latest.view.choosing;
       const how =
         up === null || up.card === null
-          ? "승리 팀은 독식·헌신, 패배 팀은 희생·질책을 다수결로, 개인은 도전·안전을 고릅니다."
+          ? WORDS.choice.watching
           : up.mine !== null
-            ? "골랐습니다. 모두 고르면 한꺼번에 공개됩니다."
+            ? WORDS.choice.done
             : pointed !== null
-              ? "한 번 더 누르거나 Enter로 확정합니다. 한 번 고르면 바꿀 수 없습니다."
-              : "1 또는 2, 또는 카드를 눌러 고릅니다. 한 번 고르면 바꿀 수 없습니다.";
+              ? WORDS.choice.confirm
+              : WORDS.choice.how;
       pen.txt(how, 6, 241, up !== null && up.card !== null && up.mine === null ? C.bone : C.boneD);
-      pen.txt("H: 규칙 (선택 3의 승점 나누기 포함)", 6, 254, C.boneD);
+      pen.txt(WORDS.choice.rules, 6, 254, C.boneD);
       return;
     }
     if (answering()) {
       // the answer so far, and a pad of digits for whoever has no keys
-      pen.txt("답", 6, 246, C.boneD);
+      pen.txt(WORDS.typed, 6, 246, C.boneD);
       pen.px(24, 241, 84, 26, C.amberD);
       pen.px(25, 242, 82, 24, C.ink);
       pen.txt(typed === "" ? "_" : typed, 66, 242, C.amber, "center", 24);
       for (let digit = 0; digit <= 9; digit++) button(digitRect(digit), `${digit}`, "", false, true);
-      button(ERASE_RECT, "지움", "", false, typed !== "");
+      button(ERASE_RECT, WORDS.button.erase, "", false, typed !== "");
       button(SAY_RECT, "Enter", "", typed !== "", typed !== "");
       return;
     }
     const able = canBuzz();
-    button(BUZZ_RECT, "버저", able ? "Space 또는 Enter" : "지금은 누를 수 없음", able && Math.sin(time * 5) > 0, able);
-    pen.txt("네모: 판 위의 칸으로 된 모든 직사각형 (한 칸도).", 162, 241, C.boneD);
-    pen.txt("합이 타깃이면 셉니다. 빈칸은 0. 틀리면 이 문제는 끝.", 162, 254, C.boneD);
+    button(BUZZ_RECT, WORDS.button.buzzer, able ? WORDS.button.buzzerKeys : WORDS.button.buzzerShut, able && Math.sin(time * 5) > 0, able);
+    pen.txt(WORDS.brief[0], 162, 241, C.boneD);
+    pen.txt(WORDS.brief[1], 162, 254, C.boneD);
   }
 
   function drawHelp(): void {
     if (latest === null) return;
     const rules = latest.rules;
-    const lines: [string, string][] = [
-      ["네모 세기: 규칙", C.amber],
-      ["판에는 숫자가 적힌 칸과 빈칸이 있습니다. 안의 숫자를 더하면 타깃 넘버가", C.bone],
-      ["되는 네모가 모두 몇 개인지 셉니다.", C.bone],
-      ["네모는 판 위의 칸으로 된 모든 직사각형입니다: 한 칸짜리부터. 판이 네모반듯", C.boneD],
-      ["하지 않을 수 있고, 칸이 없는 자리는 걸칠 수 없습니다. 빈칸은 0으로 칩니다.", C.boneD],
-      ["", C.bone],
-      [`다 세었으면 버저를 누르고 ${rules.answerSeconds}초 안에 개수를 답합니다.`, C.bone],
-      ["틀리면 (또는 답하지 못하면) 그 문제에서는 다시 답할 수 없습니다.", C.bone],
-      [`${rules.teamSize}명이 팀을 맺었으면 팀 전체가 그렇습니다.`, C.boneD],
-      ["", C.bone],
-      [`${rules.winsNeeded}번 맞히면 승리하고 이후 문제에서 빠집니다.`, C.bone],
-      ["전체 팀(혼자도 한 팀)의 절반이 승리하면 끝납니다.", C.bone],
-      [`문제마다 제한 시간은 ${Math.round(rules.problemSeconds / 60)}분입니다.`, C.boneD],
-      [`끝나면 선택 3: 승리 팀은 승점 ${rules.winPoints}점을 독식(대표 ${rules.hogLeader}, 팀원 ${rules.hogMember}씩)·헌신(대표 ${rules.devoteLeader}, 팀원 ${rules.devoteMember}씩)으로,`, C.bone],
-      [`패배 팀은 희생(대표만 -${rules.sacrificeLeader})·질책(두 팀원 -${rules.blameMember}씩)으로 나눕니다. 팀의 다수결이고, 대표는 팀을 먼저 고른 사람.`, C.bone],
-      [`개인은 승리 +${rules.winPoints}, 패배 -${rules.losePoints}. 안전은 -${rules.safeLoss}, 도전은 추가 대결: 이기면 피스 ${rules.duelPieces}개, 지면 -${rules.duelLoss}.`, C.bone],
-      ["H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", C.amber],
-    ];
+    const lines = WORDS.help(rules);
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);
-    lines.forEach(([text, colour], i) => {
-      if (text !== "") pen.txt(text, 22, 20 + i * 15, colour);
+    lines.forEach((line, i) => {
+      if (line.text !== "") pen.txt(line.text, 22, 20 + i * 15, line.tone === "title" ? C.amber : line.tone === "dim" ? C.boneD : C.bone);
     });
   }
 
@@ -1138,8 +1086,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       queued = false;
       if (!answering()) typed = "";
       // the one refusal whose words hold a number of the rules
-      const text = reason === "bad-count" && latest !== null ? `0부터 ${latest.rules.maxSaid}까지의 수로 답하세요` : REFUSED_TEXT[reason];
-      say(text ?? "지금은 할 수 없습니다");
+      const text = reason === "bad-count" && latest !== null ? WORDS.badCount(latest.rules.maxSaid) : WORDS.refused[reason];
+      say(text ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {

@@ -20,6 +20,14 @@ export function isLang(value: unknown): value is Lang {
   return typeof value === "string" && (LANGS as readonly string[]).includes(value);
 }
 
+/** `n` as English counts places: 1st, 2nd, 3rd, 4th, 11th, 21st. */
+export function englishOrdinal(n: number): string {
+  const tens = n % 100;
+  const ones = n % 10;
+  const ending = tens >= 11 && tens <= 13 ? "th" : ones === 1 ? "st" : ones === 2 ? "nd" : ones === 3 ? "rd" : "th";
+  return `${n}${ending}`;
+}
+
 /**
  * The language a page shows: the one its address asks for (`?lang=`), else
  * the one the reader last chose there, else the first the browser prefers

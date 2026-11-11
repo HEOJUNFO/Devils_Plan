@@ -15,6 +15,7 @@ import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoice
 import { C } from "../../game/palette";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
+import { WORDS } from "./words";
 
 /** What the room sends about a game of 큐브 세기. */
 export type CubesMessage = Extract<ServerMessage, { type: "game"; game: "count-cubes" }>;
@@ -63,35 +64,11 @@ const HURRY_FROM = 10;
 const RESULTS_HOLD = 1.5;
 /** How many of those with the answer the results name in the bar. */
 const PLACES_SHOWN = 3;
-/** Said when something could not be sent because the connection is down. */
-const NOT_SENT_TEXT = "연결이 끊겨 보내지 못했습니다. 다시 해 주세요";
 /** The three faces of a cube that show, and the line between cubes. */
 const TOP = "#c3c9dc";
 const LEFT = "#7c8296";
 const RIGHT = "#4b5066";
 const EDGE = "#161a2b";
-
-const REFUSED_TEXT: Record<string, string> = {
-  "locked": "아직 답할 수 없습니다",
-  "already-right": "이미 맞혔습니다",
-  "bad-action": "그 숫자는 답으로 낼 수 없습니다",
-  "game-over": "이 판은 끝났습니다",
-  "not-playing": "관전 중에는 참여할 수 없습니다",
-  "not-seated": "관전 중에는 참여할 수 없습니다",
-  "no-game": "진행 중인 판이 없습니다",
-  "not-host": "방장만 새 판을 시작할 수 있습니다",
-  "too-few": "시작할 사람이 없습니다",
-  "already-playing": "이미 판이 진행 중입니다",
-  "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
-  "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
-};
-
-/** How a game ended, as the log says it. */
-const ENDED_TEXT: Record<"ranked" | "time" | "abandoned", string> = {
-  ranked: "순위가 정해져 끝",
-  time: "제한 시간이 지나 끝",
-  abandoned: "이어갈 사람이 없어 끝",
-};
 
 type Box = readonly [number, number, number, number];
 
@@ -102,15 +79,15 @@ const TYPED_RECT: Box = [6, 238, 80, 30];
 /** The buttons along the bar, in order, and the key each stands for. */
 const PAD: readonly { label: string; code: string }[] = [
   ...["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"].map((digit) => ({ label: digit, code: `Digit${digit}` })),
-  { label: "지움", code: "Backspace" },
-  { label: "입력", code: "Enter" },
+  { label: WORDS.pad.erase, code: "Backspace" },
+  { label: WORDS.pad.enter, code: "Enter" },
 ];
 const padRect = (index: number): Box => [92 + index * 32, 238, 30, 30];
 const AGAIN_RECT: Box = [386, 225, 90, 15];
 const LOBBY_RECT: Box = [386, 250, 90, 15];
 
 /** `ms` as seconds with one decimal: how long an answer took. */
-const seconds1 = (ms: number): string => `${(ms / 1000).toFixed(1)}초`;
+const seconds1 = WORDS.took;
 
 /**
  * Draws `solid` on a picture of its own, looked at from the corner where its
@@ -263,12 +240,12 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const mine = me();
     if (event.type === "right") {
       if (event.player === mine) {
-        say(`정답! ${event.place}위`);
+        say(WORDS.say.right(event.place));
         sfx.win();
       } else sfx.pick();
     } else if (event.type === "wrong") {
       if (event.player === mine) {
-        say(`오답! ${latest?.rules.lockSeconds ?? 0}초 동안 답할 수 없습니다`);
+        say(WORDS.say.wrong(latest?.rules.lockSeconds ?? 0));
         sfx.deny();
       } else sfx.back();
     } else if (mine !== null && placeOf(mine) === null) {
@@ -313,7 +290,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT))) {
         if (host) handlers.again();
-        else say(REFUSED_TEXT["not-host"]);
+        else say(WORDS.refused["not-host"]);
       }
       return;
     }
@@ -329,16 +306,16 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const mine = me();
     if (pending) return;
     if (mine !== null && placeOf(mine) !== null) {
-      say(REFUSED_TEXT["already-right"]);
+      say(WORDS.refused["already-right"]);
     } else if (latest.frozen) {
-      say("판이 멈춰 있습니다");
+      say(WORDS.say.paused);
     } else if (!canAnswer()) {
-      say(`${Math.ceil(lockOf(mine ?? -1) / 1000)}초 뒤에 다시 답할 수 있습니다`);
+      say(WORDS.say.lockedFor(Math.ceil(lockOf(mine ?? -1) / 1000)));
       sfx.deny();
     } else {
       pending = handlers.act({ type: "answer", said: result.said });
       if (pending) typed = "";
-      else say(NOT_SENT_TEXT);
+      else say(WORDS.notSent);
     }
   }
 
@@ -374,7 +351,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     if (latest.frozen) {
       // the game's own clocks stand still; this one runs, and ends the game at nought
       const stand = latest.clock.stand === null ? null : Math.max(0, latest.clock.stand - (performance.now() - receivedAt));
-      const words = stand === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${Math.ceil(stand / 1000)}초`;
+      const words = WORDS.waitingBack(stand === null ? null : Math.ceil(stand / 1000));
       plate(words, PICTURE.y + Math.round(PICTURE.h / 2) - 9, C.boneD);
     }
   }
@@ -385,17 +362,17 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const view = latest.view;
     const mine = me();
     if (noteT > 0) return [note, C.amber];
-    if (offline) return ["연결이 끊겼습니다. 다시 연결하는 중", C.crim];
-    if (view.phase === "ended") return ["판이 끝났습니다", C.amber];
-    if (latest.frozen) return ["판이 멈춰 있습니다", C.boneD];
-    const have = `정답 ${view.ranked.length}/${view.needed}명`;
-    if (mine === null) return [`관전 중 · ${have}`, C.bone];
+    if (offline) return [WORDS.standing.offline, C.crim];
+    if (view.phase === "ended") return [WORDS.standing.over, C.amber];
+    if (latest.frozen) return [WORDS.standing.paused, C.boneD];
+    const have = WORDS.solved(view.ranked.length, view.needed);
+    if (mine === null) return [WORDS.standing.watching(have), C.bone];
     const place = placeOf(mine);
-    if (place !== null) return [`정답! ${place}위 · 다른 사람들을 기다리는 중 (${have})`, C.teal];
-    if (pending) return ["보내는 중", C.boneD];
+    if (place !== null) return [WORDS.standing.right(place, have), C.teal];
+    if (pending) return [WORDS.standing.sending, C.boneD];
     const lock = lockOf(mine);
-    if (lock > 0) return [`오답 · ${Math.ceil(lock / 1000)}초 뒤에 다시 답할 수 있습니다`, C.crim];
-    return ["큐브는 모두 몇 개? 숫자를 넣고 Enter (또는 아래 버튼)", C.amber];
+    if (lock > 0) return [WORDS.standing.wrong(Math.ceil(lock / 1000)), C.crim];
+    return [WORDS.standing.ask, C.amber];
   }
 
   /** The log, made from what has been shown so far. */
@@ -404,9 +381,9 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const lines: [string, string][] = [];
     for (const event of latest.view.history.slice(0, seen)) {
       const who = "player" in event ? pen.fit(nickOf(event.player), NAME_WIDTH) : "";
-      if (event.type === "right") lines.push([`${who}: 정답 (${event.place}위, ${seconds1(event.took)})`, C.teal]);
-      else if (event.type === "wrong") lines.push([`${who}: 오답`, C.crim]);
-      else lines.push([ENDED_TEXT[event.reason], C.amber]);
+      if (event.type === "right") lines.push([WORDS.log.right(who, event.place, seconds1(event.took)), C.teal]);
+      else if (event.type === "wrong") lines.push([WORDS.log.wrong(who), C.crim]);
+      else lines.push([WORDS.ended[event.reason], C.amber]);
     }
     return lines;
   }
@@ -424,7 +401,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    pen.txt(`정답 ${view.ranked.length}/${view.needed}명`, x, 3, C.bone);
+    pen.txt(WORDS.solved(view.ranked.length, view.needed), x, 3, C.bone);
     const problem = left(latest.clock.problem);
     if (problem !== null) {
       const all = Math.ceil(problem / 1000);
@@ -480,17 +457,11 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const took = view.ranked.find((entry) => entry.player === player)?.took;
     const lock = lockOf(player);
     const wrong = view.wrong.find((entry) => entry.player === player)?.count ?? 0;
-    if (took !== undefined) {
-      const whole = Math.floor(took / 1000);
-      return [short ? [`${whole}초`, `${whole}`] : [seconds1(took)], C.teal];
-    }
-    if (lock > 0 && view.phase === "open") {
-      const still = Math.ceil(lock / 1000);
-      return [short ? [`잠김 ${still}`, `${still}초`, `${still}`] : [`잠김 ${still}초`], C.crim];
-    }
-    if (view.phase === "ended") return [short ? ["-"] : ["미정답"], C.dim];
-    if (wrong > 0) return [short ? [`오답 ${wrong}`, `×${wrong}`] : [`오답 ${wrong}번`], C.boneD];
-    return [short ? [""] : ["세는 중"], C.dim];
+    if (took !== undefined) return [WORDS.state.took(took, short), C.teal];
+    if (lock > 0 && view.phase === "open") return [WORDS.state.locked(Math.ceil(lock / 1000), short), C.crim];
+    if (view.phase === "ended") return [WORDS.state.unanswered(short), C.dim];
+    if (wrong > 0) return [WORDS.state.wrong(wrong, short), C.boneD];
+    return [WORDS.state.counting(short), C.dim];
   }
 
   function button(rect: Box, label: string, lit: boolean, live: boolean): void {
@@ -518,16 +489,16 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const view = latest.view;
     const mine = me();
     const place = mine === null ? null : placeOf(mine);
-    const words = mine === null ? "종료" : place === null ? "미정답" : `${place}위`;
+    const words = WORDS.result.verdict(mine !== null, place);
     pen.txt(words, 10, 234, mine === null ? C.bone : place === null ? C.crim : C.teal, "left", 24);
     // the first three by name; the list beside the picture has everyone, with their times
-    const places = view.ranked.slice(0, PLACES_SHOWN).map((entry, at) => `${at + 1}위 ${pen.fit(nickOf(entry.player), 56)}`);
-    pen.txt(pen.fit(places.length > 0 ? places.join(" · ") : "아무도 맞히지 못했습니다", 280), 96, 226, C.bone);
-    pen.txt(`큐브는 모두 ${view.answer ?? "?"}개였습니다`, 96, 240, C.boneD);
+    const places = view.ranked.slice(0, PLACES_SHOWN).map((entry, at) => WORDS.result.place(at + 1, pen.fit(nickOf(entry.player), 56)));
+    pen.txt(pen.fit(places.length > 0 ? places.join(" · ") : WORDS.result.nobody, 280), 96, 226, C.bone);
+    pen.txt(WORDS.result.answer(`${view.answer ?? "?"}`), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? (latest.players.length === 1 ? "한 판 더 하거나 대기실로" : "같은 사람들과 한 판 더 하거나 대기실로") : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, "Enter 새 판", true, true);
-    button(LOBBY_RECT, "Esc 대기실로", false, true);
+    else pen.txt(host ? WORDS.result.hostNext(latest.players.length === 1) : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, true, true);
+    button(LOBBY_RECT, WORDS.button.lobby, false, true);
   }
 
   function drawBar(): void {
@@ -546,27 +517,12 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   function drawHelp(): void {
     if (latest === null) return;
     const rules = latest.rules;
-    const lines: [string, string][] = [
-      ["큐브 세기: 규칙", C.amber],
-      ["그림의 입체가 큐브 몇 개로 되어 있는지 세어, 그 수를 각자 입력합니다.", C.bone],
-      ["", C.bone],
-      ["입체는 속이 꽉 차 있습니다. 보이는 큐브 밑에 깔린 큐브도 셉니다.", C.bone],
-      ["뒤쪽이 앞쪽보다 낮은 곳은 없어서, 다른 큐브 뒤에 숨은 기둥은 없습니다.", C.boneD],
-      ["", C.bone],
-      ["답이 맞으면 맞힌 순서대로 순위가 정해집니다. 누가 맞히고 틀렸는지는", C.bone],
-      ["모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다.", C.bone],
-      [`틀리면 ${rules.lockSeconds}초 동안 답할 수 없습니다.`, C.bone],
-      [latest.players.length === 1 ? "혼자 하는 판은 맞히면 끝납니다." : "한 명만 남기고 모두 맞히면 끝납니다.", C.bone],
-      [`제한 시간은 ${Math.round(rules.problemSeconds / 60)}분입니다. 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.`, C.boneD],
-      ["", C.bone],
-      ["숫자 키: 입력 · Backspace: 지움 · Enter: 답하기 (아래 버튼도 같음)", C.boneD],
-      ["H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", C.amber],
-    ];
+    const lines = WORDS.help(rules.lockSeconds, Math.round(rules.problemSeconds / 60), latest.players.length === 1);
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);
-    lines.forEach(([text, colour], i) => {
-      if (text !== "") pen.txt(text, 22, 20 + i * 15, colour);
+    lines.forEach((line, i) => {
+      if (line.text !== "") pen.txt(line.text, 22, 20 + i * 15, line.tone === "title" ? C.amber : line.tone === "dim" ? C.boneD : C.bone);
     });
   }
 
@@ -645,7 +601,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     update,
     refused(reason: string): void {
       pending = false;
-      say(REFUSED_TEXT[reason] ?? "지금은 할 수 없습니다");
+      say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {

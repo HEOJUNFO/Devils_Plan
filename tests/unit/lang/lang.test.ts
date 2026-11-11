@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FALLBACK_LANG, LANGS, chooseLang, isLang } from "../../../src/shared/lang";
+import { FALLBACK_LANG, LANGS, chooseLang, englishOrdinal, isLang } from "../../../src/shared/lang";
 
 describe("the languages the game can be read in", () => {
   it("are Korean, which the game was written in, and English", () => {
@@ -41,5 +41,25 @@ describe("chooseLang", () => {
     expect(FALLBACK_LANG).toBe("en");
     expect(chooseLang(null, null, ["fr-FR", "ja"])).toBe(FALLBACK_LANG);
     expect(chooseLang(null, null, [])).toBe(FALLBACK_LANG);
+  });
+});
+
+describe("englishOrdinal", () => {
+  it.each([
+    [1, "1st"],
+    [2, "2nd"],
+    [3, "3rd"],
+    [4, "4th"],
+    [10, "10th"],
+    [11, "11th"],
+    [12, "12th"],
+    [13, "13th"],
+    [16, "16th"],
+    [21, "21st"],
+    [22, "22nd"],
+    [23, "23rd"],
+    [111, "111th"],
+  ])("says place %i as %s", (place, said) => {
+    expect(englishOrdinal(place)).toBe(said);
   });
 });
