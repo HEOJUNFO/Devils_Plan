@@ -153,7 +153,7 @@ const SITE_TITLE = document.title;
 drawLobbyArt(el<HTMLCanvasElement>("lobby-art"));
 
 const profile = new URLSearchParams(location.search).get("profile") ?? "";
-const storageKey = (name: string) => `empty-chamber.${name}${profile ? `.${profile}` : ""}`;
+const storageKey = (name: string) => `game-plan.${name}${profile ? `.${profile}` : ""}`;
 
 function loadToken(): string {
   const key = storageKey("token");

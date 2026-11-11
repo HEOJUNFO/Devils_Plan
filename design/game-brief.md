@@ -1,4 +1,4 @@
-# Game Brief: 러시안 룰렛 (code name: empty-chamber)
+# Game Brief: 러시안 룰렛 (code name: russian-roulette)
 
 ## In your words
 - 이나무위키문서들참고해서 게임제작할건데

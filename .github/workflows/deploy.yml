@@ -4,9 +4,9 @@ name: CI
 #
 # Deployment does not happen in this workflow. Cloudflare Workers Builds is
 # connected to this repository: a push to main is built there (typecheck,
-# tests, build) and deployed to the `empty-chamber` Worker, so no Cloudflare
+# tests, build) and deployed to the `game-plan` Worker, so no Cloudflare
 # credential is stored in GitHub. Its settings live in the Cloudflare
-# dashboard under Workers & Pages > empty-chamber > Settings > Builds.
+# dashboard under Workers & Pages > game-plan > Settings > Builds.
 on:
   push:
     branches: [main]

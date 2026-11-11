@@ -37,9 +37,12 @@ defaults in this file, these win.
   ("러시안 룰렛", "양자택일") is used as it is; a name the show coined for its
   game ("무거운 13", "미스터리 거래소") is not copied by the assistant, which
   gives a plain name instead and says so in its report.
-  Code names are not shown to players and stay as they are (`empty-chamber` in
-  `wrangler.jsonc`, `package.json` and the browser's storage keys): the
-  deployed Worker and its address go by that name.
+  Game ids (`russian-roulette`, `lay-the-grass`) are not shown to players and
+  stay as they are. The Worker's name is shown, as the address: the user chose
+  `game-plan` for it on 2026-11-11 ("game-plan으로하자"), in place of
+  `empty-chamber`, the name of the first build. `wrangler.jsonc`,
+  `package.json` and the browser's storage keys carry it; the folder
+  `prototypes/empty-chamber/` keeps its name.
 - **The lobby is a list of rooms.** Before making a room a player sees the
   open rooms and can join one, make one, or enter a code. The user, on
   2026-11-11: "내가말한로비는 여러방리스트가 있는 로비말한거야". A screen with
