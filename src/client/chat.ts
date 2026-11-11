@@ -7,13 +7,41 @@
  * reload does not empty the chat.
  */
 
+/**
+ * Something the page itself says in the chat. It is kept as what happened and
+ * put into words when it is shown: a tab that comes back to a room in the
+ * other language reads its old notes in that language, as it does every
+ * other sentence (CLAUDE.md, Project Rules).
+ */
+export type ChatNote =
+  /** Someone came into the room, or went. */
+  | { kind: "came" | "went"; nick: string }
+  /** A line could not be sent, or was sent too soon after the last; the voice chat was joined, joined without a microphone, or is not to be had here. */
+  | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" };
+
+/** The kinds of note that name a player, and those that do not. */
+const NAMED_NOTES: readonly string[] = ["came", "went"];
+const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here"];
+
 /** One line as shown: something a player said, or a note from the page itself. */
 interface Line {
   /** Who said it; absent for a note. */
   who?: string;
   /** Whether this player said it. */
   mine?: boolean;
-  text: string;
+  /** What was said. A note has none: it has `note`. (A note kept by an earlier build of the page has its words here.) */
+  text?: string;
+  note?: ChatNote;
+}
+
+/** Whether `value` is a line as this module keeps them: read back from the tab's store, where anything may be. */
+function isLine(value: unknown): value is Line {
+  if (typeof value !== "object" || value === null) return false;
+  const line = value as { text?: unknown; note?: unknown };
+  if (typeof line.text === "string") return true;
+  if (typeof line.note !== "object" || line.note === null) return false;
+  const note = line.note as { kind?: unknown; nick?: unknown };
+  return typeof note.kind === "string" && (PLAIN_NOTES.includes(note.kind) || (NAMED_NOTES.includes(note.kind) && typeof note.nick === "string"));
 }
 
 /** The chat on the page. */
@@ -25,7 +53,7 @@ export interface Chat {
   /** A player said a line. */
   said(who: string, text: string, mine: boolean): void;
   /** Something worth a line happened: someone came or went, a line was refused. */
-  note(text: string): void;
+  note(note: ChatNote): void;
   /** Puts the cursor in the box. */
   focus(): void;
   /** Scrolls to the last line; for when the chat comes back on show. */
@@ -47,8 +75,8 @@ export function createChat(
     storagePrefix: string;
     /** Sends a line; says whether it went. */
     send(text: string): boolean;
-    /** What the chat says when a line could not be sent. */
-    notSent: string;
+    /** A note in words, in the language the page is read in. */
+    wordsOf(note: ChatNote): string;
   },
 ): Chat {
   const { log, form, input } = elements;
@@ -61,13 +89,13 @@ export function createChat(
     const item = document.createElement("li");
     if (line.who === undefined) {
       item.className = "note";
-      item.textContent = line.text;
+      item.textContent = line.note === undefined ? (line.text ?? "") : options.wordsOf(line.note);
       return item;
     }
     const who = document.createElement("span");
     who.className = line.mine === true ? "who mine" : "who";
     who.textContent = line.who;
-    item.append(who, ` ${line.text}`);
+    item.append(who, ` ${line.text ?? ""}`);
     return item;
   }
 
@@ -97,7 +125,7 @@ export function createChat(
     if (input.value.trim() === "") return;
     // a line that did not go stays in the box, to be sent when it can
     if (options.send(input.value)) input.value = "";
-    else add({ text: options.notSent });
+    else add({ note: { kind: "not-sent" } });
   });
 
   return {
@@ -106,11 +134,7 @@ export function createChat(
       lines = [];
       try {
         const stored: unknown = JSON.parse(sessionStorage.getItem(key) ?? "[]");
-        if (Array.isArray(stored)) {
-          lines = stored
-            .filter((line): line is Line => typeof line === "object" && line !== null && typeof (line as Line).text === "string")
-            .slice(-KEEP);
-        }
+        if (Array.isArray(stored)) lines = stored.filter(isLine).slice(-KEEP);
       } catch {
         lines = [];
       }
@@ -127,8 +151,8 @@ export function createChat(
     said(who: string, text: string, mine: boolean): void {
       add({ who, text, mine });
     },
-    note(text: string): void {
-      add({ text });
+    note(note: ChatNote): void {
+      add({ note });
     },
     focus(): void {
       input.focus();

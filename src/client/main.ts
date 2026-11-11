@@ -307,7 +307,15 @@ const chat = createChat(
     maxLength: chatConfig.maxLength,
     storagePrefix: storageKey("chat"),
     send: (text) => send({ type: "chat", text }),
-    notSent: WORDS.chat.notSent,
+    wordsOf(note) {
+      if (note.kind === "came") return WORDS.room.came(note.nick);
+      if (note.kind === "went") return WORDS.room.went(note.nick);
+      if (note.kind === "not-sent") return WORDS.chat.notSent;
+      if (note.kind === "too-fast") return WORDS.chat.tooFast;
+      if (note.kind === "voice-joined") return WORDS.voice.joined;
+      if (note.kind === "voice-listen-only") return WORDS.voice.listenOnly;
+      return WORDS.voice.notHere;
+    },
   },
 );
 
@@ -604,8 +612,8 @@ function renderStatus(): void {
 function noteComings(before: LobbyView, after: LobbyView): void {
   const was = new Map(before.players.map((p) => [p.slot, p.nick]));
   const is = new Map(after.players.map((p) => [p.slot, p.nick]));
-  for (const [slot, nick] of is) if (!was.has(slot)) chat.note(WORDS.room.came(nick));
-  for (const [slot, nick] of was) if (!is.has(slot)) chat.note(WORDS.room.went(nick));
+  for (const [slot, nick] of is) if (!was.has(slot)) chat.note({ kind: "came", nick });
+  for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: "went", nick });
 }
 
 /** The room before a game: who is here, the code to share, the chat, and the start. */
@@ -782,11 +790,11 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     if (message.type === "refused") {
       // Something asked of the room was not accepted; the connection is fine.
       if (message.reason === "chat-too-fast") {
-        chat.note(WORDS.chat.tooFast);
+        chat.note({ kind: "too-fast" });
       } else if (message.reason === "voice-not-here") {
         // the room went on the list between the button being shown and pressed
         voice.leave();
-        chat.note(WORDS.voice.notHere);
+        chat.note({ kind: "voice-not-here" });
       } else if (table !== null) {
         table.refused(message.reason);
       } else {
@@ -960,7 +968,7 @@ voiceToggle.addEventListener("click", () => {
   }
   void voice.join().then(() => {
     if (!voice.on) return;
-    chat.note(voice.hasMic ? WORDS.voice.joined : WORDS.voice.listenOnly);
+    chat.note({ kind: voice.hasMic ? "voice-joined" : "voice-listen-only" });
   });
 });
 voiceMic.addEventListener("click", () => voice.setMuted(!voice.muted));
