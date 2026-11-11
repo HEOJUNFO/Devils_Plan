@@ -166,14 +166,18 @@ describe("큐브 세기, the solid from any side: its size", () => {
       for (const pitch of [PITCH_MIN, FIRST_VIEW.pitch, 38, PITCH_MAX]) {
         const map = faceMap(solid, view(yaw, pitch), WIDTH, HEIGHT);
         let seen = 0;
+        // the first pixel of the solid on the picture's outermost pixels, where it would be cut off
+        let cutOff: string | undefined;
         for (let y = 0; y < HEIGHT; y++) {
           for (let x = 0; x < WIDTH; x++) {
             if (map[y * WIDTH + x] < 0) continue;
             seen++;
-            // nothing of the solid is on the picture's outermost pixels: it would be cut off there
-            expect(x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1, `yaw ${yaw}, pitch ${pitch}, pixel ${x},${y}`).toBe(true);
+            if (x > 0 && x < WIDTH - 1 && y > 0 && y < HEIGHT - 1) continue;
+            cutOff ??= `pixel ${x},${y}`;
           }
         }
+        // one check for a view, not one for a pixel: a check for each pixel took the test past its time on CI
+        expect(cutOff, `yaw ${yaw}, pitch ${pitch}`).toBeUndefined();
         expect(seen, `yaw ${yaw}, pitch ${pitch}`).toBeGreaterThan(0);
       }
     }
