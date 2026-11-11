@@ -32,6 +32,11 @@ game with one person in it: no bot takes a seat, and nothing below changes.
 Do not answer "this game cannot be started alone" by filling seats with bots
 for real users.
 
+*Assistant's reading, not the user's words:* the games "that can be played
+alone" are the two counting games, where a player has a problem to solve with
+nobody to race. A new game gets a start for one player only when the user says
+so or it is plainly of that kind, and the report says which.
+
 ## What a bot is allowed to be
 
 - One basic bot per game: it makes moves the rules accept and can play a game
