@@ -32,8 +32,10 @@ export interface HelpNumbers {
   rulebook: Rulebook;
 }
 
+/** Writes a number with its thousands apart. Made once: the screen writes some fifty numbers on every frame. */
+const GROUPS = new Intl.NumberFormat("en-US");
 /** `n` with its thousands apart: 1,234,567. */
-const grouped = (n: number): string => n.toLocaleString("en-US");
+export const grouped = (n: number): string => GROUPS.format(n);
 /** The rounds the rules are opened in but the last, and the last: "5·10·15" and "20". */
 const opened = (rounds: number[], between: string): [string, string] => [rounds.slice(0, -1).join(between), `${rounds[rounds.length - 1] ?? ""}`];
 

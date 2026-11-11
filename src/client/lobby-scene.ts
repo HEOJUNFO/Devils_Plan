@@ -71,6 +71,12 @@ const HALL_LIGHT = 1.6;
 const HALL_FIGURE = 21;
 const HALL_NAME = 36;
 
+/**
+ * The seconds between two drawings of the picture: thirty a second, less a
+ * moment so that a frame come a little early is not passed over.
+ */
+const DRAW_EVERY = 1 / 30 - 0.002;
+
 /** A place in the picture: whose it is, where, and whether it is one of a row of chairs. */
 interface Place {
   slot: number;
@@ -227,10 +233,21 @@ export function createLobbyScene(
     pen.txt(WORDS.scene.host, x + 1, y + 1, C.amber);
   }
 
+  /** The frame asked of the browser and not yet come, or 0. */
+  let asked = 0;
+  /** When the picture was last drawn, in the page's seconds. */
+  let drawnAt = 0;
+
   function frame(): void {
+    asked = 0;
     if (!running) return;
-    draw();
-    requestAnimationFrame(frame);
+    // the lamp sways a few pixels a second and the rest stands still: drawn more often, the picture is the same one again
+    const now = performance.now() / 1000;
+    if (now - drawnAt >= DRAW_EVERY) {
+      drawnAt = now;
+      draw();
+    }
+    asked = requestAnimationFrame(frame);
   }
 
   // the pixel font comes with the page: the names are drawn again once it is in
@@ -243,10 +260,14 @@ export function createLobbyScene(
     setRunning(value: boolean): void {
       if (value === running) return;
       running = value;
+      // a frame asked for before it was stopped is called off: stopped and started within one frame, the picture would be drawn by two loops
+      if (asked !== 0) cancelAnimationFrame(asked);
+      asked = 0;
       if (running) {
         started = performance.now() / 1000;
+        drawnAt = 0;
         speech.clear();
-        requestAnimationFrame(frame);
+        asked = requestAnimationFrame(frame);
       }
     },
     say(slot: number, text: string): void {

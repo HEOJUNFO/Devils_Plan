@@ -683,11 +683,16 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     owed += gone;
     last = now;
     turnByKeys(gone);
+    let stepped = false;
     while (owed >= STEP) {
       step();
       owed -= STEP;
+      stepped = true;
     }
-    draw();
+    // Nothing but the solid moves between two steps: a display faster than the screen's clock is not drawn the
+    // same words twice. The solid follows the hand at the display's own pace, and is painted only when it has turned.
+    if (stepped) draw();
+    else if (!help) paintScene();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

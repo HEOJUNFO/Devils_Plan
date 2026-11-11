@@ -22,7 +22,7 @@ import { C } from "../../game/palette";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { lang } from "../../lang";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
-import { WORDS } from "./words";
+import { WORDS, grouped } from "./words";
 
 /** What the room sends about a game of 미스터리 거래소. */
 export type MarketMessage = Extract<ServerMessage, { type: "game"; game: "mystery-stock-market" }>;
@@ -472,14 +472,14 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
 
   /** A number as it is written where it has `room` pixels: whole where it fits, and shortened (12K) where it does not. */
   function figure(n: number, room: number): string {
-    const whole = n.toLocaleString("en-US");
+    const whole = grouped(n);
     return pen.width(whole) <= room ? whole : WORDS.figure(n);
   }
 
   /** How many pixels the table has for a stock's price, with its arrow beside it. */
   const priceRoom = (): number => WORDS.columnAt.price - WORDS.columnAt.name - 2 - ARROW_ROOM;
   /** Whether the table has a stock's price whole. */
-  const priceWhole = (price: number): boolean => pen.width(price.toLocaleString("en-US")) <= priceRoom();
+  const priceWhole = (price: number): boolean => pen.width(grouped(price)) <= priceRoom();
 
   function drawTable(): void {
     if (latest === null) return;
@@ -655,7 +655,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       if (layout.crowded) pen.txt(`${each.rank}`, ex + 12, y, C.brass, "right");
       else pen.txt(`${each.rank}`, ex, y, C.brass);
       const nameX = ex + (layout.crowded ? 16 : 12);
-      const words = each.assets === null ? WORDS.veiled : layout.crowded ? WORDS.wonShort(each.assets) : each.assets.toLocaleString("en-US");
+      const words = each.assets === null ? WORDS.veiled : layout.crowded ? WORDS.wonShort(each.assets) : grouped(each.assets);
       const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
       const done = each.done && view.phase === "trading";
       // a mark for whoever is done with the round: after the name, and where two share a row, with no room there, at the entry's edge
@@ -727,7 +727,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     // the first three by name, as many of them as fit whole; the list beside the table has everyone
     let places = "";
     for (const each of view.standings.slice(0, PLACES_SHOWN)) {
-      const one = WORDS.result.place(each.rank, pen.fit(nickOf(each.player), 56), (each.assets ?? 0).toLocaleString("en-US"));
+      const one = WORDS.result.place(each.rank, pen.fit(nickOf(each.player), 56), grouped(each.assets ?? 0));
       const longer = places === "" ? one : `${places} · ${one}`;
       if (pen.width(longer) > RESULT_WIDTH) break;
       places = longer;
@@ -782,7 +782,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     pen.px(x, y, w, h, live ? C.amberD : C.steelDD);
     pen.px(x + 1, y + 1, w - 2, h - 2, C.ink);
     // with its thousands apart where that fits, and as it was typed where it does not
-    const entered = typed === "" ? "" : pen.width(shares().toLocaleString("en-US")) <= w - 6 ? shares().toLocaleString("en-US") : `${shares()}`;
+    const entered = typed === "" ? "" : pen.width(grouped(shares())) <= w - 6 ? grouped(shares()) : `${shares()}`;
     pen.txt(entered, x + w - 4, y + 8, live ? C.bone : C.dim, "right");
     // a mark where the next figure goes, while nothing is entered
     if (live && typed === "" && Math.sin(time * 6) > 0) pen.px(x + w - 6, y + 8, 2, 12, C.amber);
@@ -881,11 +881,14 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     // a stalled tab never fast-forwards the screen
     owed += Math.min(now - last, 0.25);
     last = now;
+    let stepped = false;
     while (owed >= STEP) {
       step();
       owed -= STEP;
+      stepped = true;
     }
-    draw();
+    // nothing on the screen moves between two steps: a display faster than the screen's clock is not drawn the same picture twice
+    if (stepped) draw();
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

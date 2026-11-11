@@ -42,6 +42,29 @@ export const LETTERS = "ABCDEF";
 
 const I = Math.round;
 
+/**
+ * How wide each text measured so far is, by its size and the text, and what
+ * each text was cut to, by the room it had. A screen draws the same names and
+ * numbers on every frame, and measuring is the dearest thing drawing a line
+ * of text asks of the browser.
+ */
+const widths = new Map<string, number>();
+const fits = new Map<string, string>();
+/** Past this many of either the lot is forgotten: prices and clocks make new texts all game long. */
+const KEPT_TEXTS = 4000;
+/** Whether the page's fonts are being listened to yet. */
+let listening = false;
+
+/** A width measured before the pixel font was in is of another font: when fonts come in, everything is measured anew. */
+function forgetWhenFontsLoad(): void {
+  if (listening || typeof document === "undefined" || document.fonts === undefined) return;
+  listening = true;
+  document.fonts.addEventListener("loadingdone", () => {
+    widths.clear();
+    fits.clear();
+  });
+}
+
 /** What is known of a chamber and how: content (1 live, 0 empty, null unknown) and source. */
 export type HatchInfo = [0 | 1 | null, "public" | "private" | "inferred" | null];
 
@@ -83,16 +106,29 @@ export class Pen {
 
   /** How wide `text` is, in pixels. */
   width(text: string, size = 12): number {
+    const key = `${size}\n${text}`;
+    const known = widths.get(key);
+    if (known !== undefined) return known;
+    forgetWhenFontsLoad();
     this.ctx.font = `${size}px ${FONT}`;
-    return Math.ceil(this.ctx.measureText(text).width);
+    const measured = Math.ceil(this.ctx.measureText(text).width);
+    if (widths.size >= KEPT_TEXTS) widths.clear();
+    widths.set(key, measured);
+    return measured;
   }
 
   /** `text` cut to fit `max` pixels, ending in an ellipsis when cut. */
   fit(text: string, max: number): string {
     if (this.width(text) <= max) return text;
+    const key = `${max}\n${text}`;
+    const known = fits.get(key);
+    if (known !== undefined) return known;
     const chars = Array.from(text);
     while (chars.length > 1 && this.width(`${chars.join("")}…`) > max) chars.pop();
-    return `${chars.join("")}…`;
+    const cut = `${chars.join("")}…`;
+    if (fits.size >= KEPT_TEXTS) fits.clear();
+    fits.set(key, cut);
+    return cut;
   }
 
   /** A small picture given as rows of `#` and `.`. */
@@ -192,8 +228,29 @@ export function pairAt(x: number, y: number, n: number, ringA: number): number |
   return best;
 }
 
+/**
+ * A picture of the scene that is the same every time: drawn once, on a canvas
+ * of its own, and copied from there. The room and its table are some 1,300
+ * rectangles, most of them the rows of their ellipses, and a screen draws
+ * them on every frame.
+ */
+function kept(picture: (pen: Pen) => void): (pen: Pen) => void {
+  let canvas: HTMLCanvasElement | null = null;
+  return (pen) => {
+    if (canvas === null) {
+      canvas = document.createElement("canvas");
+      canvas.width = SCENE_W;
+      canvas.height = BAR_Y;
+      const ctx = canvas.getContext("2d");
+      if (ctx === null) throw new Error("no 2D drawing in this browser");
+      picture(new Pen(ctx));
+    }
+    pen.ctx.drawImage(canvas, 0, 0);
+  };
+}
+
 /** The back room: wall, boards and the rug the table stands on. */
-export function drawRoom(pen: Pen): void {
+export const drawRoom = kept((pen) => {
   pen.px(0, 0, SCENE_W, BAR_Y, C.floor);
   for (let y = 26; y < BAR_Y; y += 11) {
     pen.px(0, y, SCENE_W, 1, C.floorD);
@@ -207,7 +264,7 @@ export function drawRoom(pen: Pen): void {
   pen.ell(CX, CY + 6, 129, 83, C.rug);
   pen.ell(CX, CY + 6, 120, 76, C.rugL);
   pen.ell(CX, CY + 6, 118, 74, C.rug);
-}
+});
 
 /** The lamp's shade, cut off by the top of the frame; `sway` is how far it has swung. */
 export function drawLamp(pen: Pen, sway: number): void {
@@ -226,7 +283,7 @@ export function drawLamp(pen: Pen, sway: number): void {
 }
 
 /** The round table. */
-export function drawTable(pen: Pen): void {
+export const drawTable = kept((pen) => {
   pen.ell(CX, CY + 10, TAB_RX + 2, TAB_RY + 1, "#0e0a12");
   pen.ell(CX, CY + 5, TAB_RX, TAB_RY, C.woodDD);
   pen.ell(CX, CY, TAB_RX, TAB_RY, C.woodD);
@@ -235,15 +292,20 @@ export function drawTable(pen: Pen): void {
   pen.ell(CX, CY, 59, 31, C.wood);
   const grain: [number, number, number][] = [[-52, -14, 22], [18, -24, 30], [-30, 22, 26], [30, 16, 20], [-64, 4, 12], [44, -6, 16]];
   for (const [x, y, w] of grain) pen.px(CX + x, CY + y, w, 1, C.woodD);
-}
+});
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+/** The parts of a pixel the pool's middle is told apart by, and the steps its strength is. */
+const LIGHT_STEPS = 4;
+const LIGHT_SHADES = 64;
 
 /** The lamp's pool of light: amber inside it, and outside it the room falls away in dithered steps. */
 export class Light {
   private readonly canvas = document.createElement("canvas");
   private readonly ctx: CanvasRenderingContext2D;
   private readonly image: ImageData;
+  /** Where the pool on the canvas is centred and how strong it is: `null` before the first. */
+  private drawn: { lx: number; ly: number; strength: number } | null = null;
 
   constructor() {
     this.canvas.width = SCENE_W;
@@ -256,6 +318,20 @@ export class Light {
 
   /** Draws the pool centred on (`lx`, `ly`); `strength` is 1 as usual, less while the lamp flickers. */
   draw(pen: Pen, lx: number, ly: number, strength: number): void {
+    // The pool is worked out again only when it has moved by a part of a pixel the eye can tell: a lamp that
+    // hangs still asks for the same picture on every frame, and one that sways moves a pixel in a quarter of a second.
+    const x = Math.round(lx * LIGHT_STEPS) / LIGHT_STEPS;
+    const y = Math.round(ly * LIGHT_STEPS) / LIGHT_STEPS;
+    const power = Math.round(strength * LIGHT_SHADES) / LIGHT_SHADES;
+    if (this.drawn === null || this.drawn.lx !== x || this.drawn.ly !== y || this.drawn.strength !== power) {
+      this.work(x, y, power);
+      this.drawn = { lx: x, ly: y, strength: power };
+    }
+    pen.ctx.drawImage(this.canvas, 0, 0);
+  }
+
+  /** Works the pool out, a pixel at a time, onto the light's own canvas. */
+  private work(lx: number, ly: number, strength: number): void {
     const data = this.image.data;
     const rx = 160 * strength;
     const ry = 114 * strength;
@@ -286,7 +362,6 @@ export class Light {
       }
     }
     this.ctx.putImageData(this.image, 0, 0);
-    pen.ctx.drawImage(this.canvas, 0, 0);
   }
 }
 

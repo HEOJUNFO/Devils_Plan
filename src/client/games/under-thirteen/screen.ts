@@ -718,11 +718,14 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     // a stalled tab never fast-forwards the screen
     owed += Math.min(now - last, 0.25);
     last = now;
+    let stepped = false;
     while (owed >= STEP) {
       step();
       owed -= STEP;
+      stepped = true;
     }
-    draw();
+    // nothing on the screen moves between two steps: a display faster than the screen's clock is not drawn the same picture twice
+    if (stepped) draw();
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
