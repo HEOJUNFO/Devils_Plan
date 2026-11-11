@@ -15,7 +15,8 @@ const ko = {
     parts: [
       "큐브를 쌓아 만든 입체가 나옵니다. 큐브가 모두 몇 개인지 세어, 그 수를 각자 입력합니다.",
       [
-        "입체는 속이 꽉 차 있습니다. 보이는 큐브 밑에 깔린 큐브도 셉니다. 뒤쪽이 앞쪽보다 낮은 곳은 없어서, 다른 큐브 뒤에 숨은 기둥은 없습니다.",
+        "입체는 속이 꽉 차 있습니다. 보이는 큐브 밑에 깔린 큐브도 셉니다. 처음 보이는 쪽에서는 뒤가 앞보다 낮은 곳이 없어, 다른 큐브 뒤에 숨은 기둥이 없습니다.",
+        "그림은 마우스로 끌어서 (또는 방향키로) 돌려 볼 수 있습니다.",
         "맞힌 순서대로 순위가 정해집니다. 누가 맞히고 틀렸는지는 모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다.",
         "틀리면 20초 동안 답할 수 없습니다.",
         "한 명만 남기고 모두 맞히면 끝납니다.",
@@ -57,6 +58,8 @@ const ko = {
     paused: "판이 멈춰 있습니다",
     lockedFor: (seconds: number) => `${seconds}초 뒤에 다시 답할 수 있습니다`,
   },
+  /** In the corner of the picture: how the solid is turned, and, once it has been, how the first view comes back. */
+  turn: { hint: "끌어서 돌려 보기", back: "V: 처음 보던 쪽으로" },
   /** Over the picture while the game stands still; `seconds` until it is given up, where that is known. */
   waitingBack: (seconds: number | null) => (seconds === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${seconds}초`),
   /** The line over the entry, 468 pixels. */
@@ -105,7 +108,8 @@ const ko = {
     { text: "그림의 입체가 큐브 몇 개로 되어 있는지 세어, 그 수를 각자 입력합니다." },
     { text: "" },
     { text: "입체는 속이 꽉 차 있습니다. 보이는 큐브 밑에 깔린 큐브도 셉니다." },
-    { text: "뒤쪽이 앞쪽보다 낮은 곳은 없어서, 다른 큐브 뒤에 숨은 기둥은 없습니다.", tone: "dim" },
+    { text: "처음 보이는 쪽에서는 뒤가 앞보다 낮은 곳이 없어, 숨은 기둥이 없습니다.", tone: "dim" },
+    { text: "그림은 끌어서 돌려 볼 수 있습니다 (방향키도 같음). V: 처음 보던 쪽으로.", tone: "dim" },
     { text: "" },
     { text: "답이 맞으면 맞힌 순서대로 순위가 정해집니다. 누가 맞히고 틀렸는지는" },
     { text: "모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다." },
@@ -124,7 +128,8 @@ const en: typeof ko = {
     parts: [
       "A solid built of stacked cubes comes up. Count how many cubes there are in all, and enter the number, each player for themselves.",
       [
-        "The solid has no hollows. The cubes under the ones you see count too. Nowhere is the back lower than the front, so no column hides behind other cubes.",
+        "The solid has no hollows. The cubes under the ones you see count too. Seen from where it is first shown, nowhere is the back lower than the front, so no column hides behind other cubes.",
+        "Drag the picture with the mouse (or use the arrow keys) to turn the solid and look at it from another side.",
         "Players are ranked in the order they get it right. Everyone is told who was right and who was wrong, but not the numbers entered.",
         "A wrong answer locks you out for 20 seconds.",
         "The game ends when all but one have got it right.",
@@ -161,6 +166,7 @@ const en: typeof ko = {
     paused: "The game is paused",
     lockedFor: (seconds) => `You can answer again in ${seconds}s`,
   },
+  turn: { hint: "Drag to turn", back: "V: first view" },
   waitingBack: (seconds) => (seconds === null ? "Waiting for them to come back" : `Waiting for them to come back · ${seconds}s`),
   standing: {
     offline: "Connection lost. Reconnecting",
@@ -185,7 +191,7 @@ const en: typeof ko = {
     counting: (short) => (short ? [""] : ["counting"]),
   },
   result: {
-    verdict: (seated, place) => (!seated ? "Over" : place === null ? "Missed" : englishOrdinal(place)),
+    verdict: (seated, place) => (!seated ? "Over" : place === null ? "Miss" : englishOrdinal(place)),
     place: (place, who) => `${englishOrdinal(place)} ${who}`,
     nobody: "Nobody got it right",
     answer: (cubes) => `There were ${cubes} cubes in all`,
@@ -199,7 +205,8 @@ const en: typeof ko = {
     { text: "and enter the number, each player for themselves." },
     { text: "" },
     { text: "No hollows: cubes under the ones you see count too." },
-    { text: "The back is never lower than the front: no column is hidden.", tone: "dim" },
+    { text: "At first the back is never lower than the front: none is hidden.", tone: "dim" },
+    { text: "Drag the picture to turn it (arrow keys too). V: the first view.", tone: "dim" },
     { text: "" },
     { text: "Players are ranked in the order they get it right. All are told" },
     { text: "who was right and who was wrong, but not the numbers entered." },

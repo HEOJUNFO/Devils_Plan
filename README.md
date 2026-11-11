@@ -48,6 +48,8 @@
 돌리면 순서, 벌점, 최종 점수가 모두 같게 나옵니다 (다시 짠 판의 일부는
 추론이고, 설계 기록에 적어 두었습니다).
 
+큐브 세기의 입체는 마우스로 끌어서 (또는 방향키로) 돌려 볼 수 있습니다.
+
 큐브 세기와 네모 세기는 방에 혼자 있어도 시작할 수 있습니다 (세어서 맞히는
 게임이라 상대 없이도 풀 수 있습니다. 봇은 들어오지 않습니다). 잔디 깔기,
 기억 포커, 무거운 13, 러시안 룰렛은 사람이 모여야 시작합니다.
@@ -58,7 +60,7 @@
 
 | 잔디 깔기 | 큐브 세기 |
 |---|---|
-| ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-tiles-with-holes-lay.png) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-problem-and-keypad.png) |
+| ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-tiles-with-holes-lay.png) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-turn-first-view.png) |
 
 | 기억 포커: 뒤집힌 판에서 고르기 | 기억 포커: 공개 |
 |---|---|

@@ -5,9 +5,12 @@
  * Design: design/games/count-cubes.md. The room decides everything; this
  * screen shows what it sends and asks it to take an answer. The number is
  * entered with the keyboard or with the buttons along the bar, which are
- * there for a screen that has no keys.
+ * there for a screen that has no keys. The solid can be turned and looked at
+ * from any side, by dragging its picture or with the arrow keys: that is
+ * this screen's own doing, and nothing the room is told.
  */
-import { heightAt, type CubesEvent, type Solid } from "../../../shared/games/count-cubes/rules";
+import type { CubesEvent, Solid } from "../../../shared/games/count-cubes/rules";
+import { FIRST_VIEW, SHADE, dragged, shadesOf, turned, type View } from "../../../shared/games/count-cubes/view";
 import { typeAnswer } from "../../../shared/games/count-rectangles/typing";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
@@ -50,9 +53,9 @@ export interface CubesScreen {
 const STEP = 1 / 60;
 /** Where the solid is drawn: the part of the scene under the page's own buttons. */
 const PICTURE = { x: 8, y: 24, w: 288, h: 190 };
-/** Half the width of a cube's top, in pixels: the largest and the smallest it is drawn. Even, so that its edges fall on whole pixels. */
-const MAX_CUBE = 16;
-const MIN_CUBE = 6;
+/** Degrees the solid turns, and tilts, for one press of an arrow key: a key held down goes on at the keyboard's own pace. */
+const TURN_STEP = 5;
+const TILT_STEP = 3;
 /** The widest a name is drawn in the list of players, in pixels. */
 const NAME_WIDTH = 62;
 /** With this many seconds or fewer of the problem left, the clock turns red. */
@@ -64,16 +67,33 @@ const HURRY_FROM = 10;
 const RESULTS_HOLD = 1.5;
 /** How many of those with the answer the results name in the bar. */
 const PLACES_SHOWN = 3;
-/** The three faces of a cube that show, and the line between cubes. */
-const TOP = "#c3c9dc";
-const LEFT = "#7c8296";
-const RIGHT = "#4b5066";
-const EDGE = "#161a2b";
+/**
+ * A cube's faces by the way they look, and the line between cubes. The four
+ * sides go light, dark, light, dark round the solid, so that the two that
+ * show together are never alike; at the first view they are the left and the
+ * right of pixel art's cube.
+ */
+const SHADE_COLOURS: Record<number, string> = {
+  [SHADE.line]: "#161a2b",
+  [SHADE.top]: "#c3c9dc",
+  [SHADE.south]: "#7c8296",
+  [SHADE.east]: "#4b5066",
+  [SHADE.north]: "#8a90a6",
+  [SHADE.west]: "#5b6178",
+};
+/** The same as the four bytes of a pixel, by shade; nothing for where nothing stands. */
+const SHADE_BYTES: (readonly number[] | undefined)[] = [];
+for (const [shade, colour] of Object.entries(SHADE_COLOURS)) {
+  const value = Number.parseInt(colour.slice(1), 16);
+  SHADE_BYTES[Number(shade)] = [(value >> 16) & 255, (value >> 8) & 255, value & 255, 255];
+}
 
 type Box = readonly [number, number, number, number];
 
 const inRect = (p: { x: number; y: number }, r: Box): boolean => p.x >= r[0] && p.x < r[0] + r[2] && p.y >= r[1] && p.y < r[1] + r[3];
 
+/** The picture of the solid, as a place to take hold of it. */
+const PICTURE_RECT: Box = [PICTURE.x, PICTURE.y, PICTURE.w, PICTURE.h];
 /** The number being entered. */
 const TYPED_RECT: Box = [6, 238, 80, 30];
 /** The buttons along the bar, in order, and the key each stands for. */
@@ -90,77 +110,21 @@ const LOBBY_RECT: Box = [386, 250, 90, 15];
 const seconds1 = WORDS.took;
 
 /**
- * Draws `solid` on a picture of its own, looked at from the corner where its
- * rows and columns end. Every cube face that shows is drawn by itself, with
- * a dark line where it meets the next, so that the cubes can be told apart
- * and counted; a face behind another cube is left out, and nothing overlaps.
+ * Draws `solid` on `picture` as it looks from `view` (`view.ts`): every cube
+ * face that shows in the shade of the way it looks, with a dark line where
+ * it ends, so that the cubes can be told apart and counted. Where nothing
+ * stands the picture is left clear.
  */
-function pictureOf(solid: Solid): HTMLCanvasElement {
-  const picture = document.createElement("canvas");
-  picture.width = PICTURE.w;
-  picture.height = PICTURE.h;
+function paintSolid(picture: HTMLCanvasElement, solid: Solid, view: View): void {
   const context = picture.getContext("2d");
-  if (context === null) return picture;
-  context.imageSmoothingEnabled = false;
-  const pen = new Pen(context);
-  const { rows, cols } = solid;
-  const top = Math.max(...solid.heights);
-  // the largest cube at which the whole solid is in the picture
-  let a = MAX_CUBE;
-  while (a > MIN_CUBE && ((rows + cols) * a > PICTURE.w || ((rows + cols) * a) / 2 + top * a > PICTURE.h)) a -= 2;
-  const half = a / 2;
-  // the middle of the back corner's column, and the top row of its square of floor
-  const ox = Math.floor((PICTURE.w - (rows + cols) * a) / 2) + rows * a;
-  const oy = Math.floor((PICTURE.h - ((rows + cols) * half + top * a)) / 2) + top * a;
-
-  /** The top of a cube: a lozenge `2a` wide and `a` high whose first row is `cy`. Its two near edges are lined. */
-  function topFace(cx: number, cy: number): void {
-    for (let i = 0; i < a; i++) {
-      const w = i < half ? 4 * i + 2 : 4 * (a - 1 - i) + 2;
-      const x = cx - w / 2;
-      pen.px(x, cy + i, w, 1, TOP);
-      if (i >= half) {
-        pen.px(x, cy + i, 2, 1, EDGE);
-        pen.px(x + w - 2, cy + i, 2, 1, EDGE);
-      }
-    }
+  if (context === null) return;
+  const shades = shadesOf(solid, view, picture.width, picture.height);
+  const image = context.createImageData(picture.width, picture.height);
+  for (let at = 0; at < shades.length; at++) {
+    const bytes = SHADE_BYTES[shades[at]];
+    if (bytes !== undefined) image.data.set(bytes, at * 4);
   }
-  /** The face to the left under the top whose first row is `cy`: it steps down a pixel every two. */
-  function leftFace(cx: number, cy: number): void {
-    for (let s = 0; s < half; s++) {
-      const x = cx - a + 1 + 2 * s;
-      const w = s === half - 1 ? 1 : 2;
-      const y = cy + half + s + 1;
-      pen.px(x, y, w, a, LEFT);
-      pen.px(x, y + a - 1, w, 1, EDGE);
-      if (s === 0) pen.px(x, y, 1, a, EDGE);
-    }
-  }
-  /** The face to the right: the left one in a mirror. */
-  function rightFace(cx: number, cy: number): void {
-    for (let s = 0; s < half; s++) {
-      const w = s === half - 1 ? 1 : 2;
-      const x = s === half - 1 ? cx : cx + a - 3 - 2 * s;
-      const y = cy + half + s + 1;
-      pen.px(x, y, w, a, RIGHT);
-      pen.px(x, y + a - 1, w, 1, EDGE);
-      if (s === 0) pen.px(x + 1, y, 1, a, EDGE);
-    }
-  }
-
-  for (let row = 0; row < rows; row++) {
-    for (let col = 0; col < cols; col++) {
-      const height = heightAt(solid, row, col);
-      if (height === 0) continue;
-      const cx = ox + (col - row) * a;
-      const floor = oy + (col + row) * half;
-      // the sides show above whatever stands in front of them
-      for (let k = heightAt(solid, row + 1, col); k < height; k++) leftFace(cx, floor - (k + 1) * a);
-      for (let k = heightAt(solid, row, col + 1); k < height; k++) rightFace(cx, floor - (k + 1) * a);
-      topFace(cx, floor - height * a);
-    }
-  }
-  return picture;
+  context.putImageData(image, 0, 0);
 }
 
 /** Makes `canvas` the game screen. Nothing is drawn until the first {@link CubesScreen.update}. */
@@ -191,8 +155,17 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   let noteT = 0;
   /** The digits entered so far. */
   let typed = "";
-  /** The solid as drawn, and the game it was drawn for. */
-  let picture: { of: number; canvas: HTMLCanvasElement } | null = null;
+  /** From where the solid is looked at: the player turns it by dragging its picture, or with the arrow keys. */
+  let angle: View = FIRST_VIEW;
+  /** The picture of the solid, and the game and the view it was last drawn for. */
+  const pictureCanvas = document.createElement("canvas");
+  pictureCanvas.width = PICTURE.w;
+  pictureCanvas.height = PICTURE.h;
+  let painted: { of: number; angle: View } | null = null;
+  /** The pointer that is turning the solid, and where it last was. */
+  let drag: { id: number; x: number; y: number } | null = null;
+  /** The arrow keys pressed since the last step: each press, and each time a key held down says itself again. */
+  const arrows: string[] = [];
   /** `time` when the game on show was first seen to be over. */
   let endedAt = 0;
   /** By player: a chat line beside their name. */
@@ -260,6 +233,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       seen = message.view.history.length;
       typed = "";
       speech.clear();
+      // another solid is first looked at from its own low corner
+      angle = FIRST_VIEW;
       if (latest !== null) sfx.turn();
     }
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
@@ -268,7 +243,6 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     pending = false;
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
-    if (picture === null || picture.of !== message.startedAt) picture = { of: message.startedAt, canvas: pictureOf(message.view.solid) };
   }
 
   // ---- Input -----------------------------------------------------------------------------------------
@@ -283,6 +257,16 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     // the page's own buttons lie over the frame: they give way while the sheet is up
     if (help !== was) handlers.covered(help);
     if (help || was) return;
+
+    // Turning the solid is looking, not playing: it is there for someone watching and after the game too.
+    // An arrow turns it the way a drag in that direction does.
+    for (const code of arrows) {
+      if (code === "ArrowLeft") angle = turned(angle, TURN_STEP, 0);
+      else if (code === "ArrowRight") angle = turned(angle, -TURN_STEP, 0);
+      else if (code === "ArrowDown") angle = turned(angle, 0, TILT_STEP);
+      else if (code === "ArrowUp") angle = turned(angle, 0, -TILT_STEP);
+    }
+    if (pressed("KeyV")) angle = FIRST_VIEW;
 
     const view = latest.view;
     if (view.phase === "ended") {
@@ -333,6 +317,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     }
     stepInput();
     keys.length = 0;
+    arrows.length = 0;
     clicks.length = 0;
   }
 
@@ -347,7 +332,13 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     if (latest === null) return;
     pen.px(0, 0, SCENE_W, BAR_Y, C.night);
     for (let y = 9; y < BAR_Y; y += 17) pen.px(0, y, SCENE_W, 1, C.wallD);
-    if (picture !== null) ctx.drawImage(picture.canvas, PICTURE.x, PICTURE.y);
+    if (painted === null || painted.of !== latest.startedAt || painted.angle !== angle) {
+      paintSolid(pictureCanvas, latest.view.solid, angle);
+      painted = { of: latest.startedAt, angle };
+    }
+    // How the solid is turned, in the corner; the picture goes over it, so that where a solid reaches the corner it is the solid that shows.
+    pen.txt(angle === FIRST_VIEW ? WORDS.turn.hint : WORDS.turn.back, SCENE_W - 6, BAR_Y - 15, C.dim, "right");
+    ctx.drawImage(pictureCanvas, PICTURE.x, PICTURE.y);
     if (latest.frozen) {
       // the game's own clocks stand still; this one runs, and ends the game at nought
       const stand = latest.clock.stand === null ? null : Math.max(0, latest.clock.stand - (performance.now() - receivedAt));
@@ -555,12 +546,32 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     startAudio();
     // a digit held down is one digit
     if (!event.repeat) keys.push(event.code);
-    if (event.code === "Space" || event.code === "Backspace") event.preventDefault();
+    // an arrow held down goes on turning the solid, and does not scroll the page
+    if (event.code.startsWith("Arrow")) arrows.push(event.code);
+    if (event.code === "Space" || event.code === "Backspace" || event.code.startsWith("Arrow")) event.preventDefault();
+  };
+  /** Whether a drag that begins at `p` turns the solid: on its picture, and not under the rules sheet. */
+  const onPicture = (p: { x: number; y: number }): boolean => !help && latest !== null && inRect(p, PICTURE_RECT);
+  /** The pointer shows that the picture can be taken hold of. */
+  const showGrip = (p: { x: number; y: number }): void => {
+    canvas.style.cursor = drag !== null ? "grabbing" : onPicture(p) ? "grab" : "";
   };
   const onPointerMove = (event: PointerEvent): void => {
     const p = toScreen(event);
     mouse.x = p.x;
     mouse.y = p.y;
+    if (drag !== null && event.pointerId === drag.id) {
+      angle = dragged(angle, p.x - drag.x, p.y - drag.y);
+      drag.x = p.x;
+      drag.y = p.y;
+    }
+    showGrip(p);
+  };
+  const onPointerUp = (event: PointerEvent): void => {
+    if (drag === null || event.pointerId !== drag.id) return;
+    drag = null;
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    showGrip(toScreen(event));
   };
   const onPointerDown = (event: PointerEvent): void => {
     startAudio();
@@ -568,6 +579,12 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     mouse.x = p.x;
     mouse.y = p.y;
     clicks.push(p);
+    if (drag === null && onPicture(p)) {
+      drag = { id: event.pointerId, x: p.x, y: p.y };
+      // the drag goes on when the pointer leaves the frame
+      canvas.setPointerCapture(event.pointerId);
+      showGrip(p);
+    }
     // A button of the bar stands for a key and takes its place among the keys as they came: a digit
     // clicked and Enter typed straight after it can reach one slow frame together, and must not be
     // read as Enter and then the digit (the answer would go without its last digit).
@@ -577,6 +594,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   addEventListener("keydown", onKeyDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
 
   let last = performance.now() / 1000;
   let owed = 0;
@@ -623,6 +642,10 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       removeEventListener("keydown", onKeyDown);
       canvas.removeEventListener("pointermove", onPointerMove);
       canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
+      // the canvas goes on to the next screen with the pointer it had
+      canvas.style.cursor = "";
     },
   };
 }
