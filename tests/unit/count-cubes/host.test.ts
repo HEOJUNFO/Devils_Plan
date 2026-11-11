@@ -102,10 +102,17 @@ describe("큐브 세기 in a room: starting", () => {
     expect(host.start(over, players, request({ now: T0 + 5000 }), presenceOf(players)).ok).toBe(true);
   });
 
-  it("refuses a game for one player", () => {
+  it("starts a game for one player alone", () => {
     const players = candidates(1);
 
-    expect(host.start(null, players, request(), presenceOf(players))).toEqual({ ok: false, reason: "too-few" });
+    const result = host.start(null, players, request(), presenceOf(players));
+
+    expect(result.ok && result.session.players.map((seat) => seat.id)).toEqual([0]);
+    expect(result.ok && host.running(result.session)).toBe(true);
+  });
+
+  it("refuses a game for nobody", () => {
+    expect(host.start(null, [], request(), presenceOf([]))).toMatchObject({ ok: false });
   });
 
   it("refuses bots where the room does not offer them", () => {

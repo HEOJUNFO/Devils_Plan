@@ -80,7 +80,7 @@ const REFUSED_TEXT: Record<string, string> = {
   "not-seated": "관전 중에는 참여할 수 없습니다",
   "no-game": "진행 중인 판이 없습니다",
   "not-host": "방장만 새 판을 시작할 수 있습니다",
-  "too-few": "두 명 이상이어야 합니다",
+  "too-few": "시작할 사람이 없습니다",
   "already-playing": "이미 판이 진행 중입니다",
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
   "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
@@ -525,7 +525,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     pen.txt(pen.fit(places.length > 0 ? places.join(" · ") : "아무도 맞히지 못했습니다", 280), 96, 226, C.bone);
     pen.txt(`큐브는 모두 ${view.answer ?? "?"}개였습니다`, 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? "같은 사람들과 한 판 더 하거나 대기실로" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
+    else pen.txt(host ? (latest.players.length === 1 ? "한 판 더 하거나 대기실로" : "같은 사람들과 한 판 더 하거나 대기실로") : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
     if (host) button(AGAIN_RECT, "Enter 새 판", true, true);
     button(LOBBY_RECT, "Esc 대기실로", false, true);
   }
@@ -556,7 +556,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       ["답이 맞으면 맞힌 순서대로 순위가 정해집니다. 누가 맞히고 틀렸는지는", C.bone],
       ["모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다.", C.bone],
       [`틀리면 ${rules.lockSeconds}초 동안 답할 수 없습니다.`, C.bone],
-      ["한 명만 남기고 모두 맞히면 끝납니다.", C.bone],
+      [latest.players.length === 1 ? "혼자 하는 판은 맞히면 끝납니다." : "한 명만 남기고 모두 맞히면 끝납니다.", C.bone],
       [`제한 시간은 ${Math.round(rules.problemSeconds / 60)}분입니다. 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.`, C.boneD],
       ["", C.bone],
       ["숫자 키: 입력 · Backspace: 지움 · Enter: 답하기 (아래 버튼도 같음)", C.boneD],

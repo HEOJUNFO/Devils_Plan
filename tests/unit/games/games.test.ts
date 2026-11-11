@@ -34,6 +34,14 @@ describe("the games a room can be made for", () => {
     expect(game.teamSize).toBeLessThan(game.maxPlayers);
   });
 
+  it("lets one player alone start the two counting games, and no other game", () => {
+    // the user, on 2026-11-11: solo play where a game can be played alone; 잔디 깔기 cannot ("이걸어케혼자해"), nor 러시안 룰렛
+    const alone = GAME_IDS.filter((id) => GAMES[id].minPlayers === 1).sort();
+
+    expect(alone).toEqual(["count-cubes", "count-rectangles"]);
+    expect(GAMES["lay-the-grass"].minPlayers).toBe(2);
+  });
+
   it("says of the first game what its tables say", () => {
     const sizes = Object.keys(tableSizes).map(Number);
 

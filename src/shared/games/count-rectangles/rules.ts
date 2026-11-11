@@ -303,7 +303,7 @@ export type RectStartRefusal =
   | "bad-players"
   /** A team that is not exactly `teamSize` players. */
   | "bad-teams"
-  /** Fewer than two units: nobody to race. */
+  /** Nobody at all. */
   | "too-few";
 
 /** What one player is sent. `answer` and `solutions` are there only once the problem is closed. */
@@ -789,7 +789,8 @@ export function createGame(
     const leader = [...members].sort((a, b) => (a.since ?? Infinity) - (b.since ?? Infinity) || a.id - b.id)[0];
     units.push({ members: members.map((member) => member.id).sort((a, b) => a - b), wins: 0, place: 0, leader: leader.id });
   }
-  if (units.length < 2) return { ok: false, reason: "too-few" };
+  // one unit alone is a game: a player, or a team of three, with the problems to get right and nobody to race
+  if (units.length < 1) return { ok: false, reason: "too-few" };
   units.sort((a, b) => a.members[0] - b.members[0]);
 
   const state: RectState = {

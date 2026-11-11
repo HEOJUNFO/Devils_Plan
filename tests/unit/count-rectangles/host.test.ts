@@ -85,12 +85,19 @@ describe("starting a game of 네모 세기", () => {
     expect(session.state.units.map((unit) => unit.members)).toEqual([[0, 2, 3], [1], [4]]);
   });
 
-  it("refuses a game with nobody to race", () => {
+  it("starts a game for one player alone, and for one team with nobody to race", () => {
     const alone = candidates(1);
     const oneTeam = candidates(3, [1, 1, 1]);
 
-    expect(host.start(null, alone, request(), presenceOf(alone))).toEqual({ ok: false, reason: "too-few" });
-    expect(host.start(null, oneTeam, request(), presenceOf(oneTeam))).toEqual({ ok: false, reason: "too-few" });
+    const solo = host.start(null, alone, request(), presenceOf(alone));
+    const team = host.start(null, oneTeam, request(), presenceOf(oneTeam));
+
+    expect(solo.ok && solo.session.state.units.map((unit) => unit.members)).toEqual([[0]]);
+    expect(team.ok && team.session.state.units.map((unit) => unit.members)).toEqual([[0, 1, 2]]);
+  });
+
+  it("refuses a game for nobody", () => {
+    expect(host.start(null, [], request(), presenceOf([]))).toMatchObject({ ok: false });
   });
 
   it("takes the players of a team that is not full each alone, so that one player's choice holds up nobody's start", () => {

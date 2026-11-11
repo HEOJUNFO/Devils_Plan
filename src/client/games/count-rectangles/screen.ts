@@ -123,7 +123,7 @@ const REFUSED_TEXT: Record<string, string> = {
   "no-game": "진행 중인 판이 없습니다",
   "not-host": "방장만 새 판을 시작할 수 있습니다",
   "bad-teams": "팀 인원이 맞지 않습니다",
-  "too-few": "두 팀(또는 두 명) 이상이어야 합니다",
+  "too-few": "시작할 사람이 없습니다",
   "already-playing": "이미 판이 진행 중입니다",
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
   "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
@@ -864,6 +864,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   function logLines(): [string, string][] {
     if (latest === null) return [];
     const lines: [string, string][] = [];
+    // one side with nobody to race: "half have won" would say nothing, so those lines are shorter
+    const unopposed = latest.view.units.length === 1;
     for (const event of latest.view.history.slice(0, seen)) {
       const who = "player" in event ? pen.fit(nickOf(event.player), LIST_NAME_WIDTH) : "";
       if (event.type === "problem") lines.push([event.duel === undefined ? `문제 ${event.round}` : `추가 대결 문제 ${event.duel}`, C.boneD]);
@@ -874,7 +876,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       else if (event.type === "time") lines.push(["제한 시간 종료", C.boneD]);
       else if (event.type === "all-wrong") lines.push(["모두 오답", C.boneD]);
       else if (event.type === "won") lines.push([`${unitName(event.unit, 96)} 승리 (${event.place}위)`, C.amber]);
-      else if (event.type === "raced") lines.push([event.reason === "half" ? "절반이 승리 · 선택 3" : "마지막 문제까지 · 선택 3", C.amber]);
+      else if (event.type === "raced") lines.push([event.reason === "half" ? (unopposed ? "선택 3" : "절반이 승리 · 선택 3") : "마지막 문제까지 · 선택 3", C.amber]);
       else if (event.type === "choice") {
         // each team's decision, then who took which of the two alone
         for (const decided of event.decisions) {
@@ -892,7 +894,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         const won = event.winner === null ? "추가 대결: 승자 없음" : `대결 승리: ${pen.fit(nickOf(event.winner), 44)} · 피스 ${latest.rules.duelPieces}개`;
         lines.push([pen.fit(won, PANEL_WIDTH), event.winner === null ? C.boneD : C.teal]);
       } else if (event.type === "score") lines.push(["승점을 셌습니다", C.boneD]);
-      else lines.push([ENDED_TEXT[event.reason], C.amber]);
+      else lines.push([unopposed && event.reason === "half" ? "끝!" : ENDED_TEXT[event.reason], C.amber]);
     }
     return lines;
   }
@@ -941,7 +943,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     pen.px(x, under, PANEL_WIDTH, 1, C.steelDD);
     // what it takes to win and to end; how the game stands this moment is said in the bar, by the buzzer
     pen.txt(`${latest.rules.winsNeeded}번 맞히면 승리 · H 규칙`, x, under + 3, C.boneD);
-    pen.txt(`${view.units.length}팀 중 ${view.winnersNeeded}팀이 이기면 끝`, x, under + 16, C.boneD);
+    // one side alone has nobody to race: its own win ends the game
+    pen.txt(view.units.length === 1 ? "상대 없는 판: 승리하면 끝" : `${view.units.length}팀 중 ${view.winnersNeeded}팀이 이기면 끝`, x, under + 16, C.boneD);
     const lines = logLines();
     const from = Math.max(0, lines.length - layout.logRows);
     for (let i = from; i < lines.length; i++) pen.txt(lines[i][0], x, layout.logTop + (i - from) * LOG_PITCH, lines[i][1]);
@@ -986,7 +989,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       pen.txt(pen.fit(parts.join(" · "), 280), 96, 240, line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD);
     }
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? "같은 사람들과 한 판 더 하거나 대기실로" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
+    else pen.txt(host ? (latest.players.length === 1 ? "한 판 더 하거나 대기실로" : "같은 사람들과 한 판 더 하거나 대기실로") : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
     if (host) button(AGAIN_RECT, "Enter 새 판", "", true, true);
     button(LOBBY_RECT, "Esc 대기실로", "", false, true);
   }

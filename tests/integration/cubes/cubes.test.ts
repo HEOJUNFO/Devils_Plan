@@ -337,6 +337,27 @@ describe("GameRoom: a room of 큐브 세기", () => {
   });
 });
 
+describe("GameRoom: 큐브 세기 played alone", () => {
+  it("starts for one player, waits for their answer, and ends when they have it right", async () => {
+    const alone = await open("QAS92", 0, true);
+    await alone.lobbyOf(1);
+
+    const [game] = await startGame([alone]);
+    answer(alone, answerOf(game) + 1);
+    const wrong = await alone.cubesWhere((seen) => seen.view.wrong.length === 1);
+    advanceClock(LOCK_MS + 1);
+    answer(alone, answerOf(game));
+    const ended = await alone.cubesWhere((seen) => seen.view.phase === "ended");
+
+    expect(game.players.map((player) => player.bot)).toEqual([false]);
+    expect(game.view).toMatchObject({ phase: "open", you: 0, needed: 1, ranked: [] });
+    expect(wrong.view.phase).toBe("open");
+    expect(ended.view.ranked.map((entry) => entry.player)).toEqual([0]);
+    expect(ended.view.answer).toBe(answerOf(game));
+    alone.close();
+  });
+});
+
 describe("GameRoom: a full room of 큐브 세기", () => {
   it("takes the sixteen the game is documented for, and ends once fifteen of them have the answer", async () => {
     const clients = await counters("QAS96", SHOW_PLAYERS);

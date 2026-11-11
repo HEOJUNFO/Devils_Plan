@@ -306,13 +306,23 @@ describe("GameRoom: a room of 네모 세기", () => {
     closeAll(clients);
   });
 
-  it("refuses a start with nobody to race", async () => {
+  it("starts for one player alone, who wins by being right twice and then makes the third choice", async () => {
+    const stub = env.GameRoom.getByName("NAAAP");
     const alone = await open("NAAAP", 0, true);
     await alone.lobbyOf(1);
 
-    alone.send({ type: "start", bots: false });
+    const [game] = await startGame([alone]);
+    const over = await race(stub, [alone], game, 0);
+    choose([alone], 0, 2);
+    const ended = await alone.rectWhere((seen) => seen.view.phase === "ended");
 
-    expect((await alone.refusal()).reason).toBe("too-few");
+    expect(game.players.map((player) => player.bot)).toEqual([false]);
+    expect(game.view).toMatchObject({ winnersNeeded: 1, you: { player: 0, unit: 0 } });
+    expect(over.view.units[0]).toMatchObject({ wins: shipped.winsNeeded, place: 1 });
+    expect(over.view.choosing).toMatchObject({ card: "alone" });
+    expect(ended.view.scores).toEqual([
+      { player: 0, race: shipped.winPoints, choice: -shipped.safeLoss, pieces: 0, total: shipped.winPoints - shipped.safeLoss },
+    ]);
     alone.close();
   });
 

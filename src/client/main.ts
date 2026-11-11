@@ -85,7 +85,7 @@ const REFUSED_TEXT: Record<string, string> = {
   "not-host": "방장만 할 수 있습니다.",
   "bad-player-count": "지금 인원으로는 시작할 수 없습니다.",
   "bad-teams": "팀 인원이 맞지 않아 시작할 수 없습니다.",
-  "too-few": "두 팀(혼자도 한 팀) 이상이 모여야 시작할 수 있습니다.",
+  "too-few": "인원이 모자라 시작할 수 없습니다.",
   "already-playing": "이미 판이 진행 중입니다.",
   "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다.",
   "bad-setting": "그 설정은 이 방에서 쓸 수 없습니다.",
@@ -520,7 +520,8 @@ function renderNewRoom(): void {
   const who = chosenListed ? "목록에 보여 누구나 들어옵니다." : "링크나 코드를 아는 사람만 들어옵니다.";
   const clock = chosenListed ? `${clockText(config.listedTurnSeconds)}로 시작.` : `${clockText(0)}으로 시작.`;
   listedHint.textContent = game.turns ? `${who} ${clock}` : who;
-  setBar(game.summary, `${game.minPlayers}명부터 ${game.maxPlayers}명까지 함께 합니다.`, true);
+  const howMany = game.minPlayers === 1 ? `혼자서도 할 수 있고, ${game.maxPlayers}명까지 함께 합니다.` : `${game.minPlayers}명부터 ${game.maxPlayers}명까지 함께 합니다.`;
+  setBar(game.summary, howMany, true);
 }
 
 /** The form for a new room: which game, and who may come in. */
@@ -633,25 +634,21 @@ function renderRoom(code: string, view: LobbyView): void {
   teamButton.textContent = myTeam === 0 ? "혼자 하기" : mine?.leads === true ? `팀 ${myTeam} 대표` : `팀 ${myTeam}`;
   teamButton.title = `누르면 바뀝니다: 혼자, 또는 ${game.teamSize}명이 한 팀. 팀을 먼저 고른 사람이 대표입니다`;
 
-  // who would play: everyone connected, a team counting once
   const sizes = new Map<number, number>();
   for (const p of connected) if (p.team > 0) sizes.set(p.team, (sizes.get(p.team) ?? 0) + 1);
   // a team that is not exactly full is no team: its players start alone (and hold up nobody)
   const broken = [...sizes].find(([, size]) => size !== game.teamSize);
-  const full = [...sizes].filter(([, size]) => size === game.teamSize);
-  const units = connected.length - full.reduce((sum, [, size]) => sum + size, 0) + full.length;
-  const enough = teams
-    ? (wantBots || units >= 2) && connected.length <= game.maxPlayers
-    : wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
+  // A game starts with as many as it takes at least: one, in a game that can be played alone. Teams
+  // change nothing in that: one team, or one player, is enough where one player is.
+  const enough = wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
   startButton.disabled = !isHost || !enough;
+  const alone = connected.length === 1 && game.minPlayers === 1;
   hint = !enough
-    ? teams
-      ? "두 팀(혼자도 한 팀) 이상이 모이면 방장이 시작할 수 있습니다."
-      : `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
+    ? `${game.minPlayers}명이 모이면 방장이 시작할 수 있습니다. 지금 ${connected.length}명.`
     : broken !== undefined
       ? `팀 ${broken[0]}은 ${broken[1]}명이라 팀이 아닙니다 (${game.teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`
       : isHost
-        ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}준비되면 시작하세요.`
+        ? `${wantBots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}${alone ? "혼자서도 할 수 있습니다. " : ""}준비되면 시작하세요.`
         : "방장이 시작하기를 기다리는 중입니다.";
   renderRoomBar();
 }

@@ -10,7 +10,7 @@
   "count-rectangles": {
     "title": "네모 세기",
     "summary": "숫자를 더해 타깃이 되는 네모를 먼저 세어 버저를 누르세요. 두 번 맞히면 승리.",
-    "minPlayers": 2,
+    "minPlayers": 1,
     "maxPlayers": 16,
     "teamSize": 3,
     "turns": false
@@ -26,7 +26,7 @@
   "count-cubes": {
     "title": "큐브 세기",
     "summary": "쌓인 큐브가 몇 개인지 먼저 세어 답하세요. 틀리면 20초 동안 잠깁니다.",
-    "minPlayers": 2,
+    "minPlayers": 1,
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false

@@ -450,14 +450,32 @@ describe("createGame", () => {
   it.each([
     ["a team of two", [{ id: 0, team: 1 }, { id: 1, team: 1 }, { id: 2, team: 0 }], "bad-teams"],
     ["a team of four", [0, 1, 2, 3].map((id) => ({ id, team: 1 })).concat([{ id: 4, team: 0 }]), "bad-teams"],
-    ["one player", alone(1), "too-few"],
-    ["one team and nobody else", [0, 1, 2].map((id) => ({ id, team: 1 })), "too-few"],
     ["nobody", [], "too-few"],
     ["two players with one id", [{ id: 0, team: 0 }, { id: 0, team: 0 }], "bad-players"],
     ["a team below zero", [{ id: 0, team: -1 }, { id: 1, team: 0 }], "bad-players"],
     ["an id that is not whole", [{ id: 0.5, team: 0 }, { id: 1, team: 0 }], "bad-players"],
   ])("refuses to start with %s", (_what, players, reason) => {
     expect(createGame({ players, seed: 1, now: START }, CONFIG)).toEqual({ ok: false, reason });
+  });
+
+  it("starts for one player alone, who wins by being right twice with nobody to race", () => {
+    let state = game(alone(1));
+
+    state = solve(state, 0, START + 1000);
+    const step = next(state);
+    state = solve(step.state, 0, step.now + 1000);
+
+    expect(winnersNeeded(1)).toBe(1);
+    expect(state.units).toEqual([{ members: [0], wins: 2, place: 1, leader: null }]);
+    expect(state.phase).toBe("ended");
+    expect(state.history.at(-1)).toEqual({ type: "ended", round: 2, reason: "half" });
+  });
+
+  it("starts for one team and nobody else: three who play it together", () => {
+    const state = game([0, 1, 2].map((id) => ({ id, team: 1 })));
+
+    expect(state.units).toEqual([{ members: [0, 1, 2], wins: 0, place: 0, leader: 0 }]);
+    expect(state.phase).toBe("problem");
   });
 
   it("refuses rules that cannot be played", () => {

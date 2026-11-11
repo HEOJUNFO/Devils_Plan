@@ -245,7 +245,7 @@ function clone(state: CubesState): CubesState {
   };
 }
 
-/** How many right answers end a game of `players` players: all but one, and one where there are only two (document, rule 4). */
+/** How many right answers end a game of `players` players: all but one (document, rule 4), and one where there are two or one alone. */
 export function neededOf(players: number): number {
   return Math.max(1, players - 1);
 }
@@ -258,7 +258,8 @@ export function createGame(
   if (!isValidConfig(config)) return { ok: false, reason: "bad-config" };
   if (!Array.isArray(start.players) || !start.players.every(isWhole)) return { ok: false, reason: "bad-players" };
   if (new Set(start.players).size !== start.players.length) return { ok: false, reason: "bad-players" };
-  if (start.players.length < 2) return { ok: false, reason: "too-few" };
+  // one player alone is a game: the count is theirs to get right, with nobody to be faster than
+  if (start.players.length < 1) return { ok: false, reason: "too-few" };
   const random = randomSource(seedFrom(start.seed));
   return {
     ok: true,
@@ -292,16 +293,18 @@ export function lockedUntil(state: CubesState, player: number): number {
 /**
  * Ends the game if enough have the answer. `there` says whether a player
  * still holds a place in the room: one who has gone cannot answer, so they
- * are the one, or among the ones, the game does not wait for. With nobody
- * gone the game is over when all but one have it (document, rule 4); with
- * someone gone, when everyone still there has it.
+ * are the one, or among the ones, the game does not wait for. The game is
+ * over when as many have it as it takes ({@link neededOf}: all but one, by
+ * rule 4 of the document, and the one player of a game played alone); with
+ * someone gone, also when everyone still there has it.
  */
 export function closeIfDone(state: CubesState, there: (player: number) => boolean): CubesState {
   if (state.phase === "ended") return state;
   const open = state.players.filter((player) => !state.ranked.some((entry) => entry.player === player));
   const gone = open.filter((player) => !there(player)).length;
   const left = open.length - gone;
-  if (gone === 0 ? left > 1 : left > 0) return state;
+  const enough = state.ranked.length >= neededOf(state.players.length);
+  if (!enough && (gone === 0 || left > 0)) return state;
   const next = clone(state);
   next.phase = "ended";
   next.history.push({ type: "ended", reason: "ranked" });

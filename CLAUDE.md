@@ -26,6 +26,18 @@ defaults in this file, these win.
   bot personalities, no big tuning tables, no single-player screens or polish.
   Bots that seem dull or weak are not a defect: leave them and spend the time
   on multiplayer. Full rule and its reason: `.claude/rules/bots.md`.
+  *A game that one person can play may be started alone.* The user, on
+  2026-11-11: "혼자하기가능한것들 혼자하기활성화해줘 지금
+  게임시작버튼이비활성화되는경우있는듯 혼자하기가능한게임인데", and then:
+  "잔디깔기는혼자하기기능없어야할듯 이걸어케혼자해
+  러시안룰렛이랑같이혼자하기버튼이아예없으면될듯". So 큐브 세기 and 네모
+  세기 start with one player in the room, and 잔디 깔기 and 러시안 룰렛 have
+  no way to be played alone. A game started alone has no bots in it, and the
+  rest of this rule stands.
+  *Assistant's reading, not the user's words:* the games "that can be played
+  alone" are the two counting games, where a player has a problem to solve
+  with nobody to race; a new game gets a start for one player only when the
+  user says so or it is plainly of that kind, and the report says which.
 - **A game is shown under the name the show gives it.** Players see each game
   by the name it has in the show: "러시안 룰렛", not a name made up here (the
   first builds were titled "빈 약실 / Empty Chamber", which the user replaced).

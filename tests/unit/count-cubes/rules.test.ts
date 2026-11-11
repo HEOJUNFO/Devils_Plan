@@ -175,8 +175,24 @@ describe("큐브 세기: starting", () => {
     expect(game(3, 5).solid).toEqual(game(3, 5).solid);
   });
 
-  it("refuses a game for one player", () => {
-    expect(createGame({ players: [0], seed: 1, now: T0 }, config)).toEqual({ ok: false, reason: "too-few" });
+  it("starts a game for one player alone, which that player's right answer ends", () => {
+    const created = createGame({ players: [0], seed: 1, now: T0 }, config);
+    if (!created.ok) throw new Error(`refused: ${created.reason}`);
+
+    const answered = applyAction(created.state, 0, { type: "answer", said: countOf(created.state.solid) }, T0 + 5000, config);
+    if (!answered.ok) throw new Error(`refused: ${answered.reason}`);
+    const before = closeIfDone(created.state, () => true);
+    const after = closeIfDone(answered.state, () => true);
+
+    expect(viewFor(created.state, 0).needed).toBe(1);
+    // it waits for its one player, and is over when they have the answer
+    expect(before.phase).toBe("open");
+    expect(after.phase).toBe("ended");
+    expect(after.history.at(-1)).toEqual({ type: "ended", reason: "ranked" });
+  });
+
+  it("refuses a game for nobody", () => {
+    expect(createGame({ players: [], seed: 1, now: T0 }, config)).toEqual({ ok: false, reason: "too-few" });
   });
 
   it("refuses players told apart by nothing", () => {
