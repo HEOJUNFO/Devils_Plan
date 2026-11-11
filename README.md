@@ -110,7 +110,7 @@ npm run dev -- --port 5273
 | `npm run dev` | 클라이언트와 서버(Workers 런타임)를 함께 띄웁니다 |
 | `npm run typecheck` | 서버, 클라이언트, 테스트의 타입 검사 |
 | `npm test` | 전체 테스트. 일부만 돌리려면 `npx vitest run tests/unit/lobby` 처럼 경로를 줍니다 |
-| `npm run smoke` | 떠 있는 서버에 실제 소켓으로 접속해 세 게임을 진행해 봅니다 (기본 주소 `http://localhost:5273`) |
+| `npm run smoke` | 떠 있는 서버에 실제 소켓으로 접속해 네 게임을 진행해 봅니다 (기본 주소 `http://localhost:5273`) |
 | `npm run build` | 배포용 빌드 |
 | `npm run deploy` | 빌드한 뒤 `wrangler deploy` (평소에는 쓰지 않습니다. 아래 배포 참고) |
 

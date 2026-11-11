@@ -5,7 +5,8 @@
 // join a room, talk, play a whole game to its end and leave; then two more
 // make a room of the second game, team up and part, and play it to its end,
 // through the choice that follows its race and the contest that choice adds;
-// then two make a room of the third game and lay its first park.
+// then two make a room of the third game and lay its first park; then two
+// make a room of the fourth game, one of them wrong before the other is right.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, so the
 // whole check takes about ten seconds longer than the moves do.
@@ -23,6 +24,7 @@ const GAME = "russian-roulette";
 const PLAYERS = 4;
 const SECOND_GAME = "count-rectangles";
 const THIRD_GAME = "lay-the-grass";
+const FOURTH_GAME = "count-cubes";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 const STEP_TIMEOUT_MS = 8000;
@@ -329,6 +331,60 @@ async function thirdGame() {
   for (const p of players) p.close();
 }
 
+/** The fourth game, in a room of its own: two players, off the list. One right answer ends it, as all but one have it then. */
+async function fourthGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 2; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `cube${n}`, create: n === 0, game: FOURTH_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  check("a room is made for the fourth game", lobby.game === FOURTH_GAME, lobby.game);
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the fourth game to start", (m) => m.type === "game" || m.type === "refused")));
+  const same = JSON.stringify(games[0].view?.solid) === JSON.stringify(games[1].view?.solid);
+  check(
+    "the fourth game starts with the same solid for both, and one right answer to end it",
+    games.every((g, n) => g.type === "game" && g.game === FOURTH_GAME && g.view.you === n && g.view.needed === 1) && same,
+    games.map((g) => (g.type === "refused" ? g.reason : "started")).join(" "),
+  );
+  // the cubes are counted from the solid as a player sees it: every column's height, added up
+  const count = games[0].view.solid.heights.reduce((sum, height) => sum + height, 0);
+
+  // a wrong answer shuts its player out for a while, and nobody is told what was said
+  players[0].send({ type: "action", action: { type: "answer", said: count + 1 } });
+  const wrong = await players[1].until("the wrong answer", (m) => m.type === "game" && m.view.wrong.length === 1);
+  // looked for by name: the number itself could turn up by chance in a clock or a time
+  const told = [...wrong.view.wrong, ...wrong.view.history].flatMap((entry) => Object.keys(entry));
+  check("a wrong answer is told to the room without the number said", wrong.view.wrong[0].player === 0 && !told.includes("said"), told.join(" "));
+  players[0].send({ type: "action", action: { type: "answer", said: count } });
+  const locked = await players[0].until("the refusal", (m) => m.type === "refused");
+  check("a player who was wrong cannot answer again at once", locked.reason === "locked", locked.reason);
+
+  players[1].send({ type: "action", action: { type: "answer", said: count } });
+  const ends = await Promise.all(players.map((p) => p.until("the fourth game to end", (m) => m.type === "game" && m.view.phase === "ended")));
+  check(
+    "the fourth game ends when all but one have the answer, and gives the answer out",
+    ends.every((g) => g.view.ranked.length === 1 && g.view.ranked[0].player === 1 && g.view.answer === count),
+    `answer ${ends[0].view.answer}, counted ${count}`,
+  );
+  const hidden = players
+    .flatMap((p) => p.messages)
+    .filter((m) => m.type === "game" && m.view.phase !== "ended")
+    .every((m) => m.view.answer === null);
+  check("the answer is not sent while the problem is open", hidden);
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in the fourth game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 async function main() {
   // 1. the page
   const page = await fetch(`${base}/`);
@@ -438,6 +494,7 @@ async function main() {
 
   // 13. the third game
   await thirdGame();
+  await fourthGame();
 }
 
 try {
