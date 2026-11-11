@@ -1,5 +1,5 @@
 /**
- * The rules of 13 미만 (Under 13): everyone secretly puts in a rock card and
+ * The rules of 무거운 13 (Heavy 13): everyone secretly puts in a rock card and
  * a colour chip, and the rocks are then set on three stands one player at a
  * time; whoever brings a stand to thirteen or more takes its rocks as
  * penalty points. Pure functions over plain data: nothing here reads the

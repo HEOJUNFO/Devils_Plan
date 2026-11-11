@@ -1,5 +1,5 @@
 /**
- * The screen of 13 미만: the three stands and the rocks on them, what
+ * The screen of 무거운 13: the three stands and the rocks on them, what
  * everyone put in this round and in which order the rocks go on, and the
  * player's own cards and chips.
  *
@@ -18,7 +18,7 @@ import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS } from "./words";
 
-/** What the room sends about a game of 13 미만. */
+/** What the room sends about a game of 무거운 13. */
 export type UnderMessage = Extract<ServerMessage, { type: "game"; game: "under-thirteen" }>;
 
 /** What the screen asks of whoever owns the connection. */

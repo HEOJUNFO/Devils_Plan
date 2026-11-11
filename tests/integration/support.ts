@@ -179,7 +179,7 @@ export class TestClient extends Inbox<ServerMessage> {
     }
   }
 
-  /** Reads forward to the first message about a game of 13 미만 that satisfies `match`. */
+  /** Reads forward to the first message about a game of 무거운 13 that satisfies `match`. */
   async underWhere(match: (game: UnderMessage) => boolean = () => true): Promise<UnderMessage> {
     for (;;) {
       const message = await this.nextOf("game");

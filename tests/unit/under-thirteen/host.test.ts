@@ -93,7 +93,7 @@ function runUntil(session: UnderSession, presence: Presence, there: (state: Unde
   return next;
 }
 
-describe("13 미만 in a room: starting", () => {
+describe("무거운 13 in a room: starting", () => {
   it("starts a game for the players in the room, each known by the slot they hold, in the order they sit", () => {
     const players = candidates(3);
 
@@ -155,7 +155,7 @@ describe("13 미만 in a room: starting", () => {
   });
 });
 
-describe("13 미만 in a room: a round", () => {
+describe("무거운 13 in a room: a round", () => {
   it("asks for the clock when the three minutes are up, and says how long is left", () => {
     const players = candidates(2);
     const session = started(players);
@@ -290,7 +290,7 @@ describe("13 미만 in a room: a round", () => {
   });
 });
 
-describe("13 미만 in a room: players who are not there", () => {
+describe("무거운 13 in a room: players who are not there", () => {
   it("waits for a player whose connection dropped, until the time is up", () => {
     const players = candidates(3);
     const away = presenceOf(players, [2]);
@@ -365,7 +365,7 @@ describe("13 미만 in a room: players who are not there", () => {
   });
 });
 
-describe("13 미만 in a room: bots", () => {
+describe("무거운 13 in a room: bots", () => {
   /** One person and the bots that fill the room. */
   const person = candidates(1);
 
@@ -440,7 +440,7 @@ describe("13 미만 in a room: bots", () => {
   });
 });
 
-describe("13 미만 in a room: what is kept", () => {
+describe("무거운 13 in a room: what is kept", () => {
   it("holds a place for each of its players and for nobody else", () => {
     const session = started(candidates(2));
 

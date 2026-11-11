@@ -1,5 +1,5 @@
 /**
- * 13 미만 as a room hosts it (`hosting.ts`): who the players are, when the
+ * 무거운 13 as a room hosts it (`hosting.ts`): who the players are, when the
  * time to put in a card and a chip or to place a rock runs out, and what
  * each player is sent.
  *
@@ -212,7 +212,7 @@ function botActs(session: UnderSession, player: number, now: number): UnderSessi
   return result.ok ? { ...session, state: result.state, rng: source.state } : { ...session, rng: source.state };
 }
 
-/** 13 미만, for a room to host. */
+/** 무거운 13, for a room to host. */
 export const underHost: GameHost<UnderSession, UnderHostRefusal> = {
   start(current, players: Candidate[], request: StartRequest, presence) {
     if (current !== null && current.state.phase !== "ended") return refuse("already-playing");

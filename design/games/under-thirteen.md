@@ -1,11 +1,12 @@
-# Game Brief: 13 미만 (code name: under-thirteen)
+# Game Brief: 무거운 13 (code name: under-thirteen)
 
-The sixth game built. In the show it is the first prison match (1일차 감옥 매치), which the show calls "무거운 13".
+The sixth game built. In the show it is the first prison match (1일차 감옥 매치), "무거운 13"; the show's English release calls it "Heavy 13" (both English subtitle tracks, and the title card of episode 2 in the closed captions).
 
-**On the name.** The show's name for this game is one it coined, and by the project's rule on names (CLAUDE.md, Project Rules: the assistant's own limit) it is not copied as the game's title. The game is shown as **"13 미만"** (English: "Under 13"), a plain description of what a player has to keep every stand at. If the user wants another name, `src/shared/games.json` is the one place to change it.
+**On the name.** The game is shown under the show's name, **"무거운 13"** (English: **"Heavy 13"**), as the project's rule on names says (CLAUDE.md, Project Rules). It was first built under a name made up here, "13 미만" / "Under 13": the assistant had set itself a limit not to copy a name the show coined. The user had not asked for that limit and corrected it the same day: "이름은 무거운13으로해 룰에 게임이름은 방송이름따라하기로했짜나". The code name `under-thirteen` (the game's id, its folders, the evidence files) dates from then and is not shown to players, so it stays.
 
 ## In your words
 - 만약 계속개발하다가 완성이라고판단되면 다른 데블스플랜게임 개발로이어가도돼 너가알아서판단해 *(the standing word this game was started on, after 기억 포커)*
+- 이름은 무거운13으로해 룰에 게임이름은 방송이름따라하기로했짜나 *(2026-11-11, when the game had been shown as "13 미만")*
 - 규칙은 그대로사용해야해 *(said of the first game; taken as the rule for every game)*
 - 이거보면대충어떤게임인지유추가능하지않나? 개발하자 *(said of 기억 포커: where the document has no rule text, the game is still built, and what was filled is said)*
 
@@ -81,4 +82,5 @@ The sixth game built. In the show it is the first prison match (1일차 감옥 �
 - **스모크:** 이 게임 부분 13개 통과 (두 사람이 방을 만들어 1라운드: 내기, 숨김, 칩 공개, 카드 공개와 순서, 패스, 마지막 순서와 패스한 바위를 방이 놓음).
 - **브라우저, 한국어:** 카드와 칩 내기, 칩 공개, 카드 공개와 순서, 내 차례(놓기·패스), 패스 뒤 마지막 순서의 바위와 패스한 내 바위가 묻지 않고 놓이는 것, 레인보우 칩으로 받침대 고르기(클릭), 정확히 13에서 걷어 내고 벌점, 8라운드에 새 세트, 14라운드 뒤 결과 화면, 16명 방, 관전자 화면과 관전자의 끝 화면. 화면은 `production/qa/evidence/under-2026-11-11-*.png`.
 - **브라우저, 영어:** 카드와 칩 내기, 내 차례, 규칙(H), 대기실의 규칙 시트, 결과 화면. 문구 폭은 페이지의 글꼴로 재었다 (도움말 16줄 모두 436픽셀 이내).
+- **이름을 방송 이름으로 바꾼 뒤 (같은 날):** 한국어와 영어의 새 방 화면, 대기실, 대기실의 규칙 시트, 게임 중 규칙(H)에 "무거운 13" / "Heavy 13"으로 나오는 것을 보았다. 영어 새 방 화면은 게임이 여섯이 되면서 목록을 스크롤해야 여섯 번째가 보였다: 목록의 줄을 촘촘히 해 여섯이 한 번에 보이게 고쳤고, 그보다 많아져 스크롤하게 되어도 고른 게임이 보이는 자리로 간다. 이 게임의 테스트 169개, 스모크 13개, 타입 검사와 빌드를 다시 돌렸다.
 - **보지 않은 것:** 전체 테스트와 다른 게임의 화면 (프로젝트 규칙). 배포된 주소 (푸시하지 않았다). 사람 여럿이 실제로 하는 판 (봇과 스크립트로 채운 방에서만 보았다). 레인보우 칩을 내고 패스한 뒤 받침대만 묻는 화면, 16명 방의 영어 화면 (둘 다 테스트와 폭 측정으로만 확인).

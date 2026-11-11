@@ -531,6 +531,8 @@ function renderNewRoom(): void {
     return button;
   });
   gameChoices.replaceChildren(...choices);
+  // with more games than the list has rows it scrolls: the game chosen is in sight when the form is drawn
+  choices[GAME_IDS.indexOf(chosenGame)]?.scrollIntoView({ block: "nearest" });
   const game = GAMES[chosenGame];
   listedYes.setAttribute("aria-pressed", String(chosenListed));
   listedNo.setAttribute("aria-pressed", String(!chosenListed));

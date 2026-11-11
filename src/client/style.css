@@ -425,14 +425,22 @@ button.choice[aria-pressed="true"] {
 }
 
 /*
- * And the games to pick from go one to a row, five rows deep. The room for
- * them comes from the two headings inside the form, which are said to a
- * screen reader and not shown: the buttons under them say what they are.
+ * And the games to pick from go one to a row, six rows deep: a pixel apart
+ * and a pixel lower than other buttons, which is what six rows have room for
+ * (six of 16 and five gaps of 1 are the 101 pixels the form has). Past that
+ * the list scrolls. The room for them comes from the two headings inside the
+ * form, which are said to a screen reader and not shown: the buttons under
+ * them say what they are.
  */
 :root[lang="en"] #game-choices {
   grid-template-columns: 1fr;
+  gap: 1px;
   max-height: 101px;
   margin-bottom: 4px;
+}
+
+:root[lang="en"] #game-choices button {
+  height: 16px;
 }
 
 :root[lang="en"] #game-label,

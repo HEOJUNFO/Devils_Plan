@@ -111,7 +111,7 @@ const FOUR: Pick[] = [
 
 const range = (count: number): number[] => Array.from({ length: count }, (_, n) => n);
 
-describe("13 미만: the numbers of the game", () => {
+describe("무거운 13: the numbers of the game", () => {
   it("ships the show's numbers: thirteen, cards 0 to 6, two chips of each colour and a rainbow one, two sets, three minutes", () => {
     expect(isValidConfig(config)).toBe(true);
     expect(config.limit).toBe(13);
@@ -138,7 +138,7 @@ describe("13 미만: the numbers of the game", () => {
   });
 });
 
-describe("13 미만: starting", () => {
+describe("무거운 13: starting", () => {
   it("gives every player the whole set, leaves the stands bare, and opens the first round", () => {
     const state = game(4);
 
@@ -177,7 +177,7 @@ describe("13 미만: starting", () => {
   });
 });
 
-describe("13 미만: putting in a card and a chip", () => {
+describe("무거운 13: putting in a card and a chip", () => {
   it("takes the card and the chip out of the player's hand, and keeps them from everyone until they are shown", () => {
     const state = submit(game(3), 1, [5, "green"]);
 
@@ -349,7 +349,7 @@ describe("13 미만: putting in a card and a chip", () => {
   });
 });
 
-describe("13 미만: the order of placing", () => {
+describe("무거운 13: the order of placing", () => {
   /** What players 0, 1, 2 … put in, as submissions. */
   function submissions(picks: Pick[]): Submission[] {
     return picks.map(([card, chip], player) => ({ player, card, chip, forced: false }));
@@ -424,7 +424,7 @@ describe("13 미만: the order of placing", () => {
   });
 });
 
-describe("13 미만: placing a rock", () => {
+describe("무거운 13: placing a rock", () => {
   it("places a rock on the stand of its chip, whatever stand is asked for, and moves to the next player", () => {
     const state = place(place(placing(game(4, 1), FOUR), 3, "red"), 1, "blue");
 
@@ -587,7 +587,7 @@ describe("13 미만: placing a rock", () => {
   });
 });
 
-describe("13 미만: what is asked of whoever's rock it is", () => {
+describe("무거운 13: what is asked of whoever's rock it is", () => {
   it("asks everyone in the order but the last whether to place it or pass", () => {
     const first = placing(game(4, 1), FOUR);
     const second = place(first, 3, "red");
@@ -643,7 +643,7 @@ describe("13 미만: what is asked of whoever's rock it is", () => {
   });
 });
 
-describe("13 미만: passing", () => {
+describe("무거운 13: passing", () => {
   it("puts the rock of a player who passes after everyone else's, with nothing more asked of them", () => {
     const passed = pass(place(placing(game(4, 1), FOUR), 3, "red"), 1);
 
@@ -739,7 +739,7 @@ describe("13 미만: passing", () => {
   });
 });
 
-describe("13 미만: from round to round", () => {
+describe("무거운 13: from round to round", () => {
   /** A round of two players played out: both rocks placed, its end still shown. */
   function played(state: UnderState, picks: [Pick, Pick]): UnderState {
     let next = placing(state, picks);
@@ -860,7 +860,7 @@ describe("13 미만: from round to round", () => {
   });
 });
 
-describe("13 미만: players who go, and the clock", () => {
+describe("무거운 13: players who go, and the clock", () => {
   it("goes on while two of its players are there, and is over with fewer", () => {
     const state = game(3);
 
@@ -886,7 +886,7 @@ describe("13 미만: players who go, and the clock", () => {
   });
 });
 
-describe("13 미만: where everyone stands", () => {
+describe("무거운 13: where everyone stands", () => {
   /** A game whose players have these points, last taken at these moments. */
   function penalised(penalties: [points: number, last: number][]): UnderState {
     return { ...game(penalties.length), penalties: penalties.map(([points, last], player): Penalty => ({ player, points, last })) };
@@ -905,7 +905,7 @@ describe("13 미만: where everyone stands", () => {
   });
 });
 
-describe("13 미만: what a player is sent", () => {
+describe("무거운 13: what a player is sent", () => {
   it("sends a player their own hand and what they put in, and of the others only that they have", () => {
     const state = submit(submit(game(3), 0, [3, "red"]), 1, [5, "green"]);
 
@@ -980,7 +980,7 @@ describe("13 미만: what a player is sent", () => {
   });
 });
 
-describe("13 미만: the show's own match", () => {
+describe("무거운 13: the show's own match", () => {
   /** What one round came to. */
   interface Played {
     first: number;

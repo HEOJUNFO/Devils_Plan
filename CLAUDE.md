@@ -45,10 +45,13 @@ defaults in this file, these win.
   그래두 규칙에추가해". It is about the game's name. The rest of what was
   agreed stays: the rules are used exactly as documented, and the show's own
   title, logo, cast, set and screen layout are not used.
-  *Assistant's own limit, not the user's rule:* a name that is an everyday term
-  ("러시안 룰렛", "양자택일") is used as it is; a name the show coined for its
-  game ("무거운 13", "미스터리 거래소") is not copied by the assistant, which
-  gives a plain name instead and says so in its report.
+  It holds for every game, also where the name is one the show made up for
+  that game ("무거운 13", "미스터리 거래소"). The user said so on 2026-11-11,
+  when the sixth game had been built under a name made up here ("13 미만"):
+  "이름은 무거운13으로해 룰에 게임이름은 방송이름따라하기로했짜나". An earlier
+  version of this rule carried a limit the assistant had set for itself, a
+  plain name in place of a name the show coined; the user had not asked for
+  it, and it is withdrawn. No game is given a name of the assistant's own.
   Game ids (`russian-roulette`, `lay-the-grass`) are not shown to players and
   stay as they are. The Worker's name is shown, as the address: the user chose
   `game-plan` for it on 2026-11-11 ("game-plan으로하자"), in place of

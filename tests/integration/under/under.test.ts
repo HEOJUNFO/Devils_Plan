@@ -13,7 +13,7 @@ const WITH_BOTS = 4;
 /** The most a room holds. */
 const FULL_ROOM = 16;
 
-/** Connects to `room`, a room of 13 미만, and joins as player `player`. */
+/** Connects to `room`, a room of 무거운 13, and joins as player `player`. */
 function open(room: string, player: number, create = false): Promise<TestClient> {
   return join(room, { player, create, game: GAME });
 }
@@ -90,7 +90,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("GameRoom: a room of 13 미만", () => {
+describe("GameRoom: a room of 무거운 13", () => {
   it("starts a game for those in the room: bare stands, a whole set each, the same first player for everyone", async () => {
     const clients = await players("UTAAA", 3);
 
@@ -281,7 +281,7 @@ describe("GameRoom: a room of 13 미만", () => {
   });
 });
 
-describe("GameRoom: 13 미만 with bots", () => {
+describe("GameRoom: 무거운 13 with bots", () => {
   it("fills the places with bots that put in and place for themselves: a round is played with nothing done for anyone", async () => {
     const stub = env.GameRoom.getByName("UTAAK");
     const person = await open("UTAAK", 0, true);
@@ -309,7 +309,7 @@ describe("GameRoom: 13 미만 with bots", () => {
   });
 });
 
-describe("GameRoom: a full room of 13 미만", () => {
+describe("GameRoom: a full room of 무거운 13", () => {
   it("takes sixteen players through a round: sixteen rocks on the stands or taken off them", async () => {
     const stub = env.GameRoom.getByName("UTAAL");
     const clients = await players("UTAAL", FULL_ROOM);

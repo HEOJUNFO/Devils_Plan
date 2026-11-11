@@ -1,5 +1,5 @@
 /**
- * The words of 13 미만 (Under 13), in each language (`lang.ts`): its rules
+ * The words of 무거운 13 (Heavy 13), in each language (`lang.ts`): its rules
  * as the page shows them before a game, and everything its screen says.
  *
  * The screen is 480 by 270 pixels and its lines are placed by the pixel: a
@@ -26,7 +26,7 @@ export interface HelpNumbers {
 
 const ko = {
   sheet: {
-    title: "13 미만: 규칙",
+    title: "무거운 13: 규칙",
     parts: [
       "모두가 0~6이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다. 칩의 색은 바위를 올릴 받침대를, 카드의 숫자는 바위의 무게를 정합니다. 내는 시간은 3분입니다.",
       [
@@ -132,7 +132,7 @@ const ko = {
   },
   /** The rules over the screen (H), by the room's own numbers. */
   help: (n: HelpNumbers): HelpLine[] => [
-    { text: "13 미만: 규칙", tone: "title" },
+    { text: "무거운 13: 규칙", tone: "title" },
     { text: `모두가 ${n.low}~${n.high}이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다 (${Math.round(n.submitSeconds / 60)}분).` },
     { text: "칩의 색은 바위를 올릴 받침대를, 카드의 숫자는 바위의 무게를 정합니다." },
     { text: "" },
@@ -153,7 +153,7 @@ const ko = {
 
 const en: typeof ko = {
   sheet: {
-    title: "Under 13: rules",
+    title: "Heavy 13: rules",
     parts: [
       "Everyone secretly puts in one rock card, numbered 0 to 6, and one color chip. The chip's color says which stand the rock goes on; the card's number is the rock's weight. You have 3 minutes.",
       [
@@ -245,7 +245,7 @@ const en: typeof ko = {
     waitHost: "Waiting for the host to start a new game",
   },
   help: (n) => [
-    { text: "Under 13: rules", tone: "title" },
+    { text: "Heavy 13: rules", tone: "title" },
     { text: `Everyone secretly puts in a rock card (${n.low} to ${n.high}) and a color chip.` },
     { text: "The chip says which stand; the card's number is the rock's weight." },
     { text: `You have ${Math.round(n.submitSeconds / 60)} minutes.`, tone: "dim" },
@@ -264,5 +264,5 @@ const en: typeof ko = {
   ],
 };
 
-/** The words of 13 미만 (Under 13), in the language the page is read in. */
+/** The words of 무거운 13 (Heavy 13), in the language the page is read in. */
 export const WORDS = words({ ko, en });
