@@ -205,6 +205,26 @@ export class TestClient extends Inbox<ServerMessage> {
   refusal(): Promise<MessageOf<"refused">> {
     return this.nextOf("refused");
   }
+
+  /**
+   * What the room has sent this player that they have not read, in order, by
+   * the time it answers what is asked here. For a test that says what a
+   * player was NOT sent: a message that is not here was not sent.
+   *
+   * Only during a game: it asks for a game to be started, which a room that
+   * is playing one refuses, and reads up to that refusal. The room answers in
+   * the order it was asked, so all it sent this player for what anyone asked
+   * before this comes before the refusal.
+   */
+  async sentSoFar(): Promise<ServerMessage[]> {
+    this.send({ type: "start", bots: false });
+    const sent: ServerMessage[] = [];
+    for (;;) {
+      const message = await this.next();
+      if (message.type === "refused") return sent;
+      sent.push(message);
+    }
+  }
 }
 
 /** Opens a WebSocket to `path` through the Worker. */

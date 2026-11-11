@@ -3,7 +3,7 @@ import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shar
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
 import { HOSTS } from "../shared/hosts";
-import { CHANCE_WORDS, type Presence } from "../shared/hosting";
+import { CHANCE_WORDS, TIME_OF_SIGHT, type Presence } from "../shared/hosting";
 import {
   awayPlayers,
   createLobby,
@@ -156,6 +156,14 @@ export class GameRoom extends Server<Env> {
   private pokedAt = 0;
 
   /**
+   * By connection: the game as that connection was last sent it, to tell
+   * whether there is anything new to send (see {@link broadcastGame}).
+   * Forgotten when the room sleeps, after which everyone is sent the game once
+   * more: the safe way to be wrong.
+   */
+  private readonly sights = new Map<string, string>();
+
+  /**
    * How many messages of each sort each slot has sent lately, by slot and
    * sort. Like the chat's: forgotten when the room sleeps.
    */
@@ -285,6 +293,7 @@ export class GameRoom extends Server<Env> {
    * connected, the one after which the room is cleared.
    */
   async onClose(connection: Connection<ConnectionState>): Promise<void> {
+    this.sights.delete(connection.id);
     // one the room ended itself has been dealt with where it was ended
     if (connection.state?.kind !== "player") return;
     await this.dropped(connection.state.voice !== undefined);
@@ -363,14 +372,20 @@ export class GameRoom extends Server<Env> {
 
   /**
    * A page waiting on the table asked the room to look for dead connections,
-   * which `onMessage` has just done. Everyone is sent the game again, so the
-   * other pages hear from the room and do not all ask the same in turn.
+   * which `onMessage` has just done (and whoever it found gone, everyone has
+   * been told of). Everyone is told the room is there, so the other pages
+   * hear from it and do not all ask the same in turn. The game is not sent
+   * again: nothing in it has changed, and to a full room of 미스터리 거래소
+   * that was 150 KB and more each time (16 messages of 9.5 KB at the start
+   * of a game, which grow as it goes on) for nothing.
    */
   private handlePoke(): void {
     const now = Date.now();
     if (now - this.pokedAt < POKE_GAP_MS && now >= this.pokedAt) return;
     this.pokedAt = now;
-    this.broadcastGame();
+    const alive: ServerMessage = { type: "alive" };
+    const text = JSON.stringify(alive);
+    for (const [member] of this.members()) member.send(text);
   }
 
   /** Runs every timer that is due. A kind this version does not know is dropped. */
@@ -661,7 +676,8 @@ export class GameRoom extends Server<Env> {
     if (!player) return;
     const result = this.host().act(this.session, player.token, action, this.presence(), Date.now());
     if (!result.ok) return this.refuse(connection, result.reason as Refusal);
-    await this.commitSession(result.session);
+    // whoever asked is answered whether or not it shows on their screen: their page is waiting to hear
+    await this.commitSession(result.session, connection);
   }
 
   /** Someone connected, dropped or left: the game may have moves to make or a clock to move. */
@@ -673,9 +689,10 @@ export class GameRoom extends Server<Env> {
 
   /**
    * Makes `next` the room's game: stores it if it changed, points the game's
-   * clock at its deadline, and sends every connection its own view.
+   * clock at its deadline, and sends every connection its own view if that
+   * has changed; `asker`, whose move this was, is sent it in any case.
    */
-  private async commitSession(next: unknown): Promise<void> {
+  private async commitSession(next: unknown, asker: Connection<ConnectionState> | null = null): Promise<void> {
     const wasPlaying = this.playing();
     const current = this.session;
     const same = current === null || next === null ? current === next : this.host().same(current, next);
@@ -688,7 +705,9 @@ export class GameRoom extends Server<Env> {
     } else if (set !== due) {
       await this.timers.set("turn", due);
     }
-    this.broadcastGame();
+    // a game that is over and gone leaves nothing to compare the next one with
+    if (next === null) this.sights.clear();
+    this.broadcastGame(asker);
     if (wasPlaying !== this.playing()) {
       // A game starting or ending changes how the room is listed, and whose
       // slot is kept for them while they are away.
@@ -860,8 +879,16 @@ export class GameRoom extends Server<Env> {
    * Sends every seated connection the game as its own player may see it: the
    * view of their seat, or a spectator's for someone not at the table. The
    * state itself is never sent.
+   *
+   * A connection is sent the game only when what its player may see has
+   * changed since it was last sent it; `always` is sent it in any case. In a
+   * game where everyone plays a hand of their own, most of what one player
+   * does shows on no other screen: an order in 미스터리 거래소 shows on its
+   * own player's alone until the round ends, so in a room of sixteen fifteen
+   * of the sixteen messages about it told a player what they had been told
+   * already.
    */
-  private broadcastGame(): void {
+  private broadcastGame(always: Connection<ConnectionState> | null = null): void {
     const lobby = this.lobby;
     const session = this.session;
     if (lobby === null || session === null) return;
@@ -870,6 +897,11 @@ export class GameRoom extends Server<Env> {
     const host = this.host();
     const game = gameOf(lobby);
     for (const [member, seat] of this.members()) {
+      // The view as of a moment before every deadline tells what this player may see apart from what
+      // any other moment's would: the clocks in it stand at their deadlines, not at how long they have left.
+      const sight = JSON.stringify(host.view(session, seat.token, presence, TIME_OF_SIGHT));
+      if (member !== always && this.sights.get(member.id) === sight) continue;
+      this.sights.set(member.id, sight);
       // which game it is comes first; the rest is what that game's host says this player may see
       member.send(JSON.stringify({ type: "game", room: this.name, game, ...host.view(session, seat.token, presence, now) }));
     }

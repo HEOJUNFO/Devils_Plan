@@ -121,24 +121,28 @@ describe("GameRoom: a room of 미스터리 거래소", () => {
     closeAll(clients);
   });
 
-  it("takes an order at the round's price for its player alone to see: the others' monitor does not change until the round ends", async () => {
+  it("takes an order at the round's price for its player alone to see: the others' monitor does not change until the round ends, so they are sent nothing", async () => {
     const clients = await players("MSAAB", 2);
     const games = await startGame(clients);
 
     act(clients[0], { type: "buy", stock: "coyo", shares: 3 }, 1);
     const bought = await clients[0].marketWhere((game) => game.view.mine?.shares.coyo === 3);
-    const other = await clients[1].marketWhere();
     // a piece turned into money in the round shows on the next monitor, and not before
     act(clients[0], { type: "cash" }, 1);
     const cashed = await clients[0].marketWhere((game) => game.view.mine?.pieces === shipped.pieces - 1);
-    const still = await clients[1].marketWhere();
+    const other = await clients[1].sentSoFar();
+    // what the other is sent for a move of their own is the monitor as it was, but for that move
+    act(clients[1], { type: "buy", stock: "steel", shares: 1 }, 1);
+    const theirs = await clients[1].marketWhere();
 
     expect(bought.view.mine).toMatchObject({ cash: CASH - 3 * START, assets: CASH });
     expect(shown(bought, "coyo")).toMatchObject({ bought: 0, held: 0 });
     expect(cashed.view.mine).toMatchObject({ cash: CASH - 3 * START + shipped.pieceCash, assets: CASH + shipped.pieceCash });
     expect(cashed.view.standings).toEqual(games[0].view.standings);
-    expect(JSON.stringify(other.view)).toBe(JSON.stringify(games[1].view));
-    expect(JSON.stringify(still.view)).toBe(JSON.stringify(games[1].view));
+    expect(other).toEqual([]);
+    expect(theirs.view.mine?.shares.steel).toBe(1);
+    expect(JSON.stringify(theirs.view.stocks)).toBe(JSON.stringify(games[1].view.stocks));
+    expect(theirs.view.standings).toEqual(games[1].view.standings);
     closeAll(clients);
   });
 
@@ -257,10 +261,14 @@ describe("GameRoom: a room of 미스터리 거래소", () => {
 
     act(clients[0], { type: "peek", stock: "open" }, 1);
     const peeked = await clients[0].marketWhere((game) => game.view.mine?.pieces === shipped.pieces - 1);
+    const sent = await clients[1].sentSoFar();
+    // what the other is next sent, for a move of their own, has the rule as covered as it was
+    act(clients[1], { type: "buy", stock: "steel", shares: 1 }, 1);
     const other = await clients[1].marketWhere();
 
     expect(shown(peeked, "open").parts).toBe(1);
     expect(shown(peeked, "coyo").parts).toBe(0);
+    expect(sent).toEqual([]);
     expect(shown(other, "open").parts).toBe(0);
     expect(other.view.mine?.pieces).toBe(shipped.pieces);
     closeAll(clients);

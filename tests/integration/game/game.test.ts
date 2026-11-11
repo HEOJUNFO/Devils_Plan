@@ -455,14 +455,50 @@ describe("GameRoom: playing a game", () => {
     closeAll(clients.filter((_, n) => n !== acting));
   });
 
-  it("sends everyone the game again when the room is poked, so the others need not ask", async () => {
+  it("tells everyone it is there when the room is poked, so the others need not ask, and sends nobody the game again", async () => {
     const clients = await table("GAAAZ", SMALLEST);
     await startGame(clients);
 
     clients[0].send({ type: "poke" });
 
-    const again = await Promise.all(clients.map((client) => client.gameWhere()));
-    for (const game of again) expect(game.view.history).toHaveLength(0);
+    const sent = await Promise.all(clients.map((client) => client.sentSoFar()));
+    // nothing in the game has changed: the word that the room is there is all anyone is sent
+    for (const messages of sent) expect(messages).toEqual([{ type: "alive" }]);
+    closeAll(clients);
+  });
+
+  it("answers whoever made a move with the game, also when the move changed nothing they see, and sends the others nothing", async () => {
+    const stub = env.GameRoom.getByName("GAAA4");
+    const clients = await table("GAAA4", SMALLEST);
+    const games = await startGame(clients);
+    // No game of ours takes a move that changes nothing, so the room is given one that does: the page that
+    // asked waits for the answer whatever came of it.
+    await runInDurableObject(stub, (room) => {
+      const hosted = room as unknown as { host(): object };
+      const real = hosted.host.bind(room);
+      hosted.host = () => ({ ...real(), act: (session: unknown) => ({ ok: true, session }) });
+    });
+    const asker = mover(games);
+
+    clients[asker].send({ type: "action", action: { type: "tamper", amount: 1 } });
+
+    const answered = await clients[asker].gameWhere();
+    const others = await Promise.all(clients.filter((_, n) => n !== asker).map((client) => client.sentSoFar()));
+    expect(JSON.stringify(answered.view)).toBe(JSON.stringify(games[asker].view));
+    for (const sent of others) expect(sent).toEqual([]);
+    closeAll(clients);
+  });
+
+  it("sends a player only what changed for them: a move that shows on every screen goes to everyone, once", async () => {
+    const clients = await table("GAAA5", SMALLEST);
+    const games = await startGame(clients);
+
+    clients[mover(games)].send({ type: "action", action: { type: "tamper", amount: 1 } });
+
+    const sent = await Promise.all(clients.map((client) => client.sentSoFar()));
+    for (const messages of sent) {
+      expect(messages.map((message) => message.type)).toEqual(["game"]);
+    }
     closeAll(clients);
   });
 

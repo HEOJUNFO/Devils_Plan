@@ -76,9 +76,13 @@ export type ServerMessage =
   | { type: "error"; reason: RejectReason }
   /**
    * The game in the room as this player may see it, sent when a game starts,
-   * after every move, when someone connects or drops, and on joining a room
-   * where one is being played. Never another player's secrets. `game` says
-   * which game it is, and so what else is in the message.
+   * on joining a room where one is being played, and after whatever changed
+   * what this player may see of it: a move, someone connecting or dropping.
+   * What changed nothing this player may see is not sent to them: in a game
+   * where everyone plays a hand of their own, most of what one player does
+   * shows on no other screen. Whoever made a move is always answered. Never
+   * another player's secrets. `game` says which game it is, and so what else
+   * is in the message.
    */
   | ({ type: "game"; room: string; game: "russian-roulette" } & GameSnapshot)
   | ({ type: "game"; room: string; game: "count-rectangles" } & RectSnapshot)
@@ -98,7 +102,13 @@ export type ServerMessage =
   /** Who is in the room's voice chat, sent to everyone in the room on joining and whenever it changes. */
   | { type: "voice"; room: string; members: VoiceMember[] }
   /** A signal from another player in voice, passed on by the room so the two can connect directly. */
-  | { type: "rtc"; from: number; signal: RtcSignal };
+  | { type: "rtc"; from: number; signal: RtcSignal }
+  /**
+   * The room is there and has nothing new to say: its answer to a `poke`,
+   * sent to everyone, so that pages which have heard nothing for a while know
+   * their silence is the game's and not a dead connection's.
+   */
+  | { type: "alive" };
 
 /** Every reason the room, or the game it hosts, gives for not doing what was asked. */
 export type Refusal =
@@ -256,7 +266,8 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     data.type === "refused" ||
     data.type === "chat" ||
     data.type === "voice" ||
-    data.type === "rtc"
+    data.type === "rtc" ||
+    data.type === "alive"
   ) {
     return data as ServerMessage;
   }

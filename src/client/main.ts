@@ -806,6 +806,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     const message = parseServerMessage(event.data);
     if (message === null) return;
     heardAt = Date.now();
+    // the room is there and has nothing new: that it was heard from is all there is to it
+    if (message.type === "alive") return;
     if (message.type === "lobby") {
       // The room is made: from here on a reconnect only comes back to it. A
       // second "make" would be refused as a stranger's once the room has let

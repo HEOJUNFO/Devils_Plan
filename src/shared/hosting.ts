@@ -32,6 +32,14 @@ export interface Candidate {
   teamSince?: number;
 }
 
+/**
+ * The moment a view is taken at to tell whether it has changed since it was
+ * last sent: before every deadline, so that each clock stands at its deadline
+ * itself and nothing has lapsed yet. Two views taken at this moment differ
+ * exactly when the players they are for would be shown something different.
+ */
+export const TIME_OF_SIGHT = 0;
+
 /** How many numbers a room gives a game to draw its secrets from when it starts: more than any game draws. */
 export const CHANCE_WORDS = 256;
 
@@ -80,7 +88,18 @@ export interface GameHost<S, R extends string = string> {
   tick(session: S, presence: Presence, now: number): S;
   /** Someone connected, dropped or left. */
   attend(session: S, presence: Presence, now: number): S;
-  /** What the player holding `viewer` is sent (`null`: someone who holds no token of the game). */
+  /**
+   * What the player holding `viewer` is sent (`null`: someone who holds no
+   * token of the game).
+   *
+   * `now` may only count a clock down or let something lapse (a lock that has
+   * run out), and only in the part of the snapshot kept for that: its `clock`
+   * (`turnEndsIn` in the first game). The room sends a player the game again
+   * when their view as of {@link TIME_OF_SIGHT} has changed, so what a view
+   * shows at that time must be all it can ever show of that game as it
+   * stands: something that came up only as time passed would never be sent.
+   * `tests/unit/hosting/sight.test.ts` holds every game to this.
+   */
   view(session: S, viewer: string | null, presence: Presence, now: number): object;
   /** Whether the game is being played: started and not over. */
   running(session: S): boolean;
