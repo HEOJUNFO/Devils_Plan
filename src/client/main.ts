@@ -621,6 +621,13 @@ function renderRoom(code: string, view: LobbyView): void {
   room.hidden = false;
   langButton.hidden = true;
   roomCode.textContent = code;
+  // A code of wide letters (W, M) and the button beside it are wider than the column: the letters then stand
+  // closer (style.css). The room is on show by now, so the row can be measured.
+  const codeRow = roomCode.closest<HTMLElement>(".code-row");
+  if (codeRow !== null) {
+    codeRow.classList.remove("tight");
+    codeRow.classList.toggle("tight", codeRow.scrollWidth > codeRow.clientWidth);
+  }
   showScene(view);
   syncScene();
 

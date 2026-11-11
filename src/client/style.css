@@ -531,6 +531,16 @@ button.choice[aria-pressed="true"] {
   white-space: nowrap;
 }
 
+/* A code of wide letters, which with the button would be wider than the column (main.ts). */
+.code-row.tight .room-code {
+  letter-spacing: 0;
+}
+
+.code-row.tight #copy {
+  min-width: 0;
+  padding: 0 2px;
+}
+
 /*
  * The voice controls. In the waiting room they sit under the room's code; during
  * a game, beside the way out, over the wall at the top left.
