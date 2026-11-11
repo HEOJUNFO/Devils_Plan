@@ -130,7 +130,7 @@ The seventh game built. In the show it is the second main match (2일차 메인 
 - [x] 로비의 게임 목록 (일곱 게임이 한 화면에), 스모크 검사 (`npm run smoke -- --only=mystery-stock-market`)
 
 ## Checked
-2026-11-11, 로컬 개발 서버 (`npm run dev -- --port 5273`). 배포된 서버에서는 보지 않았다.
+2026-11-11, 로컬 개발 서버 (`npm run dev -- --port 5273`). 배포 주소에서는 스모크의 이 게임 부분만 돌렸고 (19:46, 12/12) 화면은 보지 않았다.
 
 - **테스트:** `tests/unit/mystery-stock-market` 206개 (주가 규칙 38, 로고 15, 방송 가격 27개 다시 돌리기 13, 규칙 112, 호스트 28)와 `tests/integration/market` 13개 (방을 Workers 런타임에 띄워서). 코드를 한 줄씩 망가뜨린 변이 144개를 이 테스트들이 모두 잡는다 (처음에는 8개를 놓쳐 테스트를 더했다; 그 가운데 하나에서 피스 규칙의 잘못을 찾아 고쳤다, 위 15번).
 - **스모크:** `npm run smoke -- --only=mystery-stock-market` 12/12. 두 사람이 실제 소켓으로 24라운드를 끝까지 한다 (주문, 거절, 피스, 시크릿, 가려짐과 다시 보임, 끝).
