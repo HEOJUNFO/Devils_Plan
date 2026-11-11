@@ -31,8 +31,13 @@ import {
   type Tile,
 } from "../../../src/shared/games/lay-the-grass/rules";
 
-/** The rules as shipped. */
-const CONFIG: GrassConfig = shipped;
+/**
+ * The bare mini-game, three parks of it: the values shipped, without the
+ * either-or choices that go with it. Those have tests of their own
+ * (`choices.test.ts`); here the picking and the laying are tested by
+ * themselves.
+ */
+const CONFIG: GrassConfig = { ...shipped, rounds: 3, choices: [] };
 
 /** An arbitrary moment the tests call the start of the game, in ms. */
 const START = 2_000_000;
@@ -451,7 +456,7 @@ describe("laying", () => {
 
     expect(next.placed).toEqual([{ player: first, tile: 13, row: 0, col: 0, turns: 0 }]);
     expect(next.turn).toEqual({ player: second, since: START + 20_000 });
-    expect(next.history.at(-1)).toEqual({ type: "lay", round: 1, player: first, tile: 13, forced: false });
+    expect(next.history.at(-1)).toEqual({ type: "lay", round: 1, player: first, tile: 13, forced: false, cut: 0 });
   });
 
   it("refuses a tile that would leave the park or lie on another, and changes nothing", () => {
@@ -492,7 +497,9 @@ describe("laying", () => {
 
     expect(state.picks.find((pick) => pick.player === first)?.tile).toBe(3);
     expect(next.failed).toEqual([second]);
-    expect(next.history.slice(-1)).toEqual([{ type: "fail", round: 1, player: second, tile: 13 }]);
+    // the failure, and then the points of the park that it closed
+    expect(next.history.at(-2)).toEqual({ type: "fail", round: 1, player: second, tile: 13 });
+    expect(next.history.at(-1)).toMatchObject({ type: "score", round: 1 });
     expect(next.players.find((player) => player.id === first)?.score).toBe(3);
     expect(next.players.find((player) => player.id === second)?.score).toBe(0);
   });
@@ -647,7 +654,7 @@ describe("the clock", () => {
     const next = applyTimeout(state, due, CONFIG);
 
     expect(next.placed).toEqual([{ player: first, tile: 13, row: 0, col: 0, turns: 0 }]);
-    expect(next.history.at(-1)).toEqual({ type: "lay", round: 1, player: first, tile: 13, forced: true });
+    expect(next.history.at(-1)).toEqual({ type: "lay", round: 1, player: first, tile: 13, forced: true, cut: 0 });
   });
 
   it("moves for the player on turn whenever the room asks, and for nobody between parks or after the end", () => {

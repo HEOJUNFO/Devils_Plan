@@ -2,11 +2,17 @@ import { describe, expect, it } from "vitest";
 import botJson from "../../../src/shared/games/lay-the-grass/bot-config.json";
 import shipped from "../../../src/shared/games/lay-the-grass/config.json";
 import hostJson from "../../../src/shared/games/lay-the-grass/host-config.json";
-import { grassHost, type GrassSession, type GrassSnapshot } from "../../../src/shared/games/lay-the-grass/host";
-import { parkSize, waysToLay } from "../../../src/shared/games/lay-the-grass/rules";
+import { grassHostFor, type GrassSession, type GrassSnapshot } from "../../../src/shared/games/lay-the-grass/host";
+import { parkSize, waysToLay, type GrassConfig } from "../../../src/shared/games/lay-the-grass/rules";
 import type { Candidate, Presence, StartRequest } from "../../../src/shared/hosting";
 
-const host = grassHost;
+/**
+ * The bare mini-game, three parks of it: the values shipped, without the
+ * either-or choices that go with it. How a room hosts those is tested apart
+ * (`host-choices.test.ts`).
+ */
+const BARE: GrassConfig = { ...shipped, rounds: 3, choices: [] };
+const host = grassHostFor(BARE);
 
 /** The time the fixtures start at, in ms since the epoch. */
 const T0 = 1_800_000_000_000;
@@ -99,7 +105,7 @@ describe("starting a game of 잔디 깔기", () => {
     const sent = seenBy(started(players), players, 0, T0);
 
     expect(parkSize(sent.view.park)).toBe(shipped.cellsPerPlayer * 5 + shipped.extraCells);
-    expect(sent.view).toMatchObject({ phase: "pick", round: 1, rounds: shipped.rounds });
+    expect(sent.view).toMatchObject({ phase: "pick", round: 1, rounds: BARE.rounds });
   });
 
   it("refuses a game with nobody to contend with", () => {
@@ -241,9 +247,13 @@ describe("what a player is sent", () => {
     const players = candidates(2);
 
     expect(seenBy(started(players), players, 0, T0).rules).toEqual({
-      rounds: shipped.rounds,
+      rounds: BARE.rounds,
       pickSeconds: shipped.pickSeconds,
       placeSeconds: shipped.placeSeconds,
+      scoreBonus: shipped.scoreBonus,
+      attackLoss: shipped.attackLoss,
+      cutMax: shipped.cutMax,
+      checkBonus: shipped.checkBonus,
     });
   });
 
@@ -313,7 +323,7 @@ describe("the room's clock", () => {
       session = host.tick(session, presenceOf(players), host.deadline(session)!);
     }
 
-    expect(session.state.round).toBe(shipped.rounds);
+    expect(session.state.round).toBe(BARE.rounds);
     expect(session.state.history.at(-1)).toMatchObject({ type: "ended", reason: "rounds" });
     expect(host.deadline(session)).toBeNull();
     expect(session.waiting).toBeNull();

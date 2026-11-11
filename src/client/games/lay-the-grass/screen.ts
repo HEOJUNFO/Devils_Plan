@@ -1,22 +1,31 @@
 /**
- * The screen of 잔디 깔기: the park, the seven tiles to pick from, the tile
- * in hand over the place it would lie, and who picks and lays in what order.
+ * The screen of 잔디 깔기: the park, the either-or choices as they come up,
+ * the seven tiles to pick from, the manholes and trees put on the park, the
+ * tile in hand over the place it would lie, and who does what in what order.
  *
  * Design: design/games/lay-the-grass.md. The room decides everything; this
- * screen shows what it sends and asks for a pick or a lay. Whether a tile
- * fits is worked out here as well, with the same rules, so that a player
- * sees it before asking.
+ * screen shows what it sends and asks for a choice, a pick, a manhole, a tree
+ * or a lay. Whether a tile fits, and whether cells may be cut off it, is
+ * worked out here as well, with the same rules, so that a player sees it
+ * before asking.
  */
 import {
+  CHOICES,
   TILES,
+  canCut,
   coveredBy,
   fits,
   hasCell,
+  shapeOf,
   tileOf,
   turned,
   waysToLay,
+  type ChoiceNo,
+  type Cut,
   type GrassEvent,
+  type Option,
   type Placement,
+  type ScoreLine,
   type Tile,
 } from "../../../shared/games/lay-the-grass/rules";
 import type { ServerMessage } from "../../../shared/protocol";
@@ -30,7 +39,7 @@ export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the
 
 /** What the screen asks of whoever owns the connection. */
 export interface GrassHandlers {
-  /** The player picked a tile or laid theirs. Returns whether it could be sent. */
+  /** The player chose, picked, marked the park or laid. Returns whether it could be sent. */
   act(action: unknown): boolean;
   /** The host asked for the next game. */
   again(): void;
@@ -38,7 +47,7 @@ export interface GrassHandlers {
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
   voice(slot: number): VoiceMark;
-  /** The rules sheet covers the whole screen, or has been put away. */
+  /** A sheet covers the whole screen, or has been put away. */
   covered(covered: boolean): void;
 }
 
@@ -79,11 +88,20 @@ const HOLE_SHARE = 0.62;
 /** The soil of a park cell nothing lies on. */
 const SOIL = "#3a2a1c";
 const SOIL_D = "#2a1e14";
+/** A tree: its crown and its trunk. */
+const LEAF = "#2f9a4c";
+const LEAF_D = "#1d6a34";
+const TRUNK = "#7a4a26";
 
 const REFUSED_TEXT: Record<string, string> = {
   "not-your-turn": "지금은 내 차례가 아닙니다",
+  "not-choosing": "지금은 선택하는 때가 아닙니다",
+  "already-chosen": "이미 골랐습니다. 선택은 바꿀 수 없습니다",
   "not-picking": "지금은 타일을 고르는 때가 아닙니다",
   "not-laying": "지금은 타일을 놓는 때가 아닙니다",
+  "not-marking": "지금은 맨홀이나 가로수를 놓는 때가 아닙니다",
+  "bad-cell": "그 칸에는 놓을 수 없습니다",
+  "bad-cut": "그렇게는 자를 수 없습니다",
   "no-such-tile": "그런 타일은 없습니다",
   "does-not-fit": "거기에는 놓을 수 없습니다",
   "game-over": "이 판은 끝났습니다",
@@ -103,16 +121,34 @@ const ENDED_TEXT: Record<"rounds" | "abandoned", string> = {
   abandoned: "이어갈 사람이 없어 끝",
 };
 
+/** The two options of each choice, by the names the document gives them. */
+const OPTION_NAMES: Record<ChoiceNo, [string, string]> = {
+  5: ["점수", "정보"],
+  6: ["공격", "방어"],
+  7: ["상생", "견제"],
+  8: ["가로수", "맨홀"],
+};
+
 type Box = readonly [number, number, number, number];
 
 const inRect = (p: { x: number; y: number }, r: Box): boolean => p.x >= r[0] && p.x < r[0] + r[2] && p.y >= r[1] && p.y < r[1] + r[3];
 
 /** The button of the tile `index` places along the bar. */
 const tileRect = (index: number): Box => [6 + index * 67, 238, 65, 30];
+const CUT_RECT: Box = [204, 240, 86, 26];
 const TURN_RECT: Box = [296, 240, 86, 26];
 const LAY_RECT: Box = [388, 240, 86, 26];
 const AGAIN_RECT: Box = [386, 225, 90, 15];
 const LOBBY_RECT: Box = [386, 250, 90, 15];
+/** The two options of a choice, one above the other over the park; and the button that puts them aside. */
+const OPTION_RECTS: readonly [Box, Box] = [
+  [8, 44, 288, 62],
+  [8, 112, 288, 62],
+];
+const PEEK_RECT: Box = [206, 194, 90, 18];
+
+/** `value` with its sign, as points are written. */
+const signed = (value: number): string => (value > 0 ? `+${value}` : `${value}`);
 
 /** Makes `canvas` the game screen. Nothing is drawn until the first {@link GrassScreen.update}. */
 export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHandlers): GrassScreen {
@@ -137,15 +173,27 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
-  let help = false;
+  /** The sheet over the screen: the rules, or the cards of the choices the player may see. */
+  let sheet: "none" | "help" | "cards" = "none";
   let note = "";
   let noteT = 0;
+  /** The option of the choice being made that the player has pointed at and not yet confirmed: a choice cannot be taken back. */
+  let pointed: Option | null = null;
+  /** The cards of a choice put aside for a look at the park. */
+  let peek = false;
+  /** The choice the two above were last reset for. */
+  let choiceFor = "";
   /** The tile the player has pointed at and not yet confirmed: a pick cannot be taken back. */
   let chosen: number | null = null;
   /** Where the player holds their tile over the park: the top left of its box, and how it is turned. */
   let hand: { row: number; col: number; turns: number } | null = null;
   /** The turn the hand was last put in its starting place for, so that it is done once a turn. */
   let handFor = "";
+  /** 방어: the cells the player means to cut off the tile, in the tile's own box; and whether clicks cut rather than lay. */
+  let cut: Cut[] = [];
+  let cutting = false;
+  /** The park cell pointed at for a manhole or a tree. */
+  let cursor: { row: number; col: number } | null = null;
   /** The tile laid last lights up for a moment: by player. */
   const lit = new Map<number, number>();
   /** The last second of the player's own turn that was ticked aloud. */
@@ -177,8 +225,22 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   const myTurn = (): boolean => latest !== null && me() !== null && latest.view.turn === me() && !latest.frozen;
   const picking = (): boolean => myTurn() && latest?.view.phase === "pick";
   const laying = (): boolean => myTurn() && latest?.view.phase === "place";
+  const marking = (): boolean => myTurn() && (latest?.view.phase === "manholes" || latest?.view.phase === "trees");
+  /** Whether the player has still to make the choice that is up. */
+  const choosing = (): boolean =>
+    latest !== null && me() !== null && !latest.frozen && latest.view.phase === "choose" && latest.view.choosing?.mine === null;
   /** The tile `player` has picked in this park, or `null`. */
   const tileOfPlayer = (player: number): number | null => latest?.view.picks.find((pick) => pick.player === player)?.tile ?? null;
+  /** What `player` chose at choice `which`, once it has been shown to everyone. */
+  const optionOf = (player: number | null, which: ChoiceNo): Option | null =>
+    latest?.view.choices.find((each) => each.which === which && each.player === player)?.option ?? null;
+  /** Whether the player may cut cells off their tile: they chose 방어. */
+  const defending = (): boolean => optionOf(me(), 6) === 2;
+  /** How the points of the last park came about, by player. */
+  function scoreOf(player: number): ScoreLine | null {
+    const event = [...(latest?.view.history ?? [])].reverse().find((each) => each.type === "score");
+    return event?.type === "score" ? (event.lines.find((line) => line.player === player) ?? null) : null;
+  }
 
   /** Where the park is drawn, and how large its cells are. */
   function parkBox(): { x: number; y: number; cell: number; rows: number; cols: number } | null {
@@ -194,10 +256,39 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       cols,
     };
   }
+  /** The park cell under a point of the screen, or `null`. */
+  function cellAt(p: { x: number; y: number }): { row: number; col: number } | null {
+    const box = parkBox();
+    if (latest === null || box === null) return null;
+    const row = Math.floor((p.y - box.y) / box.cell);
+    const col = Math.floor((p.x - box.x) / box.cell);
+    return hasCell(latest.view.park, row, col) ? { row, col } : null;
+  }
 
   function say(text: string): void {
     note = text;
     noteT = 2;
+  }
+
+  /** The words on the card of option `option` of choice `which`: what it does, with the game's own numbers. */
+  function cardLines(which: ChoiceNo, option: Option): string[] {
+    const rules = latest?.rules;
+    const atMost = latest?.view.checkAtMost ?? 0;
+    if (rules === undefined) return [];
+    if (which === 5) return option === 1 ? [`승점 ${rules.scoreBonus}점을 바로 얻습니다.`] : ["다음 선택 6, 7, 8의 내용을", "미리 봅니다."];
+    if (which === 6) {
+      return option === 1
+        ? ["타일을 놓으면 번호의 2배.", `못 놓으면 ${rules.attackLoss}점을 잃습니다.`]
+        : [`놓을 때 타일에서 ${rules.cutMax}칸까지`, "잘라 낼 수 있습니다.", "(번호 칸, 두 동강은 불가)"];
+    }
+    if (which === 7) {
+      return option === 1
+        ? ["둘이 한 팀. 두 타일이 맞닿은", "변의 수만큼 추가 승점을", "나눠 갖습니다."]
+        : [`놓은 사람이 ${atMost}명 이하이면`, `승점 ${rules.checkBonus}점을 더 얻습니다.`];
+    }
+    return option === 1
+      ? ["공원에 가로수 하나를 놓습니다.", "그 위에는 구멍 뚫린 칸만", "놓을 수 있습니다."]
+      : ["+1과 -1 맨홀을 놓습니다.", "덮은 타일은 +1마다 1점,", "-1마다 1점을 잃습니다."];
   }
 
   /** Shows one thing that happened: a sound, and something to see where it happened. */
@@ -207,12 +298,14 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       hand = null;
       lit.clear();
       if (event.round > 1) sfx.turn();
-    } else if (event.type === "pick") {
+    } else if (event.type === "choice") {
+      sfx.turn();
+    } else if (event.type === "pick" || event.type === "manhole" || event.type === "tree") {
       sfx.pick();
     } else if (event.type === "lay") {
       lit.set(event.player, 0.8);
       sfx.earn();
-    } else if (event.type === "fail") {
+    } else if (event.type === "fail" || event.type === "skip") {
       sfx.deny();
     }
   }
@@ -225,17 +318,28 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       chosen = null;
       hand = null;
       handFor = "";
+      cut = [];
+      cutting = false;
+      cursor = null;
       lit.clear();
       speech.clear();
     }
-    const wasMine = myTurn();
+    const wasMine = myTurn() || choosing();
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
     latest = message;
     receivedAt = performance.now();
     pending = false;
     offline = false;
-    if (!wasMine && myTurn()) sfx.turn();
+    // a new choice is looked at afresh: nothing pointed at, the cards up
+    const choice = `${message.startedAt}:${message.view.round}:${message.view.choosing?.which ?? "-"}`;
+    if (choice !== choiceFor) {
+      choiceFor = choice;
+      pointed = null;
+      peek = false;
+    }
+    if (!wasMine && (myTurn() || choosing())) sfx.turn();
     if (!picking()) chosen = null;
+    if (!laying()) cutting = false;
   }
 
   /** Puts the tile in the player's hand over the first place it fits, once at the start of their turn to lay. */
@@ -247,7 +351,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const turn = `${latest.startedAt}:${latest.view.round}:${mine}`;
     if (handFor === turn && hand !== null) return;
     handFor = turn;
-    hand = waysToLay(latest.view.park, latest.view.placed, tile)[0] ?? { row: 0, col: 0, turns: 0 };
+    cut = [];
+    cutting = false;
+    hand = waysToLay(latest.view.park, latest.view.placed, tile, { trees: latest.view.trees })[0] ?? { row: 0, col: 0, turns: 0 };
   }
 
   /** Turns the tile in hand a quarter clockwise, about the middle of its box. */
@@ -266,18 +372,42 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     sfx.move();
   }
 
+  /** 방어: cuts the cell of the tile in hand that lies on park cell `at`, or puts it back if it was cut. */
+  function toggleCut(at: { row: number; col: number }): void {
+    if (latest === null || hand === null) return;
+    const tile = tileOf(tileOfPlayer(me() ?? -1) ?? -1);
+    if (tile === undefined) return;
+    // a tile's cells keep their order when it is turned: the cell laid at `at` is the same one in the tile's own box
+    const index = coveredBy(tile, hand.row, hand.col, hand.turns).findIndex((cell) => cell.row === at.row && cell.col === at.col);
+    if (index < 0) return;
+    const own = { row: tile.cells[index].row, col: tile.cells[index].col };
+    const without = cut.filter((cell) => cell.row !== own.row || cell.col !== own.col);
+    if (without.length < cut.length) {
+      // putting one of two back must leave a cut that is allowed by itself: it always is
+      cut = without;
+      sfx.move();
+    } else if (canCut(tile, [...cut, own], latest.rules.cutMax)) {
+      cut = [...cut, own];
+      sfx.move();
+    } else {
+      say(REFUSED_TEXT["bad-cut"]);
+      sfx.deny();
+    }
+  }
+
   // ---- Input -----------------------------------------------------------------------------------------
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
     const clicked = (rect: Box): boolean => clicks.some((p) => inRect(p, rect));
     if (pressed("KeyM")) setMuted(!isMuted());
-    const was = help;
-    if (pressed("KeyH")) help = !help;
-    if (help && (pressed("Escape", "Enter") || clicks.length > 0)) help = false;
-    // the page's own buttons lie over the frame: they give way while the sheet is up
-    if (help !== was) handlers.covered(help);
-    if (help || was) return;
+    const was = sheet;
+    if (pressed("KeyH")) sheet = sheet === "help" ? "none" : "help";
+    else if (pressed("KeyI")) sheet = sheet === "cards" ? "none" : "cards";
+    else if (sheet !== "none" && (pressed("Escape", "Enter") || clicks.length > 0)) sheet = "none";
+    // the page's own buttons lie over the frame: they give way while a sheet is up
+    if ((sheet !== "none") !== (was !== "none")) handlers.covered(sheet !== "none");
+    if (sheet !== "none" || was !== "none") return;
 
     const view = latest.view;
     if (view.phase === "ended") {
@@ -290,22 +420,119 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       return;
     }
 
-    if (picking() && !pending) {
-      // a tile is pointed at first and confirmed second: a pick cannot be taken back
-      let confirm = pressed("Enter", "NumpadEnter");
-      TILES.forEach((tile, index) => {
-        const key = pressed(`Digit${index + 1}`, `Numpad${index + 1}`);
-        const click = clicked(tileRect(index));
-        if (!key && !click) return;
-        if (click && chosen === tile.number) confirm = true;
-        else {
-          chosen = tile.number;
-          sfx.move();
+    // From here on what was pressed is gone through in the order it was pressed: a slow frame can hold
+    // several keys, and what cannot be taken back (a choice, a pick, a lay) is sent as it stood when Enter
+    // came, never as it stands after the keys that followed.
+    const isEnter = (code: string): boolean => code === "Enter" || code === "NumpadEnter";
+    const digitOf = (code: string): number | null => {
+      const digit = /^(?:Digit|Numpad)(\d)$/.exec(code)?.[1];
+      return digit === undefined ? null : Number(digit);
+    };
+
+    if (view.phase === "choose") {
+      const can = (): boolean => choosing() && !pending && !peek;
+      const point = (option: Option): void => {
+        pointed = option;
+        sfx.move();
+      };
+      const send = (): void => {
+        if (pointed === null) return;
+        pending = handlers.act({ type: "choose", option: pointed });
+        if (!pending) say(NOT_SENT_TEXT);
+      };
+      for (const code of keys) {
+        const digit = digitOf(code);
+        if (code === "KeyV") peek = !peek;
+        else if (!can()) continue;
+        else if (digit === 1 || digit === 2) point(digit);
+        // an option is pointed at first and confirmed second: a choice cannot be taken back
+        else if (isEnter(code) && pointed !== null) send();
+      }
+      for (const click of clicks) {
+        if (inRect(click, PEEK_RECT)) peek = !peek;
+        else if (can()) {
+          for (const option of [1, 2] as const) {
+            if (!inRect(click, OPTION_RECTS[option - 1])) continue;
+            if (pointed === option) send();
+            else point(option);
+          }
         }
-      });
-      if (confirm && chosen !== null) {
+      }
+      return;
+    }
+
+    if (picking() && !pending) {
+      const send = (): void => {
+        if (chosen === null) return;
         pending = handlers.act({ type: "pick", tile: chosen });
         if (!pending) say(NOT_SENT_TEXT);
+      };
+      // a tile is pointed at first and confirmed second: a pick cannot be taken back
+      for (const code of keys) {
+        if (pending) break;
+        const digit = digitOf(code);
+        if (digit !== null && digit >= 1 && digit <= TILES.length) {
+          chosen = TILES[digit - 1].number;
+          sfx.move();
+        } else if (isEnter(code)) send();
+      }
+      for (const click of clicks) {
+        if (pending) break;
+        const index = TILES.findIndex((_, at) => inRect(click, tileRect(at)));
+        if (index < 0) continue;
+        if (chosen === TILES[index].number) send();
+        else {
+          chosen = TILES[index].number;
+          sfx.move();
+        }
+      }
+      return;
+    }
+
+    if (marking() && !pending) {
+      const box = parkBox();
+      if (box === null) return;
+      if (cursor === null || !hasCell(view.park, cursor.row, cursor.col)) {
+        // the first cell of the park, from the top left
+        for (let row = 0; row < box.rows && cursor === null; row++) {
+          for (let col = 0; col < box.cols && cursor === null; col++) {
+            if (hasCell(view.park, row, col)) cursor = { row, col };
+          }
+        }
+      }
+      if (cursor === null) return;
+      const tree = view.phase === "trees";
+      const put = (at: { row: number; col: number }): void => {
+        const here = (each: { row: number; col: number }): boolean => each.row === at.row && each.col === at.col;
+        if (view.manholes.some(here) || (tree && view.trees.some(here))) {
+          say(REFUSED_TEXT["bad-cell"]);
+          sfx.deny();
+          return;
+        }
+        pending = handlers.act({ type: tree ? "tree" : "manhole", row: at.row, col: at.col });
+        if (!pending) say(NOT_SENT_TEXT);
+      };
+      let spot: { row: number; col: number } = (mouse.moved ? cellAt(mouse) : null) ?? cursor;
+      for (const code of keys) {
+        if (pending) break;
+        const way = code === "ArrowLeft" ? [0, -1] : code === "ArrowRight" ? [0, 1] : code === "ArrowUp" ? [-1, 0] : code === "ArrowDown" ? [1, 0] : null;
+        // the cursor goes on in that direction to the next cell the park has
+        for (let far = 1; way !== null && far <= Math.max(box.rows, box.cols); far++) {
+          const there: { row: number; col: number } = { row: spot.row + way[0] * far, col: spot.col + way[1] * far };
+          if (hasCell(view.park, there.row, there.col)) {
+            spot = there;
+            break;
+          }
+        }
+        if (isEnter(code) || code === "Space") put(spot);
+      }
+      cursor = spot;
+      for (const click of clicks) {
+        const at = cellAt(click);
+        if (at !== null && !pending) {
+          cursor = at;
+          put(at);
+        }
       }
       return;
     }
@@ -317,37 +544,65 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const number = mine === null ? null : tileOfPlayer(mine);
       const tile = number === null ? undefined : tileOf(number);
       if (hand === null || box === null || tile === undefined || number === null) return;
-      if (pressed("KeyR") || clicked(TURN_RECT)) turnHand();
-      const shape = turned(tile, hand.turns);
-      // the mouse carries the tile by the middle of its box
-      const over = mouse.x >= box.x && mouse.x < box.x + box.cols * box.cell && mouse.y >= box.y && mouse.y < box.y + box.rows * box.cell;
-      if (mouse.moved && over) {
+      const inBox = (q: { x: number; y: number }): boolean =>
+        q.x >= box.x && q.x < box.x + box.cols * box.cell && q.y >= box.y && q.y < box.y + box.rows * box.cell;
+      /** The tile stays where some of it could still be seen. */
+      const keepInSight = (): void => {
+        if (hand === null) return;
+        const shape = turned(tile, hand.turns);
+        hand = {
+          ...hand,
+          row: Math.max(-shape.rows + 1, Math.min(box.rows - 1, hand.row)),
+          col: Math.max(-shape.cols + 1, Math.min(box.cols - 1, hand.col)),
+        };
+      };
+      const lay = (): void => {
+        if (hand === null) return;
+        if (fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees })) {
+          pending = handlers.act({ type: "lay", row: hand.row, col: hand.col, turns: hand.turns, ...(cut.length > 0 ? { cut } : {}) });
+          if (!pending) say(NOT_SENT_TEXT);
+        } else {
+          say(REFUSED_TEXT["does-not-fit"]);
+          sfx.deny();
+        }
+      };
+      const toggleCutting = (): void => {
+        if (!defending()) return;
+        cutting = !cutting;
+        sfx.move();
+      };
+      // the mouse carries the tile by the middle of its box, unless it is being cut: then it lies still to be clicked
+      if (mouse.moved && inBox(mouse) && !cutting) {
+        const shape = turned(tile, hand.turns);
         hand = {
           ...hand,
           row: Math.floor((mouse.y - box.y) / box.cell) - Math.floor(shape.rows / 2),
           col: Math.floor((mouse.x - box.x) / box.cell) - Math.floor(shape.cols / 2),
         };
+        keepInSight();
       }
       for (const code of keys) {
-        if (code === "ArrowLeft") hand = { ...hand, col: hand.col - 1 };
+        if (pending || hand === null) break;
+        if (code === "KeyX") toggleCutting();
+        else if (code === "KeyR") turnHand();
+        else if (code === "ArrowLeft") hand = { ...hand, col: hand.col - 1 };
         else if (code === "ArrowRight") hand = { ...hand, col: hand.col + 1 };
         else if (code === "ArrowUp") hand = { ...hand, row: hand.row - 1 };
         else if (code === "ArrowDown") hand = { ...hand, row: hand.row + 1 };
+        else if (isEnter(code) || code === "Space") lay();
+        keepInSight();
       }
-      // the tile stays where some of it could still be seen
-      hand = {
-        ...hand,
-        row: Math.max(-shape.rows + 1, Math.min(box.rows - 1, hand.row)),
-        col: Math.max(-shape.cols + 1, Math.min(box.cols - 1, hand.col)),
-      };
-      const onPark = clicks.some((p) => p.x >= box.x && p.x < box.x + box.cols * box.cell && p.y >= box.y && p.y < box.y + box.rows * box.cell);
-      if (pressed("Enter", "NumpadEnter", "Space") || clicked(LAY_RECT) || onPark) {
-        if (fits(view.park, view.placed, number, hand.row, hand.col, hand.turns)) {
-          pending = handlers.act({ type: "lay", row: hand.row, col: hand.col, turns: hand.turns });
-          if (!pending) say(NOT_SENT_TEXT);
-        } else {
-          say(REFUSED_TEXT["does-not-fit"]);
-          sfx.deny();
+      for (const click of clicks) {
+        if (pending) break;
+        if (inRect(click, CUT_RECT)) toggleCutting();
+        else if (inRect(click, TURN_RECT)) {
+          turnHand();
+          keepInSight();
+        } else if (inRect(click, LAY_RECT)) lay();
+        else if (inBox(click)) {
+          // a click on the park lays the tile; while cutting, it cuts the cell clicked off, or puts it back
+          if (cutting) toggleCut({ row: Math.floor((click.y - box.y) / box.cell), col: Math.floor((click.x - box.x) / box.cell) });
+          else lay();
         }
       }
     }
@@ -368,8 +623,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     }
     if (latest !== null) {
       while (seen < latest.view.history.length) show(latest.view.history[seen++]);
-      // my own turn is nearly up: a tick a second
-      const mine = myTurn() ? left(latest.clock.turn) : null;
+      // my own time is nearly up: a tick a second
+      const mine = myTurn() || choosing() ? left(latest.clock.turn) : null;
       const second = mine === null ? null : Math.ceil(mine / 1000);
       if (second === null || second > TICK_FROM) ticked = -1;
       else if (second !== ticked) {
@@ -392,18 +647,39 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   function drawHole(x: number, y: number, size: number, colour: string): void {
     const across = Math.max(2, Math.round(size * HOLE_SHARE));
     const radius = across / 2;
-    const left = x + Math.floor((size - across) / 2);
+    const left_ = x + Math.floor((size - across) / 2);
     const top = y + Math.floor((size - across) / 2);
     for (let i = 0; i < across; i++) {
       const dy = i + 0.5 - radius;
       const half = Math.round(Math.sqrt(radius * radius - dy * dy));
-      if (half > 0) pen.px(left + radius - half, top + i, half * 2, 1, colour);
+      if (half > 0) pen.px(left_ + radius - half, top + i, half * 2, 1, colour);
+    }
+  }
+
+  /** A manhole in a cell: a round cover with what it is worth on it. */
+  function drawManhole(x: number, y: number, size: number, value: 1 | -1): void {
+    const colour = value > 0 ? C.teal : C.crim;
+    drawHole(x, y, size, C.steelDD);
+    drawHole(x + 1, y + 1, size - 2, shade(colour, 0.45));
+    if (size >= 15) pen.txt(value > 0 ? "+1" : "-1", x + Math.round(size / 2), y + Math.round((size - 13) / 2), colour, "center");
+  }
+
+  /** A tree in a cell: a round crown on a short trunk. */
+  function drawTree(x: number, y: number, size: number): void {
+    const crown = Math.max(4, Math.round(size * 0.5));
+    const cx = x + Math.floor(size / 2);
+    pen.px(cx - 1, y + Math.round(size * 0.55), 2, Math.max(2, Math.round(size * 0.3)), TRUNK);
+    const top = y + Math.max(1, Math.round(size * 0.12));
+    for (let i = 0; i < crown; i++) {
+      const dy = i + 0.5 - crown / 2;
+      const half = Math.round(Math.sqrt((crown / 2) * (crown / 2) - dy * dy));
+      if (half > 0) pen.px(cx - half, top + i, half * 2, 1, i < crown / 2 ? LEAF : LEAF_D);
     }
   }
 
   /** Draws the cells of a tile lying on the park, with a dark line where it ends. */
   function drawLaid(placement: Placement, box: { x: number; y: number; cell: number }, colour: string, bright: boolean): void {
-    const tile = tileOf(placement.tile);
+    const tile = shapeOf(placement.tile, placement.cut ?? []);
     if (tile === undefined) return;
     const cells = coveredBy(tile, placement.row, placement.col, placement.turns);
     const own = new Set(cells.map((cell) => `${cell.row},${cell.col}`));
@@ -449,14 +725,48 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         pen.px(x + 1, y + 1, box.cell - 2, box.cell - 2, SOIL);
       }
     }
+    const covered = new Set<string>();
+    for (const placement of view.placed) {
+      const tile = shapeOf(placement.tile, placement.cut ?? []);
+      if (tile !== undefined) for (const cell of coveredBy(tile, placement.row, placement.col, placement.turns)) covered.add(`${cell.row},${cell.col}`);
+    }
+    // a manhole nothing lies on yet shows as it is
+    for (const manhole of view.manholes) {
+      if (!covered.has(`${manhole.row},${manhole.col}`)) drawManhole(box.x + manhole.col * box.cell, box.y + manhole.row * box.cell, box.cell, manhole.value);
+    }
     for (const placement of view.placed) drawLaid(placement, box, grassOf(placement.player), lit.has(placement.player));
+    // a manhole under a tile: what it gave or took, in the corner of the cell
+    for (const manhole of view.manholes) {
+      if (!covered.has(`${manhole.row},${manhole.col}`)) continue;
+      // a plus or a minus on a small plate: it keeps clear of the tile's number and of its hole
+      const x = box.x + manhole.col * box.cell + 1;
+      const y = box.y + manhole.row * box.cell + 1;
+      const colour = manhole.value > 0 ? C.teal : C.crim;
+      pen.px(x, y, 7, 7, C.ink);
+      pen.px(x + 1, y + 3, 5, 1, colour);
+      if (manhole.value > 0) pen.px(x + 3, y + 1, 1, 5, colour);
+    }
+    // a tree stands in the open, or in the hole of the cell laid over it
+    for (const tree of view.trees) drawTree(box.x + tree.col * box.cell, box.y + tree.row * box.cell, box.cell);
+
+    // the cell pointed at for a manhole or a tree
+    if (marking() && cursor !== null) {
+      const x = box.x + cursor.col * box.cell;
+      const y = box.y + cursor.row * box.cell;
+      const colour = Math.sin(time * 6) > 0 ? C.amber : C.amberD;
+      pen.px(x, y, box.cell, 2, colour);
+      pen.px(x, y + box.cell - 2, box.cell, 2, colour);
+      pen.px(x, y, 2, box.cell, colour);
+      pen.px(x + box.cell - 2, y, 2, box.cell, colour);
+    }
 
     // the tile in the player's hand, over where it would lie
     const mine = me();
     const number = mine === null ? null : tileOfPlayer(mine);
-    const tile = number === null ? undefined : tileOf(number);
-    if (laying() && hand !== null && tile !== undefined && number !== null && mine !== null) {
-      const ok = fits(view.park, view.placed, number, hand.row, hand.col, hand.turns);
+    const whole = number === null ? undefined : tileOf(number);
+    const tile = number === null ? undefined : shapeOf(number, cut);
+    if (laying() && hand !== null && tile !== undefined && whole !== undefined && number !== null && mine !== null) {
+      const ok = fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees });
       const colour = ok ? grassOf(mine) : C.crim;
       ctx.globalAlpha = 0.55 + 0.15 * Math.sin(time * 6);
       for (const cell of coveredBy(tile, hand.row, hand.col, hand.turns)) {
@@ -475,7 +785,58 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         pen.px(x, y, 1, box.cell, colour);
         pen.px(x + box.cell - 1, y, 1, box.cell, colour);
       }
+      // the cells cut off: where they were, so that one can be put back
+      if (cut.length > 0) {
+        const laidWhole = coveredBy(whole, hand.row, hand.col, hand.turns);
+        whole.cells.forEach((own, index) => {
+          if (!cut.some((gone) => gone.row === own.row && gone.col === own.col)) return;
+          const x = box.x + laidWhole[index].col * box.cell;
+          const y = box.y + laidWhole[index].row * box.cell;
+          for (let dash = 2; dash < box.cell - 2; dash += 4) {
+            pen.px(x + dash, y + 1, 2, 1, C.boneD);
+            pen.px(x + dash, y + box.cell - 2, 2, 1, C.boneD);
+            pen.px(x + 1, y + dash, 1, 2, C.boneD);
+            pen.px(x + box.cell - 2, y + dash, 1, 2, C.boneD);
+          }
+        });
+      }
     }
+    // the trees again over the tile in hand: a tree is never hidden
+    if (laying() && hand !== null) for (const tree of view.trees) drawTree(box.x + tree.col * box.cell, box.y + tree.row * box.cell, box.cell);
+  }
+
+  /** The two options of the choice that is up, over the park. */
+  function drawChoice(): void {
+    if (latest === null || latest.view.choosing === null) return;
+    const up = latest.view.choosing;
+    const mine = me();
+    pen.px(4, 22, SCENE_W - 8, BAR_Y - 26, C.ink);
+    pen.px(5, 23, SCENE_W - 10, BAR_Y - 28, C.bar);
+    pen.txt(`선택 ${up.which}`, 12, 27, C.amber);
+    pen.txt("하나를 고릅니다. 바꿀 수 없습니다.", 12 + pen.width(`선택 ${up.which}`) + 8, 27, C.boneD);
+    for (const option of [1, 2] as const) {
+      const rect = OPTION_RECTS[option - 1];
+      const [x, y, w, h] = rect;
+      const taken = up.mine === option;
+      const lit_ = taken || (up.mine === null && pointed === option);
+      const live = choosing() && !pending;
+      pen.px(x, y, w, h, lit_ ? C.amberD : C.steelDD);
+      pen.px(x + 1, y + 1, w - 2, h - 2, lit_ ? "#3a2a12" : live && inRect(mouse, rect) ? C.btnH : C.btn);
+      pen.txt(`${option}`, x + 7, y + 24, C.dim);
+      pen.txt(OPTION_NAMES[up.which][option - 1], x + 20, y + 18, lit_ ? C.amber : up.mine === null ? C.bone : C.dim, "left", 24);
+      cardLines(up.which, option).forEach((line, at) => pen.txt(line, x + 104, y + 8 + at * 15, lit_ || up.mine === null ? C.bone : C.dim));
+    }
+    pen.txt(`${up.chosen.length}/${latest.players.length}명이 골랐습니다`, 12, 180, C.boneD);
+    const words =
+      mine === null
+        ? "관전 중입니다"
+        : up.mine !== null
+          ? "골랐습니다. 모두 고르면 공개됩니다."
+          : pointed !== null
+            ? "한 번 더 누르거나 Enter로 확정"
+            : "1 또는 2, 또는 카드를 누르세요";
+    pen.txt(words, 12, 196, up.mine !== null || mine === null ? C.boneD : C.amber);
+    button(PEEK_RECT, "V 공원 보기", "", false, true);
   }
 
   function drawScene(): void {
@@ -484,6 +845,10 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     // a night sky's worth of quiet behind the park
     for (let y = 9; y < BAR_Y; y += 17) pen.px(0, y, SCENE_W, 1, C.wallD);
     drawPark();
+    if (latest.view.phase === "choose") {
+      if (peek) button(PEEK_RECT, "V 선택 카드", "", true, true);
+      else drawChoice();
+    }
     if (latest.frozen) {
       // the game's own clocks stand still; this one runs, and ends the game at nought
       const stand = latest.clock.stand === null ? null : Math.max(0, latest.clock.stand - (performance.now() - receivedAt));
@@ -507,14 +872,29 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       return [`공원 ${view.round} 끝 · 다음 공원까지 ${seconds}초`, C.teal];
     }
     const seconds = Math.ceil((left(latest.clock.turn) ?? 0) / 1000);
+    const hurry = seconds <= TICK_FROM ? C.crim : C.amber;
     const who = view.turn === null ? "" : pen.fit(nickOf(view.turn), NAME_WIDTH);
     if (pending) return ["보내는 중", C.boneD];
+    if (view.phase === "choose") {
+      const which = view.choosing?.which ?? 0;
+      if (choosing()) return [`선택 ${which}: 하나를 고르세요 · ${seconds}초`, hurry];
+      return [`선택 ${which}: 모두 고르기를 기다리는 중 · ${seconds}초`, C.bone];
+    }
     if (picking()) {
       const words = chosen === null ? "타일을 고르세요 (한 번 고르면 못 바꿉니다)" : `${chosen}번으로 정하려면 Enter, 또는 한 번 더 누르기`;
-      return [`${words} · ${seconds}초`, seconds <= TICK_FROM ? C.crim : C.amber];
+      return [`${words} · ${seconds}초`, hurry];
     }
-    if (laying()) return [`타일을 놓으세요 · ${seconds}초`, seconds <= TICK_FROM ? C.crim : C.amber];
-    const doing = view.phase === "pick" ? "고르는 중" : "놓는 중";
+    if (marking()) {
+      const mine = me();
+      const down = view.manholes.filter((manhole) => manhole.by === mine).length;
+      const what = view.phase === "trees" ? "가로수를" : down === 0 ? "+1 맨홀을" : "-1 맨홀을";
+      return [`${what} 놓을 칸을 누르세요 · ${seconds}초`, hurry];
+    }
+    if (laying()) {
+      if (cutting) return [`자를 칸을 누르세요 (${cut.length}/${latest.rules.cutMax}칸) · X로 끝 · ${seconds}초`, hurry];
+      return [`타일을 놓으세요 · ${seconds}초`, hurry];
+    }
+    const doing = view.phase === "pick" ? "고르는 중" : view.phase === "manholes" ? "맨홀 놓는 중" : view.phase === "trees" ? "가로수 놓는 중" : "놓는 중";
     return [`${me() === null ? "관전 중 · " : ""}${who} ${doing} · ${seconds}초`, C.bone];
   }
 
@@ -522,13 +902,28 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   function logLines(): [string, string][] {
     if (latest === null) return [];
     const lines: [string, string][] = [];
+    const names = (players: number[]): string => players.map((player) => pen.fit(nickOf(player), 40)).join(", ");
     for (const event of latest.view.history.slice(0, seen)) {
       const who = "player" in event ? pen.fit(nickOf(event.player), NAME_WIDTH) : "";
       if (event.type === "park") lines.push([`공원 ${event.round}`, C.boneD]);
-      else if (event.type === "pick") lines.push([`${who}: ${event.tile}번 선택${event.forced ? " (자동)" : ""}`, C.bone]);
-      else if (event.type === "lay") lines.push([`${who}: ${event.tile}번 놓음 +${event.tile}${event.forced ? " (자동)" : ""}`, C.teal]);
-      else if (event.type === "fail") lines.push([`${who}: ${event.tile}번 자리 없음`, C.crim]);
-      else lines.push([ENDED_TEXT[event.reason], C.amber]);
+      else if (event.type === "choice") {
+        for (const option of [1, 2] as const) {
+          const those = event.chosen.filter((each) => each.option === option).map((each) => each.player);
+          if (those.length > 0) lines.push([`${OPTION_NAMES[event.which][option - 1]}: ${names(those)}`, C.brass]);
+        }
+      } else if (event.type === "pick") lines.push([`${who}: ${event.tile}번 선택${event.forced ? " (자동)" : ""}`, C.bone]);
+      else if (event.type === "pair") lines.push([`상생 팀: ${names(event.players)}`, C.teal]);
+      else if (event.type === "alone") lines.push([`${who}: 상생 짝 없음`, C.boneD]);
+      else if (event.type === "manhole") lines.push([`${who}: ${event.value > 0 ? "+1" : "-1"} 맨홀 놓음`, C.bone]);
+      else if (event.type === "tree") lines.push([`${who}: 가로수 놓음`, C.bone]);
+      else if (event.type === "skip") lines.push([`${who}: ${event.what === "tree" ? "가로수" : "맨홀"} 안 놓음`, C.boneD]);
+      else if (event.type === "lay") {
+        const more = `${event.cut > 0 ? ` (${event.cut}칸 자름)` : ""}${event.forced ? " (자동)" : ""}`;
+        lines.push([`${who}: ${event.tile}번 놓음${more}`, C.teal]);
+      } else if (event.type === "fail") lines.push([`${who}: ${event.tile}번 자리 없음`, C.crim]);
+      else if (event.type === "score") {
+        for (const line of event.lines) lines.push([`${pen.fit(nickOf(line.player), NAME_WIDTH)}: ${signed(line.total)}점`, line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD]);
+      } else lines.push([ENDED_TEXT[event.reason], C.amber]);
     }
     return lines;
   }
@@ -539,7 +934,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const view = latest.view;
     if (view.phase === "ended") return [...view.players].sort((a, b) => b.score - a.score).map((player) => player.id);
     if (view.layOrder.length > 0) return view.layOrder;
-    return view.pickOrder;
+    if (view.pickOrder.length > 0) return view.pickOrder;
+    return view.players.map((player) => player.id);
   }
 
   function drawPanel(): void {
@@ -548,9 +944,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    pen.txt(`공원 ${view.round}/${view.rounds}`, x, 3, C.bone);
+    pen.txt(view.rounds > 1 ? `공원 ${view.round}/${view.rounds}` : "잔디 깔기", x, 3, C.bone);
     const turn = left(latest.clock.turn);
-    if (turn !== null && view.turn !== null) {
+    if (turn !== null && view.phase !== "ended" && view.phase !== "pause") {
       const seconds = Math.ceil(turn / 1000);
       pen.txt(`${seconds}초`, W - 5, 3, seconds <= TICK_FROM ? C.crim : C.boneD, "right");
     }
@@ -567,21 +963,25 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       // the place in the priority, which decides between equals; then the colour of their grass
       pen.txt(`${view.players.findIndex((each) => each.id === player) + 1}`, x, y, C.dim);
       pen.px(x + 9, y + 2, 5, 8, grassOf(player));
+      // a pair: the partner's colour beside their own
+      const pair = view.pairs.find((each) => each.includes(player));
+      if (pair !== undefined) pen.px(x + 9, y + 7, 5, 3, grassOf(pair[0] === player ? pair[1] : pair[0]));
       if (onTurn) pen.txt("▶", x + 15, y, C.amber);
       const name = pen.fit(info?.nick ?? "", NAME_WIDTH);
       pen.txt(name, x + 27, y, gone ? C.dim : me() === player ? C.amber : C.bone);
       const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
       if (voice !== "out") drawVoiceMark(pen, x + 27 + pen.width(name) + 2, y, voice, time);
-      if (tile !== null) pen.txt(`${tile}번`, x + 112, y, C.boneD, "right");
+      if (tile !== null) pen.txt(`${tile}번`, x + 112, y, optionOf(player, 6) === 1 ? C.crim : C.boneD, "right");
       const laid = view.placed.some((placement) => placement.player === player);
       if (laid) pen.txt("놓음", x + 117, y, C.teal);
       else if (view.failed.includes(player)) pen.txt("실패", x + 117, y, C.crim);
+      else if (view.phase === "choose") pen.txt(view.choosing?.chosen.includes(player) ? "고름" : "…", x + 117, y, C.boneD);
       pen.txt(`${score}`, W - 5, y, C.brass, "right");
     });
     pen.px(x, 86, 168, 1, C.steelDD);
     const lines = logLines();
     const from = Math.max(0, lines.length - LOG_ROWS);
-    for (let i = from; i < lines.length; i++) pen.txt(lines[i][0], x, LOG_TOP + (i - from) * 14, lines[i][1]);
+    for (let i = from; i < lines.length; i++) pen.txt(pen.fit(lines[i][0], 168), x, LOG_TOP + (i - from) * 14, lines[i][1]);
     // a chat line beside its speaker's name, over the edge of the scene
     for (const [player, line] of speech) {
       const at = order.indexOf(player);
@@ -632,18 +1032,29 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     });
   }
 
+  /** How `line` came about, in words: each part that is not nought. */
+  function breakdown(line: ScoreLine): string {
+    const parts = [line.laid ? `타일 ${signed(line.tile)}` : line.tile < 0 ? `공격 실패 ${signed(line.tile)}` : "타일 못 놓음"];
+    if (line.manholes !== 0) parts.push(`맨홀 ${signed(line.manholes)}`);
+    if (line.pair !== 0) parts.push(`상생 ${signed(line.pair)}`);
+    if (line.check !== 0) parts.push(`견제 ${signed(line.check)}`);
+    return parts.join(" · ");
+  }
+
   function drawResults(): void {
     if (latest === null) return;
     const view = latest.view;
     const mine = me();
     const best = Math.max(...view.players.map((player) => player.score));
-    const won = mine !== null && view.players.find((player) => player.id === mine)?.score === best && best > 0;
+    const won = mine !== null && view.players.find((player) => player.id === mine)?.score === best;
     pen.txt(mine === null ? "종료" : won ? "승리!" : "패배", 10, 234, mine === null ? C.bone : won ? C.teal : C.crim, "left", 24);
     // equal points share a place
     const ranked = [...view.players].sort((a, b) => b.score - a.score);
     const places = ranked.map((player) => `${ranked.findIndex((other) => other.score === player.score) + 1}위 ${pen.fit(nickOf(player.id), 48)} ${player.score}`);
     pen.txt(pen.fit(places.join("  "), 280), 96, 226, C.bone);
-    pen.txt(`공원 ${view.round}곳을 깔았습니다`, 96, 240, C.boneD);
+    const line = mine === null ? null : scoreOf(mine);
+    const five = optionOf(mine, 5) === 1 ? `점수 ${signed(latest.rules.scoreBonus)} · ` : "";
+    pen.txt(pen.fit(line === null ? "판이 끝났습니다" : `${five}${breakdown(line)}`, 280), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
     else pen.txt(host ? "같은 사람들과 한 판 더 하거나 대기실로" : "방장이 새 판을 시작하기를 기다리는 중", 96, 254, C.boneD);
     if (host) button(AGAIN_RECT, "Enter 새 판", "", true, true);
@@ -665,18 +1076,28 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       drawTiles();
       return;
     }
-    // laying, or the finished park on show: the player's own tile, and how to lay it
+    // from the first choice on: the player's own tile, and how to do what is asked of them
     const mine = me();
     const number = mine === null ? null : tileOfPlayer(mine);
-    const tile = number === null ? undefined : tileOf(number);
+    const tile = number === null ? undefined : shapeOf(number, laying() ? cut : (view.placed.find((placement) => placement.player === mine)?.cut ?? []));
     if (tile !== undefined && mine !== null) {
       drawTile(turned(tile, hand?.turns ?? 0), 8, 240, 5, grassOf(mine));
-      pen.txt(`내 타일 ${tile.number}번 · ${tile.number}점`, 40, 240, C.bone);
+      const six = optionOf(mine, 6);
+      const tag = six === 1 ? " · 공격" : six === 2 ? " · 방어" : "";
+      pen.txt(`내 타일 ${tile.number}번 · ${tile.number}점${tag}`, 40, 240, C.bone);
     }
-    if (laying()) {
-      pen.txt("마우스·화살표로 옮기고 눌러서 놓기", 40, 253, C.boneD);
+    if (view.phase === "choose") {
+      pen.txt("I: 지금까지 나온 선택 카드 보기", 40, 253, C.boneD);
+    } else if (marking()) {
+      pen.txt("마우스·화살표로 칸을 고르고 눌러서 놓기", 40, 253, C.boneD);
+    } else if (view.phase === "manholes" || view.phase === "trees") {
+      pen.txt("맨홀을 덮으면 +1/-1점. 가로수 위에는 구멍 칸만.", 40, 253, C.boneD);
+    } else if (laying()) {
+      // with 방어 the button for cutting takes the room the longer hint would
+      pen.txt(defending() ? "옮겨서 놓기 · X 자르기" : "마우스·화살표로 옮기고 눌러서 놓기", 40, 253, C.boneD);
+      if (defending()) button(CUT_RECT, cutting ? "X 자르기 끝" : "X 자르기", "", cutting, true);
       button(TURN_RECT, "R 돌리기", "", false, true);
-      const ok = hand !== null && number !== null && fits(view.park, view.placed, number, hand.row, hand.col, hand.turns);
+      const ok = hand !== null && number !== null && fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees });
       button(LAY_RECT, "Enter 놓기", "", ok && Math.sin(time * 5) > 0, ok);
     } else if (view.phase === "place") {
       pen.txt("번호가 작은 타일부터 놓습니다. 자리가 없으면 0점.", 40, 253, C.boneD);
@@ -689,6 +1110,36 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     }
   }
 
+  /** The sheet of the choices the player may see: those put to everyone so far, and those to come for a player who chose 정보. */
+  function drawCards(): void {
+    if (latest === null) return;
+    const view = latest.view;
+    pen.clear(C.night);
+    pen.px(8, 8, W - 16, H - 16, C.steelDD);
+    pen.px(9, 9, W - 18, H - 18, C.bar);
+    pen.txt("선택 카드", 22, 16, C.amber);
+    pen.txt("I 또는 Esc: 닫기", W - 22, 16, C.boneD, "right");
+    let y = 34;
+    for (const which of CHOICES) {
+      const met = view.choosing?.which === which || view.choices.some((each) => each.which === which);
+      const ahead = view.preview.includes(which);
+      const mine = optionOf(me(), which);
+      pen.txt(`선택 ${which}`, 22, y, met || ahead ? C.bone : C.dim);
+      if (!met && !ahead) {
+        pen.txt("아직 공개되지 않았습니다", 92, y, C.dim);
+        y += 20;
+        continue;
+      }
+      if (ahead) pen.txt("(미리보기)", 22, y + 14, C.teal);
+      for (const option of [1, 2] as const) {
+        const x = option === 1 ? 92 : 288;
+        pen.txt(`${option} ${OPTION_NAMES[which][option - 1]}`, x, y, mine === option ? C.amber : C.brass);
+        cardLines(which, option).forEach((line, at) => pen.txt(line, x, y + 14 + at * 13, mine === option ? C.bone : C.boneD));
+      }
+      y += 56;
+    }
+  }
+
   function drawHelp(): void {
     if (latest === null) return;
     const rules = latest.rules;
@@ -697,18 +1148,17 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       ["공원 위에 내 잔디 타일을 놓아 승점을 얻습니다.", C.bone],
       ["먼저 타일 일곱 종류 중 하나를 모두가 보는 앞에서 고릅니다. 승점이 낮은", C.bone],
       ["사람부터 고르고, 한 번 고르면 바꿀 수 없습니다. 같은 타일을 골라도 됩니다.", C.bone],
-      ["", C.bone],
-      ["그다음 타일에 적힌 번호가 작은 사람부터 공원에 놓습니다.", C.bone],
-      ["타일은 돌릴 수 있지만 뒤집을 수 없고, 공원 밖으로 나가거나", C.boneD],
-      ["다른 타일과 겹치게 놓을 수 없습니다.", C.boneD],
-      ["", C.bone],
+      ["그다음 타일에 적힌 번호가 작은 사람부터 공원에 놓습니다. 타일은 돌릴 수", C.bone],
+      ["있지만 뒤집을 수 없고, 공원 밖으로 나가거나 다른 타일과 겹칠 수 없습니다.", C.bone],
       ["놓으면 타일의 번호만큼 승점을 얻고, 놓을 자리가 없으면 0점입니다.", C.bone],
-      [`공원 ${rules.rounds}곳을 이어서 깔고 승점을 합칩니다. 승점이나 번호가 같으면 이름 앞`, C.boneD],
-      ["숫자가 작은 사람이 먼저이고, 이 순서는 공원마다 한 칸씩 돌아갑니다.", C.boneD],
-      [`고르기 ${rules.pickSeconds}초, 놓기 ${rules.placeSeconds}초. 시간이 지나면 자동으로 넘어갑니다.`, C.boneD],
       ["", C.bone],
-      ["1~7: 타일 · R: 돌리기 · 화살표: 옮기기 · Enter: 정하기", C.boneD],
-      ["H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", C.amber],
+      ["사이사이에 둘 중 하나를 고르는 선택이 네 번 나옵니다 (선택 5~8).", C.teal],
+      ["모두 동시에 고르고, 다 고른 뒤에 누가 무엇을 골랐는지 공개됩니다.", C.boneD],
+      ["선택의 내용은 나올 때 공개됩니다. I 키로 나온 카드를 다시 볼 수 있습니다.", C.boneD],
+      ["", C.bone],
+      [`고르기 ${rules.pickSeconds}초, 놓기 ${rules.placeSeconds}초. 시간이 지나면 자동으로 넘어갑니다.`, C.boneD],
+      ["숫자: 고르기 · R: 돌리기 · X: 자르기(방어) · 화살표: 옮기기 · Enter: 정하기", C.boneD],
+      ["H 또는 Esc: 닫기 · I: 선택 카드 · V: 공원 보기 · M: 음소거 · T: 채팅", C.amber],
     ];
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
@@ -721,8 +1171,12 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   function draw(): void {
     pen.clear(C.night);
     if (latest === null) return;
-    if (help) {
+    if (sheet === "help") {
       drawHelp();
+      return;
+    }
+    if (sheet === "cards") {
+      drawCards();
       return;
     }
     if (laying()) takeInHand();

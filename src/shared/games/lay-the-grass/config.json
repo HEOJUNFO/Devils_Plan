@@ -1,5 +1,5 @@
 {
-  "rounds": 3,
+  "rounds": 1,
   "pickSeconds": 30,
   "placeSeconds": 60,
   "pauseSeconds": 10,
@@ -7,5 +7,25 @@
   "extraCells": 2,
   "maxCols": 12,
   "maxRows": 8,
-  "defaultTile": 7
+  "defaultTile": 7,
+  "choices": [
+    5,
+    6,
+    7,
+    8
+  ],
+  "chooseSeconds": 20,
+  "markSeconds": 20,
+  "scoreBonus": 5,
+  "attackLoss": 4,
+  "cutMax": 2,
+  "checkBonus": 5,
+  "checkAtMost": 9,
+  "checkOutOf": 16,
+  "defaultOptions": {
+    "5": 1,
+    "6": 2,
+    "7": 2,
+    "8": 1
+  }
 }

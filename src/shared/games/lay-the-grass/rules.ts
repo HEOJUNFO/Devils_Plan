@@ -9,6 +9,11 @@
  * park's cells and may not cover another tile. Laying it earns its number in
  * points; a player with nowhere left to lay theirs earns nothing.
  *
+ * With the mini-game go four either-or choices of the main match it is part
+ * of ({@link ChoiceNo}): one before the tiles are picked and three between
+ * the picking and the laying. They change what a tile earns, let cells be
+ * cut off a tile, pair players up, and put trees and manholes on the park.
+ *
  * Nothing here reads the clock or `Math.random`: the caller passes the time,
  * and the generator's state is kept in the game.
  */
@@ -37,6 +42,32 @@ export interface GrassConfig {
   maxRows: number;
   /** The tile picked for a player who does not pick in time. */
   defaultTile: number;
+  /**
+   * The either-or choices played with each park, by the numbers the document
+   * gives them (5 to 8). With none the bare mini-game is played.
+   */
+  choices: number[];
+  /** Seconds everyone has to make a choice. Not in the document. */
+  chooseSeconds: number;
+  /** Seconds a player has to put a manhole or a tree on the park. Not in the document. */
+  markSeconds: number;
+  /** Points 점수 gives at once (choice 5; the document: 5). */
+  scoreBonus: number;
+  /** Points 공격 costs when the tile cannot be laid (choice 6; the document: 4). */
+  attackLoss: number;
+  /** The most cells 방어 may cut off a tile (choice 6; the document: 2). No more than 2: every cut is tried when the room looks for room for a tile. */
+  cutMax: number;
+  /** Points 견제 gives (choice 7; the document: 5). */
+  checkBonus: number;
+  /**
+   * 견제 earns its points when at most `checkAtMost` of `checkOutOf` players
+   * lay their tile (the document: 9, in a game of 16); a room's game has
+   * fewer players, and the share is kept.
+   */
+  checkAtMost: number;
+  checkOutOf: number;
+  /** What is chosen for a player who does not choose in time, by the choice's number: 1 or 2. Not in the document. */
+  defaultOptions: Record<string, number>;
 }
 
 /** What a cell of a tile is: plain grass, the cell with the tile's number on it, or one with a hole in it. */
@@ -118,6 +149,86 @@ export interface Placement {
   row: number;
   col: number;
   turns: number;
+  /** The cells cut off the tile before it was laid (방어), where there are any. */
+  cut?: Cut[];
+}
+
+/** A cell of a tile, by where it lies in the tile's own box as the document draws it (before any turn). */
+export interface Cut {
+  row: number;
+  col: number;
+}
+
+/** Tile `number` without the cells in `cut`, in the same box; `undefined` when there is no such tile. */
+export function shapeOf(number: number, cut: readonly Cut[] = []): Tile | undefined {
+  const tile = tileOf(number);
+  if (tile === undefined || cut.length === 0) return tile;
+  return { ...tile, cells: tile.cells.filter((cell) => !cut.some((gone) => gone.row === cell.row && gone.col === cell.col)) };
+}
+
+/** Whether `cells` lie together: each can be reached from the first over shared sides. */
+function inOnePiece(cells: readonly { row: number; col: number }[]): boolean {
+  if (cells.length === 0) return true;
+  const key = (cell: { row: number; col: number }): string => `${cell.row},${cell.col}`;
+  const all = new Set(cells.map(key));
+  const seen = new Set<string>([key(cells[0])]);
+  const queue = [cells[0]];
+  while (queue.length > 0) {
+    const cell = queue.pop()!;
+    for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const next = { row: cell.row + dr, col: cell.col + dc };
+      if (all.has(key(next)) && !seen.has(key(next))) {
+        seen.add(key(next));
+        queue.push(next);
+      }
+    }
+  }
+  return seen.size === all.size;
+}
+
+/** Whether `cells`, in a box of `rows` by `cols`, shut an empty cell in: one that cannot be reached from outside the box over shared sides. */
+function shutsIn(cells: readonly { row: number; col: number }[], rows: number, cols: number): boolean {
+  const key = (row: number, col: number): string => `${row},${col}`;
+  const full = new Set(cells.map((cell) => key(cell.row, cell.col)));
+  // flood the empty space from a ring one cell wide around the box
+  const seen = new Set<string>([key(-1, -1)]);
+  const queue: [number, number][] = [[-1, -1]];
+  while (queue.length > 0) {
+    const [row, col] = queue.pop()!;
+    for (const [dr, dc] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const r = row + dr;
+      const c = col + dc;
+      if (r < -1 || c < -1 || r > rows || c > cols || full.has(key(r, c)) || seen.has(key(r, c))) continue;
+      seen.add(key(r, c));
+      queue.push([r, c]);
+    }
+  }
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      if (!full.has(key(row, col)) && !seen.has(key(row, col))) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether 방어 may cut `cells` off `tile` (the document's card): at most
+ * `max` of them, each a cell of the tile and not the one with its number; if
+ * more than one, cells that lie together; and what is left must be in one
+ * piece with no empty cell shut in the middle of it. Cutting nothing is
+ * always allowed.
+ */
+export function canCut(tile: Tile, cells: readonly Cut[], max: number): boolean {
+  if (cells.length > max) return false;
+  if (cells.length === 0) return true;
+  if (new Set(cells.map((cell) => `${cell.row},${cell.col}`)).size !== cells.length) return false;
+  for (const cell of cells) {
+    const found = tile.cells.find((each) => each.row === cell.row && each.col === cell.col);
+    if (found === undefined || found.kind === "number") return false;
+  }
+  if (!inOnePiece(cells)) return false;
+  const rest = tile.cells.filter((each) => !cells.some((gone) => gone.row === each.row && gone.col === each.col));
+  return rest.length > 0 && inOnePiece(rest) && !shutsIn(rest, tile.rows, tile.cols);
 }
 
 /** The park cells a tile covers when laid at `row`, `col` after `turns`, each with what kind of tile cell lies on it. */
@@ -131,7 +242,7 @@ const at = (row: number, col: number): string => `${row},${col}`;
 function taken(placed: readonly Placement[]): Set<string> {
   const cells = new Set<string>();
   for (const placement of placed) {
-    const tile = tileOf(placement.tile);
+    const tile = shapeOf(placement.tile, placement.cut ?? []);
     if (tile === undefined) continue;
     for (const cell of coveredBy(tile, placement.row, placement.col, placement.turns)) cells.add(at(cell.row, cell.col));
   }
@@ -139,32 +250,83 @@ function taken(placed: readonly Placement[]): Set<string> {
 }
 
 /**
- * Whether tile `number` can be laid at `row`, `col` after `turns`: every one
- * of its cells on a cell of the park, none on a tile already there.
+ * Every cut 방어 may make of `tile`: none first, then each single cell, then
+ * each pair, in the order of the tile's cells. `max` is 2 at most.
  */
-export function fits(park: Park, placed: readonly Placement[], number: number, row: number, col: number, turns: number): boolean {
-  const tile = tileOf(number);
+export function cutsOf(tile: Tile, max: number): Cut[][] {
+  const cuts: Cut[][] = [[]];
+  const cells = tile.cells.map((cell) => ({ row: cell.row, col: cell.col }));
+  if (max >= 1) {
+    for (const cell of cells) {
+      if (canCut(tile, [cell], max)) cuts.push([cell]);
+    }
+  }
+  if (max >= 2) {
+    for (let one = 0; one < cells.length; one++) {
+      for (let other = one + 1; other < cells.length; other++) {
+        if (canCut(tile, [cells[one], cells[other]], max)) cuts.push([cells[one], cells[other]]);
+      }
+    }
+  }
+  return cuts;
+}
+
+/** What bears on laying a tile besides the park and the tiles on it. */
+export interface Laying {
+  /** The cells cut off the tile (방어). */
+  cut?: readonly Cut[];
+  /** The trees on the park: only a holed cell may lie over one. */
+  trees?: readonly { row: number; col: number }[];
+}
+
+/** Whether a tile cell of `kind` may lie on the park cell at `row`, `col`: on the park, on no other tile, and over a tree only with a hole. */
+function free(park: Park, full: ReadonlySet<string>, trees: ReadonlySet<string>, row: number, col: number, kind: TileCellKind): boolean {
+  return hasCell(park, row, col) && !full.has(at(row, col)) && (kind === "hole" || !trees.has(at(row, col)));
+}
+
+/**
+ * Whether tile `number` can be laid at `row`, `col` after `turns`: every one
+ * of its cells on a cell of the park, none on a tile already there, and none
+ * but a holed cell over a tree.
+ */
+export function fits(
+  park: Park,
+  placed: readonly Placement[],
+  number: number,
+  row: number,
+  col: number,
+  turns: number,
+  laying: Laying = {},
+): boolean {
+  const tile = shapeOf(number, laying.cut ?? []);
   if (tile === undefined) return false;
   const full = taken(placed);
-  return coveredBy(tile, row, col, turns).every((cell) => hasCell(park, cell.row, cell.col) && !full.has(at(cell.row, cell.col)));
+  const trees = new Set((laying.trees ?? []).map((tree) => at(tree.row, tree.col)));
+  return coveredBy(tile, row, col, turns).every((cell) => free(park, full, trees, cell.row, cell.col, cell.kind));
 }
 
 /**
  * Every way tile `number` can still be laid on `park`: by turn, then from the
  * top, then from the left. Empty when the tile has nowhere to go.
  */
-export function waysToLay(park: Park, placed: readonly Placement[], number: number): Omit<Placement, "player" | "tile">[] {
-  const tile = tileOf(number);
+export function waysToLay(
+  park: Park,
+  placed: readonly Placement[],
+  number: number,
+  laying: Laying = {},
+): Omit<Placement, "player" | "tile" | "cut">[] {
+  const tile = shapeOf(number, laying.cut ?? []);
   if (tile === undefined) return [];
   const full = taken(placed);
+  const trees = new Set((laying.trees ?? []).map((tree) => at(tree.row, tree.col)));
   const height = park.rows.length;
   const width = Math.max(0, ...park.rows.map((row) => row.length));
-  const ways: Omit<Placement, "player" | "tile">[] = [];
+  const ways: Omit<Placement, "player" | "tile" | "cut">[] = [];
   for (let turns = 0; turns < 4; turns++) {
     const shape = turned(tile, turns);
     for (let row = 0; row + shape.rows <= height; row++) {
       for (let col = 0; col + shape.cols <= width; col++) {
-        if (shape.cells.every((cell) => hasCell(park, row + cell.row, col + cell.col) && !full.has(at(row + cell.row, col + cell.col)))) {
+        if (shape.cells.every((cell) => free(park, full, trees, row + cell.row, col + cell.col, cell.kind))) {
           ways.push({ row, col, turns });
         }
       }
@@ -173,8 +335,30 @@ export function waysToLay(park: Park, placed: readonly Placement[], number: numb
   return ways;
 }
 
-/** Where a game stands: tiles are being picked, tiles are being laid, a finished park is on show, or it is over. */
-export type GrassPhase = "pick" | "place" | "pause" | "ended";
+/**
+ * One of the either-or choices of the main match that go with this
+ * mini-game, by the number the document gives it. Every player makes each of
+ * them, all at once, and nobody is shown another's choice until all are in.
+ *
+ * - 5, before the tiles are picked: 1 점수 (points at once) or 2 정보 (a look at what choices 6 to 8 will be).
+ * - 6, once the tiles are picked: 1 공격 (the tile earns double, and costs points if it cannot be laid) or 2 방어 (cells may be cut off the tile as it is laid).
+ * - 7: 1 상생 (two play as a pair and earn for every side their tiles share) or 2 견제 (points if few enough players lay their tile).
+ * - 8: 1 가로수 (a tree is put on the park, and only a holed cell may lie over it) or 2 맨홀 (a +1 and a -1 manhole are put on the park).
+ */
+export type ChoiceNo = 5 | 6 | 7 | 8;
+
+/** The two options of a choice, as the document numbers them. */
+export type Option = 1 | 2;
+
+/** Every choice the document has for this mini-game, in the order they are made. */
+export const CHOICES: readonly ChoiceNo[] = [5, 6, 7, 8];
+
+/**
+ * Where a game stands: a choice is being made, tiles are being picked,
+ * manholes or trees are being put on the park, tiles are being laid, a
+ * finished park is on show, or it is over.
+ */
+export type GrassPhase = "choose" | "pick" | "manholes" | "trees" | "place" | "pause" | "ended";
 
 /** A player in the game. */
 export interface GrassPlayer {
@@ -183,20 +367,71 @@ export interface GrassPlayer {
   score: number;
 }
 
+/** A choice a player has made. `forced`: the room chose for a player who did not in time, or was not there. */
+export interface Chosen {
+  player: number;
+  which: ChoiceNo;
+  option: Option;
+  forced: boolean;
+}
+
+/** A manhole on the park: a tile laid over it earns or loses a point. */
+export interface Manhole {
+  row: number;
+  col: number;
+  value: 1 | -1;
+  by: number;
+}
+
+/** A tree on the park: only a holed cell of a tile may lie over it. */
+export interface Tree {
+  row: number;
+  col: number;
+  by: number;
+}
+
+/** How a player's points for a park came about. */
+export interface ScoreLine {
+  player: number;
+  /** Whether the tile was laid. */
+  laid: boolean;
+  /** For the tile itself: its number, doubled for 공격; nothing for a tile not laid, or a loss for 공격. */
+  tile: number;
+  /** For the manholes under the tile. */
+  manholes: number;
+  /** For the sides shared with a partner's tile (상생). */
+  pair: number;
+  /** For few enough players having laid their tile (견제). */
+  check: number;
+  total: number;
+}
+
 /** What has happened, in order. Everything here is seen by everyone. */
 export type GrassEvent =
   | { type: "park"; round: number }
+  /** A choice everyone has made, shown to all at once. */
+  | { type: "choice"; round: number; which: ChoiceNo; chosen: { player: number; option: Option; forced: boolean }[] }
   /** `forced`: the room picked or laid for a player who did not in time, or was not there. */
   | { type: "pick"; round: number; player: number; tile: number; forced: boolean }
-  | { type: "lay"; round: number; player: number; tile: number; forced: boolean }
+  /** Two 상생 players play as a pair; `alone`: one who chose it and has nobody to pair with. */
+  | { type: "pair"; round: number; players: [number, number] }
+  | { type: "alone"; round: number; player: number }
+  | { type: "manhole"; round: number; player: number; row: number; col: number; value: 1 | -1 }
+  | { type: "tree"; round: number; player: number; row: number; col: number }
+  /** A player put nothing on the park in their time: `left` manholes or trees were not placed. */
+  | { type: "skip"; round: number; player: number; what: "manhole" | "tree"; left: number }
+  /** `cut`: how many cells the player cut off the tile to lay it (방어). */
+  | { type: "lay"; round: number; player: number; tile: number; forced: boolean; cut: number }
   /** The player's tile had nowhere left to go. */
   | { type: "fail"; round: number; player: number; tile: number }
+  /** The points of a park, player by player. */
+  | { type: "score"; round: number; lines: ScoreLine[] }
   /** `rounds`: the last park has been laid. `abandoned`: nobody was left to go on. */
   | { type: "ended"; round: number; reason: "rounds" | "abandoned" };
 
-/** A game in progress. Nothing in it is secret but the generator's state. */
+/** A game in progress. Its secrets: the generator's state, and a choice not yet shown. */
 export interface GrassState {
-  version: 1;
+  version: 2;
   /**
    * The players in the order of their priority, highest first: drawn by lot
    * when the game starts, and passed on by one place with each park.
@@ -206,15 +441,25 @@ export interface GrassState {
   /** Which park this is, from 1. */
   round: number;
   park: Park;
+  /** The choice being made (phase `choose`), and since when; `null` otherwise. */
+  choosing: { which: ChoiceNo; since: number } | null;
+  /** This park: every choice made. Those of the choice being made are secret until all are in. */
+  choices: Chosen[];
   /** This park: the ids in the order they pick, and what has been picked so far, in that order. */
   pickOrder: number[];
   picks: { player: number; tile: number }[];
-  /** This park: the ids in the order they lay, once everyone has picked. */
+  /** This park: the pairs of 상생 players. */
+  pairs: [number, number][];
+  manholes: Manhole[];
+  trees: Tree[];
+  /** The players who are done putting manholes, or trees, on the park in the phase that is on. */
+  marked: number[];
+  /** This park: the ids in the order they lay, once everyone has picked. Manholes and trees are placed in this order too. */
   layOrder: number[];
   placed: Placement[];
   /** This park: the players whose tile had nowhere to go. */
   failed: number[];
-  /** Whose turn it is to pick or to lay, and since when (ms since the epoch); `null` between parks and at the end. */
+  /** Whose turn it is to pick, to place a manhole or a tree, or to lay, and since when; `null` while everyone chooses at once, between parks and at the end. */
   turn: { player: number; since: number } | null;
   /** Until when the finished park is on show; `null` otherwise. */
   pauseUntil: number | null;
@@ -224,7 +469,13 @@ export interface GrassState {
 }
 
 /** What a player can ask for. */
-export type GrassAction = { type: "pick"; tile: number } | { type: "lay"; row: number; col: number; turns: number };
+export type GrassAction =
+  | { type: "choose"; option: Option }
+  | { type: "pick"; tile: number }
+  | { type: "manhole"; row: number; col: number }
+  | { type: "tree"; row: number; col: number }
+  /** `cut`: the cells cut off the tile first, for a 방어 player who cuts any. */
+  | { type: "lay"; row: number; col: number; turns: number; cut?: Cut[] };
 
 /** Why something was refused. */
 export type GrassRefusal =
@@ -232,13 +483,22 @@ export type GrassRefusal =
   /** The player is not in this game. */
   | "not-playing"
   | "not-your-turn"
+  /** No choice is being made now, or the player has made theirs: a choice cannot be changed. */
+  | "not-choosing"
+  | "already-chosen"
   /** Tiles are not being picked now, or not being laid. */
   | "not-picking"
   | "not-laying"
+  /** Those cells may not be cut off the tile, or the player did not choose 방어. */
+  | "bad-cut"
+  /** Manholes or trees are not being placed now. */
+  | "not-marking"
+  /** Nothing can be put on that cell. */
+  | "bad-cell"
   | "bad-action"
   /** No tile has that number. */
   | "no-such-tile"
-  /** The tile would leave the park or lie on another tile. */
+  /** The tile would leave the park, lie on another tile, or cover a tree with a cell that has no hole. */
   | "does-not-fit";
 
 export type GrassResult = { ok: true; state: GrassState } | { ok: false; reason: GrassRefusal };
@@ -251,7 +511,7 @@ export type GrassStartRefusal =
   /** Fewer than two players: nobody to contend with. */
   | "too-few";
 
-/** What a player is sent: everything but the generator's state and the clock, which is the caller's to tell. */
+/** What a player is sent: everything but the generator's state, the clock, and choices not yet shown. */
 export interface GrassView {
   /** The viewer's id, or `null` for someone watching. */
   you: number | null;
@@ -261,8 +521,22 @@ export interface GrassView {
   rounds: number;
   park: Park;
   players: GrassPlayer[];
+  /**
+   * The choice being made: who has made theirs, and the viewer's own. What
+   * the others chose is not here until everyone has.
+   */
+  choosing: { which: ChoiceNo; chosen: number[]; mine: Option | null } | null;
+  /** The choices everyone has been shown. */
+  choices: Chosen[];
+  /** The choices still to come that the viewer may look at already: they chose 정보. Empty for anyone else. */
+  preview: ChoiceNo[];
   pickOrder: number[];
   picks: { player: number; tile: number }[];
+  pairs: [number, number][];
+  manholes: Manhole[];
+  trees: Tree[];
+  /** With this many players or fewer laying their tile, 견제 earns its points. */
+  checkAtMost: number;
   layOrder: number[];
   placed: Placement[];
   failed: number[];
@@ -273,13 +547,29 @@ export interface GrassView {
 
 const isWhole = (value: unknown): value is number => typeof value === "number" && Number.isInteger(value);
 
+/** Whether `value` is one of the two options of a choice. */
+const isOption = (value: unknown): value is Option => value === 1 || value === 2;
+
 /** Whether `config` describes a game that can be played. */
 export function isValidConfig(config: GrassConfig): boolean {
-  const positive = [config.rounds, config.pickSeconds, config.placeSeconds, config.cellsPerPlayer, config.maxCols, config.maxRows];
+  const positive = [
+    config.rounds,
+    config.pickSeconds,
+    config.placeSeconds,
+    config.chooseSeconds,
+    config.markSeconds,
+    config.cellsPerPlayer,
+    config.maxCols,
+    config.maxRows,
+    config.checkOutOf,
+  ];
   if (!positive.every((value) => isWhole(value) && value >= 1)) return false;
-  if (!isWhole(config.pauseSeconds) || config.pauseSeconds < 0) return false;
-  if (!isWhole(config.extraCells) || config.extraCells < 0) return false;
-  if (tileOf(config.defaultTile) === undefined) return false;
+  const none = [config.pauseSeconds, config.extraCells, config.scoreBonus, config.attackLoss, config.cutMax, config.checkBonus, config.checkAtMost];
+  if (!none.every((value) => isWhole(value) && value >= 0)) return false;
+  if (tileOf(config.defaultTile) === undefined || config.cutMax > 2) return false;
+  if (!Array.isArray(config.choices) || !config.choices.every((which) => CHOICES.includes(which as ChoiceNo))) return false;
+  if (new Set(config.choices).size !== config.choices.length) return false;
+  if (!CHOICES.every((which) => isOption(config.defaultOptions?.[`${which}`]))) return false;
   // a park is built of tiles of exactly this many cells
   return TILES.some((tile) => tile.cells.length === config.cellsPerPlayer);
 }
@@ -456,11 +746,62 @@ export function layOrderOf(players: readonly GrassPlayer[], picks: readonly { pl
   return [...picks].sort((a, b) => a.tile - b.tile || (rank.get(a.player) ?? 0) - (rank.get(b.player) ?? 0)).map((pick) => pick.player);
 }
 
+/**
+ * What `player` chose at choice `which` in this park, or `null`. A choice
+ * still being made counts as soon as the player has made theirs: ask this of
+ * a state, never of what is sent.
+ */
+export function optionOf(state: Pick<GrassState, "choices">, player: number, which: ChoiceNo): Option | null {
+  return state.choices.find((chosen) => chosen.which === which && chosen.player === player)?.option ?? null;
+}
+
+/** With how many players or fewer laying their tile 견제 earns its points, in a game of `players` (the document: 9 of 16). */
+export function checkAtMostFor(players: number, config: GrassConfig): number {
+  return Math.max(1, Math.floor((players * config.checkAtMost) / config.checkOutOf));
+}
+
+/** How many manholes a 맨홀 player puts on the park: a +1 and a -1 (the document). */
+const MANHOLES_EACH = 2;
+
+/** The players who put manholes (option 2 of choice 8) or a tree (option 1) on the park, in the order they do. */
+function markers(state: GrassState, option: Option): number[] {
+  return state.layOrder.filter((player) => optionOf(state, player, 8) === option);
+}
+
+/**
+ * The ways `player` can still lay their tile, with the trees that stand: the
+ * tile whole, wherever it fits; or, for a 방어 player whose tile has no room
+ * whole, the tile with the first cut that makes room for it ({@link cutsOf}).
+ * Empty when the tile has nowhere to go whatever is cut off it.
+ */
+export function waysFor(state: GrassState, player: number, config: GrassConfig): Omit<Placement, "player" | "tile">[] {
+  const number = state.picks.find((pick) => pick.player === player)?.tile ?? config.defaultTile;
+  const tile = tileOf(number);
+  if (tile === undefined) return [];
+  const cuts = optionOf(state, player, 6) === 2 ? cutsOf(tile, config.cutMax) : [[]];
+  for (const cut of cuts) {
+    const ways = waysToLay(state.park, state.placed, number, { cut, trees: state.trees });
+    if (ways.length > 0) return cut.length > 0 ? ways.map((way) => ({ ...way, cut })) : ways;
+  }
+  return [];
+}
+
+/** Whom the game is waiting on now: everyone still to choose, or the player on turn. */
+export function awaited(state: GrassState): number[] {
+  if (state.phase === "choose" && state.choosing !== null) {
+    const which = state.choosing.which;
+    return state.players.map((player) => player.id).filter((player) => optionOf(state, player, which) === null);
+  }
+  return state.turn === null ? [] : [state.turn.player];
+}
+
 /** The moment the game next needs the clock, in ms since the epoch, or `null` once it is over. */
 export function deadline(state: GrassState, config: GrassConfig): number | null {
   if (state.phase === "pause") return state.pauseUntil;
+  if (state.phase === "choose") return state.choosing === null ? null : state.choosing.since + config.chooseSeconds * 1000;
   if (state.turn === null) return null;
   if (state.phase === "pick") return state.turn.since + config.pickSeconds * 1000;
+  if (state.phase === "manholes" || state.phase === "trees") return state.turn.since + config.markSeconds * 1000;
   if (state.phase === "place") return state.turn.since + config.placeSeconds * 1000;
   return null;
 }
@@ -470,8 +811,14 @@ function clone(state: GrassState): GrassState {
     ...state,
     players: state.players.map((player) => ({ ...player })),
     park: { rows: [...state.park.rows] },
+    choosing: state.choosing === null ? null : { ...state.choosing },
+    choices: state.choices.map((chosen) => ({ ...chosen })),
     pickOrder: [...state.pickOrder],
     picks: state.picks.map((pick) => ({ ...pick })),
+    pairs: state.pairs.map((pair) => [pair[0], pair[1]]),
+    manholes: state.manholes.map((manhole) => ({ ...manhole })),
+    trees: state.trees.map((tree) => ({ ...tree })),
+    marked: [...state.marked],
     layOrder: [...state.layOrder],
     placed: state.placed.map((placement) => ({ ...placement })),
     failed: [...state.failed],
@@ -480,38 +827,89 @@ function clone(state: GrassState): GrassState {
   };
 }
 
-/**
- * Puts up park number `round` at `now`: nothing picked, nothing laid, the
- * first to pick on turn. The priority goes round with each park: whoever was
- * highest in the last one is lowest in this, so that the lot drawn at the
- * start does not favour one player through the whole game.
- */
-function open(state: GrassState, round: number, now: number, config: GrassConfig): void {
-  if (round > 1) {
-    const top = state.players.shift();
-    if (top !== undefined) state.players.push(top);
+/** What a park goes through, in order. A stage with nothing to do in it is passed over. */
+type Stage = "choose5" | "pick" | "choose6" | "choose7" | "choose8" | "manholes" | "trees" | "place";
+
+const STAGES: readonly Stage[] = ["choose5", "pick", "choose6", "choose7", "choose8", "manholes", "trees", "place"];
+
+const STAGE_OF_CHOICE: Record<ChoiceNo, Stage> = { 5: "choose5", 6: "choose6", 7: "choose7", 8: "choose8" };
+
+/** The park cells `placement` covers: its tile, less what was cut off it, turned and laid. */
+function cellsOf(placement: Placement): TileCell[] {
+  const tile = shapeOf(placement.tile, placement.cut ?? []);
+  return tile === undefined ? [] : coveredBy(tile, placement.row, placement.col, placement.turns);
+}
+
+/** How many sides the cells of two tiles share. */
+function sharedSides(a: readonly TileCell[], b: readonly TileCell[]): number {
+  let sides = 0;
+  for (const one of a) {
+    for (const other of b) {
+      if (Math.abs(one.row - other.row) + Math.abs(one.col - other.col) === 1) sides++;
+    }
   }
-  const source = randomSource(state.rng);
-  state.park = drawPark(source.next, state.players.length, config).park;
-  state.rng = source.state;
-  state.round = round;
-  state.phase = "pick";
-  state.pickOrder = pickOrderOf(state.players);
-  state.picks = [];
-  state.layOrder = [];
-  state.placed = [];
-  state.failed = [];
-  state.turn = { player: state.pickOrder[0], since: now };
-  state.pauseUntil = null;
-  state.history.push({ type: "park", round });
+  return sides;
+}
+
+/**
+ * The points of the park as it stands, player by player in the order of
+ * their priority. The tile's number for a tile laid, doubled for 공격, and a
+ * loss for 공격 whose tile was not laid; a point up or down for each manhole
+ * under the tile; for a pair, a point for every side their two tiles share,
+ * halved between them ((gap) the document leaves the split to the two of
+ * them: an odd point goes to the one with fewer points, or to the higher in
+ * priority); for 견제, its points when few enough tiles were laid.
+ */
+export function scoreLines(state: GrassState, config: GrassConfig): ScoreLine[] {
+  const laidFew = state.placed.length <= checkAtMostFor(state.players.length, config);
+  const lines: ScoreLine[] = state.players.map((player) => {
+    const placement = state.placed.find((each) => each.player === player.id);
+    const number = state.picks.find((pick) => pick.player === player.id)?.tile ?? 0;
+    const attack = optionOf(state, player.id, 6) === 1;
+    const cells = placement === undefined ? [] : cellsOf(placement);
+    const manholes = state.manholes
+      .filter((manhole) => cells.some((cell) => cell.row === manhole.row && cell.col === manhole.col))
+      .reduce((sum, manhole) => sum + manhole.value, 0);
+    return {
+      player: player.id,
+      laid: placement !== undefined,
+      tile: placement !== undefined ? (attack ? number * 2 : number) : attack ? -config.attackLoss : 0,
+      manholes,
+      pair: 0,
+      check: optionOf(state, player.id, 7) === 2 && laidFew ? config.checkBonus : 0,
+      total: 0,
+    };
+  });
+  const lineOf = (player: number): ScoreLine | undefined => lines.find((line) => line.player === player);
+  const before = (line: ScoreLine): number =>
+    (state.players.find((player) => player.id === line.player)?.score ?? 0) + line.tile + line.manholes + line.check;
+  for (const [a, b] of state.pairs) {
+    const first = state.placed.find((each) => each.player === a);
+    const second = state.placed.find((each) => each.player === b);
+    const one = lineOf(a);
+    const other = lineOf(b);
+    if (first === undefined || second === undefined || one === undefined || other === undefined) continue;
+    const sides = sharedSides(cellsOf(first), cellsOf(second));
+    one.pair = Math.floor(sides / 2);
+    other.pair = Math.floor(sides / 2);
+    if (sides % 2 === 1) {
+      // `lines` is in the order of priority: with the same points the first of the two gets it
+      const behind = before(other) < before(one) ? other : before(one) < before(other) ? one : lines.indexOf(one) < lines.indexOf(other) ? one : other;
+      behind.pair += 1;
+    }
+  }
+  for (const line of lines) line.total = line.tile + line.manholes + line.pair + line.check;
+  return lines;
 }
 
 /** The park is laid: the points are counted, and the game ends or the park stays on show. */
 function close(state: GrassState, now: number, config: GrassConfig): void {
-  for (const placement of state.placed) {
-    const player = state.players.find((each) => each.id === placement.player);
-    if (player !== undefined) player.score += placement.tile;
+  const lines = scoreLines(state, config);
+  for (const line of lines) {
+    const player = state.players.find((each) => each.id === line.player);
+    if (player !== undefined) player.score += line.total;
   }
+  state.history.push({ type: "score", round: state.round, lines });
   state.turn = null;
   if (state.round >= config.rounds) {
     state.phase = "ended";
@@ -532,7 +930,7 @@ function nextToLay(state: GrassState, now: number, config: GrassConfig): void {
   for (const player of state.layOrder) {
     if (state.failed.includes(player) || state.placed.some((placement) => placement.player === player)) continue;
     const tile = state.picks.find((pick) => pick.player === player)?.tile ?? config.defaultTile;
-    if (waysToLay(state.park, state.placed, tile).length === 0) {
+    if (waysFor(state, player, config).length === 0) {
       state.failed.push(player);
       state.history.push({ type: "fail", round: state.round, player, tile });
       continue;
@@ -543,7 +941,121 @@ function nextToLay(state: GrassState, now: number, config: GrassConfig): void {
   close(state, now, config);
 }
 
-/** `player` has picked `tile`: the next picks, or the laying starts. */
+/** Sets `stage` going at `now`. Returns `false` when it has nothing to do in this park and is passed over. */
+function enter(state: GrassState, stage: Stage, now: number, config: GrassConfig): boolean {
+  if (stage === "choose5" || stage === "choose6" || stage === "choose7" || stage === "choose8") {
+    const which = CHOICES.find((each) => STAGE_OF_CHOICE[each] === stage);
+    if (which === undefined || !config.choices.includes(which)) return false;
+    state.phase = "choose";
+    state.choosing = { which, since: now };
+    state.turn = null;
+    return true;
+  }
+  if (stage === "pick") {
+    state.phase = "pick";
+    state.pickOrder = pickOrderOf(state.players);
+    state.picks = [];
+    state.turn = { player: state.pickOrder[0], since: now };
+    return true;
+  }
+  if (stage === "manholes" || stage === "trees") {
+    const first = markers(state, stage === "manholes" ? 2 : 1)[0];
+    if (first === undefined) return false;
+    state.phase = stage;
+    state.marked = [];
+    state.turn = { player: first, since: now };
+    return true;
+  }
+  state.phase = "place";
+  state.turn = null;
+  nextToLay(state, now, config);
+  return true;
+}
+
+/** Goes on from `after` (`null`: from the start of a park) to the next stage that has something to do. */
+function advance(state: GrassState, after: Stage | null, now: number, config: GrassConfig): void {
+  for (let at = after === null ? 0 : STAGES.indexOf(after) + 1; at < STAGES.length; at++) {
+    if (enter(state, STAGES[at], now, config)) return;
+  }
+}
+
+/**
+ * Puts up park number `round` at `now`, with nothing chosen, picked or laid.
+ * The priority goes round with each park: whoever was highest in the last
+ * one is lowest in this, so that the lot drawn at the start does not favour
+ * one player through the whole game.
+ */
+function open(state: GrassState, round: number, now: number, config: GrassConfig): void {
+  if (round > 1) {
+    const top = state.players.shift();
+    if (top !== undefined) state.players.push(top);
+  }
+  const source = randomSource(state.rng);
+  state.park = drawPark(source.next, state.players.length, config).park;
+  state.rng = source.state;
+  state.round = round;
+  state.choosing = null;
+  state.choices = [];
+  state.pickOrder = [];
+  state.picks = [];
+  state.pairs = [];
+  state.manholes = [];
+  state.trees = [];
+  state.marked = [];
+  state.layOrder = [];
+  state.placed = [];
+  state.failed = [];
+  state.turn = null;
+  state.pauseUntil = null;
+  state.history.push({ type: "park", round });
+  advance(state, null, now, config);
+}
+
+/**
+ * Everyone has made the choice: it is shown, takes effect, and the park goes
+ * on. 점수 gives its points there and then, so that they count when the
+ * order of picking is worked out. 상생 players are paired ((gap) the document
+ * does not say how: here by priority, the first with the second, and so on;
+ * one left over plays without a partner).
+ */
+function settleChoice(state: GrassState, now: number, config: GrassConfig): void {
+  if (state.choosing === null) return;
+  const which = state.choosing.which;
+  const chosen = state.players
+    .map((player) => state.choices.find((each) => each.which === which && each.player === player.id))
+    .filter((each): each is Chosen => each !== undefined);
+  state.history.push({
+    type: "choice",
+    round: state.round,
+    which,
+    chosen: chosen.map((each) => ({ player: each.player, option: each.option, forced: each.forced })),
+  });
+  state.choosing = null;
+  if (which === 5) {
+    for (const each of chosen) {
+      const player = state.players.find((one) => one.id === each.player);
+      if (each.option === 1 && player !== undefined) player.score += config.scoreBonus;
+    }
+  }
+  if (which === 7) {
+    const together = chosen.filter((each) => each.option === 1).map((each) => each.player);
+    for (let at = 0; at + 1 < together.length; at += 2) {
+      state.pairs.push([together[at], together[at + 1]]);
+      state.history.push({ type: "pair", round: state.round, players: [together[at], together[at + 1]] });
+    }
+    if (together.length % 2 === 1) state.history.push({ type: "alone", round: state.round, player: together[together.length - 1] });
+  }
+  advance(state, STAGE_OF_CHOICE[which], now, config);
+}
+
+/** `player` has chosen `option` of the choice being made; when that makes everyone, the choice is settled. */
+function chose(state: GrassState, player: number, option: Option, forced: boolean, now: number, config: GrassConfig): void {
+  if (state.choosing === null) return;
+  state.choices.push({ player, which: state.choosing.which, option, forced });
+  if (awaited(state).length === 0) settleChoice(state, now, config);
+}
+
+/** `player` has picked `tile`: the next picks, or the park goes on to what follows the picking. */
 function picked(state: GrassState, player: number, tile: number, forced: boolean, now: number, config: GrassConfig): void {
   state.picks.push({ player, tile });
   state.history.push({ type: "pick", round: state.round, player, tile, forced });
@@ -552,15 +1064,27 @@ function picked(state: GrassState, player: number, tile: number, forced: boolean
     state.turn = { player: next, since: now };
     return;
   }
-  state.phase = "place";
+  state.turn = null;
   state.layOrder = layOrderOf(state.players, state.picks);
-  nextToLay(state, now, config);
+  advance(state, "pick", now, config);
+}
+
+/** `player` is done putting things on the park: the next player does, or the park goes on. */
+function marked(state: GrassState, player: number, now: number, config: GrassConfig): void {
+  const stage = state.phase === "manholes" ? "manholes" : "trees";
+  state.marked.push(player);
+  const next = markers(state, stage === "manholes" ? 2 : 1).find((each) => !state.marked.includes(each));
+  if (next !== undefined) {
+    state.turn = { player: next, since: now };
+    return;
+  }
+  state.turn = null;
+  advance(state, stage, now, config);
 }
 
 /**
  * Starts a game at `now` for `players` (their ids). Their priority is drawn
- * by lot; nobody has any points, so in the first park they pick in that
- * order.
+ * by lot; nobody has any points yet.
  */
 export function createGame(
   setup: { players: number[]; seed: number; now: number },
@@ -578,13 +1102,19 @@ export function createGame(
   while (waiting.length > 0) players.push({ id: waiting.splice(randomInt(source.next, waiting.length), 1)[0], score: 0 });
 
   const state: GrassState = {
-    version: 1,
+    version: 2,
     players,
     phase: "pick",
     round: 0,
     park: { rows: [] },
+    choosing: null,
+    choices: [],
     pickOrder: [],
     picks: [],
+    pairs: [],
+    manholes: [],
+    trees: [],
+    marked: [],
     layOrder: [],
     placed: [],
     failed: [],
@@ -597,15 +1127,29 @@ export function createGame(
   return { ok: true, state };
 }
 
+/** Reads a cell off the wire: two numbers. */
+function parseCell(raw: unknown): Cut | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const data = raw as Record<string, unknown>;
+  return typeof data.row === "number" && typeof data.col === "number" ? { row: data.row, col: data.col } : null;
+}
+
 /** Reads an action off the wire, returning `null` for anything that is not one. */
 export function parseAction(raw: unknown): GrassAction | null {
   if (typeof raw !== "object" || raw === null) return null;
   const data = raw as Record<string, unknown>;
+  if (data.type === "choose") return isOption(data.option) ? { type: "choose", option: data.option } : null;
   if (data.type === "pick") return typeof data.tile === "number" ? { type: "pick", tile: data.tile } : null;
+  if (data.type === "manhole" || data.type === "tree") {
+    const cell = parseCell(data);
+    return cell === null ? null : { type: data.type, row: cell.row, col: cell.col };
+  }
   if (data.type === "lay") {
-    return typeof data.row === "number" && typeof data.col === "number" && typeof data.turns === "number"
-      ? { type: "lay", row: data.row, col: data.col, turns: data.turns }
-      : null;
+    if (typeof data.row !== "number" || typeof data.col !== "number" || typeof data.turns !== "number") return null;
+    if (data.cut === undefined) return { type: "lay", row: data.row, col: data.col, turns: data.turns };
+    if (!Array.isArray(data.cut)) return null;
+    const cut = data.cut.map(parseCell);
+    return cut.every((cell): cell is Cut => cell !== null) ? { type: "lay", row: data.row, col: data.col, turns: data.turns, cut } : null;
   }
   return null;
 }
@@ -614,6 +1158,15 @@ export function parseAction(raw: unknown): GrassAction | null {
 export function applyAction(state: GrassState, player: number, action: GrassAction, now: number, config: GrassConfig): GrassResult {
   if (state.phase === "ended") return { ok: false, reason: "game-over" };
   if (rankOf(state, player) < 0) return { ok: false, reason: "not-playing" };
+
+  if (action.type === "choose") {
+    if (state.phase !== "choose" || state.choosing === null) return { ok: false, reason: "not-choosing" };
+    if (!isOption(action.option)) return { ok: false, reason: "bad-action" };
+    if (optionOf(state, player, state.choosing.which) !== null) return { ok: false, reason: "already-chosen" };
+    const next = clone(state);
+    chose(next, player, action.option, false, now, config);
+    return { ok: true, state: next };
+  }
 
   if (action.type === "pick") {
     if (state.phase !== "pick") return { ok: false, reason: "not-picking" };
@@ -624,6 +1177,30 @@ export function applyAction(state: GrassState, player: number, action: GrassActi
     return { ok: true, state: next };
   }
 
+  if (action.type === "manhole" || action.type === "tree") {
+    if (state.phase !== (action.type === "manhole" ? "manholes" : "trees")) return { ok: false, reason: "not-marking" };
+    if (state.turn?.player !== player) return { ok: false, reason: "not-your-turn" };
+    if (!isWhole(action.row) || !isWhole(action.col) || !hasCell(state.park, action.row, action.col)) return { ok: false, reason: "bad-cell" };
+    const here = (each: { row: number; col: number }): boolean => each.row === action.row && each.col === action.col;
+    // one manhole to a cell; and no tree on a manhole or on another tree (the document: 맨홀 위에 가로수 배치 불가능)
+    if (state.manholes.some(here) || (action.type === "tree" && state.trees.some(here))) return { ok: false, reason: "bad-cell" };
+    const next = clone(state);
+    if (action.type === "tree") {
+      next.trees.push({ row: action.row, col: action.col, by: player });
+      next.history.push({ type: "tree", round: state.round, player, row: action.row, col: action.col });
+      marked(next, player, now, config);
+      return { ok: true, state: next };
+    }
+    const mine = state.manholes.filter((manhole) => manhole.by === player).length;
+    const value = mine === 0 ? 1 : -1;
+    next.manholes.push({ row: action.row, col: action.col, value, by: player });
+    next.history.push({ type: "manhole", round: state.round, player, row: action.row, col: action.col, value });
+    if (mine + 1 >= MANHOLES_EACH) marked(next, player, now, config);
+    // the second manhole has its own time
+    else next.turn = { player, since: now };
+    return { ok: true, state: next };
+  }
+
   if (action.type !== "lay") return { ok: false, reason: "bad-action" };
   if (state.phase !== "place") return { ok: false, reason: "not-laying" };
   if (state.turn?.player !== player) return { ok: false, reason: "not-your-turn" };
@@ -631,45 +1208,67 @@ export function applyAction(state: GrassState, player: number, action: GrassActi
     return { ok: false, reason: "bad-action" };
   }
   const tile = state.picks.find((pick) => pick.player === player)?.tile;
-  if (tile === undefined || !fits(state.park, state.placed, tile, action.row, action.col, action.turns)) {
+  const shape = tile === undefined ? undefined : tileOf(tile);
+  if (tile === undefined || shape === undefined) return { ok: false, reason: "does-not-fit" };
+  // 방어: cells may be cut off the tile as it is laid, and only by a player who chose it
+  const cut = (action.cut ?? []).map((cell) => ({ row: cell.row, col: cell.col }));
+  if (cut.length > 0) {
+    if (optionOf(state, player, 6) !== 2 || !cut.every((cell) => isWhole(cell.row) && isWhole(cell.col))) return { ok: false, reason: "bad-cut" };
+    if (!canCut(shape, cut, config.cutMax)) return { ok: false, reason: "bad-cut" };
+  }
+  if (!fits(state.park, state.placed, tile, action.row, action.col, action.turns, { cut, trees: state.trees })) {
     return { ok: false, reason: "does-not-fit" };
   }
   const next = clone(state);
-  next.placed.push({ player, tile, row: action.row, col: action.col, turns: action.turns });
-  next.history.push({ type: "lay", round: state.round, player, tile, forced: false });
+  next.placed.push({ player, tile, row: action.row, col: action.col, turns: action.turns, ...(cut.length > 0 ? { cut } : {}) });
+  next.history.push({ type: "lay", round: state.round, player, tile, forced: false, cut: cut.length });
   nextToLay(next, now, config);
   return { ok: true, state: next };
 }
 
 /**
- * The room moves for the player whose turn it is, at `now`: the default tile
- * is picked, or the tile is laid in the first place it fits (by turn, then
- * from the top, then from the left). For a player who did not move in time
- * or is not there. Returns the state unchanged when it is nobody's turn. The
- * input state is not modified.
+ * The room moves for `player` at `now` (by default the player on turn): for
+ * one who did not move in time or is not there. A choice is made for them
+ * (`defaultOptions`), the default tile is picked, no manhole or tree is
+ * placed, the tile is laid in the first place it fits (by turn, then from
+ * the top, then from the left; whole if it can be, see {@link waysFor}). Returns the
+ * state unchanged when nothing is awaited from that player. The input state
+ * is not modified.
  */
-export function moveFor(state: GrassState, now: number, config: GrassConfig): GrassState {
-  if (state.turn === null || (state.phase !== "pick" && state.phase !== "place")) return state;
-  const player = state.turn.player;
+export function moveFor(state: GrassState, now: number, config: GrassConfig, player: number | undefined = state.turn?.player): GrassState {
+  if (player === undefined || !awaited(state).includes(player)) return state;
   const next = clone(state);
+  if (state.phase === "choose" && state.choosing !== null) {
+    chose(next, player, config.defaultOptions[`${state.choosing.which}`] === 2 ? 2 : 1, true, now, config);
+    return next;
+  }
   if (state.phase === "pick") {
     picked(next, player, config.defaultTile, true, now, config);
     return next;
   }
+  if (state.phase === "manholes" || state.phase === "trees") {
+    const what = state.phase === "manholes" ? "manhole" : "tree";
+    const left = what === "manhole" ? MANHOLES_EACH - state.manholes.filter((manhole) => manhole.by === player).length : 1;
+    next.history.push({ type: "skip", round: state.round, player, what, left });
+    marked(next, player, now, config);
+    return next;
+  }
+  if (state.phase !== "place") return state;
   const tile = state.picks.find((pick) => pick.player === player)?.tile ?? config.defaultTile;
-  const way = waysToLay(state.park, state.placed, tile)[0];
+  const way = waysFor(state, player, config)[0];
   // a turn is given only to a player whose tile fits somewhere
   if (way === undefined) return state;
   next.placed.push({ player, tile, ...way });
-  next.history.push({ type: "lay", round: state.round, player, tile, forced: true });
+  next.history.push({ type: "lay", round: state.round, player, tile, forced: true, cut: way.cut?.length ?? 0 });
   nextToLay(next, now, config);
   return next;
 }
 
 /**
- * What the clock does at `now`: a player out of time is moved for, a finished
- * park gives way to the next. Returns the state unchanged when nothing is
- * due, so calling it twice is safe.
+ * What the clock does at `now`: whoever is out of time is moved for (everyone
+ * still to choose, or the player on turn), a finished park gives
+ * way to the next. Returns the state unchanged when nothing is due, so
+ * calling it twice is safe.
  */
 export function applyTimeout(state: GrassState, now: number, config: GrassConfig): GrassState {
   const due = deadline(state, config);
@@ -679,7 +1278,14 @@ export function applyTimeout(state: GrassState, now: number, config: GrassConfig
     open(next, state.round + 1, now, config);
     return next;
   }
-  return moveFor(state, now, config);
+  const phase = state.phase;
+  let next = state;
+  // those who choose at once are all out of time together; the choice is settled once the last is chosen for
+  for (const player of awaited(state)) {
+    if (next.phase !== phase) break;
+    next = moveFor(next, now, config, player);
+  }
+  return next;
 }
 
 /**
@@ -692,6 +1298,7 @@ export function abandon(state: GrassState): GrassState {
   const next = clone(state);
   next.phase = "ended";
   next.turn = null;
+  next.choosing = null;
   next.pauseUntil = null;
   next.history.push({ type: "ended", round: state.round, reason: "abandoned" });
   return next;
@@ -705,22 +1312,48 @@ export function shiftClock(state: GrassState, by: number): GrassState {
   if (by === 0) return state;
   return {
     ...state,
+    choosing: state.choosing === null ? null : { ...state.choosing, since: state.choosing.since + by },
     turn: state.turn === null ? null : { ...state.turn, since: state.turn.since + by },
     pauseUntil: state.pauseUntil === null ? null : state.pauseUntil + by,
   };
 }
 
-/** The game as `player` may see it (`null` for someone watching): all of it but the generator and the clock. */
+/**
+ * The game as `player` may see it (`null` for someone watching): all of it
+ * but the generator, the clock, and what the others have chosen in a choice
+ * not everyone has made yet.
+ */
 export function viewFor(state: GrassState, player: number | null, config: GrassConfig): GrassView {
+  const you = player !== null && rankOf(state, player) >= 0 ? player : null;
+  const which = state.choosing?.which ?? null;
+  const shown = state.choices.filter((chosen) => chosen.which !== which);
+  // 정보: the choices not yet put to everyone may be looked at already
+  const informed = you !== null && shown.some((chosen) => chosen.which === 5 && chosen.player === you && chosen.option === 2);
+  const met = new Set<ChoiceNo>(shown.map((chosen) => chosen.which));
+  if (which !== null) met.add(which);
   return {
-    you: player !== null && rankOf(state, player) >= 0 ? player : null,
+    you,
     phase: state.phase,
     round: state.round,
     rounds: config.rounds,
     park: { rows: [...state.park.rows] },
     players: state.players.map((each) => ({ ...each })),
+    choosing:
+      which === null
+        ? null
+        : {
+            which,
+            chosen: state.choices.filter((chosen) => chosen.which === which).map((chosen) => chosen.player),
+            mine: you === null ? null : optionOf(state, you, which),
+          },
+    choices: shown.map((chosen) => ({ ...chosen })),
+    preview: informed ? CHOICES.filter((each) => config.choices.includes(each) && !met.has(each)) : [],
     pickOrder: [...state.pickOrder],
     picks: state.picks.map((pick) => ({ ...pick })),
+    pairs: state.pairs.map((pair) => [pair[0], pair[1]]),
+    manholes: state.manholes.map((manhole) => ({ ...manhole })),
+    trees: state.trees.map((tree) => ({ ...tree })),
+    checkAtMost: checkAtMostFor(state.players.length, config),
     layOrder: [...state.layOrder],
     placed: state.placed.map((placement) => ({ ...placement })),
     failed: [...state.failed],

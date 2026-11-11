@@ -210,7 +210,7 @@ function firstWay(view, number) {
   return null;
 }
 
-/** The third game, in a room of its own: two players, off the list, one park laid. */
+/** The third game, in a room of its own: two players, off the list, one park laid with its four choices. */
 async function thirdGame() {
   const code = roomCode();
   const players = [];
@@ -228,23 +228,58 @@ async function thirdGame() {
   const games = await Promise.all(players.map((p) => p.until("the third game to start", (m) => m.type === "game" || m.type === "refused")));
   const cells = games[0].type === "game" ? games[0].view.park.rows.join("").split("#").length - 1 : 0;
   check("the third game starts on a park for two", games.every((g) => g.type === "game" && g.game === THIRD_GAME) && cells === 16, `${cells} cells`);
+  check("it starts with choice 5 put to both", games[0].view.phase === "choose" && games[0].view.choosing?.which === 5, games[0].view.phase);
+
+  /** Both choose `option` of choice `which`; resolves with what player 0 sees once the choice is settled. */
+  const bothChoose = async (which, option) => {
+    await players[0].until(`choice ${which} to come up`, (m) => m.type === "game" && m.view.choosing?.which === which);
+    // what one has chosen is not sent to the other while the choice is open
+    players[0].send({ type: "action", action: { type: "choose", option } });
+    const open = await players[1].until(`player 1 to see that player 0 chose at ${which}`, (m) => m.type === "game" && m.view.choosing?.which === which && m.view.choosing.chosen.includes(0));
+    const leak = JSON.stringify(open.view).includes('"option"');
+    players[1].send({ type: "action", action: { type: "choose", option } });
+    const settled = await players[0].until(`choice ${which} to be settled`, (m) => m.type === "game" && m.view.choices.filter((c) => c.which === which).length === 2);
+    return { settled, leak };
+  };
+
+  const five = await bothChoose(5, 2);
+  check("a choice is kept from the other player until both have made it", !five.leak);
+  check("the picking follows choice 5", five.settled.view.phase === "pick", five.settled.view.phase);
 
   // a pick out of turn is refused; then each picks tile 7 in turn
-  const first = games[0].view.turn;
+  const first = five.settled.view.turn;
   players[1 - first].send({ type: "action", action: { type: "pick", tile: 7 } });
   const early = await players[1 - first].until("the refusal of a pick out of turn", (m) => m.type === "refused");
   check("a pick out of turn is refused", early.reason === "not-your-turn", early.reason);
   for (let picked = 0; picked < 2; picked++) {
-    const game = await players[0].until("the next pick", (m) => m.type === "game" && m.view.picks.length === picked);
+    const game = await players[0].until("the next pick", (m) => m.type === "game" && m.view.picks.length === picked && m.view.phase === "pick");
     players[game.view.turn].send({ type: "action", action: { type: "pick", tile: 7 } });
   }
 
+  // 공격 (a tile either lies whole or fails: nothing is cut), 견제, 맨홀
+  await bothChoose(6, 1);
+  await bothChoose(7, 2);
+  const eight = await bothChoose(8, 2);
+  check("the manholes follow choice 8", eight.settled.view.phase === "manholes", eight.settled.view.phase);
+
+  // each puts a +1 and a -1 on the park, on cells of their own
+  const parkCells = [];
+  eight.settled.view.park.rows.forEach((line, row) => [...line].forEach((mark, col) => mark === "#" && parkCells.push({ row, col })));
+  for (let down = 0; down < 4; down++) {
+    const game = await players[0].until("the next manhole", (m) => m.type === "game" && m.view.manholes.length === down);
+    if (game.view.phase !== "manholes") break;
+    players[game.view.turn].send({ type: "action", action: { type: "manhole", ...parkCells[down] } });
+  }
+
   // a tile laid off the park is refused; then each lays theirs in the first place it fits
-  const laying = await players[0].until("the laying to begin", (m) => m.type === "game" && m.view.phase === "place");
-  const from = players[laying.view.turn].messages.length;
-  players[laying.view.turn].send({ type: "action", action: { type: "lay", row: 50, col: 50, turns: 0 } });
-  const off = await players[laying.view.turn].until("the refusal of a tile off the park", (m) => m.type === "refused", from);
-  check("a tile laid off the park is refused", off.reason === "does-not-fit", off.reason);
+  const laying = await players[0].until("the laying to begin", (m) => m.type === "game" && (m.view.phase === "place" || m.view.phase === "ended"));
+  check("four manholes are on the park, two up and two down", laying.view.manholes.length === 4 && laying.view.manholes.reduce((sum, each) => sum + each.value, 0) === 0, `${laying.view.manholes.length}`);
+  if (laying.view.phase === "place") {
+    const from = players[laying.view.turn].messages.length;
+    players[laying.view.turn].send({ type: "action", action: { type: "lay", row: 50, col: 50, turns: 0 } });
+    const off = await players[laying.view.turn].until("the refusal of a tile off the park", (m) => m.type === "refused", from);
+    check("a tile laid off the park is refused", off.reason === "does-not-fit", off.reason);
+  }
   for (let step = 0; step < 4; step++) {
     const game = players[0].last("game");
     if (game.view.phase !== "place") break;
@@ -255,11 +290,16 @@ async function thirdGame() {
     await players[0].until("the tile to be laid", (m) => m.type === "game" && m.view.placed.length + m.view.failed.length > done);
   }
   const closed = players[0].last("game");
+  const score = closed.view.history.find((event) => event.type === "score");
+  const lines = score?.lines ?? [];
   const points = closed.view.players.reduce((sum, player) => sum + player.score, 0);
   check(
-    "the park is closed with each tile laid counted for its number",
-    closed.view.phase === "pause" && closed.view.placed.length + closed.view.failed.length === 2 && points === 7 * closed.view.placed.length && closed.view.placed.length > 0,
-    `${closed.view.placed.length} laid, ${closed.view.failed.length} failed, ${points} points`,
+    "the park is closed with a tile laid counted double and one not laid at a loss, and every line adds up",
+    closed.view.phase === "ended" &&
+      lines.length === 2 &&
+      lines.every((line) => line.tile === (line.laid ? 14 : -4) && line.total === line.tile + line.manholes + line.pair + line.check) &&
+      points === lines.reduce((sum, line) => sum + line.total, 0),
+    `${closed.view.phase}, ${closed.view.placed.length} laid, ${closed.view.failed.length} failed, ${points} points`,
   );
   const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
   check("no token is sent in the third game either", !sentAll.includes("smoke-check-token"));
