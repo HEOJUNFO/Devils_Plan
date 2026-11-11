@@ -33,7 +33,7 @@ rule has the user's own words, the history, and the detail. A part marked
   made the name up ("무거운 13", "미스터리 거래소"). No game is given a name
   of the assistant's own. The rules are used as documented; the show's title,
   logo, cast, set and screen layout are not used. Game ids stay as they are,
-  and the Worker is `game-plan`. Detail: `.claude/rules/game-names.md`.
+  and the Worker is `brain-survival`. Detail: `.claude/rules/game-names.md`.
 - **The game is read in Korean and in English.** Every sentence a player
   reads is there in both; a new game or a new sentence comes with both. A
   screen's sentences are in the `words.ts` beside it, never in the markup or

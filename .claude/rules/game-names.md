@@ -41,8 +41,11 @@ assistant translates plainly and says so in its report. Terms and sentences:
   and screen layout are not used.
 - Game ids (`russian-roulette`, `lay-the-grass`, `under-thirteen`) are not
   shown to players and stay as they are.
-- The Worker's name is shown, as the address. The user chose `game-plan` for
-  it on 2026-11-11 ("game-plan으로하자"), in place of `empty-chamber`, the name
-  of the first build. `wrangler.jsonc`, `package.json` and the browser's
-  storage keys carry it. The folder `prototypes/empty-chamber/` keeps its
+- The Worker's name is shown, as the address. It is `brain-survival`, which
+  the user chose on 2026-11-11 ("game-plan 되신 brain-survival로 바꾸자"). It
+  was `game-plan` earlier that day ("game-plan으로하자"), and before that
+  `empty-chamber`, the name of the first build. `wrangler.jsonc`,
+  `package.json` and the browser's storage keys carry it. The address changes
+  only when the Worker is renamed in the Cloudflare dashboard: Workers Builds
+  deploys to the Worker it is connected to, whatever `wrangler.jsonc` says. The folder `prototypes/empty-chamber/` keeps its
   name.

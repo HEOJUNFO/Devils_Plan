@@ -9,5 +9,5 @@ const profile = new URLSearchParams(location.search).get("profile") ?? "";
 
 /** The key `name` is kept under; the Worker's name leads it (CLAUDE.md, Project Rules). */
 export function storageKey(name: string): string {
-  return `game-plan.${name}${profile ? `.${profile}` : ""}`;
+  return `brain-survival.${name}${profile ? `.${profile}` : ""}`;
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "game-plan",
+  "name": "brain-survival",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-11-10",
   // Bots fill empty seats only while developing: players are offered games

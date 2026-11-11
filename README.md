@@ -1,4 +1,4 @@
-<h1 align="center">game-plan</h1>
+<h1 align="center">brain-survival</h1>
 
 <p align="center">
   《데블스 플랜: 데드 어게인》(시즌 3)의 게임을 규칙 그대로,<br />
@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://game-plan.heojunfo.workers.dev"><b>지금 플레이하기</b></a>
+  <a href="https://brain-survival.heojunfo.workers.dev"><b>지금 플레이하기</b></a>
   ·
   <a href="#게임">게임</a>
   ·
