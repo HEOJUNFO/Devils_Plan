@@ -344,11 +344,19 @@ button.choice[aria-pressed="true"] {
   color: var(--amber);
 }
 
-/* The games to pick from, two to a row: the list grows downwards as games are added. */
+/*
+ * The games to pick from, two to a row: the list grows downwards as games are
+ * added, three rows deep, and past that it scrolls: the form has no more room
+ * above who may come in.
+ */
 #game-choices {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
+  max-height: 59px;
+  overflow-y: auto;
+  scrollbar-color: var(--edge) var(--night);
+  scrollbar-width: thin;
 }
 
 #game-choices button {
@@ -416,12 +424,19 @@ button.choice[aria-pressed="true"] {
   left: 57px;
 }
 
-/* And the games to pick from go one to a row, with nothing over them but the form's own heading. */
+/*
+ * And the games to pick from go one to a row, five rows deep. The room for
+ * them comes from the two headings inside the form, which are said to a
+ * screen reader and not shown: the buttons under them say what they are.
+ */
 :root[lang="en"] #game-choices {
   grid-template-columns: 1fr;
+  max-height: 101px;
+  margin-bottom: 4px;
 }
 
-:root[lang="en"] #game-label {
+:root[lang="en"] #game-label,
+:root[lang="en"] #listed-label {
   position: absolute;
   width: 1px;
   height: 1px;

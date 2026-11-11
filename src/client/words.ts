@@ -179,7 +179,8 @@ const en: typeof ko = {
     go: "Make",
     listedHint: "Listed: anyone can come in.",
     unlistedHint: "By link or code only.",
-    startsAt: (seconds) => (seconds > 0 ? `Starts at ${seconds}s a turn.` : "Starts with no turn limit."),
+    // two lines of the column at most: five games leave the form no more
+    startsAt: (seconds) => (seconds > 0 ? `Starts at ${seconds}s a turn.` : "No turn limit."),
     howMany: (min, max) => (min === 1 ? `Can be played alone, or by up to ${max} together.` : `For ${min} to ${max} players.`),
   },
   room: {
