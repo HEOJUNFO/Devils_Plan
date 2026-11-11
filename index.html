@@ -11,6 +11,8 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' shape-rendering='crispEdges'%3E%3Crect width='16' height='16' fill='%230d1020'/%3E%3Crect x='2' y='2' width='12' height='12' fill='%23ffb43c'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%230d1020'/%3E%3Crect x='7' y='7' width='2' height='2' fill='%23ffb43c'/%3E%3C/svg%3E"
     />
+    <!-- No word can be shown before the pixel font is in: it is asked for at once, not when the stylesheet has been read. -->
+    <link rel="preload" href="/assets/fonts/Galmuri11-common.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/src/client/style.css" />
   </head>
   <body>

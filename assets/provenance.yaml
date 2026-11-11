@@ -14,6 +14,14 @@
   licence: {id: OFL-1.1}
   date: 2026-11-11
   ships: true
+- path: assets/fonts/Galmuri11-common.woff2
+  origin: licensed
+  tool: "tools/subset-font.py (fontTools) from assets/fonts/Galmuri11.woff2: the 2,921 characters ordinary lines are written with (the page's own sentences, the 2,350 Hangul syllables of KS X 1001, Latin, signs). The font's names, copyright and licence stay in the file; the licence names no reserved font name."
+  model: "claude-fable-5-2 (wrote the script)"
+  source: {vendor: "Lee Minseo (quiple)", product: "Galmuri11, cut down from the galmuri npm package 2.40.3", url: "https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/Galmuri11.woff2"}
+  licence: {id: OFL-1.1}
+  date: 2026-11-11
+  ships: true
 - path: assets/fonts/Galmuri11-LICENSE.txt
   origin: licensed
   tool: "curl from the npm package's CDN copy, unchanged; the font's licence text, which must travel with the font"

@@ -35,7 +35,8 @@ const TIP_RX = 54;
 const TIP_RY = 34;
 
 const TAU = Math.PI * 2;
-const FONT = 'Galmuri11, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif';
+/** The pixel font: its small file first, and the whole of it for a letter the small one lacks (style.css). */
+const FONT = 'Galmuri11, "Galmuri11 All", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif';
 
 /** The letters chambers are known by. */
 export const LETTERS = "ABCDEF";

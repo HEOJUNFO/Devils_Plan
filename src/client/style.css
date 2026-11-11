@@ -4,10 +4,23 @@
  * on the same pixel grid, so the lobby and the table read as one thing.
  * Colours are the table's (game/palette.ts).
  */
+/*
+ * The pixel font, in two files. The first has the letters nearly every line
+ * is written with (tools/subset-font.py says which, and makes it) and is all
+ * a first visit waits for: a ninth of the whole. The second is the whole
+ * font, which the browser fetches only when a line has a letter the first
+ * lacks, a rare syllable in a nickname or a Chinese character; until it is
+ * in, that letter alone is shown in the system's font.
+ */
 @font-face {
   font-family: "Galmuri11";
-  src: url("../../assets/fonts/Galmuri11.woff2") format("woff2");
+  src: url("../../assets/fonts/Galmuri11-common.woff2") format("woff2");
   font-display: block;
+}
+@font-face {
+  font-family: "Galmuri11 All";
+  src: url("../../assets/fonts/Galmuri11.woff2") format("woff2");
+  font-display: swap;
 }
 
 :root {
@@ -62,7 +75,7 @@ body {
     padding: 24px;
     background: #0d1020;
     color: #efe6cc;
-    font: 20px/1.4 "Galmuri11", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    font: 20px/1.4 "Galmuri11", "Galmuri11 All", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
     text-align: center;
   }
 }
@@ -78,7 +91,7 @@ body {
   transform: scale(var(--scale));
   background: var(--night);
   color: var(--bone);
-  font: 12px/13px "Galmuri11", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  font: 12px/13px "Galmuri11", "Galmuri11 All", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
   -webkit-font-smoothing: none;
   /* Korean breaks between words, not inside one; a word too long for its line still breaks. */
   word-break: keep-all;

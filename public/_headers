@@ -1,0 +1,5 @@
+# The built script, stylesheet and fonts have a hash of their content in their
+# names: a changed file is a new name. A browser that has one need not ask
+# again whether it is still good, which without this it does on every visit.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
