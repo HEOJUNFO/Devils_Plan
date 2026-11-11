@@ -29,11 +29,13 @@ import {
   DIRECTORY_PARTY,
   PARTY_NAME,
   PING,
+  PONG,
   parseDirectoryMessage,
   parseServerMessage,
   type ClientMessage,
   type RejectReason,
 } from "../shared/protocol";
+import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import chatConfig from "../shared/chat-config.json";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
@@ -238,6 +240,8 @@ let online = false;
 let hint = "";
 /** When the room last sent this page anything, in ms since the epoch. */
 let heardAt = Date.now();
+/** What this page knows of whether its connection to the room still lives (`liveness.ts`). */
+let live: Liveness = opened(Date.now());
 /** Whether the game on show is still being played. */
 let gameOn = false;
 /** During a game: whether the right-hand column shows the chat rather than the moves. */
@@ -269,7 +273,31 @@ function disarmLeave(): void {
 function send(message: ClientMessage): boolean {
   if (socket === null || !online) return false;
   socket.send(JSON.stringify(message));
+  // a living connection is heard from soon after anything goes out on it
+  live = sent(live, Date.now());
   return true;
+}
+
+/**
+ * How a connection that closed is opened again: within a second, not the
+ * three the library waits, and not every page of a room in the same instant.
+ */
+function reconnecting(): { minReconnectionDelay: number; reconnectionDelayGrowFactor: number; maxReconnectionDelay: number } {
+  return {
+    minReconnectionDelay: config.reconnect.firstMs + Math.random() * config.reconnect.jitterMs,
+    reconnectionDelayGrowFactor: config.reconnect.grow,
+    maxReconnectionDelay: config.reconnect.mostMs,
+  };
+}
+
+/** The room did not answer when asked: the connection is shown as lost at once, and opened anew. */
+function revive(): void {
+  if (socket === null) return;
+  online = false;
+  // whatever the game screen had asked for and not heard back about is not coming
+  table?.lost();
+  renderStatus();
+  socket.reconnect();
 }
 
 /** The room's voice chat, as this page takes part in it. */
@@ -485,7 +513,7 @@ function renderRooms(listings: RoomListing[] | null): void {
 function watchRooms(): void {
   if (listSocket !== null) return;
   renderRooms(null);
-  const current = new PartySocket({ host: location.host, party: DIRECTORY_PARTY, room: DIRECTORY_NAME });
+  const current = new PartySocket({ host: location.host, party: DIRECTORY_PARTY, room: DIRECTORY_NAME, ...reconnecting() });
   listSocket = current;
   current.addEventListener("message", (event) => {
     const message = parseDirectoryMessage(event.data);
@@ -741,6 +769,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     maxEnqueuedMessages: 0,
     // a connection the room ended on purpose (this player left, or was refused) is not opened again
     shouldReconnectOnClose: (event) => event.code !== CLOSE_LEFT && event.code !== CLOSE_REJECTED,
+    ...reconnecting(),
   });
   socket = current;
 
@@ -750,6 +779,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // a connection that came back is a new one to the room: say again that this page is in voice
     voice.announce();
     online = true;
+    live = opened(Date.now());
     renderStatus();
   });
   current.addEventListener("close", (event) => {
@@ -769,8 +799,12 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     renderStatus();
   });
   current.addEventListener("message", (event) => {
+    if (socket !== current) return;
+    // anything at all from the room says the connection lives, the answer to a ping included
+    live = heard(live);
+    if (event.data === PONG) return;
     const message = parseServerMessage(event.data);
-    if (message === null || socket !== current) return;
+    if (message === null) return;
     heardAt = Date.now();
     if (message.type === "lobby") {
       // The room is made: from here on a reconnect only comes back to it. A
@@ -1080,10 +1114,31 @@ addEventListener("hashchange", followAddress);
 
 // Tells the room this page is still there. The room is not woken by it: the
 // platform answers, and keeps the time, which is how the room later tells a
-// connection that has gone silent from one that is only quiet.
+// connection that has gone silent from one that is only quiet. The answer
+// tells the page the same of the room: a network that drops closes nothing,
+// and without it every press would go nowhere until the system gave up.
+const LOOK_MS = 1000;
 setInterval(() => {
-  if (socket !== null && online) socket.send(PING);
-}, config.pingSeconds * 1000);
+  if (socket === null || !online) return;
+  const looked = look(live, Date.now(), config);
+  live = looked.state;
+  if (looked.ping) socket.send(PING);
+  if (looked.dead) revive();
+}, LOOK_MS);
+
+// Back at the front, or back on a network: a connection that is down is
+// opened now instead of when its next try comes round, and one that looks up
+// is asked whether it is.
+function wake(): void {
+  if (document.visibilityState !== "visible") return;
+  if (socket !== null) {
+    if (online) live = doubted(live, Date.now(), config);
+    else if (socket.readyState === WebSocket.CLOSED) socket.reconnect();
+  }
+  if (listSocket !== null && listSocket.readyState === WebSocket.CLOSED) listSocket.reconnect();
+}
+addEventListener("online", wake);
+document.addEventListener("visibilitychange", wake);
 
 // A table waiting on a player whose page went without a word (a laptop
 // closed, a network gone) wakes nobody, so the room would never notice. A

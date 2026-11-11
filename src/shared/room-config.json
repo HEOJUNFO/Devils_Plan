@@ -14,6 +14,10 @@
     "other": { "burst": 80, "windowSeconds": 10 }
   },
   "pingSeconds": 20,
+  "missedPings": 2,
+  "askAfterSeconds": 4,
+  "deadAfterSeconds": 4,
+  "reconnect": { "firstMs": 400, "jitterMs": 600, "grow": 1.5, "mostMs": 10000 },
   "staleConnectionSeconds": 90,
   "pokeSeconds": 60,
   "turnSecondsChoices": [0, 60, 120],

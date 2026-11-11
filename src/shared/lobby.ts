@@ -61,6 +61,26 @@ export interface RoomConfig {
    */
   pingSeconds: number;
   /**
+   * Pings in a row a page lets go unanswered: when the one after is due, the
+   * page takes its connection for dead and opens a new one (`liveness.ts`). A
+   * network that drops closes nothing by itself.
+   */
+  missedPings: number;
+  /**
+   * Seconds a page waits, having sent the room something and heard nothing
+   * since, before it asks with a ping whether the connection still lives.
+   */
+  askAfterSeconds: number;
+  /** Seconds that ping has to be answered in before the page opens a new connection. */
+  deadAfterSeconds: number;
+  /**
+   * How soon a page opens a new connection after one has closed: `firstMs`
+   * and up to `jitterMs` more (so that the pages of a room do not all come
+   * back in the same instant after a deploy), each try after that `grow`
+   * times as long as the one before, `mostMs` at most.
+   */
+  reconnect: { firstMs: number; jitterMs: number; grow: number; mostMs: number };
+  /**
    * Seconds without a ping after which a connection that has been pinging is
    * taken for dead and ended: a laptop that went to sleep or a network that
    * dropped says nothing when it goes. Long enough for a tab in the
