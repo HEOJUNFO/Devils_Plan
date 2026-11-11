@@ -49,7 +49,7 @@
 
 | 잔디 깔기 | 큐브 세기 |
 |---|---|
-| ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-four-players-lay.jpg) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-problem-and-keypad.png) |
+| ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-tiles-with-holes-lay.png) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-problem-and-keypad.png) |
 
 규칙은 나무위키의 일차별 문서에 적힌 그대로이고, 문서가 말하지 않는 부분은
 방송 화면으로 확인하거나 임시로 채웠습니다. 무엇을 문서에서 가져왔고 무엇을
