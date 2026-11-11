@@ -51,14 +51,14 @@
 |---|---|
 | ![잔디 깔기 공원 판](production/qa/evidence/grass-2026-11-11-tiles-with-holes-lay.png) | ![큐브 세기 문제 화면](production/qa/evidence/cubes-2026-11-11-problem-and-keypad.png) |
 
-규칙은 나무위키의 일차별 문서에 적힌 그대로이고, 문서가 말하지 않는 부분은
-방송 화면으로 확인하거나 임시로 채웠습니다. 무엇을 문서에서 가져왔고 무엇을
+규칙은 방송에서 공개된 그대로이고, 공개된 규칙이 말하지 않는 부분은
+방송 화면으로 확인하거나 임시로 채웠습니다. 무엇을 그대로 가져왔고 무엇을
 채웠는지는 게임마다 적어 두었습니다.
 
 - 러시안 룰렛: [`design/game-brief.md`](design/game-brief.md) (방송은 6인, 4·5인 탁자는 이 프로젝트가 줄인 것)
-- 네모 세기: [`design/games/count-rectangles.md`](design/games/count-rectangles.md) (팀의 "대표"가 누구인지와 "추가 대결"의 방식은 문서에 없어 채운 것)
+- 네모 세기: [`design/games/count-rectangles.md`](design/games/count-rectangles.md) (팀의 "대표"가 누구인지와 "추가 대결"의 방식은 공개된 규칙에 없어 채운 것)
 - 잔디 깔기: [`design/games/lay-the-grass.md`](design/games/lay-the-grass.md)
-- 큐브 세기: [`design/games/count-cubes.md`](design/games/count-cubes.md) (문제의 그림은 문서에 없어 이 프로젝트가 채운 것)
+- 큐브 세기: [`design/games/count-cubes.md`](design/games/count-cubes.md) (문제의 그림은 공개된 규칙에 없어 이 프로젝트가 채운 것)
 
 ## 방에서 되는 것
 
@@ -187,4 +187,3 @@ production/qa/evidence/   # 화면을 바꿀 때마다 남긴 스크린샷
 - 코드: MIT. [LICENSE](LICENSE) 참고 (템플릿의 저작권 표시 포함)
 - 글꼴: [Galmuri11](https://github.com/quiple/galmuri), SIL Open Font License 1.1 ([`assets/fonts/Galmuri11-LICENSE.txt`](assets/fonts/Galmuri11-LICENSE.txt))
 - 픽셀 이펙트: [pixelfx](https://github.com/patch-gg/pixelfx), MIT ([`vendor/pixelfx/LICENSE`](vendor/pixelfx/LICENSE))
-- 게임 규칙의 출처: 나무위키 "데블스 플랜: 데드 어게인"의 일차별 문서
