@@ -19,6 +19,8 @@ import { createGrassScreen } from "./lay-the-grass/screen";
 import { WORDS as GRASS_WORDS } from "./lay-the-grass/words";
 import { createPokerScreen } from "./memory-poker/screen";
 import { WORDS as POKER_WORDS } from "./memory-poker/words";
+import { createMarketScreen } from "./mystery-stock-market/screen";
+import { WORDS as MARKET_WORDS } from "./mystery-stock-market/words";
 import { createUnderScreen } from "./under-thirteen/screen";
 import { WORDS as UNDER_WORDS } from "./under-thirteen/words";
 
@@ -166,5 +168,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: UNDER_WORDS.sheet,
+  },
+  "mystery-stock-market": {
+    screen(canvas, handlers) {
+      const screen = createMarketScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "mystery-stock-market") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: MARKET_WORDS.sheet,
   },
 };

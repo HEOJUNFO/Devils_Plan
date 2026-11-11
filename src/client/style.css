@@ -345,15 +345,18 @@ button.choice[aria-pressed="true"] {
 }
 
 /*
- * The games to pick from, two to a row: the list grows downwards as games are
- * added, three rows deep, and past that it scrolls: the form has no more room
- * above who may come in.
+ * The games to pick from, two to a row, and a game whose name is too long
+ * for half the row on a row of its own (`main.ts` marks it). The list grows
+ * downwards as games are added, four rows deep, and past that it scrolls:
+ * the form has no more room above who may come in. The room for the fourth
+ * row comes from the heading over the list, which is said to a screen reader
+ * and not shown: the buttons under it say what they are.
  */
 #game-choices {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  max-height: 59px;
+  max-height: 80px;
   overflow-y: auto;
   scrollbar-color: var(--edge) var(--night);
   scrollbar-width: thin;
@@ -362,6 +365,19 @@ button.choice[aria-pressed="true"] {
 #game-choices button {
   padding: 0 2px;
   overflow: hidden;
+  white-space: nowrap;
+}
+
+#game-choices button.whole {
+  grid-column: 1 / -1;
+}
+
+#game-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
 }
 
@@ -402,19 +418,20 @@ button.choice[aria-pressed="true"] {
 }
 
 /*
- * In English a game's name is as wide as the column. It takes a line to
- * itself over the room's code (main.ts), and what lies below gives up that
- * line: the voice controls and the chat, which are laid over the gap.
+ * A game's name can be as wide as the column: in English most are, and in
+ * Korean a long one is. It then takes a line to itself over the room's code
+ * (main.ts marks the frame), and what lies below gives up that line: the
+ * voice controls and the chat, which are laid over the gap.
  */
-:root[lang="en"] #room-game {
+#frame.tall-heading #room-game {
   height: 26px;
 }
 
-:root[lang="en"] #voice:not(.in-game) {
+#frame.tall-heading #voice:not(.in-game) {
   top: 67px;
 }
 
-:root[lang="en"] #chat:not(.in-game) {
+#frame.tall-heading #chat:not(.in-game) {
   top: 88px;
   height: 86px;
 }
@@ -425,25 +442,36 @@ button.choice[aria-pressed="true"] {
 }
 
 /*
- * And the games to pick from go one to a row, six rows deep: a pixel apart
- * and a pixel lower than other buttons, which is what six rows have room for
- * (six of 16 and five gaps of 1 are the 101 pixels the form has). Past that
- * the list scrolls. The room for them comes from the two headings inside the
- * form, which are said to a screen reader and not shown: the buttons under
- * them say what they are.
+ * And the games to pick from go one to a row, seven rows deep: each two
+ * pixels lower than other buttons and sharing its edge with the next, which
+ * is what seven rows have room for (seven of 15, less the six edges shared,
+ * are 99 of the 101 pixels the form has). Past that the list scrolls. The
+ * room for them comes from the second heading inside the form too, which is
+ * said to a screen reader and not shown like the first.
  */
 :root[lang="en"] #game-choices {
   grid-template-columns: 1fr;
-  gap: 1px;
+  gap: 0;
   max-height: 101px;
   margin-bottom: 4px;
 }
 
 :root[lang="en"] #game-choices button {
-  height: 16px;
+  height: 15px;
 }
 
-:root[lang="en"] #game-label,
+:root[lang="en"] #game-choices button + button {
+  margin-top: -1px;
+}
+
+/* The one picked, and the one pointed at, show their whole edge over their neighbours'. */
+:root[lang="en"] #game-choices button[aria-pressed="true"],
+:root[lang="en"] #game-choices button:hover,
+:root[lang="en"] #game-choices button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
 :root[lang="en"] #listed-label {
   position: absolute;
   width: 1px;

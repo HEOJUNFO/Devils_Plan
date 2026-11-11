@@ -531,6 +531,8 @@ function renderNewRoom(): void {
     return button;
   });
   gameChoices.replaceChildren(...choices);
+  // a name too long for half a row has a row of its own (the form is on show when this is drawn, so it can be measured)
+  for (const button of choices) button.classList.toggle("whole", button.scrollWidth > button.clientWidth);
   // with more games than the list has rows it scrolls: the game chosen is in sight when the form is drawn
   choices[GAME_IDS.indexOf(chosenGame)]?.scrollIntoView({ block: "nearest" });
   const game = GAMES[chosenGame];
@@ -579,15 +581,21 @@ function renderStatus(): void {
   if (view === null) return;
   const here = view.players.filter((p) => p.connected).length;
   const game = isGameId(view.game) ? GAMES[view.game].title[lang] : WORDS.room.newGame;
-  // one line in Korean; in English two, a game's name being as wide as the column
-  const lines = online ? WORDS.room.status(game, view.listed, here, view.maxPlayers) : [WORDS.room.offline];
-  roomGame.replaceChildren(
-    ...lines.map((line) => {
-      const span = document.createElement("span");
-      span.textContent = line;
-      return span;
-    }),
-  );
+  const write = (lines: string[]): void => {
+    roomGame.replaceChildren(
+      ...lines.map((line) => {
+        const span = document.createElement("span");
+        span.textContent = line;
+        return span;
+      }),
+    );
+    // with the name on a line of its own, what lies under the heading moves down a line (style.css)
+    frame.classList.toggle("tall-heading", lines.length > 1);
+  };
+  // One line where it fits, as in Korean it mostly does; two where a game's name is as wide as the column,
+  // as in English it mostly is. (The room is on show when this is written, so the line can be measured.)
+  write(online ? WORDS.room.status(game, view.listed, here, view.maxPlayers) : [WORDS.room.offline]);
+  if (online && roomGame.childElementCount === 1 && roomGame.scrollWidth > roomGame.clientWidth) write(WORDS.room.statusTall(game, view.listed, here, view.maxPlayers));
   // said aloud to a screen reader when it changes
   status.textContent = online ? WORDS.room.statusSpoken(here, view.maxPlayers) : WORDS.room.offline;
 }

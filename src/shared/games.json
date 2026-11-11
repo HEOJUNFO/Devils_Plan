@@ -82,5 +82,19 @@
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false
+  },
+  "mystery-stock-market": {
+    "title": {
+      "ko": "미스터리 거래소",
+      "en": "Mystery Stock Market"
+    },
+    "summary": {
+      "ko": "주식의 숨은 규칙을 알아내 사고파세요. 24라운드 뒤 자산이 가장 많으면 1위.",
+      "en": "Find each stock's hidden rule. The most assets after 24 rounds wins."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 16,
+    "teamSize": 0,
+    "turns": false
   }
 }

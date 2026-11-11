@@ -66,6 +66,8 @@ const ko = {
     teamHelp: (size: number) => `누르면 바뀝니다: 혼자, 또는 ${size}명이 한 팀. 팀을 먼저 고른 사람이 대표입니다`,
     /** The lines over the room's code: the game, who can come in and how many are here. */
     status: (game: string, listed: boolean, here: number, max: number) => [`${game} · ${listed ? "공개" : "비공개"} · ${here}/${max}`],
+    /** The same on two lines, for a game whose name leaves no room beside it. */
+    statusTall: (game: string, listed: boolean, here: number, max: number) => [game, `${listed ? "공개" : "비공개"} · ${here}/${max}`],
     statusSpoken: (here: number, max: number) => `${here}명 접속, 최대 ${max}명`,
     offline: "연결이 끊겼습니다. 다시 연결하는 중",
     newGame: "새 게임",
@@ -202,6 +204,7 @@ const en: typeof ko = {
     teamHelp: (size) => `Press to change: alone, or a team of ${size}. Whoever picks a team first leads it`,
     // a game's name in English is as wide as the column: the rest goes on a line of its own
     status: (game, listed, here, max) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}`],
+    statusTall: (game, listed, here, max) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}`],
     statusSpoken: (here, max) => `${here} connected, ${max} at most`,
     offline: "Connection lost. Reconnecting",
     newGame: "New game",

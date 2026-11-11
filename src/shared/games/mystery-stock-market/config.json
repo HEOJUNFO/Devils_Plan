@@ -1,0 +1,62 @@
+{
+  "rounds": 24,
+  "roundSeconds": 300,
+  "startCash": 100000,
+  "startPrice": 10000,
+  "floorPrice": 100,
+  "revealRounds": [
+    5,
+    10,
+    15,
+    20
+  ],
+  "secretRounds": 2,
+  "pieces": 3,
+  "pieceCash": 10000,
+  "pieceRounds": 20,
+  "awards": [
+    1500000,
+    3000000,
+    6000000
+  ],
+  "prizeAssets": 10000000,
+  "rules": {
+    "finance": {
+      "count": 4,
+      "upPercent": 20,
+      "downPercent": 10
+    },
+    "build": {
+      "upPercent": 10,
+      "downPercent": 10
+    },
+    "steel": {
+      "perShare": 200
+    },
+    "open": {
+      "upPercent": 13,
+      "down": 1000
+    },
+    "coyo": {
+      "up": 1400,
+      "down": 700
+    },
+    "latter": {
+      "from": 10,
+      "to": 30,
+      "up": 1500,
+      "down": 1000
+    }
+  },
+  "logo": {
+    "turnsFrom": 3,
+    "turnsTo": 5,
+    "legRounds": 2,
+    "low": 1000,
+    "high": 40000,
+    "swingFrom": 1.5,
+    "swingTo": 3,
+    "step": 100,
+    "levels": 16
+  }
+}

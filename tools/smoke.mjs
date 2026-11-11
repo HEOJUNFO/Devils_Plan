@@ -8,7 +8,9 @@
 // then two make a room of the third game and lay its first park; then two
 // make a room of the fourth game, one of them wrong before the other is right;
 // then two make a room of the fifth game and play its first round; then two
-// make a room of the sixth game and play its first round, one of them passing.
+// make a room of the sixth game and play its first round, one of them passing;
+// then two make a room of the seventh game and play its 24 rounds to the end,
+// one of them using a secret and spending a piece.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -37,6 +39,7 @@ const THIRD_GAME = "lay-the-grass";
 const FOURTH_GAME = "count-cubes";
 const FIFTH_GAME = "memory-poker";
 const SIXTH_GAME = "under-thirteen";
+const SEVENTH_GAME = "mystery-stock-market";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 const STEP_TIMEOUT_MS = 8000;
@@ -579,6 +582,137 @@ async function sixthGame() {
   for (const p of players) p.close();
 }
 
+/** The seventh game, in a room of its own: two players, off the list, all of its rounds. */
+async function seventhGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 2; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `trader${n}`, create: n === 0, game: SEVENTH_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  check("a room is made for the seventh game", lobby.game === SEVENTH_GAME, lobby.game);
+
+  /** What `player` is refused when they ask for `action`. */
+  const refusalOf = async (player, action) => {
+    const seen = players[player].messages.length;
+    players[player].send({ type: "action", action });
+    return (await players[player].until("the refusal", (m) => m.type === "refused", seen)).reason;
+  };
+  /** A stock as `game` shows it. */
+  const shown = (game, stock) => game.view.stocks.find((each) => each.id === stock);
+  /**
+   * The game as `player` has it once everything the room has sent them is in:
+   * the room answers what is no move at all after all that came before it.
+   */
+  const settled = async (player) => {
+    await refusalOf(player, { type: "nothing" });
+    return players[player].last("game");
+  };
+  /** Both say they are done with `round`: what each then sees, of the next round or of the end. */
+  const bothDone = async (round) => {
+    for (const p of players) p.send({ type: "action", action: { type: "done", round } });
+    return Promise.all(players.map((p) => p.until(`round ${round} to be over`, (m) => m.type === "game" && (m.view.round === round + 1 || m.view.phase === "ended"))));
+  };
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the seventh game to start", (m) => m.type === "game" || m.type === "refused")));
+  const rules = games[0].rules ?? {};
+  check(
+    "the seventh game starts with the same money for both, every stock at one price, and one emblem",
+    games.every(
+      (g, n) =>
+        g.type === "game" &&
+        g.game === SEVENTH_GAME &&
+        g.view.you === n &&
+        g.view.phase === "trading" &&
+        g.view.round === 1 &&
+        g.view.stocks.length === 7 &&
+        g.view.stocks.every((stock) => stock.price === rules.startPrice && stock.parts === 0) &&
+        g.view.mine.cash === rules.startCash &&
+        g.view.mine.secret === true &&
+        g.view.emblem.join() === games[0].view.emblem.join() &&
+        g.view.emblem.length === rules.rounds + 1,
+    ),
+    `${games[0].view?.stocks?.length} stocks at ${rules.startPrice}, ${rules.startCash} each, ${rules.rounds} rounds`,
+  );
+
+  // one buys: the money goes at the round's price, and the other's monitor does not change
+  players[0].send({ type: "action", action: { type: "buy", stock: "steel", shares: 3, round: 1 } });
+  const bought = await players[0].until("the order to be taken", (m) => m.type === "game" && m.view.mine.shares.steel === 3);
+  const other = await settled(1);
+  check(
+    "an order is taken at the round's price, and nobody else is shown it while the round is played",
+    bought.view.mine.cash === rules.startCash - 3 * rules.startPrice && shown(bought, "steel").bought === 0 && shown(other, "steel").bought === 0 && shown(other, "steel").held === 0,
+    `cash ${bought.view.mine.cash}`,
+  );
+  const poor = await refusalOf(0, { type: "buy", stock: "alt", shares: 11, round: 1 });
+  const late = await refusalOf(0, { type: "buy", stock: "alt", shares: 1, round: 2 });
+  check("an order for more than the money buys, or for a round not being played, is refused", poor === "no-cash" && late === "round-over", `${poor}, ${late}`);
+
+  // the other gives a piece for a part of a rule, uses their secret, and buys the stock they hid
+  players[1].send({ type: "action", action: { type: "peek", stock: "latter", round: 1 } });
+  const peeked = await players[1].until("the piece to be taken", (m) => m.type === "game" && shown(m, "latter").parts === 1);
+  players[1].send({ type: "action", action: { type: "secret", stock: "coyo", round: 1 } });
+  players[1].send({ type: "action", action: { type: "buy", stock: "coyo", shares: 1, round: 1 } });
+  await players[1].until("the secret and the order to be taken", (m) => m.type === "game" && m.view.mine.secret === false && m.view.mine.shares.coyo === 1);
+  const unseen = await settled(0);
+  check(
+    "a piece opens the next part of a rule to the player who gave it, and to nobody else",
+    peeked.view.mine.pieces === games[1].view.mine.pieces - 1 && shown(unseen, "latter").parts === 0,
+    `pieces ${peeked.view.mine.pieces}`,
+  );
+
+  const second = await bothDone(1);
+  check(
+    "the round ends when both are done: the prices move and the monitor shows what was bought",
+    second.every((g) => g.view.round === 2 && shown(g, "steel").price < rules.startPrice && shown(g, "steel").bought === 3 && shown(g, "steel").held === 3),
+    `방어제철 ${shown(second[0], "steel").price}`,
+  );
+  check(
+    "the stock a secret was used on is off both monitors, and everyone's assets with it",
+    second.every((g) => g.view.veiled === true && shown(g, "coyo").price === null && shown(g, "coyo").bought === null && g.view.standings.every((each) => each.assets === null)),
+  );
+  check(
+    "whoever holds the hidden stock sees neither their money nor their assets, and the other sees their own",
+    second[1].view.mine.cash === null && second[1].view.mine.assets === null && typeof second[0].view.mine.cash === "number",
+  );
+  await bothDone(2);
+  const fourth = await bothDone(3);
+  check(
+    "two rounds on the stock is back on the monitor, with those rounds left out of its chart",
+    fourth.every((g) => g.view.veiled === false && typeof shown(g, "coyo").price === "number" && shown(g, "coyo").chart[1] === null && shown(g, "coyo").chart[2] === null && shown(g, "coyo").chart[3] !== null),
+    `코요테크 ${shown(fourth[0], "coyo").price}`,
+  );
+
+  // the rest of the rounds, both done with each at once
+  let last = fourth;
+  for (let round = 4; last[0].view.phase !== "ended" && round <= rules.rounds; round++) last = await bothDone(round);
+  const end = last[0].view.history.at(-1);
+  check(
+    "the game is over after its last round, with every rule open and everyone's assets shown",
+    last.every(
+      (g) =>
+        g.view.phase === "ended" &&
+        g.view.round === rules.rounds &&
+        g.view.stocks.every((stock) => stock.parts === rules.revealRounds.length && stock.chart.length === rules.rounds + 1 && stock.chart.every((price) => price !== null)) &&
+        g.view.standings.every((each) => typeof each.assets === "number"),
+    ) &&
+      end.type === "ended" &&
+      end.reason === "rounds",
+    last[0].view.standings.map((each) => `${each.rank}: ${each.assets}`).join(", "),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("the numbers of the price rules and the path of 알트엔터 are never sent", !sentAll.includes('"path"') && !sentAll.includes('"perShare"') && !sentAll.includes('"upPercent"'));
+  check("no token is sent in the seventh game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The page, the list of rooms, and the first game: a room on the list, four players, a whole game. */
 async function firstGame() {
   // 1. the page
@@ -693,6 +827,7 @@ const PARTS = [
   [FOURTH_GAME, fourthGame],
   [FIFTH_GAME, fifthGame],
   [SIXTH_GAME, sixthGame],
+  [SEVENTH_GAME, seventhGame],
 ];
 
 async function main() {

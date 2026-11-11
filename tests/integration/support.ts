@@ -23,6 +23,7 @@ export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the
 export type CubesMessage = Extract<ServerMessage, { type: "game"; game: "count-cubes" }>;
 export type PokerMessage = Extract<ServerMessage, { type: "game"; game: "memory-poker" }>;
 export type UnderMessage = Extract<ServerMessage, { type: "game"; game: "under-thirteen" }>;
+export type MarketMessage = Extract<ServerMessage, { type: "game"; game: "mystery-stock-market" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -184,6 +185,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "under-thirteen" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 미스터리 거래소 that satisfies `match`. */
+  async marketWhere(match: (game: MarketMessage) => boolean = () => true): Promise<MarketMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "mystery-stock-market" && match(message)) return message;
     }
   }
 
