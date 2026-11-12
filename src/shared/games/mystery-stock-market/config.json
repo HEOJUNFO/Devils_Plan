@@ -67,29 +67,29 @@
       "step": 1
     },
     "percentUp": {
-      "from": 8,
-      "to": 20,
-      "step": 1
-    },
-    "percentDown": {
       "from": 5,
       "to": 15,
       "step": 1
     },
-    "wonUp": {
-      "from": 800,
-      "to": 2000,
-      "step": 100
+    "percentDown": {
+      "from": 3,
+      "to": 8,
+      "step": 1
     },
-    "wonDown": {
-      "from": 500,
+    "wonUp": {
+      "from": 400,
       "to": 1500,
       "step": 100
     },
-    "perShare": {
+    "wonDown": {
       "from": 100,
       "to": 300,
       "step": 100
+    },
+    "perShare": {
+      "from": 1,
+      "to": 2,
+      "step": 1
     },
     "bandFrom": {
       "from": 5,
