@@ -178,6 +178,74 @@ describe("GameRoom: chat", () => {
     closeAll(clients);
   });
 
+  it("passes a line said to one player on to that player and back to the speaker, and to nobody else", async () => {
+    const clients = await roomOf("CAAAW", 3);
+
+    clients[0].send({ type: "chat", text: "우리 둘만", to: 2 });
+    clients[0].say("모두에게");
+
+    const [toSpeaker, toOther] = await Promise.all([clients[0].nextOf("chat"), clients[2].nextOf("chat")]);
+    expect(toSpeaker).toMatchObject({ from: 0, nick: "p0", text: "우리 둘만", to: 2, toNick: "p2" });
+    expect(toOther).toMatchObject({ from: 0, nick: "p0", text: "우리 둘만", to: 2, toNick: "p2" });
+    // the third hears the line said to everyone, and nothing of the one before it
+    expect(await clients[1].nextOf("chat")).toMatchObject({ text: "모두에게" });
+    expect(clients[1].raw.join("\n")).not.toContain("우리 둘만");
+    closeAll(clients);
+  });
+
+  it("says a line said to everyone with nobody named in it", async () => {
+    const clients = await roomOf("CAAAX", 2);
+
+    clients[0].say("hello");
+
+    const line = await clients[1].nextOf("chat");
+    expect("to" in line).toBe(false);
+    expect("toNick" in line).toBe(false);
+    closeAll(clients);
+  });
+
+  it("refuses a line said to someone who is not in the room, or to oneself, and passes nothing on", async () => {
+    const clients = await roomOf("CAAAY", 2);
+
+    clients[0].send({ type: "chat", text: "to nobody", to: 5 });
+    expect(await clients[0].nextOf("refused")).toEqual({ type: "refused", reason: "chat-nobody" });
+    clients[0].send({ type: "chat", text: "to myself", to: 0 });
+    expect(await clients[0].nextOf("refused")).toEqual({ type: "refused", reason: "chat-nobody" });
+    clients[0].say("after");
+
+    expect((await clients[1].nextOf("chat")).text).toBe("after");
+    expect(clients.flatMap((client) => client.raw).join("\n")).not.toMatch(/to nobody|to myself/);
+    closeAll(clients);
+  });
+
+  it("refuses a line said to a player whose connection is gone, though the room still holds their seat", async () => {
+    const clients = await roomOf("CAABA", 3);
+    clients[1].close();
+    // the room tells those who stay that the seat's player is gone
+    for (;;) {
+      const seat = (await clients[0].nextOf("lobby")).players.find((p) => p.slot === 1);
+      expect(seat).toBeDefined();
+      if (seat?.connected === false) break;
+    }
+
+    clients[0].send({ type: "chat", text: "are you there", to: 1 });
+
+    expect(await clients[0].nextOf("refused")).toEqual({ type: "refused", reason: "chat-nobody" });
+    expect(clients.flatMap((client) => client.raw).join("\n")).not.toMatch(/are you there/);
+    closeAll([clients[0], clients[2]]);
+  });
+
+  it("counts a line said to one player with the lines said to all", async () => {
+    const clients = await roomOf("CAAAZ", 2);
+
+    for (let n = 0; n < chatConfig.burst; n++) clients[0].say(`line ${n}`);
+    clients[0].send({ type: "chat", text: "one more, quietly", to: 1 });
+
+    expect(await clients[0].nextOf("refused")).toEqual({ type: "refused", reason: "chat-too-fast" });
+    expect(clients[1].raw.join("\n")).not.toContain("quietly");
+    closeAll(clients);
+  });
+
   it("says nothing to a connection that has not joined, and hears nothing from it", async () => {
     const clients = await roomOf("CAAAL", 1);
     const lurker = await connect("CAAAL");

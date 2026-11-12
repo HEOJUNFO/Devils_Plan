@@ -868,6 +868,12 @@ button.choice[aria-pressed="true"] {
   color: var(--dim);
 }
 
+/* A line said to one player alone: quieter than one said to the room, its two names as they are. */
+#chat-log .aside {
+  color: var(--bone-dim);
+  font-style: italic;
+}
+
 /* The player's own line, sent and not yet back from the room. */
 #chat-log .waiting {
   color: var(--dim);
@@ -1301,6 +1307,71 @@ button.choice[aria-pressed="true"] {
 }
 
 :root.touch #quick-sheet {
+  top: 40px;
+}
+
+/* Who the next line is said to: small beside the box, a name cut short where it is long; lit while it is one player. */
+#chat-to {
+  flex: none;
+  overflow: hidden;
+  max-width: 46px;
+  padding: 0 3px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#chat-to.one {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* The people to say it to: a sheet like the one of words said with one press, and in its place. */
+#to-sheet {
+  position: absolute;
+  left: 60px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 360px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#to-sheet[hidden] {
+  display: none;
+}
+
+#to-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#to-people {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+#to-people button {
+  overflow: hidden;
+  padding: 0 2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#to-sheet .row {
+  justify-content: flex-end;
+}
+
+:root.touch #to-sheet button,
+:root.touch #chat-to {
+  height: 24px;
+}
+
+:root.touch #to-sheet {
   top: 40px;
 }
 

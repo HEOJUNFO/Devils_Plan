@@ -358,7 +358,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "start") await this.handleStart(connection, seat.slot, parsed.bots);
     else if (parsed.type === "action") await this.handleAction(connection, seat.slot, parsed.action);
     else if (parsed.type === "listing") await this.handleListing(connection, seat.slot, parsed.listed);
-    else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text);
+    else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text, parsed.to);
     else if (parsed.type === "quick") this.handleQuick(connection, seat.slot, parsed.word);
     else if (parsed.type === "clock") this.handleClock(connection, seat.slot, parsed.seconds);
     else if (parsed.type === "variant") this.handleVariant(connection, seat.slot, parsed.variant);
@@ -617,10 +617,13 @@ export class GameRoom extends Server<Env> {
   }
 
   /**
-   * Passes a line on to everyone in the room, the speaker included. Nothing
-   * is stored: chat costs the room no writes, and a line is gone once sent.
+   * Passes a line on to everyone in the room, the speaker included; or,
+   * said to the player in the slot `to`, to that player and the speaker and
+   * nobody else. Nothing is stored: chat costs the room no writes, and a
+   * line is gone once sent. A line to one player counts with the rest
+   * against how fast its speaker may talk.
    */
-  private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string): void {
+  private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string, to?: number): void {
     const player = this.lobby?.players.find((p) => p.slot === slot);
     if (!player) return;
     const text = normalizeChat(raw, chatConfig);
@@ -629,9 +632,20 @@ export class GameRoom extends Server<Env> {
     const paced = paceChat(this.chatPace.get(slot), now, chatConfig);
     this.chatPace.set(slot, paced.pace);
     if (!paced.ok) return this.refuse(connection, "chat-too-fast");
-    const message: ServerMessage = { type: "chat", room: this.name, from: slot, nick: player.nick, text, at: now };
+    if (to === undefined) {
+      const message: ServerMessage = { type: "chat", room: this.name, from: slot, nick: player.nick, text, at: now };
+      const data = JSON.stringify(message);
+      for (const [member] of this.members()) member.send(data);
+      return;
+    }
+    // said to one player: someone who has gone, or the speaker, is nobody to say it to;
+    // nor is a player whose seat is kept while no connection of theirs is here to read it
+    const other = to === slot ? undefined : this.lobby?.players.find((p) => p.slot === to);
+    const members = [...this.members()];
+    if (other === undefined || !members.some(([, seat]) => seat.slot === to)) return this.refuse(connection, "chat-nobody");
+    const message: ServerMessage = { type: "chat", room: this.name, from: slot, nick: player.nick, text, at: now, to, toNick: other.nick };
     const data = JSON.stringify(message);
-    for (const [member] of this.members()) member.send(data);
+    for (const [member, seat] of members) if (seat.slot === slot || seat.slot === to) member.send(data);
   }
 
   /**

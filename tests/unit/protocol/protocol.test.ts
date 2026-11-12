@@ -88,6 +88,15 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "quick", word: 3 }))).toBeNull();
   });
 
+  it("reads a line said to one player only: who by their slot", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 3 }))).toEqual({ type: "chat", text: "psst", to: 3 });
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 0 }))).toEqual({ type: "chat", text: "psst", to: 0 });
+  });
+
+  it("rejects a line said to what is no slot, rather than say it to everyone", () => {
+    for (const to of [-1, 1.5, "2", null, {}]) expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to }))).toBeNull();
+  });
+
   it("rejects a chat line that is not text", () => {
     expect(parseClientMessage(JSON.stringify({ type: "chat" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "chat", text: 5 }))).toBeNull();

@@ -313,6 +313,18 @@ const ko = {
     },
     notSent: "연결이 끊겨 보내지 못했습니다. 다시 연결되면 보내 주세요.",
     tooFast: "너무 빨리 보내고 있습니다. 잠시 뒤에 다시 보내세요.",
+    /** Who the next line is said to: on the button beside the box, and over the sheet that button opens. */
+    toAll: "모두",
+    toLabel: (nick: string | null) => (nick === null ? "말할 상대: 모두. 눌러서 한 사람을 고릅니다" : `말할 상대: ${nick}. 눌러서 바꿉니다`),
+    toTitle: "밀담: 누구에게 말할까요?",
+    toHelp: "한 사람을 고르면 그 사람에게만 보입니다.",
+    toAlone: "방에 다른 사람이 있으면 여기서 고를 수 있습니다.",
+    toEveryone: "모두에게",
+    toClose: "닫기",
+    /** In the box while one player is spoken to. */
+    toHint: (nick: string) => `${nick}에게만`,
+    toGone: "그 사람이 지금 방에 없어 보내지 못했습니다. 이제 모두에게 말합니다.",
+    toLeft: "밀담 상대가 나갔습니다. 이제 모두에게 말합니다.",
   },
   /** Why the room would not let this page in. */
   reject: {
@@ -568,7 +580,7 @@ const en: typeof ko = {
   },
   chat: {
     label: "Chat",
-    say: "Say something",
+    say: "Message",
     send: "Send",
     quickOpen: "Quick",
     quickTitle: "Say it with one press",
@@ -586,6 +598,16 @@ const en: typeof ko = {
     },
     notSent: "Not sent: the connection is down. Send it again once it is back.",
     tooFast: "You are sending too fast. Try again in a moment.",
+    toAll: "All",
+    toLabel: (nick) => (nick === null ? "Talking to: everyone. Press to pick one person" : `Talking to: ${nick}. Press to change`),
+    toTitle: "Whisper: who to?",
+    toHelp: "Pick one person and only they see it.",
+    toAlone: "When someone else is in the room you can pick them here.",
+    toEveryone: "Everyone",
+    toClose: "Close",
+    toHint: (nick) => `To ${nick} only`,
+    toGone: "They are not here now: not sent. You are talking to everyone again.",
+    toLeft: "The person you were whispering to left. You are talking to everyone again.",
   },
   reject: {
     "full": "The room is full.",

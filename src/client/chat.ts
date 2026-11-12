@@ -26,12 +26,14 @@ export type ChatNote =
   | { kind: "game"; game: string }
   /** A line could not be sent, or was sent too soon after the last; the voice chat was joined, joined without a microphone, or is not to be had here. */
   | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" }
+  /** The one player a line was said to is not in the room: the line was not passed on (`to-gone`), or they left while they were the one being spoken to (`to-left`). */
+  | { kind: "to-gone" | "to-left" }
   /** The room is for a game this player has not played here: where its rules are. */
   | { kind: "first-time" };
 
 /** The kinds of note that name a player, and those that do not. */
 const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked"];
-const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time"];
+const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time", "to-gone", "to-left"];
 
 /** One line as shown: something a player said, or a note from the page itself. */
 interface Line {
@@ -43,6 +45,8 @@ interface Line {
   text?: string;
   /** Said with one press: which of the words, put in the page's language when the line is shown. Such a line has no `text`. */
   quick?: QuickWord;
+  /** Said to one player alone: that player's nickname. Only the two of them have the line. */
+  to?: string;
   note?: ChatNote;
 }
 
@@ -65,7 +69,7 @@ export interface Chat {
   /** Ends it: nothing is shown and nothing more is kept. */
   close(): void;
   /** A player said a line. */
-  said(who: string, text: string, mine: boolean): void;
+  said(who: string, text: string, mine: boolean, to?: string): void;
   /** This player says one of the words that take one press. */
   sayQuick(word: QuickWord): void;
   /** A player said one of them. */
@@ -108,6 +112,8 @@ export function createChat(
     quickAsked(): void;
     /** Sends a line; says whether it went. */
     send(text: string): boolean;
+    /** The nickname of the one player the next line is said to, or `null` when it is said to everyone. */
+    to(): string | null;
     /** Sends one of the words that take one press; says whether it went. */
     sendQuick(word: QuickWord): boolean;
     /** Such a word, in the language the page is read in. */
@@ -158,7 +164,8 @@ export function createChat(
     }
     const who = document.createElement("span");
     who.className = line.mine === true ? "who mine" : "who";
-    who.textContent = line.who;
+    who.textContent = line.to === undefined ? line.who : `${line.who} → ${line.to}`;
+    if (line.to !== undefined) item.className = "aside";
     item.append(who, ` ${line.quick === undefined ? (line.text ?? "") : options.quickOf(line.quick)}`);
     return item;
   }
@@ -192,7 +199,7 @@ export function createChat(
     const text = input.value.trim();
     if (!options.send(input.value)) return add({ note: { kind: "not-sent" } });
     fill("");
-    onItsWay(text, row({ who: options.me(), text, mine: true }));
+    onItsWay(text, row({ who: options.me(), text, mine: true, to: options.to() ?? undefined }));
   });
 
   /** Shows the player's own line faint under the others, as one on its way to the room. */
@@ -232,10 +239,10 @@ export function createChat(
       log.replaceChildren();
       fill("");
     },
-    said(who: string, text: string, mine: boolean): void {
+    said(who: string, text: string, mine: boolean, to?: string): void {
       // the player's own line is back: it takes its place among the others as the room has it
       if (mine) settle();
-      add({ who, text, mine });
+      add(to === undefined ? { who, text, mine } : { who, text, mine, to });
     },
     sayQuick(word: QuickWord): void {
       if (!options.sendQuick(word)) return add({ note: { kind: "not-sent" } });
@@ -246,7 +253,7 @@ export function createChat(
       add({ who, quick: word, mine });
     },
     note(note: ChatNote): void {
-      if (note.kind === "too-fast") {
+      if (note.kind === "too-fast" || note.kind === "to-gone") {
         // the room did not take the line: it goes back in the box, unless another is being typed there
         const text = settle();
         if (text !== null && input.value === "") fill(text);

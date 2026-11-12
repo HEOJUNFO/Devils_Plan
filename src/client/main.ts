@@ -142,6 +142,10 @@ const swapButton = el<HTMLButtonElement>("swap");
 const swapSheet = el<HTMLElement>("swap-sheet");
 const quickSheet = el<HTMLElement>("quick-sheet");
 const quickWords = el<HTMLElement>("quick-words");
+const chatToButton = el<HTMLButtonElement>("chat-to");
+const toSheet = el<HTMLElement>("to-sheet");
+const toPeople = el<HTMLElement>("to-people");
+const toHelp = el<HTMLElement>("to-help");
 const chatSend = el<HTMLButtonElement>("chat-send");
 const joinButton = el<HTMLButtonElement>("join");
 const createButton = el<HTMLButtonElement>("create");
@@ -294,6 +298,9 @@ function writeWords(): void {
     ["quick-title", WORDS.chat.quickTitle],
     ["quick-help", WORDS.chat.quickHelp],
     ["quick-close", WORDS.chat.quickClose],
+    ["to-title", WORDS.chat.toTitle],
+    ["to-help", WORDS.chat.toHelp],
+    ["to-close", WORDS.chat.toClose],
     ["turn-words", WORDS.site.turnDevice],
     ["turn-full", WORDS.site.turnFull],
     ["menu-open", WORDS.menu.open],
@@ -486,6 +493,8 @@ let pingSentAt: number | null = null;
 let pingTimes: number[] = [];
 /** Whether the game on show is still being played. */
 let gameOn = false;
+/** The slot of the one player the chat's next line is said to, or `null` when it is said to everyone. */
+let chatTo: number | null = null;
 /** Whether a press of the button that forgets the player's record does so: the press before it only asked. */
 let clearArmed = false;
 /** During a game: whether the right-hand column shows the chat rather than the moves. */
@@ -608,7 +617,8 @@ const chat = createChat(
     storagePrefix: storageKey("chat"),
     labels: { send: WORDS.chat.send, quick: WORDS.chat.quickOpen },
     quickAsked: () => showQuick(quickSheet.hidden === true),
-    send: (text) => send({ type: "chat", text }),
+    send: (text) => send(chatTo === null ? { type: "chat", text } : { type: "chat", text, to: chatTo }),
+    to: () => toNick(),
     sendQuick: (word) => send({ type: "quick", word }),
     quickOf: (word) => WORDS.chat.quick[word],
     me: () => currentView?.players.find((p) => p.slot === currentView?.you)?.nick ?? "",
@@ -617,6 +627,8 @@ const chat = createChat(
       if (note.kind === "went") return WORDS.room.went(note.nick);
       if (note.kind === "kicked") return WORDS.room.sentOut(note.nick);
       if (note.kind === "first-time") return WORDS.room.firstTime;
+      if (note.kind === "to-gone") return WORDS.chat.toGone;
+      if (note.kind === "to-left") return WORDS.chat.toLeft;
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
       if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
@@ -1629,6 +1641,8 @@ function renderPing(): void {
  * a room, to the game during one.
  */
 function showQuick(shown: boolean): void {
+  // one sheet over the chat at a time
+  showTo(false);
   if (!shown || currentCode === "") {
     if (quickSheet.hidden) return;
     const within = quickSheet.contains(document.activeElement);
@@ -1641,6 +1655,75 @@ function showQuick(shown: boolean): void {
   quickSheet.hidden = false;
   quickWords.querySelector("button")?.focus({ preventScroll: true });
 }
+
+/** The nickname of the one player the chat's next line is said to; `null` when it is said to everyone. */
+function toNick(): string | null {
+  return chatTo === null ? null : (currentView?.players.find((p) => p.slot === chatTo)?.nick ?? null);
+}
+
+/**
+ * Says on the button beside the chat's box who the next line is said to, and
+ * in the box itself while that is one player. A player spoken to who is no
+ * longer in the room is no longer spoken to, and the chat says so.
+ */
+function renderTo(): void {
+  if (chatTo !== null && toNick() === null) {
+    chatTo = null;
+    if (currentView !== null) chat.note({ kind: "to-left" });
+  }
+  const nick = toNick();
+  chatToButton.textContent = nick ?? WORDS.chat.toAll;
+  chatToButton.classList.toggle("one", nick !== null);
+  chatToButton.setAttribute("aria-label", WORDS.chat.toLabel(nick));
+  chatToButton.title = WORDS.chat.toLabel(nick);
+  chatInput.placeholder = nick === null ? WORDS.chat.say : WORDS.chat.toHint(nick);
+}
+
+/**
+ * Shows the people the chat's next line can be said to, everyone first, or
+ * puts them away. The keys go to the first of them, and back to the box.
+ */
+function showTo(shown: boolean): void {
+  if (!shown || currentView === null) {
+    if (toSheet.hidden) return;
+    const within = toSheet.contains(document.activeElement);
+    toSheet.hidden = true;
+    if (!within) return;
+    if (table !== null && !chatOpen) (document.activeElement as HTMLElement | null)?.blur();
+    else if (!TOUCH) chat.focus();
+    return;
+  }
+  showQuick(false);
+  const view = currentView;
+  const pick = (slot: number | null, label: string): HTMLButtonElement => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.setAttribute("aria-pressed", String(slot === chatTo));
+    if (slot === chatTo) button.className = "primary";
+    button.addEventListener("click", () => {
+      chatTo = slot;
+      renderTo();
+      showTo(false);
+    });
+    return button;
+  };
+  // a player whose connection is gone would not read it, and the room would refuse the line
+  const others = view.players.filter((p) => p.slot !== view.you && p.connected);
+  // two people of one name are told apart by their seats
+  const twice = (nick: string): boolean => view.players.filter((p) => p.nick === nick).length > 1;
+  toPeople.replaceChildren(
+    pick(null, WORDS.chat.toEveryone),
+    ...others.map((p) => pick(p.slot, twice(p.nick) ? `${p.nick} (${p.slot + 1})` : p.nick)),
+  );
+  // bots hold no seat a line can be sent to, so a room of one person and bots has nobody to pick
+  toHelp.textContent = others.length === 0 ? WORDS.chat.toAlone : WORDS.chat.toHelp;
+  toSheet.hidden = false;
+  toPeople.querySelector("button")?.focus({ preventScroll: true });
+}
+
+chatToButton.addEventListener("click", () => showTo(toSheet.hidden === true));
+el<HTMLButtonElement>("to-close").addEventListener("click", () => showTo(false));
 
 for (const word of QUICK_WORDS) {
   const button = document.createElement("button");
@@ -1760,12 +1843,16 @@ function noteInput(): void {
 /** The room before a game: who is here, the code to share, the chat, and the start. */
 function renderRoom(code: string, view: LobbyView): void {
   if (currentCode !== code) {
+    // another room: whoever was spoken to alone was in the one before
+    chatTo = null;
     chat.open(code);
     // once for a room: a page loaded again has the line among those it kept
     if (!chat.noted("first-time")) tipRules(view.game);
   } else if (currentView !== null) noteComings(currentView, view);
   currentCode = code;
   currentView = view;
+  // who the chat's next line is said to, as the room now stands
+  renderTo();
   setEntering(null);
   // the room asked for is here
   if (creating) setCreating(false);
@@ -2068,6 +2155,11 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // Something asked of the room was not accepted; the connection is fine.
       if (message.reason === "chat-too-fast") {
         chat.note({ kind: "too-fast" });
+      } else if (message.reason === "chat-nobody") {
+        // the one spoken to went before the line reached the room: the line is back in the box, and is for everyone now
+        chatTo = null;
+        chat.note({ kind: "to-gone" });
+        renderTo();
       } else if (message.reason === "voice-not-here") {
         // the room went on the list between the button being shown and pressed
         voice.leave();
@@ -2102,7 +2194,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       const mine = currentView !== null && message.from === currentView.you;
       // one said with a press is put in this page's language here: the room said only which
       const text = message.type === "chat" ? message.text : WORDS.chat.quick[message.word];
-      if (message.type === "chat") chat.said(message.nick, text, mine);
+      if (message.type === "chat") chat.said(message.nick, text, mine, message.toNick);
       else chat.saidQuick(message.nick, message.word, mine);
       if (!mine) {
         call("said");
@@ -2503,7 +2595,7 @@ tabChat.addEventListener("click", () => openChat(true));
 // from the keyboard (no mouse: `detail` is 0) they keep it, and the key is theirs.
 // The chat's own button is one of them: after a line is sent with the mouse it would stay under the
 // keys with the box empty, where a press of it asks for the words said with one press.
-for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, tabShare, chatSend, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
+for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, tabShare, chatSend, chatToButton, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
   button.addEventListener("click", (event) => {
     if (event.detail > 0 && !tableCanvas.hidden) button.blur();
   });
@@ -2563,6 +2655,7 @@ addEventListener("keydown", (event) => {
   else if (!seatMenu.hidden) showSeatMenu(null);
   else if (!swapSheet.hidden) showSwap(false);
   else if (!quickSheet.hidden) showQuick(false);
+  else if (!toSheet.hidden) showTo(false);
   else if (!feedbackSheet.hidden) showFeedback(false);
   else if (!recordSheet.hidden) showRecord(false);
   else if (!inboxSheet.hidden) showInbox(false);

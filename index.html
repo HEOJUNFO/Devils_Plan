@@ -146,6 +146,8 @@
       <section id="chat" hidden>
         <ol id="chat-log" aria-live="polite"></ol>
         <form id="chat-form">
+          <!-- Who the next line is said to: everyone in the room, or one player alone (`#to-sheet`). -->
+          <button id="chat-to" type="button" aria-haspopup="dialog"></button>
           <input id="chat-input" type="text" autocomplete="off" />
           <button id="chat-send" type="submit"></button>
         </form>
@@ -176,6 +178,16 @@
       </section>
 
       <!-- What the host can do with another player: opened by a press on their figure in the scene. -->
+      <!-- Who the chat's next line is said to: everyone, or one of the others in the room alone. -->
+      <section id="to-sheet" role="dialog" aria-labelledby="to-title" hidden>
+        <h2 id="to-title"></h2>
+        <p id="to-help" class="dim"></p>
+        <div id="to-people"></div>
+        <div class="row">
+          <button id="to-close" type="button"></button>
+        </div>
+      </section>
+
       <section id="seat-menu" role="dialog" aria-labelledby="seat-name" hidden>
         <p id="seat-name"></p>
         <button id="seat-host" type="button"></button>

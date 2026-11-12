@@ -107,7 +107,21 @@ export type ServerMessage =
    * included. The room keeps no lines: someone who comes in later does not
    * get what was said before.
    */
-  | { type: "chat"; room: string; from: number; nick: string; text: string; at: number }
+  | {
+      type: "chat";
+      room: string;
+      from: number;
+      nick: string;
+      text: string;
+      at: number;
+      /**
+       * Where the line was said to one player only: that player's slot and
+       * nickname. Such a line is sent to the two of them and to nobody
+       * else; a line said to everyone has neither.
+       */
+      to?: number;
+      toNick?: string;
+    }
   /** One of the words said with one press (`QUICK_WORDS`), passed on as a line is: which word, for each page to put in its own language. */
   | { type: "quick"; room: string; from: number; nick: string; word: QuickWord; at: number }
   /** Who is in the room's voice chat, sent to everyone in the room on joining and whenever it changes. */
@@ -149,8 +163,8 @@ export type Refusal =
   | VoiceRefusal
   | PaceRefusal;
 
-/** Why a chat line was not passed on: the player is sending them too fast. */
-export type ChatRefusal = "chat-too-fast";
+/** Why a chat line was not passed on: the player is sending them too fast, or said it to someone who is not in the room. */
+export type ChatRefusal = "chat-too-fast" | "chat-nobody";
 
 /** Why voice was not switched on: this room does not offer it. */
 export type VoiceRefusal = "voice-not-here";
@@ -274,7 +288,8 @@ export type ClientMessage =
   /** The host's page answers a `host-check`: its player is there. */
   | { type: "here" }
   /** Say a line to everyone in the room. */
-  | { type: "chat"; text: string }
+  /** A line for the room, or with `to` for the player in that slot alone. */
+  | { type: "chat"; text: string; to?: number }
   /** Say one of the words that take one press (`QUICK_WORDS`) to everyone in the room. It counts as a line does. */
   | { type: "quick"; word: QuickWord }
   /**
@@ -339,7 +354,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     return typeof data.listed === "boolean" ? { type: "listing", listed: data.listed } : null;
   }
   if (data.type === "chat") {
-    return typeof data.text === "string" ? { type: "chat", text: data.text } : null;
+    if (typeof data.text !== "string") return null;
+    if (data.to === undefined) return { type: "chat", text: data.text };
+    // a line meant for one player and addressed to nobody is not said to everyone instead
+    return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "chat", text: data.text, to: data.to } : null;
   }
   if (data.type === "quick") {
     return isQuickWord(data.word) ? { type: "quick", word: data.word } : null;
