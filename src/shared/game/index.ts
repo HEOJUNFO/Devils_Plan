@@ -44,6 +44,8 @@ export type {
   TableSizes,
   VolleyResult,
 } from "./rules";
+export { foresee } from "./ahead";
+export type { Foreseen } from "./ahead";
 export { botTurn, chooseAction } from "./bots";
 export type { BotConfig } from "./bots";
 export { chanceOf, nextRandom, randomInt, randomSource, seedFrom } from "./rng";

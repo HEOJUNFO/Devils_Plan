@@ -12,6 +12,7 @@
  */
 import { hits, type Box, type Press, type Reach } from "../../shared/frame";
 import type { Action, RulesConfig, SeatEvent, SeatView } from "../../shared/game";
+import { foresee } from "../../shared/game/ahead";
 import type { ServerMessage } from "../../shared/protocol";
 import type { VoiceMark } from "../../shared/voice";
 import {
@@ -133,6 +134,17 @@ interface Anim {
   dur: number;
 }
 
+/** The player's own move, on the screen before the room has answered it. */
+interface Ahead {
+  action: Action;
+  /** Where in the history the move is, once the room has taken it. */
+  at: number;
+  /** The whole move is drawn and the turn passed on; else only the credits it costs. */
+  whole: boolean;
+  /** When it was sent, by the browser's own clock in ms: the next seat's time is counted from here. */
+  sentAt: number;
+}
+
 interface Fire {
   k: number;
   stage: "intro" | "aim" | "hold";
@@ -228,7 +240,14 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   const pen = new Pen(ctx);
   const light = new Light();
 
+  /** The game the screen draws: what the room last sent, or that with the player's own move on it. */
   let latest: GameMessage | null = null;
+  /** The game as the room last sent it. */
+  let truth: GameMessage | null = null;
+  /** The player's own move, drawn ahead of the room's answer; `null` when the screen shows what the room sent. */
+  let ahead: Ahead | null = null;
+  /** The move of the history whose first sound was made at the press, not to be made again when it is shown; -1 for none. */
+  let soundedAt = -1;
   /** The last view from before the game ended: what the player knew going into the volley. */
   let before: SeatView | null = null;
   /** How many moves of the history have been shown. */
@@ -321,7 +340,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   /** Whole seconds until the room makes the awaited move itself, or `null` while no clock runs. */
   function secondsLeft(): number | null {
     if (latest === null || latest.turnEndsIn === null || latest.view.phase === "ended") return null;
-    return Math.max(0, Math.ceil((latest.turnEndsIn - (performance.now() - receivedAt)) / 1000));
+    // a turn passed on ahead of the room's answer is counted from the press
+    const from = ahead !== null && ahead.whole ? ahead.sentAt : receivedAt;
+    return Math.max(0, Math.ceil((latest.turnEndsIn - (performance.now() - from)) / 1000));
   }
 
   function awaited(): number | null {
@@ -428,18 +449,72 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (!starting) say(WORDS.notSent);
   }
 
+  /**
+   * `message` with the player's `action` on it, as far as the page can tell what the room will make of it:
+   * `null` when nothing of the move can be drawn before the room answers.
+   */
+  function withMove(message: GameMessage, action: Action): { message: GameMessage; whole: boolean } | null {
+    const drawn = foresee(message.view, action, message.rules);
+    if (drawn === null) return null;
+    if (!drawn.whole) return { message: { ...message, view: drawn.view }, whole: false };
+    // The next seat's time starts when the room takes the move. Until it says when that was, a seat with its
+    // player at the table has the whole of it from the press; how long an absent one has is the room's to say.
+    const next = message.players[drawn.view.current];
+    const turnEndsIn = message.rules.turnSeconds > 0 && next !== undefined && next.connected ? message.rules.turnSeconds * 1000 : null;
+    return { message: { ...message, view: drawn.view, turnEndsIn }, whole: true };
+  }
+
+  /** The move drawn ahead is taken off the screen: the room refused it, did something else first, or cannot be heard. */
+  function takeBack(): void {
+    if (ahead === null) return;
+    // its place in the history is the room's again: whatever the room puts there is shown from its start
+    if (ahead.whole && seen >= ahead.at) {
+      seen = ahead.at;
+      anim = null;
+    }
+    ahead = null;
+    soundedAt = -1;
+    latest = truth;
+  }
+
   function update(message: GameMessage): void {
     // the next game has begun: what was asked for is here
     if (message.view.phase !== "ended") starting = false;
-    if (latest === null || latest.startedAt !== message.startedAt) resetFor(message);
+    const other = truth === null || truth.startedAt !== message.startedAt;
+    if (other) {
+      resetFor(message);
+      ahead = null;
+      soundedAt = -1;
+    }
     // The room marks the game it sends in answer to this page's move. What it sends meanwhile, for another
     // player's move, leaves this one on its way; a game that has gone on to another phase waits for nothing.
-    const answered = message.answer === true || latest === null || latest.startedAt !== message.startedAt || latest.view.phase !== message.view.phase;
-    latest = message;
+    // The phase is the one the room sent last, not the one a move drawn ahead has put on the screen.
+    let answered = message.answer === true || truth === null || other || truth.view.phase !== message.view.phase;
+    truth = message;
     receivedAt = performance.now();
-    if (answered) pending = false;
     offline = false;
     if (message.view.phase !== "ended") before = message.view;
+    if (ahead !== null) {
+      const told = message.view.history[ahead.at];
+      if (told === undefined && !answered) {
+        // The move is still on its way: it stays on what the room has sent meanwhile, if it still can.
+        const drawn = withMove(message, ahead.action);
+        if (drawn !== null && drawn.whole === ahead.whole) {
+          latest = drawn.message;
+          return;
+        }
+      }
+      if (told !== undefined && told.seat === message.view.seat && told.type === ahead.action.type) {
+        // The room has taken the move. What was drawn of it stays as shown; the rest is shown from here.
+        ahead = null;
+        answered = true;
+      } else {
+        // Something else stands where the move would: the clock ended the turn first.
+        takeBack();
+      }
+    }
+    latest = message;
+    if (answered) pending = false;
   }
 
   // ---- Showing moves one at a time --------------------------------------------------------
@@ -449,8 +524,11 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     let dur = SHOW.look;
     // A private look, credits for the swap, a swap and a pass reach this screen only as the player's own:
     // of anyone else's the room sends a hidden action, which looks and sounds the same whichever it was.
+    // the first sound of a move of the player's own was made at the press
+    const heard = soundedAt === seen;
+    soundedAt = -1;
     if (event.type === "public" || event.type === "private") {
-      sfx.look();
+      if (!heard) sfx.look();
       if (event.seen[0] === 1 || event.seen[1] === 1) sfx.live();
       else sfx.empty();
     } else if (event.type === "rotate") {
@@ -458,7 +536,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       sfx.ratchet(event.steps * 3);
     } else if (event.type === "tamper") {
       dur = SHOW.tamper;
-      sfx.chip();
+      if (!heard) sfx.chip();
       if (event.earned) sfx.earn();
       else sfx.stored();
     } else if (event.type === "swap") {
@@ -606,7 +684,21 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (!pending) {
       say(WORDS.notSent);
       sfx.deny();
+      return;
     }
+    // The move is on the screen at the press, as far as this page can tell what the room will make of it:
+    // a turn of the muzzle, the swap and the pass whole, as the next move of the history; of a look and of
+    // credits for the swap, the credits gone and the first sound, and the rest when the room answers.
+    if (truth === null) return;
+    const drawn = withMove(truth, action);
+    if (drawn === null) return;
+    ahead = { action, at: truth.view.history.length, whole: drawn.whole, sentAt: performance.now() };
+    latest = drawn.message;
+    if (drawn.whole) return;
+    if (action.type === "public" || action.type === "private") sfx.look();
+    else if (action.type === "tamper") sfx.chip();
+    else return;
+    soundedAt = ahead.at;
   }
 
   function confirm(): void {
@@ -1332,12 +1424,15 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     refused(reason: string): void {
       starting = false;
       pending = false;
+      takeBack();
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
       starting = false;
       pending = false;
+      // whether the room took the move is not known: it says so when it can be heard again
+      takeBack();
       offline = true;
     },
     setHost(value: boolean): void {
