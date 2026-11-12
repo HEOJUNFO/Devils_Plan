@@ -218,7 +218,7 @@ describe("the head of the game's own page", () => {
   });
 
   it("carries each code a search engine's console looks for to know the site's owner", () => {
-    expect(Object.keys(OWNER_CODES)).toEqual(["google-site-verification", "naver-site-verification"]);
+    expect(Object.keys(OWNER_CODES)).toEqual(["google-site-verification", "naver-site-verification", "msvalidate.01"]);
     for (const [name, code] of Object.entries(OWNER_CODES)) expect(head).toContain(`<meta name="${name}" content="${code}" />`);
   });
 
