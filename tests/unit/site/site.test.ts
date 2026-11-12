@@ -3,7 +3,7 @@ import { GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import { LANGS, type Lang } from "../../../src/shared/lang";
 import { appHead, appNoScript, gamePath, homePath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
 import { siteStyle } from "../../../src/shared/site/style";
-import { ORIGIN, SITE_WORDS } from "../../../src/shared/site/words";
+import { ORIGIN, OWNER_CODES, SITE_WORDS } from "../../../src/shared/site/words";
 
 /** The addresses a build gives the font and the style sheet. */
 const BUILT = { font: "/assets/font-abc.woff2", style: "/assets/site-abc.css" };
@@ -181,6 +181,11 @@ describe("the head of the game's own page", () => {
     expect(pages().map((page) => title(page.body))).not.toContain(title(head));
     expect(description(head)).toContain(String(GAME_IDS.length));
     expect(JSON.parse(one(head, /<script type="application\/ld\+json">(.*?)<\/script>/))["@graph"]).toHaveLength(2);
+  });
+
+  it("carries each code a search engine's console looks for to know the site's owner", () => {
+    expect(Object.keys(OWNER_CODES)).toContain("google-site-verification");
+    for (const [name, code] of Object.entries(OWNER_CODES)) expect(head).toContain(`<meta name="${name}" content="${code}" />`);
   });
 
   it("links a reader without the script to the page about the games, in every language", () => {

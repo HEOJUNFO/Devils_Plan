@@ -20,7 +20,7 @@
  */
 import { GAMES, GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
-import { LANG_NAMES, ORIGIN, SITE_NAME, SITE_WORDS } from "./words";
+import { LANG_NAMES, ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "./words";
 
 /** A game's rules as its sheet has them: a heading, then paragraphs and lists of points (`RulesSheet` of the client). */
 export interface Sheet {
@@ -156,6 +156,7 @@ export function appHead(): HeadTag[] {
   const description = words.app.description(GAME_IDS.length);
   return [
     ...headTags({ lang, path: "/", title: words.app.title, description, others: HOMES, fallback: "/" }),
+    ...Object.entries(OWNER_CODES).map(([name, content]): HeadTag => ({ tag: "meta", attrs: { name, content } })),
     structured({
       "@context": "https://schema.org",
       "@graph": [

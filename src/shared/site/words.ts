@@ -26,6 +26,16 @@ export const SITE_NAME = "brain-survival";
 /** Where the site is: every address a search engine is given starts here. */
 export const ORIGIN = "https://play.brain-survival.workers.dev";
 
+/**
+ * What shows a search engine's console whose site this is: a code it gives the
+ * owner, which it then looks for in the head of `/`. It has to stay there for
+ * the site to stay the owner's in that console.
+ */
+export const OWNER_CODES: Record<string, string> = {
+  // Google Search Console, the property https://play.brain-survival.workers.dev/ (2026-11-12)
+  "google-site-verification": "A4D90_3K7yDn9kPfwZ0tzKkjr3vZOLbisC7sF6md03w",
+};
+
 /** Each language's name for itself, on the link to a page in it. */
 export const LANG_NAMES: Record<Lang, string> = { ko: "한국어", en: "English" };
 
