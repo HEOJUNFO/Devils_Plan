@@ -60,8 +60,13 @@ describe("the games a room can be made for", () => {
     expect(GAMES["lay-the-grass"].variants.map((each) => each.title.ko)).toEqual(["판마다 새 카드", "방송의 카드"]);
   });
 
-  it("offers a choice of ways in the two games whose hidden part the show gives away, and of length in the game the show gives none", () => {
-    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["lay-the-grass", "memory-poker", "mystery-stock-market"]);
+  it("offers a choice of ways in the two games whose hidden part the show gives away, and of length in the two games the show gives none", () => {
+    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["lay-the-grass", "count-cubes", "memory-poker", "mystery-stock-market"]);
+  });
+
+  it("lets a room of 큐브 세기 give its problem as long as its host says, starting with the five minutes it always had", () => {
+    expect(GAMES["count-cubes"].variants.map((each) => each.id)).toEqual(["time-five", "time-three", "time-ten"]);
+    expect(GAMES["count-cubes"].variants.map((each) => each.title.ko)).toEqual(["제한 5분", "제한 3분", "제한 10분"]);
   });
 
   it("lets a room of 기억 포커 be as many rounds as its host says, starting with the five it always was", () => {

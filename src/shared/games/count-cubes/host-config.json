@@ -1,3 +1,8 @@
 {
-  "standSeconds": 180
+  "standSeconds": 180,
+  "problemSeconds": {
+    "time-five": 300,
+    "time-three": 180,
+    "time-ten": 600
+  }
 }

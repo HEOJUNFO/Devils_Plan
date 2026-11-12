@@ -72,7 +72,29 @@
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false,
-    "variants": []
+    "variants": [
+      {
+        "id": "time-five",
+        "title": {
+          "ko": "제한 5분",
+          "en": "5 min limit"
+        }
+      },
+      {
+        "id": "time-three",
+        "title": {
+          "ko": "제한 3분",
+          "en": "3 min limit"
+        }
+      },
+      {
+        "id": "time-ten",
+        "title": {
+          "ko": "제한 10분",
+          "en": "10 min limit"
+        }
+      }
+    ]
   },
   "memory-poker": {
     "title": {

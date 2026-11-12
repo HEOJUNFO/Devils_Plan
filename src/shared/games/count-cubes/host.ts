@@ -37,6 +37,13 @@ import {
 export interface CubesHostConfig {
   /** Seconds a game stands still, with none of its players connected, before it is ended. */
   standSeconds: number;
+  /**
+   * How many seconds a problem is given, by the way of playing its room's
+   * host chose (the `variants` of the game in `games.json`). The document
+   * gives no time limit, so the rules' own number is a filled one, and a
+   * room may have another.
+   */
+  problemSeconds: Record<string, number>;
 }
 
 /**
@@ -87,6 +94,8 @@ export interface CubesSession {
   bots: { player: number; at: number }[];
   /** The state of the host's own random sequence, for the bots. */
   rng: number;
+  /** How many seconds this game's problem is given, where its room's host chose; a game kept from before that could be chosen has the rules' own number. */
+  problemSeconds?: number;
 }
 
 /** Why a game was not started or something asked of it was refused. */
@@ -133,6 +142,17 @@ export interface CubesSnapshot {
   clock: { problem: number | null; locks: { player: number; left: number }[]; stand: number | null; answersIn: number };
   /** Whether the game stands still because none of its players is connected. */
   frozen: boolean;
+}
+
+/** The rules of one game: the rules as they are set, with the time its room's host chose for the problem. */
+function rulesOf(session: Pick<CubesSession, "problemSeconds">): CubesConfig {
+  return session.problemSeconds === undefined ? config : { ...config, problemSeconds: session.problemSeconds };
+}
+
+/** How many seconds the way of playing `variant` gives a problem; the rules' own number for none, or for one that is no length of time. */
+function secondsFor(variant: string | undefined): number {
+  const seconds = variant === undefined || !Object.hasOwn(hosting.problemSeconds, variant) ? undefined : hosting.problemSeconds[variant];
+  return seconds === undefined ? config.problemSeconds : seconds;
 }
 
 const refuse = (reason: CubesHostRefusal): HostResult<CubesSession, CubesHostRefusal> => ({ ok: false, reason });
@@ -190,7 +210,7 @@ function botAnswers(session: CubesSession, player: number, now: number): CubesSe
   // a wrong answer is off by one to five: under the count, unless that would be under nought
   const off = 1 + randomInt(source.next, 5);
   const said = right ? count : count >= off ? count - off : count + off;
-  const result = applyAction(session.state, player, { type: "answer", said }, now, config);
+  const result = applyAction(session.state, player, { type: "answer", said }, now, rulesOf(session));
   const rest = session.bots.filter((bot) => bot.player !== player);
   // an answer the game would not take leaves the bot out of the rest of it
   if (!result.ok) return { ...session, bots: rest, rng: source.state };
@@ -218,7 +238,8 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
         seats.push({ id, token: null, nick: `봇 ${seats.filter((seat) => seat.token === null).length + 1}` });
       }
     }
-    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now }, config);
+    const problemSeconds = secondsFor(request.variant);
+    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now }, rulesOf({ problemSeconds }));
     if (!created.ok) return refuse(created.reason);
     seats.sort((a, b) => a.id - b.id);
     const session: CubesSession = {
@@ -232,6 +253,7 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
         .map((seat, index) => ({ player: seat.id, at: request.now + (bots.answerAfterSeconds + index * bots.spreadSeconds) * 1000 })),
       // A sequence of the host's own, kept apart from the game's: what the bots do never changes which problem is drawn.
       rng: seedFrom(request.seed ^ 0x2545f491),
+      problemSeconds,
     };
     return { ok: true, session: settle(session, presence, request.now) };
   },
@@ -245,7 +267,7 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
     // Whatever the clock has brought due comes first: an answer after the problem has come
     // down is no answer, however late the room's own alarm is in saying so.
     const due = this.tick(session, presence, now);
-    const result = applyAction(due.state, player.id, action, now, config);
+    const result = applyAction(due.state, player.id, action, now, rulesOf(due));
     if (!result.ok) return refuse(result.reason);
     return { ok: true, session: settle({ ...due, state: result.state }, presence, now) };
   },
@@ -274,9 +296,10 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
     // while the game stands still its clocks show what they had left when it stopped
     const at = session.frozenAt ?? now;
     const over = state.phase === "ended";
+    const rules = rulesOf(session);
     return {
       startedAt: session.startedAt,
-      rules: { lockSeconds: config.lockSeconds, problemSeconds: config.problemSeconds, maxSaid: config.maxSaid },
+      rules: { lockSeconds: rules.lockSeconds, problemSeconds: rules.problemSeconds, maxSaid: rules.maxSaid },
       view: viewFor(state, seat?.id ?? null),
       players: session.players.map((player) => ({
         id: player.id,
@@ -291,7 +314,7 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
           ? []
           : state.wrong.filter((entry) => entry.until > at).map((entry) => ({ player: entry.player, left: entry.until - at })),
         stand: session.frozenAt === null ? null : Math.max(0, session.frozenAt + hosting.standSeconds * 1000 - now),
-        answersIn: over ? 0 : Math.max(0, answersFrom(state, config) - at),
+        answersIn: over ? 0 : Math.max(0, answersFrom(state, rules) - at),
       },
       frozen: session.frozenAt !== null,
     };
@@ -320,5 +343,6 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
     (stored as Partial<CubesSession>).version === VERSION &&
     (stored as Partial<CubesSession>).state?.version === VERSION &&
     Array.isArray((stored as Partial<CubesSession>).state?.solid?.heights) &&
-    Array.isArray((stored as Partial<CubesSession>).bots),
+    Array.isArray((stored as Partial<CubesSession>).bots) &&
+    ((stored as Partial<CubesSession>).problemSeconds === undefined || Number.isInteger((stored as Partial<CubesSession>).problemSeconds)),
 };

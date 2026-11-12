@@ -4,6 +4,7 @@ import shipped from "../../../src/shared/games/count-cubes/config.json";
 import hostJson from "../../../src/shared/games/count-cubes/host-config.json";
 import { cubesHost, type CubesSession, type CubesSnapshot } from "../../../src/shared/games/count-cubes/host";
 import { countOf, lockedUntil, neededOf } from "../../../src/shared/games/count-cubes/rules";
+import { GAMES } from "../../../src/shared/games";
 import type { Candidate, Presence, StartRequest } from "../../../src/shared/hosting";
 
 const host = cubesHost;
@@ -472,5 +473,47 @@ describe("큐브 세기 in a room: what is sent and kept", () => {
 
     expect(host.same(session, host.attend(session, presenceOf(players), T0 + 1))).toBe(true);
     expect(host.same(session, answer(session, players, 1, 0, T0 + SOON_MS))).toBe(false);
+  });
+});
+
+describe("큐브 세기 in a room: how long the host gives a problem", () => {
+  it.each([
+    ["time-three", 180],
+    ["time-five", 300],
+    ["time-ten", 600],
+  ])("gives %s that many seconds: said to the players, and the game is over when they have gone and not before", (variant, seconds) => {
+    const players = candidates(2);
+    const presence = presenceOf(players);
+
+    const session = started(players, { variant });
+    const nearly = host.tick(session, presence, T0 + seconds * 1000 - 1);
+    const over = host.tick(nearly, presence, T0 + seconds * 1000);
+
+    expect(seenBy(session, players, 0, T0).rules.problemSeconds).toBe(seconds);
+    expect(seenBy(session, players, 0, T0).clock.problem).toBe(seconds * 1000);
+    expect(host.running(nearly)).toBe(true);
+    expect(over.state.history.at(-1)).toEqual({ type: "ended", reason: "time" });
+  });
+
+  it("gives the time it always did where the host chose nothing, or something that is no length of time", () => {
+    const players = candidates(2);
+
+    expect(seenBy(started(players), players, 0, T0).rules.problemSeconds).toBe(shipped.problemSeconds);
+    expect(seenBy(started(players, { variant: "show" }), players, 0, T0).rules.problemSeconds).toBe(shipped.problemSeconds);
+  });
+
+  it("goes on with a game kept from before the host could choose, saying the time it always had", () => {
+    const players = candidates(2);
+    const { problemSeconds: _seconds, ...kept } = started(players);
+
+    expect(host.usable(kept)).toBe(true);
+    expect(seenBy(kept as CubesSession, players, 0, T0).rules.problemSeconds).toBe(shipped.problemSeconds);
+  });
+
+  it("knows how long each of the ways the list of games names is, the first of them the time it always had", () => {
+    const ways = GAMES["count-cubes"].variants.map((each) => each.id);
+
+    expect(Object.keys(hostJson.problemSeconds).sort()).toEqual([...ways].sort());
+    expect(hostJson.problemSeconds[ways[0] as keyof typeof hostJson.problemSeconds]).toBe(shipped.problemSeconds);
   });
 });
