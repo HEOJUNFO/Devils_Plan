@@ -52,7 +52,7 @@ import directoryConfig from "../shared/directory-config.json";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
-import { isMuted, setMuted, sfx, startAudio } from "./game/sound";
+import { isMuted, sfx, soundLevel, startAudio, stepSound } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
@@ -129,6 +129,7 @@ const startButton = el<HTMLButtonElement>("start");
 const readyButton = el<HTMLButtonElement>("ready");
 const pingMark = el<HTMLElement>("ping");
 const menuPing = el<HTMLElement>("menu-ping");
+const soundButton = el<HTMLButtonElement>("sound");
 const swapButton = el<HTMLButtonElement>("swap");
 const swapSheet = el<HTMLElement>("swap-sheet");
 const swapChoices = el<HTMLElement>("swap-choices");
@@ -645,8 +646,7 @@ function openMenu(open: boolean): void {
     disarmLeave();
     return;
   }
-  menuSound.textContent = isMuted() ? WORDS.menu.soundOff : WORDS.menu.soundOn;
-  menuSound.setAttribute("aria-pressed", String(!isMuted()));
+  renderSound();
   // a phone's browser that cannot fill the screen (Safari on an iPhone) has no button for it
   menuFull.hidden = !document.fullscreenEnabled;
   menuFull.textContent = document.fullscreenElement === null ? WORDS.menu.full : WORDS.menu.fullExit;
@@ -728,6 +728,23 @@ function syncScene(): void {
   const seen = currentCode !== "" && table === null;
   sceneCanvas.hidden = currentCode === "";
   scene?.setRunning(seen);
+  renderSound();
+}
+
+/**
+ * Says how loud the sound is on the two buttons that change it: the one over
+ * the room's picture, there while the picture is, and the one in a game's
+ * menu. A key in a game mutes it too (M), so both are written anew whenever
+ * they come into view.
+ */
+function renderSound(): void {
+  const level = soundLevel();
+  soundButton.hidden = !(currentCode !== "" && table === null);
+  for (const button of [soundButton, menuSound]) {
+    button.textContent = WORDS.menu.sound[level] ?? WORDS.menu.sound[0];
+    button.title = WORDS.menu.soundHelp;
+    button.setAttribute("aria-pressed", String(!isMuted()));
+  }
 }
 
 /** Shows the room `view` in the picture of its game, making that picture when the game is another. */
@@ -2190,10 +2207,14 @@ menuRules.addEventListener("click", () => {
   // the game's own sheet, as its H key opens it
   table?.press("KeyH");
 });
-menuSound.addEventListener("click", () => {
-  setMuted(!isMuted());
-  openMenu(true);
-});
+// One press, one level louder, and after the loudest, silence: the sound of the press says how loud it now is.
+for (const button of [menuSound, soundButton]) {
+  button.addEventListener("click", () => {
+    startAudio();
+    stepSound();
+    renderSound();
+  });
+}
 menuFull.addEventListener("click", () => {
   if (document.fullscreenElement !== null) void document.exitFullscreen().catch(() => undefined);
   else fillScreen();

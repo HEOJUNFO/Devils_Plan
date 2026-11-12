@@ -1101,6 +1101,27 @@ button.choice[aria-pressed="true"] {
   pointer-events: none;
 }
 
+/* How loud the sound is: the picture's other corner. Silent, it is dim; heard, it is lit as the game menu's is. */
+#sound {
+  position: absolute;
+  right: 180px;
+  top: 3px;
+  color: var(--dim);
+}
+
+#sound[aria-pressed="true"] {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+#sound[hidden] {
+  display: none;
+}
+
+:root.touch #sound {
+  height: 24px;
+}
+
 #ping.fair,
 #menu-ping.fair {
   color: var(--amber);

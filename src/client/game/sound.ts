@@ -1,23 +1,47 @@
 /**
  * The table's sounds, made in the browser with Web Audio: no audio files.
- * Sound starts on the player's first input, as browsers require, and M mutes.
+ * Sound starts on the player's first input, as browsers require. M mutes, and
+ * how loud it is (`src/shared/volume.ts`) is kept in the browser.
  */
+import config from "../../shared/sound-config.json";
+import { gainOf, stepped, volumeFrom, volumeText, withMute, type Volume } from "../../shared/volume";
+import { storageKey } from "../storage";
 
-/** How loud everything is, 0 to 1. */
-const VOLUME = 0.5;
+/** Where the browser keeps how loud this player has it. */
+const STORED = storageKey("sound");
 
 let context: AudioContext | null = null;
 let output: GainNode | null = null;
-let muted = false;
+let chosen: Volume = volumeFrom(kept(), config);
 /** The noise's own sequence, so a shot sounds the same every time. */
 let hiss = 12345;
+
+/** What the browser kept; nothing where it keeps nothing (a private window that refuses, the build's own read of this file). */
+function kept(): string | null {
+  try {
+    return localStorage.getItem(STORED);
+  } catch {
+    return null;
+  }
+}
+
+/** Makes `next` how loud it is from here on, and keeps it. */
+function turnTo(next: Volume): void {
+  chosen = next;
+  if (output !== null) output.gain.value = gainOf(chosen, config);
+  try {
+    localStorage.setItem(STORED, volumeText(chosen));
+  } catch {
+    // not kept: it holds for this visit
+  }
+}
 
 /** Starts sound; call from a key press or a click. */
 export function startAudio(): void {
   if (context === null) {
     context = new AudioContext();
     output = context.createGain();
-    output.gain.value = muted ? 0 : VOLUME;
+    output.gain.value = gainOf(chosen, config);
     output.connect(context.destination);
   }
   if (context.state === "suspended") void context.resume();
@@ -25,17 +49,28 @@ export function startAudio(): void {
 
 /** Whether sound is muted. */
 export function isMuted(): boolean {
-  return muted;
+  return chosen.level === 0;
 }
 
-/** Mutes or unmutes everything. */
+/** Mutes everything, or brings it back as loud as it was. */
 export function setMuted(value: boolean): void {
-  muted = value;
-  if (output !== null) output.gain.value = value ? 0 : VOLUME;
+  turnTo(withMute(chosen, value));
+}
+
+/** Which level the sound is at: 0 is silence, and each one after it is louder. */
+export function soundLevel(): number {
+  return chosen.level;
+}
+
+/** Turns the sound to its next level (after the loudest, silence), lets it be heard, and returns the level. */
+export function stepSound(): number {
+  turnTo(stepped(chosen, config));
+  sfx.pick();
+  return chosen.level;
 }
 
 function tone(freq: number, seconds: number, type: OscillatorType = "square", volume = 0.3, at = 0, slideTo = 0): void {
-  if (context === null || output === null || muted) return;
+  if (context === null || output === null || chosen.level === 0) return;
   const t = context.currentTime + at;
   const oscillator = context.createOscillator();
   const gain = context.createGain();
@@ -50,7 +85,7 @@ function tone(freq: number, seconds: number, type: OscillatorType = "square", vo
 }
 
 function noise(seconds: number, volume: number, lowpass: number): void {
-  if (context === null || output === null || muted) return;
+  if (context === null || output === null || chosen.level === 0) return;
   const length = Math.floor(context.sampleRate * seconds);
   const buffer = context.createBuffer(1, length, context.sampleRate);
   const data = buffer.getChannelData(0);
