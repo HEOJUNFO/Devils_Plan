@@ -1,3 +1,4 @@
 {
-  "standSeconds": 180
+  "standSeconds": 180,
+  "passSeconds": { "least": 3, "most": 8 }
 }

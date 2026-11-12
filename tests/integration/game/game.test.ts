@@ -27,6 +27,11 @@ const AWAY_MS = roomConfig.awayTurnSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
 /** How long a table none of whose players is connected goes on, with someone else in the room, before the room plays it out. */
 const STAND_MS = hostConfig.standSeconds * 1000;
+/** The shortest and the longest the room waits before it passes for a player with no credits. */
+const PASS_LEAST_MS = hostConfig.passSeconds.least * 1000;
+const PASS_MOST_MS = hostConfig.passSeconds.most * 1000;
+/** How long a test may itself take, in real time, between a move and its reading of the room's alarm. */
+const SLACK_MS = 1000;
 const STALE_MS = roomConfig.staleConnectionSeconds * 1000;
 
 /** Connects to `room` and joins as player `player`. */
@@ -411,6 +416,44 @@ describe("GameRoom: playing a game", () => {
     const games = await startGame(clients);
 
     for (const game of games) expect(game).toMatchObject({ turnEndsIn: null, rules: { turnSeconds: 0 } });
+    closeAll(clients);
+  });
+
+  it("passes for a player who has no credits left, a pause after their turn came, and tells the others of a hidden action", async () => {
+    const stub = env.GameRoom.getByName("GAAA7");
+    const clients = await table("GAAA7", SMALLEST);
+    let games = await startGame(clients);
+    const spender = mover(games);
+    const seat = games[spender].view.seat!;
+    // The first to move spends its credits as fast as a turn allows and the others one a turn, each move one
+    // the whole table sees, until its turn comes with none left.
+    const most = rulesConfig.startCredits * SMALLEST;
+    let moves = 0;
+    for (; moves < most; moves++) {
+      const acting = mover(games);
+      const credits = games[spender].view.credits ?? 0;
+      if (acting === spender && credits === 0) break;
+      const dear = acting === spender && credits >= rulesConfig.costRotate2;
+      clients[acting].send({ type: "action", action: dear ? { type: "rotate", steps: 2 } : { type: "public", pair: 0 } });
+      const told = moves + 1;
+      games = await Promise.all(clients.map((client) => client.gameWhere((game) => game.view.history.length === told)));
+    }
+    const due = await scheduledAlarm(stub);
+    const pause = due - Date.now();
+    advanceClock(pause + 1);
+
+    await runDurableObjectAlarm(stub);
+
+    const after = await Promise.all(clients.map((client) => client.gameWhere((game) => game.view.history.length === moves + 1)));
+    expect(games[spender].view).toMatchObject({ current: seat, credits: 0 });
+    // no screen counts down to it: the room has set no limit on a turn, and the pause is the room's own to know
+    for (const game of games) expect(game.turnEndsIn).toBeNull();
+    expect(pause).toBeGreaterThan(PASS_LEAST_MS - SLACK_MS);
+    expect(pause).toBeLessThanOrEqual(PASS_MOST_MS);
+    after.forEach((game, n) => {
+      expect(game.view.history.at(-1)).toEqual(n === spender ? { type: "pass", seat, out: false, ended: false } : { type: "hidden", seat, ended: false });
+      expect(game.view.current).not.toBe(seat);
+    });
     closeAll(clients);
   });
 

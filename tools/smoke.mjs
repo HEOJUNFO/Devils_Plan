@@ -2,7 +2,8 @@
 //
 // Drives a server over its real HTTP and WebSocket addresses, as browsers
 // would: the page loads, the list of rooms answers, four players make and
-// join a room, talk, play a whole game to its end and leave; then two more
+// join a room, talk, play a whole game to its end (one of them out of credits
+// early, so that the room passes for them) and leave; then two more
 // make a room of the second game, team up and part, and play it to its end,
 // through the choice that follows its race and the contest that choice adds;
 // then two make a room of the third game and lay its first park; then two
@@ -15,8 +16,9 @@
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
 // the sixth shows the chips for a few seconds before the cards and places the
-// rocks nobody is asked about a moment apart, so the whole check takes about
-// fifty seconds longer than the moves do.
+// rocks nobody is asked about a moment apart, and the first waits a few
+// seconds before it passes for a player with no credits, so the whole check
+// takes about a minute longer than the moves do.
 //
 // Usage: npm run dev (in another terminal), then
 //   npm run smoke                      # http://localhost:5273
@@ -42,7 +44,11 @@ const SIXTH_GAME = "under-thirteen";
 const SEVENTH_GAME = "mystery-stock-market";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
+/** How long the first game's room waits before it passes for a player with no credits, as its own config has it. */
+const PASS_SECONDS = JSON.parse(readFileSync(new URL("../src/shared/game/host-config.json", import.meta.url), "utf8")).passSeconds;
 const STEP_TIMEOUT_MS = 8000;
+/** What the way to the server and back may add to, or take from, a time the check measures. */
+const LAG_MS = 2000;
 /** Long enough for the second game's pause between problems, which the server's own config sets. */
 const PAUSE_TIMEOUT_MS = 30000;
 const MOVE_LIMIT = 600;
@@ -813,10 +819,15 @@ async function firstGame() {
   );
   check("other seats' credits, who is out of them and the credits gathered for the swap are not in a player's view", secrets);
 
-  // 10. a whole game: everyone puts one credit a turn towards the swap, whoever's credit earns it makes it,
-  // and whoever has none left passes
+  // 10. a whole game: everyone puts one credit a turn towards the swap, and whoever's credit earns it makes
+  // it. The first to move, after that first credit, spends as fast as a turn allows, so that the game goes on
+  // with one seat out of credits: the room passes for that seat itself, a pause after its turn came. The check
+  // waits for the first such pass; after it everyone spends fast, and the seat with nothing left passes by
+  // hand, which the room still takes.
   let moves = 0;
   let hidden = null;
+  let spender = null;
+  let roomPass = null;
   for (; moves < MOVE_LIMIT; moves++) {
     const views = players.map((p) => p.last("game"));
     if (views.every((g) => g.view.phase === "ended")) break;
@@ -825,11 +836,39 @@ async function firstGame() {
       await new Promise((resolve) => setTimeout(resolve, 20));
       continue;
     }
+    if (spender === null) spender = turn;
     const mine = views[turn].view;
+    const rules = views[turn].rules;
     // each player is told the game in their own words: what one has been told so far says nothing of another
     const told = views.map((g) => g.view.history.length);
     const seen = players[turn].messages.length;
-    const action = mine.phase === "swap" ? { type: "swap", pair: 0 } : mine.credits === 0 ? { type: "pass" } : { type: "tamper", amount: 1 };
+    if (roomPass === null && mine.phase !== "swap" && mine.credits === 0) {
+      // nothing is sent: this pass is the room's to make
+      const since = Date.now();
+      const longest = PASS_SECONDS.most * 1000 + LAG_MS;
+      const passed = await Promise.all(
+        players.map((p, n) => p.until("the room to pass for the seat with no credits", (m) => m.type === "game" && m.view.history.length > told[n], 0, longest + STEP_TIMEOUT_MS)),
+      );
+      const waited = Date.now() - since;
+      const mover = passed[turn].view.history.at(-1)?.type;
+      const rest = passed.filter((_, n) => n !== turn).map((g) => g.view.history.at(-1)?.type);
+      roomPass = {
+        ok: mover === "pass" && rest.every((type) => type === "hidden") && waited >= PASS_SECONDS.least * 1000 - LAG_MS && waited <= longest,
+        detail: `after ${(waited / 1000).toFixed(1)}s, mover ${mover}, others ${rest.join(" ")}`,
+      };
+      continue;
+    }
+    const fast = roomPass !== null || (turn === spender && mine.history.some((event) => event.seat === mine.seat));
+    const action =
+      mine.phase === "swap"
+        ? { type: "swap", pair: 0 }
+        : mine.credits === 0
+          ? { type: "pass" }
+          : !fast
+            ? { type: "tamper", amount: 1 }
+            : mine.credits >= rules.costRotate2
+              ? { type: "rotate", steps: 2 }
+              : { type: "tamper", amount: Math.min(rules.tamperMaxPerTurn, mine.credits) };
     players[turn].send({ type: "action", action });
     const answer = await players[turn].until(
       "the move to be made",
@@ -851,6 +890,11 @@ async function firstGame() {
     }
   }
   check("credits put towards the swap reach the other players as a hidden action and nothing more", hidden !== null && hidden.ok, hidden?.detail ?? "no move was made");
+  check(
+    "the room passes for a player with no credits, a pause after their turn came, and the others hear of a hidden action",
+    roomPass !== null && roomPass.ok,
+    roomPass?.detail ?? "no seat was out of credits on its turn before the game ended",
+  );
   const ends = players.map((p) => p.last("game"));
   check("the game plays to its end", ends.every((g) => g.view.phase === "ended"), `${moves} moves`);
   const result = ends[0].view.result;

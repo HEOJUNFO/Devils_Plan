@@ -207,12 +207,6 @@ const NO_RECT: [number, number, number, number] = [412, 223, 64, 15];
 const OK_REACH: Reach = [6, 10, 2, 1];
 const NO_REACH: Reach = [2, 10, 4, 1];
 /**
- * A player with no credits has one thing to do on their turn, and nothing to
- * take back: the pass has the room of both of those, and their reach.
- */
-const PASS_RECT: Box = [342, 223, 134, 15];
-const PASS_REACH: Reach = [6, 10, 4, 1];
-/**
  * While credits are counted out for the swap, the fifth button is three: one
  * fewer, the count itself, which puts them in, and one more. Without them
  * the count could be changed with the arrow keys alone.
@@ -350,9 +344,12 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     return latest === null || latest.view.phase === "ended" ? null : latest.view.current;
   }
 
-  /** Whether it is the player's turn and they have no credits: there is nothing to do but pass. */
-  function mustPass(): boolean {
-    return latest !== null && latest.view.phase === "turn" && latest.view.credits === 0;
+  /**
+   * Whether it is the player's turn and they have no credits. There is nothing to press: the room passes for
+   * them, a pause after the turn came, and the page is told neither when.
+   */
+  function passing(): boolean {
+    return latest !== null && latest.view.phase === "turn" && latest.view.credits === 0 && awaited() === latest.view.seat;
   }
 
   /** Whether everything the room has sent is on screen and nothing is still playing. */
@@ -687,8 +684,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       return;
     }
     // The move is on the screen at the press, as far as this page can tell what the room will make of it:
-    // a turn of the muzzle, the swap and the pass whole, as the next move of the history; of a look and of
-    // credits for the swap, the credits gone and the first sound, and the rest when the room answers.
+    // a turn of the muzzle and the swap whole, as the next move of the history; of a look and of credits for
+    // the swap, the credits gone and the first sound, and the rest when the room answers. (A pass is not the
+    // page's to send: the room makes it for a player with no credits.)
     if (truth === null) return;
     const drawn = withMove(truth, action);
     if (drawn === null) return;
@@ -729,7 +727,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       }
       return;
     }
-    const able = canAct();
+    // a turn the room passes asks nothing of the player: no call to move, and nothing to choose
+    const able = canAct() && !passing();
     if (able && !couldAct) {
       sfx.turn();
       if (latest.view.phase === "swap") {
@@ -740,10 +739,6 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     couldAct = able;
     if (!able) {
       sel = null;
-      return;
-    }
-    if (mustPass() && (pressed("Enter", "NumpadEnter", "Space") || clicked(PASS_RECT, PASS_REACH))) {
-      send({ type: "pass" });
       return;
     }
 
@@ -1239,7 +1234,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (pending) return [WORDS.prompt.sending, C.boneD];
     const mine = myChamber() ?? 0;
     if (sel === null) {
-      if (mustPass()) return [WORDS.prompt.pass, C.amber];
+      if (passing()) return [WORDS.prompt.passing, C.amber];
       // what a hidden action may have changed since is as good as not known
       const known = view.doubt[mine] > 0 ? null : view.chambers[mine];
       const myMoves = view.history.filter((event) => event.seat === view.seat).length;
@@ -1299,8 +1294,6 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (live && sel !== null) {
       smallButton(OK_RECT, WORDS.button.confirm, true);
       if (sel.mode !== "swap") smallButton(NO_RECT, WORDS.button.cancel, false);
-    } else if (live && mustPass()) {
-      smallButton(PASS_RECT, WORDS.button.pass, true);
     }
     if (view.credits === null) {
       pen.txt(WORDS.prompt.watching, 6, 248, C.boneD);

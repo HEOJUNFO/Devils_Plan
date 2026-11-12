@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Action, BotConfig, RulesConfig, TableSizes } from "../../../src/shared/game";
 import botJson from "../../../src/shared/game/bot-config.json";
+import { rouletteHost } from "../../../src/shared/game/host";
 import hostJson from "../../../src/shared/game/host-config.json";
 import rulesJson from "../../../src/shared/game/rules-config.json";
 import sizesJson from "../../../src/shared/game/table-sizes.json";
@@ -22,7 +23,14 @@ const SIZES: TableSizes = sizesJson;
 const BOTS: BotConfig = botJson;
 
 /** Hosting as shipped. */
-const CONFIG: SessionConfig = { rules: RULES, sizes: SIZES, bots: BOTS, awayTurnSeconds: roomJson.awayTurnSeconds, standSeconds: hostJson.standSeconds };
+const CONFIG: SessionConfig = {
+  rules: RULES,
+  sizes: SIZES,
+  bots: BOTS,
+  awayTurnSeconds: roomJson.awayTurnSeconds,
+  standSeconds: hostJson.standSeconds,
+  passSeconds: hostJson.passSeconds,
+};
 
 /** The time the fixtures start at, in ms since the epoch. */
 const T0 = 1_800_000_000_000;
@@ -582,6 +590,307 @@ describe("a swap being made", () => {
     expect(next.state.history.at(-1)).toMatchObject({ type: "swap-forfeit", seat });
     expect(next.state.chambers).toEqual(session.state.chambers);
     expect(sessionSnapshot(next, WATCHER, presence, T0).view.history).toEqual([{ type: "hidden", seat, ended: false }]);
+  });
+});
+
+describe("the pass of a player with no credits", () => {
+  const TURN_SECONDS = 60;
+  const TIMED: SessionConfig = { ...CONFIG, rules: { ...RULES, turnSeconds: TURN_SECONDS } };
+  const TURN_MS = TURN_SECONDS * 1000;
+  /** The shortest and the longest the room waits before it passes for a player. */
+  const LEAST_MS = CONFIG.passSeconds.least * 1000;
+  const MOST_MS = CONFIG.passSeconds.most * 1000;
+  const MIDDLE_MS = (LEAST_MS + MOST_MS) / 2;
+  const players = candidates(SMALLEST);
+  /** The most a turn can cost: the muzzle turned two. */
+  const DEAR: Action = { type: "rotate", steps: 2 };
+  /** More moves than it takes a seat to spend its credits at one a turn. */
+  const MOVES_MOST = RULES.startCredits * SMALLEST;
+
+  /** One of the room's numbers, 32 bits: the one that stands `share` of the way from the shortest pause to the longest. */
+  function wordAt(share: number): number {
+    return Math.floor(share * 2 ** 32);
+  }
+
+  /**
+   * A game in which the first seat to move has spent every credit, as fast as
+   * a turn allows, while the others spent one a turn, and its turn has just
+   * come again: `at` is the moment it came. `chance` is the numbers the room
+   * gave the game when it started.
+   */
+  function spent(chance: number[] | undefined = [wordAt(0.5)], config: SessionConfig = CONFIG): { session: Session; seat: number; player: number; at: number } {
+    const begun = startSession(null, players, { by: tokenOf(0), bots: false }, { allowBots: false, seed: 7, now: T0, chance }, presenceOf(players), config);
+    if (!begun.ok) throw new Error(`fixture start refused: ${begun.reason}`);
+    let session = begun.session;
+    const seat = awaited(session);
+    let at = T0;
+    for (let i = 0; i < MOVES_MOST; i++) {
+      const turn = awaited(session);
+      const credits = session.state.seats[seat].credits;
+      if (turn === seat && credits === 0) return { session, seat, player: playerIn(session, seat), at };
+      at += 1000;
+      const action = turn === seat && credits >= session.rules.costRotate2 ? DEAR : WAIT;
+      const result = sessionAction(session, tokenOf(playerIn(session, turn)), action, presenceOf(players), at, config);
+      if (!result.ok) throw new Error(`fixture move refused: ${result.reason}`);
+      session = result.session;
+    }
+    throw new Error("fixture: the seat's credits were never spent");
+  }
+
+  it("is the room's to make, a pause after the turn has come to them", () => {
+    const { session, seat, at } = spent();
+    const presence = presenceOf(players);
+
+    const early = sessionTimeout(session, presence, at + MIDDLE_MS - 1, CONFIG);
+    const next = sessionTimeout(session, presence, at + MIDDLE_MS, CONFIG);
+
+    expect(session.passAt).toBe(at + MIDDLE_MS);
+    expect(early).toBe(session);
+    expect(next.state.history.at(-1)).toEqual({ type: "pass", seat, out: false, ended: false });
+    expect(awaited(next)).not.toBe(seat);
+  });
+
+  it("waits as long as the room's next number says, between the least and the most", () => {
+    const shortest = spent([wordAt(0)]);
+    const longest = spent([2 ** 32 - 1]);
+
+    expect(shortest.session.passAt).toBe(shortest.at + LEAST_MS);
+    expect(longest.session.passAt).toBe(longest.at + MOST_MS);
+  });
+
+  it("takes a number of the room's for each pause: two passes of one game need not wait the same", () => {
+    const { session, seat, at } = spent([wordAt(0), wordAt(0.5)]);
+    const presence = presenceOf(players);
+    let next = sessionTimeout(session, presence, at + LEAST_MS, CONFIG);
+    let now = at + LEAST_MS;
+    // the others play the round out and the next one up to the seat with no credits
+    for (let i = 0; i < SMALLEST * 2 && awaited(next) !== seat; i++) {
+      now += 1000;
+      const result = sessionAction(next, tokenOf(playerIn(next, awaited(next))), WAIT, presence, now, CONFIG);
+      if (!result.ok) throw new Error(result.reason);
+      next = result.session;
+    }
+
+    expect(awaited(next)).toBe(seat);
+    expect(next.passAt).toBe(now + MIDDLE_MS);
+  });
+
+  it("waits the middle of the two where the room gave the game no numbers, and once they are used up", () => {
+    const none = spent(undefined);
+    const usedUp = spent([]);
+
+    expect(none.session.passAt).toBe(none.at + MIDDLE_MS);
+    expect(usedUp.session.passAt).toBe(usedUp.at + MIDDLE_MS);
+  });
+
+  it("is told to the others as a hidden action, and to the player as their pass", () => {
+    const { session, seat, player, at } = spent();
+    const presence = presenceOf(players);
+
+    const next = sessionTimeout(session, presence, at + MIDDLE_MS, CONFIG);
+
+    const other = tokenOf((player + 1) % SMALLEST);
+    expect(sessionSnapshot(next, other, presence, T0).view.history.at(-1)).toEqual({ type: "hidden", seat, ended: false });
+    expect(sessionSnapshot(next, WATCHER, presence, T0).view.history.at(-1)).toEqual({ type: "hidden", seat, ended: false });
+    expect(sessionSnapshot(next, tokenOf(player), presence, T0).view.history.at(-1)).toEqual({ type: "pass", seat, out: false, ended: false });
+  });
+
+  it("shows on no screen while the room waits: no clock runs for it, and the limit on a turn counts down as for anyone", () => {
+    const untimed = spent();
+    const timed = spent([wordAt(0.5)], TIMED);
+    const presence = presenceOf(players);
+
+    for (const viewer of [...players.map((p) => p.token), WATCHER]) {
+      const sent = sessionSnapshot(untimed.session, viewer, presence, untimed.at + 1000);
+      expect(sent.turnEndsIn).toBeNull();
+      expect(JSON.stringify(sent)).not.toContain("passAt");
+      expect(JSON.stringify(sent)).not.toContain("chance");
+      expect(sessionSnapshot(timed.session, viewer, presence, timed.at + 1000).turnEndsIn).toBe(TURN_MS - 1000);
+    }
+  });
+
+  it("can be made by the player before the room makes it", () => {
+    const { session, seat, player, at } = spent();
+
+    const result = sessionAction(session, tokenOf(player), { type: "pass" }, presenceOf(players), at + 500, CONFIG);
+
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.session.state.history.at(-1)).toMatchObject({ type: "pass", seat });
+    // the next seat has credits: no pass is the room's to make
+    expect(result.session.passAt ?? null).toBeNull();
+    expect(sessionTimeout(result.session, presenceOf(players), at + MOST_MS, CONFIG)).toBe(result.session);
+  });
+
+  it("keeps its moment when someone else connects or drops", () => {
+    const { session, player, at } = spent();
+    const bystander = (player + 1) % SMALLEST;
+
+    const dropped = sessionPresence(session, presenceOf(players, [bystander]), at + 1000, CONFIG);
+    const back = sessionPresence(dropped, presenceOf(players), at + 2000, CONFIG);
+
+    expect(dropped.passAt).toBe(session.passAt);
+    expect(back.passAt).toBe(session.passAt);
+  });
+
+  it("is not made while the player has no live connection: their turn goes by on the away clock, as a turn the clock ended", () => {
+    const { session, seat, player, at } = spent();
+    const presence = presenceOf(players, [player]);
+
+    const away = sessionPresence(session, presence, at + 1000, CONFIG);
+    const waited = sessionTimeout(away, presence, at + MOST_MS, CONFIG);
+    const next = sessionTimeout(away, presence, at + 1000 + AWAY_MS, CONFIG);
+
+    expect(away.passAt ?? null).toBeNull();
+    expect(away.deadline).toBe(at + 1000 + AWAY_MS);
+    expect(waited).toBe(away);
+    expect(next.state.history.at(-1)).toEqual({ type: "timeout", seat, cost: 0, out: false, ended: false });
+  });
+
+  it("is not made when the player turns out to have gone by the time it is due: the away clock starts instead", () => {
+    const { session, player, at } = spent();
+    // the page went without the room being told: the game was not looked at again until the pause was over
+    const gone = presenceOf(players, [player]);
+
+    const next = sessionTimeout(session, gone, at + MIDDLE_MS, CONFIG);
+
+    expect(next.state).toBe(session.state);
+    expect(next.passAt ?? null).toBeNull();
+    expect(next.awaySince).toBe(at + MIDDLE_MS);
+    expect(next.deadline).toBe(at + MIDDLE_MS + AWAY_MS);
+  });
+
+  it("waits afresh from the moment the player is back", () => {
+    const { session, player, at } = spent([wordAt(0.5), wordAt(0)]);
+    const away = sessionPresence(session, presenceOf(players, [player]), at + 1000, CONFIG);
+    const later = at + MOST_MS * 2;
+
+    const back = sessionPresence(away, presenceOf(players), later, CONFIG);
+    const atOnce = sessionTimeout(back, presenceOf(players), later, CONFIG);
+
+    expect(back.passAt).toBe(later + LEAST_MS);
+    expect(atOnce).toBe(back);
+  });
+
+  it("gives way to the limit on a turn when that comes first, and the turn is then one the clock ended", () => {
+    const { session, seat, player, at } = spent([wordAt(0.5), wordAt(0.5)], TIMED);
+    // away for most of the turn, and back with less of it left than the room waits before a pass
+    const away = sessionPresence(session, presenceOf(players, [player]), at + 1000, TIMED);
+    const backAt = at + TURN_MS - 1000;
+    const back = sessionPresence(away, presenceOf(players), backAt, TIMED);
+
+    const next = sessionTimeout(back, presenceOf(players), at + TURN_MS, TIMED);
+    // the room looks late, when the pause is over as well: the limit was the first of the two
+    const late = sessionTimeout(back, presenceOf(players), backAt + MOST_MS, TIMED);
+
+    expect(back.passAt).toBe(backAt + MIDDLE_MS);
+    expect(back.deadline).toBe(at + TURN_MS);
+    expect(next.state.history.at(-1)).toMatchObject({ type: "timeout", seat });
+    expect(late.state.history.at(-1)).toMatchObject({ type: "timeout", seat });
+  });
+
+  it("is still a pass when the room looks so late that the limit on the turn has gone by as well", () => {
+    const { session, seat, at } = spent([wordAt(0.5)], TIMED);
+
+    const late = sessionTimeout(session, presenceOf(players), at + TURN_MS * 2, TIMED);
+
+    expect(session.deadline).toBe(at + TURN_MS);
+    expect(late.state.history.at(-1)).toMatchObject({ type: "pass", seat });
+  });
+
+  it("is followed by a pause of its own when the next player has no credits either", () => {
+    const six = candidates(LARGEST);
+    const presence = presenceOf(six);
+    const begun = startSession(null, six, { by: tokenOf(0), bots: false }, { allowBots: false, seed: 7, now: T0, chance: [wordAt(0), wordAt(0.5)] }, presence, CONFIG);
+    if (!begun.ok) throw new Error(begun.reason);
+    const first = awaited(begun.session);
+    const second = (first + 1) % LARGEST;
+    // the seat to move and the one after it have spent everything
+    const seats = begun.session.state.seats.map((each, i) => (i === first || i === second ? { ...each, credits: 0, out: true } : each));
+    const bothOut = sessionPresence({ ...begun.session, state: { ...begun.session.state, seats, outCount: 2 } }, presence, T0 + 1000, CONFIG);
+    const passedAt = T0 + 1000 + LEAST_MS;
+
+    const next = sessionTimeout(bothOut, presence, passedAt, CONFIG);
+    const atOnce = sessionTimeout(next, presence, passedAt, CONFIG);
+
+    expect(bothOut.passAt).toBe(passedAt);
+    expect(awaited(next)).toBe(second);
+    expect(next.passAt).toBe(passedAt + MIDDLE_MS);
+    expect(atOnce).toBe(next);
+  });
+
+  it("has the room's clock set to it, or to the awaited move's own clock when that comes first", () => {
+    const untimed = spent();
+    const timed = spent([wordAt(0.5), wordAt(0.5)], TIMED);
+    // back from an absence with less of the turn left than the room waits before a pass
+    const away = sessionPresence(timed.session, presenceOf(players, [timed.player]), timed.at + 1000, TIMED);
+    const back = sessionPresence(away, presenceOf(players), timed.at + TURN_MS - 1000, TIMED);
+
+    expect(rouletteHost.deadline(untimed.session)).toBe(untimed.at + MIDDLE_MS);
+    expect(rouletteHost.deadline(timed.session)).toBe(timed.at + MIDDLE_MS);
+    expect(rouletteHost.deadline(back)).toBe(timed.at + TURN_MS);
+    expect(rouletteHost.deadline(started())).toBeNull();
+  });
+
+  it("is a change the room stores, also where nothing else of the game has changed", () => {
+    const { session, at } = spent();
+    const { passAt: _passAt, chance: _chance, ...stored } = session;
+
+    const next = sessionPresence(stored, presenceOf(players), at + 1000, CONFIG);
+
+    expect(next.state).toBe(session.state);
+    expect(rouletteHost.same(stored, next)).toBe(false);
+    expect(rouletteHost.same(next, sessionPresence(next, presenceOf(players), at + 2000, CONFIG))).toBe(true);
+  });
+
+  it("draws on the numbers the room gives the game as it starts", () => {
+    const presence = presenceOf(players);
+    const chance = [wordAt(0.25), wordAt(0.75)];
+
+    const result = rouletteHost.start(null, players, { by: tokenOf(0), bots: false, allowBots: false, seed: 7, chance, now: T0, turnSeconds: 0 }, presence);
+
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.session.chance).toEqual(chance);
+  });
+
+  it("lets go of a moment that is no pass's, should one ever be stored", () => {
+    const session = started();
+    const presence = presenceOf(players);
+    // a moment for a pass, in a game whose seat to move has every credit
+    const stale: Session = { ...session, passAt: T0 + 1000 };
+
+    const next = sessionTimeout(stale, presence, T0 + 1000, CONFIG);
+
+    expect(next.state).toBe(session.state);
+    expect(next.passAt ?? null).toBeNull();
+  });
+
+  it("is not made for a player whose last credit earned the swap: the swap is theirs to make", () => {
+    const session = started();
+    const seat = awaited(session);
+    const presence = presenceOf(players);
+    // the table is one credit short of a swap, and the seat to move has one credit left
+    const seats = session.state.seats.map((each, i) => (i === seat ? { ...each, credits: 1 } : each));
+    const lastCredit: Session = { ...session, state: { ...session.state, pot: session.rules.tamperNeed - 1, seats } };
+
+    const result = sessionAction(lastCredit, tokenOf(playerIn(session, seat)), ONE, presence, T0 + 1000, CONFIG);
+
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.session.state).toMatchObject({ phase: "swap", swapSeat: seat });
+    expect(result.session.state.seats[seat].out).toBe(true);
+    expect(result.session.passAt ?? null).toBeNull();
+    expect(sessionTimeout(result.session, presence, T0 + 1000 + MOST_MS, CONFIG)).toBe(result.session);
+  });
+
+  it("is taken up for a game stored before passes were the room's to make", () => {
+    const { session, seat, at } = spent();
+    const { passAt: _passAt, chance: _chance, ...stored } = session;
+    const later = at + MOST_MS * 3;
+
+    const next = sessionPresence(stored, presenceOf(players), later, CONFIG);
+    const passed = sessionTimeout(next, presenceOf(players), later + MIDDLE_MS, CONFIG);
+
+    expect(next.passAt).toBe(later + MIDDLE_MS);
+    expect(passed.state.history.at(-1)).toMatchObject({ type: "pass", seat });
   });
 });
 

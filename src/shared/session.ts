@@ -44,6 +44,12 @@ export interface SessionConfig {
    * is a long wait for whoever wants the room for another.
    */
   standSeconds: number;
+  /**
+   * Seconds the room lets go by before it passes for a player who has no
+   * credits left: no fewer than `least`, no more than `most`, and how many
+   * between the two is chance (see {@link Session.passAt}).
+   */
+  passSeconds: { least: number; most: number };
 }
 
 /**
@@ -73,6 +79,26 @@ export interface Session {
    * this was kept has none).
    */
   desertedAt?: number | null;
+  /**
+   * When the room passes for the player now awaited, who has no credits left
+   * and is connected; `null` or absent while no pass is the room's to make (a
+   * game stored before the room made them has none).
+   *
+   * The show passes such a player's turn by itself and tells the table of a
+   * hidden action. A pass made the moment the turn came would tell the table
+   * who is out of credits, which is the player's own to know: so the room
+   * waits about as long as a quick move takes, a different time each turn.
+   * Never sent to anyone, and no clock on any screen counts down to it.
+   */
+  passAt?: number | null;
+  /**
+   * What is left of the numbers the room gave the game when it started, which
+   * nobody could have guessed: each pause before a pass uses one up. Not the
+   * game's own seed, which also placed the rounds: a table that times the
+   * pauses could find a seed that small, and the rounds with it (`chanceOf`
+   * in `game/rng.ts`). Absent in a game started without a room.
+   */
+  chance?: number[];
 }
 
 export type { Candidate, Presence } from "./hosting";
@@ -138,6 +164,15 @@ function awaitedSeat(state: GameState): number {
  * bot's seat, the seat of a player who has left) and sets the clock for the
  * move that is then awaited. `moved` says the turn has just passed on, so the
  * awaited move's time starts now.
+ *
+ * A player with no credits who is connected has their pass made by the room,
+ * a pause after their turn came ({@link Session.passAt}). The pause runs from
+ * the turn's start, and afresh from the player's return when they were away,
+ * as it would be a moment before anyone who came back made a move; someone
+ * else's coming or going leaves it be. While that player is away their turn
+ * waits on the away clock like anyone's, and goes by as a turn the clock
+ * ended: a pass made for someone who is not there would tell the table they
+ * had nothing left.
  *
  * A table none of whose players is connected, with someone else in the room,
  * is deserted: it goes on a move at a time as for any player who is away, and
@@ -205,7 +240,27 @@ function settle(session: Session, presence: Presence, now: number, config: Sessi
       deadline = deadline === null ? over : Math.min(deadline, over);
     }
   }
-  return { ...session, state, turnStartedAt, awaySince, deadline, desertedAt };
+
+  let passAt: number | null = null;
+  let chance = session.chance;
+  // a swap that was earned with the last credit is still the player's own to make
+  if (state.phase === "turn") {
+    const token = session.tokens[state.current];
+    if (token !== null && presence.connected.has(token) && state.seats[state.current].out) {
+      const kept = moved || roomMoved ? null : (session.passAt ?? null);
+      if (kept !== null) {
+        passAt = kept;
+      } else {
+        const [word, ...rest] = chance ?? [];
+        // with none of the room's numbers left, halfway between the two
+        const share = word === undefined ? 0.5 : (word >>> 0) / 2 ** 32;
+        const { least, most } = config.passSeconds;
+        passAt = now + Math.round((least + share * (most - least)) * 1000);
+        if (word !== undefined) chance = rest;
+      }
+    }
+  }
+  return { ...session, state, turnStartedAt, awaySince, deadline, desertedAt, passAt, chance };
 }
 
 /**
@@ -213,13 +268,14 @@ function settle(session: Session, presence: Presence, now: number, config: Sessi
  * there are six; a smaller one as `sizes` allows). Only the host may start,
  * and not while a game is being played. Where the room allows it and the
  * request asks, bots fill the table up to its largest size: a development aid,
- * never offered to players.
+ * never offered to players. `options.chance` is the room's numbers that nobody
+ * could have guessed, for what the table must not be able to work out.
  */
 export function startSession(
   current: Session | null,
   players: Candidate[],
   request: { by: string; bots: boolean },
-  options: { allowBots: boolean; seed: number; now: number },
+  options: { allowBots: boolean; seed: number; now: number; chance?: readonly number[] },
   presence: Presence,
   config: SessionConfig,
 ): { ok: true; session: Session } | { ok: false; reason: StartRefusal } {
@@ -255,6 +311,7 @@ export function startSession(
     turnStartedAt: options.now,
     awaySince: null,
     deadline: null,
+    chance: options.chance === undefined ? undefined : [...options.chance],
   };
   return { ok: true, session: settle(session, presence, options.now, config, true) };
 }
@@ -283,12 +340,29 @@ export function sessionAction(
 }
 
 /**
- * The clock may have run out. When it has, the awaited turn goes by (at a
- * price; see the rules' `applyTimeout`) and the room carries on; when it has
- * not, the session comes back unchanged, so calling this twice is safe.
+ * The clock may have run out, or the pause before a pass be over. When the
+ * clock has run out, the awaited turn goes by (at a price; see the rules'
+ * `applyTimeout`); when the pause is over, the room passes for the player who
+ * has no credits; and the room carries on. When neither is due the session
+ * comes back unchanged, so calling this twice is safe.
  */
 export function sessionTimeout(session: Session, presence: Presence, now: number, config: SessionConfig): Session {
-  if (session.deadline === null || now < session.deadline || session.state.phase === "ended") return session;
+  if (session.state.phase === "ended") return session;
+  const passAt = session.passAt ?? null;
+  const lapsed = session.deadline !== null && now >= session.deadline;
+  // Whichever came first is what happened. The clock can be the earlier of the two when the player was away
+  // for most of their turn: the pause runs from their return, the limit on a turn from the turn's start.
+  if (passAt !== null && now >= passAt && !(lapsed && session.deadline! < passAt)) {
+    // The player may have gone since the pause was set, with the room not yet told: then no pass is made, for
+    // the table would see a hidden action from someone who is not there. Their turn waits on the away clock.
+    const token = session.tokens[session.state.current];
+    const here = token !== null && presence.connected.has(token);
+    const passed = here ? applyAction(session.state, session.state.current, { type: "pass" }, session.rules) : null;
+    if (passed !== null && passed.ok) return settle({ ...session, state: passed.state }, presence, now, config, true);
+    // no pass after all: the moment is let go, and the awaited move's clock is set as for anyone
+    return settle({ ...session, passAt: null }, presence, now, config, false);
+  }
+  if (!lapsed) return session;
   const result = applyTimeout(session.state, session.rules);
   if (!result.ok) return session;
   // a table deserted long enough has the rest of its moves made in the same breath (see `settle`)
@@ -305,7 +379,9 @@ export function sessionPresence(session: Session, presence: Presence, now: numbe
 
 /**
  * What the player holding `viewer` is sent: their own seat's view, or a
- * spectator's when they are not at the table (pass `null` for nobody).
+ * spectator's when they are not at the table (pass `null` for nobody). The
+ * clock in it is the awaited move's own; when the room will pass for a player
+ * with no credits is in nothing that is sent.
  */
 export function sessionSnapshot(session: Session, viewer: string | null, presence: Presence, now: number): GameSnapshot {
   const seat = viewer === null ? -1 : session.tokens.indexOf(viewer);

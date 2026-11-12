@@ -22,14 +22,14 @@ const ko = {
         "조작 (1~3): 모두가 낸 크레딧이 합쳐 6이 되면, 그때 낸 사람이 이웃한 두 칸의 탄을 맞바꿈. 넘친 크레딧은 사라지고 다시 0부터 모임",
       ],
       "공개 조사와 회전 말고는 누가 했는지만 '비공개 행동'으로 알려집니다. 무엇을 했는지, 조작 크레딧이 얼마나 모였는지, 탄이 바뀌었는지는 알려 주지 않습니다.",
-      "남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없고, 다 쓰면 차례마다 패스합니다 (패스도 비공개 행동). 절반이 크레딧을 다 쓰면 그 즉시 끝나고, 총구가 향한 자리부터 시계 방향으로 한 발씩 격발합니다.",
+      "남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없고, 다 쓰면 차례마다 자동으로 패스됩니다 (패스도 비공개 행동). 절반이 크레딧을 다 쓰면 그 즉시 끝나고, 총구가 향한 자리부터 시계 방향으로 한 발씩 격발합니다.",
     ],
   } as RulesSheet,
   /** Why the room refused a move, for the bar. */
   refused: {
     "not-your-turn": "지금은 내 차례가 아닙니다",
     "not-enough-credits": "크레딧이 모자랍니다",
-    "out-of-credits": "크레딧을 다 써서 패스만 할 수 있습니다",
+    "out-of-credits": "크레딧을 다 써서 차례가 자동으로 패스됩니다",
     "cannot-pass": "크레딧이 남아 있으면 패스할 수 없습니다",
     "swap-pending": "먼저 맞바꿀 두 칸을 골라야 합니다",
     "game-over": "이 판은 끝났습니다",
@@ -113,8 +113,8 @@ const ko = {
     away: (who: string, seconds: number) => `${who} 자리 비움: ${seconds}초 뒤 시간 초과`,
     turnOf: (who: string) => `${who} 차례`,
     sending: "보내는 중",
-    /** To a player with no credits, on their turn: 330 pixels, beside the button that passes. */
-    pass: "크레딧이 없습니다. 패스하세요 (비공개 행동으로 알려짐)",
+    /** To a player with no credits, on their turn: there is nothing to press, the room passes for them after a pause. */
+    passing: "크레딧이 없어 잠시 뒤 자동으로 패스됩니다 (비공개 행동으로 알려짐)",
     firstCheck: "내 차례: 1이나 2로 내 앞 약실부터 조사해 보세요",
     liveAhead: "내 앞이 실탄! 3이나 4로 총구를 돌려 옆자리로 넘기세요",
     emptyAhead: "내 앞은 비었습니다. 크레딧을 아끼며 다른 자리를 살피세요",
@@ -126,11 +126,10 @@ const ko = {
       `${steps}칸 회전: ${letter} 약실(${known === 1 ? "실탄" : known === 0 ? "빔" : "모름"}${doubtful ? "?" : ""})이 내 앞으로`,
     watching: "관전 중입니다. 다음 판부터 함께할 수 있습니다.",
   },
-  /** The small buttons: confirm and cancel 62 pixels wide inside, the pass 130, the two under the results 88. */
+  /** The small buttons: confirm and cancel 62 pixels wide inside, the two under the results 88. */
   button: {
     confirm: keyed("Enter", "확정"),
     cancel: keyed("Esc", "취소"),
-    pass: keyed("Enter", "패스"),
     again: keyed("Enter", "새 판"),
     lobby: keyed("Esc", "대기실로"),
   },
@@ -164,7 +163,7 @@ const ko = {
     { text: "   두 칸의 탄을 맞바꿉니다. 넘친 것은 사라지고, 모인 수는 아무도 모릅니다.", tone: "dim" },
     { text: "" },
     { text: "공개 조사·회전 말고는 누가 했는지만 '비공개 행동'으로 알려집니다." },
-    { text: "크레딧은 본인만 알고, 남아 있으면 쉴 수 없습니다. 다 쓰면 패스(비공개 행동)." },
+    { text: "크레딧은 본인만 압니다. 남으면 쉴 수 없고, 다 쓰면 자동 패스(비공개 행동)." },
     { text: `${rules.endWhenOut}명이 크레딧을 다 쓰면 그 즉시 격발: 총구가 향한 자리부터 한 발씩.` },
     {
       text:
@@ -190,13 +189,13 @@ const en: typeof ko = {
         "Tamper (1 to 3): the credits all players put in add up in one place. Whoever takes them to 6 swaps the rounds of two neighbouring chambers; what is over 6 is lost and the count starts again",
       ],
       "Only a public check and a turn are announced as they are. Anything else is announced as a hidden action: the table hears who, not what. Nobody is told how many credits have gathered, or that two rounds changed places.",
-      "Only you know how many credits you have left. While you have credits you cannot pass; with none you pass every turn, and that too is a hidden action. The game ends the moment half the players have spent theirs, and the gun fires one shot at each seat, clockwise from the one the muzzle points at.",
+      "Only you know how many credits you have left. While you have credits you cannot pass; once you run out you automatically pass on every turn, and that too is announced as a hidden action. The game ends the moment half the players have spent theirs, and the gun fires one shot at each seat, clockwise from the one the muzzle points at.",
     ],
   } as RulesSheet,
   refused: {
     "not-your-turn": "It is not your turn",
     "not-enough-credits": "Not enough credits",
-    "out-of-credits": "You are out of credits and can only pass",
+    "out-of-credits": "You are out of credits: your turn passes automatically",
     "cannot-pass": "You cannot pass while you have credits",
     "swap-pending": "Pick the two chambers to swap first",
     "game-over": "This game is over",
@@ -261,7 +260,7 @@ const en: typeof ko = {
     away: (who, seconds) => `${who} is away: their turn goes by in ${seconds}s`,
     turnOf: (who) => `${who}'s turn`,
     sending: "Sending",
-    pass: "No credits: pass (announced as a hidden action)",
+    passing: "No credits: you will automatically pass (announced as a hidden action)",
     firstCheck: "Your turn: check the chamber in front of you first, with 1 or 2",
     liveAhead: "Live in front of you! Turn the muzzle with 3 or 4 to pass it on",
     emptyAhead: "Empty in front of you. Save credits and look at the other seats",
@@ -276,7 +275,6 @@ const en: typeof ko = {
   button: {
     confirm: keyed("Enter", "OK"),
     cancel: keyed("Esc", "back"),
-    pass: keyed("Enter", "pass"),
     again: keyed("Enter", "again"),
     lobby: keyed("Esc", "to room"),
   },
@@ -307,7 +305,7 @@ const en: typeof ko = {
     { text: `   to ${rules.tamperNeed} swaps two neighbours. Extra is lost; no count is shown.`, tone: "dim" },
     { text: "" },
     { text: "All but a public check and a turn is told only as a hidden action." },
-    { text: "Only you know your credits. You pass only when you have none." },
+    { text: "Only you know your credits. With none you automatically pass." },
     { text: `When ${rules.endWhenOut} players are out the gun fires at once, a shot at each seat.` },
     {
       text:
