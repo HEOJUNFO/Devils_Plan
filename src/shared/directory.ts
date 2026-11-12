@@ -209,6 +209,16 @@ export function countRooms(entries: readonly DirectoryEntry[], now: number, conf
   return counts;
 }
 
+/**
+ * The rooms to try for someone who asks to be put straight into one, best
+ * first: of `rooms`, those waiting for players with a place free, in the
+ * order the list has them (the fullest first: it starts soonest). A room in a
+ * game is not among them: whoever goes in only watches until it ends.
+ */
+export function quickPicks(rooms: readonly RoomListing[]): string[] {
+  return rooms.filter((room) => !room.playing && room.players < room.maxPlayers).map((room) => room.code);
+}
+
 /** What the lobby shows of the list it was sent. */
 export interface RoomsShown {
   /** The rows, in the order sent. */

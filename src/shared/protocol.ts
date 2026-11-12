@@ -70,8 +70,12 @@ export const MAX_CLIENT_MESSAGE_LENGTH = 8192;
 
 /** Server → client. */
 export type ServerMessage =
-  /** The current lobby, sent on join and whenever it changes. */
-  | ({ type: "lobby"; room: string } & LobbyView)
+  /**
+   * The current lobby, sent on join and whenever it changes. `build` is the
+   * build the room's code is from (`build.ts`): not sent by a room from
+   * before builds were said.
+   */
+  | ({ type: "lobby"; room: string; build?: string } & LobbyView)
   /** The connection was refused; the server closes it right after. */
   | { type: "error"; reason: RejectReason }
   /**
@@ -151,6 +155,8 @@ export interface DirectoryMessage {
    * which game. Not sent by a directory older than the counts.
    */
   counts?: RoomCounts;
+  /** The build the directory's code is from (`build.ts`). Not sent by a directory from before builds were said. */
+  build?: string;
 }
 
 /**
@@ -309,6 +315,7 @@ export function parseDirectoryMessage(raw: unknown): DirectoryMessage | null {
   if (typeof data.counts === "object" && data.counts !== null && !Array.isArray(data.counts)) {
     message.counts = data.counts as RoomCounts;
   }
+  if (typeof data.build === "string") message.build = data.build;
   return message;
 }
 

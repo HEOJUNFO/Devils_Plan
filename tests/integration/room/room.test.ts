@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { BUILD } from "../../../src/shared/build";
 import directoryConfig from "../../../src/shared/directory-config.json";
+import cubesConfig from "../../../src/shared/games/count-cubes/config.json";
 import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import type { LobbyView } from "../../../src/shared/lobby";
 import { CLOSE_LEFT, CLOSE_REJECTED, CLOSE_STALE } from "../../../src/shared/protocol";
@@ -16,6 +18,8 @@ const holds = (game: GameId): number => Math.min(roomConfig.maxPlayers, GAMES[ga
 const MOST = holds(DEFAULT_GAME);
 /** The game whose rooms hold the most players. */
 const BIG_GAME = GAME_IDS.reduce<GameId>((most, id) => (GAMES[id].maxPlayers > GAMES[most].maxPlayers ? id : most), DEFAULT_GAME);
+/** A game one player can start alone, to its end by the clock. */
+const ALONE_GAME = "count-cubes" as const;
 const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
 const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
@@ -48,6 +52,7 @@ describe("GameRoom", () => {
     expect(lobby).toEqual({
       type: "lobby",
       room: "AAAAA",
+      build: BUILD,
       you: 0,
       maxPlayers: MOST,
       game: DEFAULT_GAME,
@@ -400,6 +405,92 @@ describe("GameRoom", () => {
     expect(lines).toEqual([`room made: ${DEFAULT_GAME} listed`]);
     a.close();
     b.close();
+  });
+
+  it("writes to the log that a game started and that it ended, with its game and how many sat down to it", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stub = env.GameRoom.getByName("LGTAA");
+    const a = await open("LGTAA", { player: 0, create: true, game: ALONE_GAME });
+    await a.lobbyOf(1);
+
+    a.send({ type: "start", bots: false });
+    await a.cubesWhere();
+    await scheduledAlarm(stub);
+    advanceClock(cubesConfig.problemSeconds * 1000 + 1);
+    await runDurableObjectAlarm(stub);
+    await a.cubesWhere((game) => game.view.phase === "ended");
+
+    const lines = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("game "));
+    said.mockRestore();
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe(`game started: ${ALONE_GAME} 1 players`);
+    // how long it took, in whole minutes: the clock of a test is moved by the length of a problem
+    expect(lines[1]).toMatch(new RegExp(`^game ended: ${ALONE_GAME} \\d+ min$`));
+    a.close();
+  });
+
+  it("writes to the log that a room stands empty once its last player has left, with the most who were in it at once", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    const a = await open("LGTAB", { player: 0, create: true, listed: true });
+    const b = await open("LGTAB", { player: 1 });
+    await b.next();
+    await a.lobbyOf(2);
+
+    a.send({ type: "leave" });
+    await a.closed;
+    const before = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("room emptied"));
+    b.send({ type: "leave" });
+    await b.closed;
+
+    const lines = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("room emptied"));
+    said.mockRestore();
+    // not while someone is still in it; and nothing that names the room or who was in it
+    expect(before).toEqual([]);
+    expect(lines).toEqual([`room emptied: ${DEFAULT_GAME} listed games 0 most 2`]);
+  });
+
+  it("writes to the log that a room stands empty when the one who waited in it alone closed the page", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    const stub = env.GameRoom.getByName("LGTAC");
+    const a = await open("LGTAC", { player: 0, create: true });
+    await a.next();
+
+    a.close();
+    await scheduledAlarm(stub);
+    advanceClock(AWAY_SLOT_MS + 1);
+    await runDurableObjectAlarm(stub);
+
+    const lines = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("room emptied"));
+    said.mockRestore();
+    expect(lines).toEqual([`room emptied: ${DEFAULT_GAME} unlisted games 0 most 1`]);
+  });
+
+  it("counts a room from nothing again once it has stood empty", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    const a = await open("LGTAD", { player: 0, create: true, game: ALONE_GAME });
+    await a.lobbyOf(1);
+    a.send({ type: "start", bots: false });
+    await a.cubesWhere();
+    a.send({ type: "leave" });
+    await a.closed;
+
+    const b = await open("LGTAD", { player: 1, create: true, game: ALONE_GAME });
+    await b.lobbyOf(1);
+    b.send({ type: "leave" });
+    await b.closed;
+
+    const lines = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("room emptied"));
+    said.mockRestore();
+    expect(lines).toEqual([`room emptied: ${ALONE_GAME} unlisted games 1 most 1`, `room emptied: ${ALONE_GAME} unlisted games 0 most 1`]);
+  });
+
+  it("says in the lobby it sends which build the room's code is from", async () => {
+    const a = await open("LGTAE", { player: 0, create: true });
+
+    const lobby = await a.lobbyWhere();
+
+    expect(lobby.build).toBe(BUILD);
+    a.close();
   });
 
   it("takes a join from a connection that sent a thing or two first", async () => {

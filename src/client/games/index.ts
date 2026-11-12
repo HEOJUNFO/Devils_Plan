@@ -72,6 +72,12 @@ export interface GameScreen {
    * key's code as the browser names it.
    */
   press(code: string): void;
+  /**
+   * What this player came out of the game with, in the word its results lead
+   * with ("2위", "생존!"), for the page to say where the result is passed on;
+   * `null` while the game is being played, and for someone who watched it.
+   */
+  verdict(): string | null;
   /** Stops drawing and listening. */
   destroy(): void;
 }

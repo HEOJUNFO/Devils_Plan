@@ -20,11 +20,20 @@ const ko = {
     turnDevice: "화면을 가로로 돌려 주세요",
     /** On the button that turns the page itself, where the browser can. */
     turnFull: "가로 전체 화면으로 보기",
+    /** In the lobby's bar: which build the page is, to name when something is reported. */
+    version: (build: string) => `버전 ${build}`,
+    /** On the link to where a word about the game can be sent. */
+    feedback: "의견 보내기",
   },
   entry: {
     sub: "방을 고르거나 만드세요",
     nick: "닉네임",
     create: "방 만들기",
+    /** Beside it: straight into an open room that is waiting for players. */
+    quick: "빠른 입장",
+    quickHint: "사람을 기다리는 공개 방으로 바로 들어갑니다",
+    /** Under the form, when no open room is waiting for players. */
+    noneWaiting: "기다리는 방이 없습니다. 방을 만들어 보세요.",
     byCode: "방 코드로 입장",
     code: "방 코드",
     join: "입장",
@@ -129,8 +138,24 @@ const ko = {
     log: "기록",
     standings: "현황",
     chat: (unread: number) => (unread > 0 ? `채팅 ${unread}` : "채팅"),
+    /** Beside them once a game is over, for whoever played it: passes its result on. */
+    share: "공유",
+    shareHint: "내 결과를 복사해 알리기",
     /** Said to a screen reader of the game's screen, which is a picture. */
     screen: "게임 화면",
+  },
+  /**
+   * What is passed on outside the game, by the phone's own sheet or by copying: an invitation to a
+   * room, and the result of a game. A game is named by its own name and nothing else is said of
+   * where it is from.
+   */
+  share: {
+    /** With the link to a room. */
+    invite: (game: string) => `${game} 같이 해요`,
+    /** `verdict` is the word the game's results lead with: "2위", "생존!". */
+    result: (game: string, verdict: string) => `${game}에서 ${verdict}`,
+    /** After the result, before the address of the game. */
+    come: "같이 한 판 해요",
   },
   /** Under a finger, during a game: the button over the game, and what it opens. */
   menu: {
@@ -196,11 +221,17 @@ const en: typeof ko = {
     description: SITE_WORDS.en.app.description(GAME_IDS.length),
     turnDevice: "Turn your screen sideways",
     turnFull: "Go full screen, sideways",
+    version: (build) => `Version ${build}`,
+    feedback: "Send feedback",
   },
   entry: {
     sub: "Pick a room or make one",
     nick: "Nickname",
-    create: "Make a room",
+    // half a row now: the form it opens is headed the same
+    create: "New room",
+    quick: "Quick join",
+    quickHint: "Straight into an open room that is waiting for players",
+    noneWaiting: "No room is waiting. Make one.",
     byCode: "Enter by room code",
     code: "Room code",
     join: "Join",
@@ -294,7 +325,14 @@ const en: typeof ko = {
     log: "Log",
     standings: "Players",
     chat: (unread) => (unread > 0 ? `Chat ${unread}` : "Chat"),
+    share: "Share",
+    shareHint: "Copy my result to pass on",
     screen: "Game screen",
+  },
+  share: {
+    invite: (game) => `Play ${game} with me`,
+    result: (game, verdict) => `${game}: ${verdict}`,
+    come: "Come play a round",
   },
   menu: {
     open: "Menu",

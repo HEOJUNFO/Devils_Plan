@@ -61,6 +61,8 @@ export interface RectScreen {
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
   press(code: string): void;
+  /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
+  verdict(): string | null;
   destroy(): void;
 }
 
@@ -969,6 +971,13 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
   }
 
+  /** What this player came out of the game with, in the word the results lead with; `null` while it is being played, and for someone who watched. */
+  function verdict(): string | null {
+    const me = mine();
+    if (latest === null || latest.view.phase !== "ended" || me === null) return null;
+    return WORDS.result.verdict(true, latest.view.units[me.unit].place > 0);
+  }
+
   function drawResults(): void {
     if (latest === null) return;
     const view = latest.view;
@@ -1130,6 +1139,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
 
   return {
     update,
+    verdict,
     refused(reason: string): void {
       starting = false;
       pending = false;

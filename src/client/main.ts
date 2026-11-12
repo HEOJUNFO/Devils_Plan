@@ -12,7 +12,8 @@
  * written here or in the markup: the page's own are in `words.ts`.
  */
 import { PartySocket } from "partysocket";
-import { roomsShown, type RoomListing } from "../shared/directory";
+import { BUILD, outOfDate } from "../shared/build";
+import { quickPicks, roomsShown, type RoomListing } from "../shared/directory";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
 import {
   generateRoomCode,
@@ -47,6 +48,7 @@ import { createChat } from "./chat";
 import { isMuted, setMuted, startAudio } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
+import siteLinks from "./site-links.json";
 import { drawLobbyArt } from "./lobby-art";
 import { storageKey } from "./storage";
 import { TOUCH } from "./touch";
@@ -140,6 +142,9 @@ const menuClose = el<HTMLButtonElement>("menu-close");
 const turnFull = el<HTMLButtonElement>("turn-full");
 const rulesSheet = el<HTMLElement>("rules-sheet");
 const langButton = el<HTMLButtonElement>("lang");
+const quickButton = el<HTMLButtonElement>("quick");
+const tabShare = el<HTMLButtonElement>("tab-share");
+const about = el<HTMLElement>("about");
 
 /** What the page is called while no room is open. */
 const SITE_TITLE = WORDS.site.tab;
@@ -154,6 +159,9 @@ function writeWords(): void {
     ["entry-sub", WORDS.entry.sub],
     ["nick-label", WORDS.entry.nick],
     ["create", WORDS.entry.create],
+    ["quick", WORDS.entry.quick],
+    ["tab-share", WORDS.game.share],
+    ["version", WORDS.site.version(BUILD)],
     ["by-code", WORDS.entry.byCode],
     ["join", WORDS.entry.join],
     ["new-room-title", WORDS.newRoom.title],
@@ -190,6 +198,14 @@ function writeWords(): void {
   ];
   for (const [id, text] of labelled) el(id).setAttribute("aria-label", text);
   chatInput.placeholder = WORDS.chat.say;
+  quickButton.title = WORDS.entry.quickHint;
+  tabShare.title = WORDS.game.shareHint;
+  tabShare.setAttribute("aria-label", WORDS.game.shareHint);
+  // Where a word about the game can be sent, where there is such a place (`site-links.json`): none, and the link is not shown.
+  const feedback = el<HTMLAnchorElement>("feedback");
+  feedback.textContent = WORDS.site.feedback;
+  feedback.hidden = siteLinks.feedback === "";
+  if (siteLinks.feedback !== "") feedback.href = siteLinks.feedback;
   // One other language, on one button, named as its own readers name it. More would take a list.
   const [other] = OTHER_LANGS;
   if (other !== undefined) {
@@ -347,6 +363,11 @@ let awake: WakeLockSentinel | null = null;
 /** Whether that promise has been asked for and not yet given. */
 let waking = false;
 
+/** The rooms a quick join has yet to try, best first, while one is on its way in; `null` when none is. */
+let quickRest: string[] | null = null;
+/** The build the server last said it is, where that is another than this page's and the page is to be loaded again for it. */
+let newerBuild: string | null = null;
+
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
 let chosenGame: GameId = isGameId(storedGame) ? storedGame : DEFAULT_GAME;
@@ -469,8 +490,14 @@ function syncChat(): void {
   tabChat.setAttribute("aria-pressed", String(chatOpen));
   tabChat.classList.toggle("unread", unread > 0);
   tabChat.textContent = WORDS.game.chat(unread);
+  syncShare();
   // an hour in a tab, the chat comes back at its last line
   if (!chatBox.hidden) chat.toEnd();
+}
+
+/** Beside the tabs: the result of a game that is over, to pass on, for whoever played it. Not there while one is played, nor for someone who watched. */
+function syncShare(): void {
+  tabShare.hidden = table === null || gameOn || table.verdict() === null;
 }
 
 /** During a game: shows the chat or the moves in the right-hand column. */
@@ -552,6 +579,12 @@ function keepAwake(): void {
       waking = false;
     },
   );
+}
+
+/** In the lobby's bar: the other language, where to send a word about the game, and which build the page is. */
+function showLobbyLinks(shown: boolean): void {
+  langButton.hidden = !shown;
+  about.hidden = !shown;
 }
 
 /** The words under the scene, and whether the rules can be opened from there. */
@@ -644,6 +677,48 @@ function hideTable(): void {
   syncScene();
   syncChat();
   renderVoice();
+  // no game is on the screen any more: a page behind the server's build may load itself again now
+  loadNewer();
+}
+
+/**
+ * The server said which build it is. A page of another build loads itself
+ * again as soon as nothing is lost by it (`loadNewer`): a deploy cut it off,
+ * and it came back to rooms run by newer code than its own.
+ */
+function heardBuild(servers: unknown): void {
+  let reloadedFrom: string | null = null;
+  try {
+    reloadedFrom = sessionStorage.getItem(storageKey("reloaded-from"));
+  } catch {
+    // a closed store: the page was not loaded again, as far as it knows
+  }
+  newerBuild = outOfDate(BUILD, servers, reloadedFrom) ? String(servers) : null;
+  loadNewer();
+}
+
+/**
+ * Loads the page again for a newer build, unless that would take something
+ * from the player: a game on the screen, its results, the voice chat, a room
+ * on its way, or words typed and not sent. A page in a room comes back to
+ * it, as after any reload (`comeBack`). Asked again whenever one of those
+ * may have ended.
+ */
+function loadNewer(): void {
+  if (newerBuild === null) return;
+  if (table !== null || voice.on || creating || entering !== null || startAsked) return;
+  // in the lobby: a code typed in, or a nickname other than the one kept, which a reload would put back
+  const typedInLobby = currentCode === "" && (codeInput.value.trim() !== "" || nickInput.value !== (localStorage.getItem(storageKey("nick")) ?? ""));
+  if (chatInput.value !== "" || typedInLobby || !newRoom.hidden) return;
+  try {
+    // noted first: a page that comes back the same is not loaded a second time (`outOfDate`)
+    sessionStorage.setItem(storageKey("reloaded-from"), BUILD);
+  } catch {
+    // with nowhere to note it the page could load itself without end: it stays as it is
+    return;
+  }
+  newerBuild = null;
+  location.reload();
 }
 
 // ---- The lobby: the rooms anyone can join -------------------------------------------------------
@@ -750,6 +825,8 @@ function renderRooms(): void {
     rows.push(more);
   }
   roomList.replaceChildren(...rows);
+  // said that no room was waiting, and now one is: the form no longer says so
+  if (notice.textContent === WORDS.entry.noneWaiting && quickPicks(known).length > 0) notice.textContent = "";
   // the list is redrawn whole: the row the keyboard was on stays the one it is on
   if (focused !== undefined) roomList.querySelector<HTMLElement>(`[data-code="${focused}"]`)?.focus();
   roomsCount.textContent = shown === null ? "" : WORDS.rooms.total(shown.total);
@@ -787,6 +864,7 @@ function watchRooms(): void {
     if (message === null || listSocket !== current) return;
     roomsSent = message;
     renderRooms();
+    heardBuild(message.build);
   });
   current.addEventListener("close", () => {
     // PartySocket reconnects by itself; until then the list on show may be out of date
@@ -879,6 +957,7 @@ function showLobby(message = ""): void {
   setCreating(false);
   asked = {};
   startAsked = false;
+  quickRest = null;
   lastLobby = null;
   lastGame = null;
   staleSince = null;
@@ -898,7 +977,7 @@ function showLobby(message = ""): void {
   showScene(null);
   syncScene();
   setBar(WORDS.bar.lobby[0], WORDS.bar.lobby[1], false);
-  langButton.hidden = false;
+  showLobbyLinks(true);
   document.title = SITE_TITLE;
   watchRooms();
   // a row that was on its way in is a row like the others again
@@ -943,7 +1022,7 @@ function showNewRoom(): void {
   notice.textContent = "";
   entry.hidden = true;
   newRoom.hidden = false;
-  langButton.hidden = true;
+  showLobbyLinks(false);
   renderNewRoom();
   el<HTMLButtonElement>("create-go").focus();
 }
@@ -956,7 +1035,7 @@ function closeNewRoom(): void {
   entry.hidden = false;
   rules.hidden = true;
   setBar(WORDS.bar.lobby[0], WORDS.bar.lobby[1], false);
-  langButton.hidden = false;
+  showLobbyLinks(true);
 }
 
 // ---- A room, before a game ---------------------------------------------------------------------------
@@ -1019,7 +1098,7 @@ function renderRoom(code: string, view: LobbyView): void {
   entry.hidden = true;
   newRoom.hidden = true;
   room.hidden = false;
-  langButton.hidden = true;
+  showLobbyLinks(false);
   roomCode.textContent = code;
   // A code of wide letters (W, M) and the button beside it are wider than the column: the letters then stand
   // closer (style.css). The room is on show by now, so the row can be measured.
@@ -1189,7 +1268,9 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       if (typeof event.data === "string") lastLobby = event.data;
       staleSince = null;
       returning = false;
+      quickRest = null;
       renderRoom(code, message);
+      heardBuild(message.build);
       if (keptTable) {
         // The room's word on its game comes right behind this one. A game put back from what was kept
         // that the room then says nothing of is one it no longer has: it is not left on the screen.
@@ -1218,6 +1299,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       shownGame = message.startedAt;
       if (typeof event.data === "string") lastGame = event.data;
       showTable(message.game).update(message);
+      // whether the game is over, and with it whether there is a result to pass on
+      syncShare();
       keepAwake();
       return;
     }
@@ -1266,6 +1349,15 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       connect(generateRoomCode(Math.random, config), true, nick, attemptsLeft - 1);
       return;
     }
+    // A quick join found the room full or gone by the time it got there: the next one waiting is tried.
+    const next = message.reason === "full" || message.reason === "not-found" ? quickRest?.shift() : undefined;
+    if (next !== undefined) {
+      connect(next, false, nick);
+      setEntering(next);
+      renderRooms();
+      return;
+    }
+    quickRest = null;
     history.replaceState(null, "", `${location.pathname}${location.search}`);
     showLobby(REJECT_TEXT[message.reason]);
   });
@@ -1325,10 +1417,31 @@ function joinRoom(code: string): void {
   if (entering === code && socket !== null) return;
   const nick = readNick();
   if (nick === null) return;
+  // a room asked for by name is the only one tried
+  quickRest = null;
   connect(code, false, nick);
   setEntering(code);
   notice.textContent = WORDS.entry.entering;
   renderRooms();
+}
+
+/**
+ * Enters an open room that is waiting for players, the best to join first
+ * (`quickPicks`): of the game picked over the list, or of every game. One
+ * that has filled up or gone by the time this page gets there gives way to
+ * the next (`connect`).
+ */
+function quickJoin(): void {
+  if (entering !== null && socket !== null) return;
+  if (readNick() === null) return;
+  const shown = roomsSent === null ? null : roomsShown(roomsSent.rooms, roomsSent.counts, listedGame);
+  const [first, ...rest] = quickPicks(shown?.rooms ?? []);
+  if (first === undefined) {
+    notice.textContent = WORDS.entry.noneWaiting;
+    return;
+  }
+  joinRoom(first);
+  quickRest = rest;
 }
 
 function joinFromInput(): void {
@@ -1352,6 +1465,7 @@ function leaveRoom(): void {
 }
 
 el<HTMLButtonElement>("create").addEventListener("click", showNewRoom);
+quickButton.addEventListener("click", quickJoin);
 // The games to pick from open and close at the same button; opened, the keyboard is on the game picked.
 roomsPick.addEventListener("click", () => {
   const open = roomsGames.hidden !== false;
@@ -1436,23 +1550,55 @@ leaveGameButton.addEventListener("click", () => {
   leaveArmed = setTimeout(disarmLeave, LEAVE_CONFIRM_MS);
 });
 
-copyButton.addEventListener("click", () => {
-  const link = `${location.origin}${location.pathname}#${currentCode}`;
-  const done = (text: string): void => {
-    copyButton.textContent = text;
+/**
+ * Passes `text` on with the address `url`: under a finger by the phone's own
+ * sheet, where it has one, which goes straight to a messenger; else by
+ * copying `pasted`, for the player to paste. `button` says for a moment how
+ * it went, and `failed` is called when nothing could be copied.
+ */
+function passOn(button: HTMLButtonElement, label: string, text: string, url: string, pasted: string, failed: () => void = () => undefined): void {
+  const done = (said: string): void => {
+    button.textContent = said;
     setTimeout(() => {
-      copyButton.textContent = WORDS.room.copy;
+      button.textContent = label;
     }, 1500);
   };
-  navigator.clipboard.writeText(link).then(
-    () => done(WORDS.room.copied),
-    () => {
-      // no clipboard here (an old browser, or a page not served securely): the code is on screen to read out
-      done(WORDS.room.copyFailed);
-      hint = WORDS.room.copyFailedHint(currentCode);
-      renderRoomBar();
-    },
-  );
+  const copy = (): void => {
+    // no clipboard here (an old browser, or a page not served securely) is a failure like any other
+    const copying = navigator.clipboard === undefined ? Promise.reject(new Error("no clipboard")) : navigator.clipboard.writeText(pasted);
+    copying.then(
+      () => done(WORDS.room.copied),
+      () => {
+        done(WORDS.room.copyFailed);
+        failed();
+      },
+    );
+  };
+  if (!TOUCH || typeof navigator.share !== "function") return copy();
+  navigator.share(text === "" ? { url } : { text, url }).catch((error: unknown) => {
+    // the sheet put away by the player is no failure; a browser that would not open it copies instead
+    if (!(error instanceof DOMException && error.name === "AbortError")) copy();
+  });
+}
+
+copyButton.addEventListener("click", () => {
+  const link = `${location.origin}${location.pathname}#${currentCode}`;
+  const game = currentView !== null && isGameId(currentView.game) ? GAMES[currentView.game].title[lang] : "";
+  // copied, it is the link alone, as an address is pasted; the sheet sends a line with it
+  passOn(copyButton, WORDS.room.copy, game === "" ? "" : WORDS.share.invite(game), link, link, () => {
+    // the code is on screen to read out
+    hint = WORDS.room.copyFailedHint(currentCode);
+    renderRoomBar();
+  });
+});
+
+// The result of the game that is over, in a line, with where the game is played: never the room's code, which is not for everyone.
+tabShare.addEventListener("click", () => {
+  const verdict = table?.verdict() ?? null;
+  if (verdict === null || tableGame === null) return;
+  const said = `${WORDS.share.result(GAMES[tableGame].title[lang], verdict)} · ${WORDS.share.come}`;
+  const address = `${location.origin}/`;
+  passOn(tabShare, WORDS.game.share, said, address, `${said}\n${address}`);
 });
 
 // The voice chat: in and out, and the microphone on and off.
@@ -1518,7 +1664,7 @@ tabChat.addEventListener("click", () => openChat(true));
 // A button pressed with the mouse keeps the focus, and the next Enter or Space meant for the game
 // would press it again. The ones that lie over the game give the focus back; reached and pressed
 // from the keyboard (no mouse: `detail` is 0) they keep it, and the key is theirs.
-for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
+for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, tabShare, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
   button.addEventListener("click", (event) => {
     if (event.detail > 0 && !tableCanvas.hidden) button.blur();
   });
@@ -1707,6 +1853,7 @@ function comeBack(): boolean {
       shownGame = kept.game.startedAt;
       keptTable = true;
       showTable(kept.game.game).update(kept.game);
+      syncShare();
       keepAwake();
     }
   } catch {

@@ -474,6 +474,17 @@ button.wide {
   margin-top: 6px;
 }
 
+/* The two ways into a room from the lobby's form, side by side. */
+.row.ways {
+  margin-top: 6px;
+}
+
+.row.ways > button {
+  flex: 1;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
 /* One of a few to pick from: the picked one is lit. */
 button.choice[aria-pressed="true"] {
   border-color: var(--amber-dim);
@@ -858,6 +869,12 @@ button.choice[aria-pressed="true"] {
   color: var(--teal);
 }
 
+/* The result of a game that is over, to pass on: no wider than its word, beside the two that share the rest. */
+#tabs #tab-share {
+  flex: none;
+  padding: 0 5px;
+}
+
 /* The bar under both. */
 #bar {
   position: absolute;
@@ -883,6 +900,24 @@ button.choice[aria-pressed="true"] {
 
 /* The other language the page can be read in: in the lobby, where a room has the button for its rules. */
 #lang {
+  color: var(--bone-dim);
+}
+
+/* In the lobby, on the bar's third line: where to send a word about the game, and which build the page is. */
+#about {
+  position: absolute;
+  left: 6px;
+  bottom: 5px;
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+#about[hidden] {
+  display: none;
+}
+
+#about a {
   color: var(--bone-dim);
 }
 
@@ -1022,6 +1057,13 @@ button.choice[aria-pressed="true"] {
 /* The button in the bar's corner is taller, and would lie over the end of a long second line: the line ends short of it. */
 :root.touch #bar-2 {
   padding-right: 76px;
+}
+
+/* That line then runs on to the third, at the left: the build and the link sit at the right of it, before the button. */
+:root.touch #about {
+  right: 76px;
+  bottom: 3px;
+  left: auto;
 }
 
 /* The lobby's form: the room under its last line goes to the taller box and buttons. */

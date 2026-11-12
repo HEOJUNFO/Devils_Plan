@@ -56,6 +56,8 @@ export interface CubesScreen {
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
   press(code: string): void;
+  /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
+  verdict(): string | null;
   destroy(): void;
 }
 
@@ -586,6 +588,13 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     PAD.forEach((key, index) => button(padRect(index), key.label, key.code === "Enter" && live && typed !== "", live));
   }
 
+  /** What this player came out of the game with, in the word the results lead with; `null` while it is being played, and for someone who watched. */
+  function verdict(): string | null {
+    const mine = me();
+    if (latest === null || latest.view.phase !== "ended" || mine === null) return null;
+    return WORDS.result.verdict(true, placeOf(mine));
+  }
+
   function drawResults(): void {
     if (latest === null) return;
     const view = latest.view;
@@ -761,6 +770,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
 
   return {
     update,
+    verdict,
     refused(reason: string): void {
       starting = false;
       pending = false;

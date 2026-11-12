@@ -1,4 +1,5 @@
 import { Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
+import { BUILD } from "../shared/build";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shared/chat";
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
@@ -110,6 +111,24 @@ const LOBBY_KEY = "lobby";
 const GAME_KEY = "game";
 /** Whether the directory has this room on its list, as far as the room knows. */
 const LISTED_KEY = "listed";
+/** What the room counts of itself for the log: see {@link Tally}. */
+const TALLY_KEY = "tally";
+
+/**
+ * What a room counts of itself, from when it is made until nobody holds a
+ * place in it: how many games were started in it, the most players connected
+ * to it at once, and when the game being played began. Written to the log
+ * when the room stands empty, which is all it is kept for: how many rooms
+ * were waited in alone, and how many got a game going. Never who.
+ */
+interface Tally {
+  games: number;
+  most: number;
+  /** When the game now being played started, in ms since the epoch; `null` between games. */
+  began: number | null;
+}
+
+const NO_TALLY: Tally = { games: 0, most: 0, began: null };
 
 /** The least time between two pokes the room acts on, in ms: asking twice in a row finds nothing new. */
 const POKE_GAP_MS = 10_000;
@@ -200,6 +219,8 @@ export class GameRoom extends Server<Env> {
       const now = Date.now();
       const next = dropLapsed(markAway(lobby, this.connectedSlots(), now), now, config, this.keepsSlot);
       if (next !== lobby) {
+        // the last place has lapsed: whoever was here closed the page, or never came back
+        if (next.players.length === 0 && lobby.players.length > 0) this.sayEmptied(lobby);
         this.saveLobby(next);
         this.broadcastLobby();
         // Nobody is left to look at how the last game ended.
@@ -500,6 +521,7 @@ export class GameRoom extends Server<Env> {
     connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings });
     // Also notes anyone whose connection ended without the room being told.
     this.saveLobby(markAway(result.state, this.connectedSlots(), now));
+    this.countHere();
     this.broadcastLobby();
     this.sendVoice(connection);
     // A game may be going on: the newcomer watches it, a returning player takes their seat back.
@@ -519,6 +541,7 @@ export class GameRoom extends Server<Env> {
     const hadVoice = theirs.some(([, seat]) => seat.voice !== undefined);
     const next = leaveLobby(lobby, player.token);
     const emptied = next.players.length === 0;
+    if (emptied) this.sayEmptied(lobby);
     this.saveLobby(emptied ? null : next);
     for (const [connection] of theirs) this.end(connection, CLOSE_LEFT, "left");
 
@@ -543,6 +566,8 @@ export class GameRoom extends Server<Env> {
    * nothing.
    */
   private async forget(): Promise<void> {
+    // A room cleared with places still held (a deploy cut everyone off, and nobody came back) is said to be empty here.
+    if (this.lobby !== null && this.lobby.players.length > 0) this.sayEmptied(this.lobby);
     this.lobby = null;
     this.session = null;
     await this.report();
@@ -723,7 +748,36 @@ export class GameRoom extends Server<Env> {
       presence,
     );
     if (!result.ok) return this.refuse(connection, result.reason as Refusal);
+    // For the log: which game, and how many people sat down to it. Never the room's code or a name.
+    const tally = this.tally();
+    this.save(TALLY_KEY, { ...tally, games: tally.games + 1, began: Date.now() } satisfies Tally);
+    console.log(`game started: ${gameOf(lobby)} ${presence.connected.size} players`);
     await this.commitSession(result.session);
+  }
+
+  /** What the room has counted of itself so far. */
+  private tally(): Tally {
+    return (this.stored ? this.load<Tally>(TALLY_KEY) : null) ?? NO_TALLY;
+  }
+
+  /** Counts who is connected now, where that is more than were ever connected at once before. */
+  private countHere(): void {
+    const here = this.connectedSlots().size;
+    const tally = this.tally();
+    if (here > tally.most) this.save(TALLY_KEY, { ...tally, most: here } satisfies Tally);
+  }
+
+  /**
+   * Writes to the log that the room stands empty, `lobby` being how it stood
+   * with its last player in it, with what it counted of itself; and counts
+   * from nothing again. A room nobody played in (`games 0`) and one somebody
+   * waited in alone (`most 1`) are read from these lines. Never the room's
+   * code or a name.
+   */
+  private sayEmptied(lobby: LobbyState): void {
+    const tally = this.tally();
+    console.log(`room emptied: ${gameOf(lobby)} ${lobby.listed ? "listed" : "unlisted"} games ${tally.games} most ${tally.most}`);
+    if (this.stored) this.save(TALLY_KEY, null);
   }
 
   /** Passes on what a player asked of the game, or tells that player alone why it was refused. */
@@ -764,6 +818,13 @@ export class GameRoom extends Server<Env> {
     // a game that is over and gone leaves nothing to compare the next one with
     if (next === null) this.sights.clear();
     this.broadcastGame(asker);
+    if (wasPlaying && !this.playing() && this.lobby !== null) {
+      // For the log: which game, and how long it took. A game nobody stayed for ends here too.
+      const tally = this.tally();
+      const minutes = tally.began === null ? null : Math.max(0, Math.round((Date.now() - tally.began) / 60_000));
+      console.log(`game ended: ${gameOf(this.lobby)}${minutes === null ? "" : ` ${minutes} min`}`);
+      if (tally.began !== null) this.save(TALLY_KEY, { ...tally, began: null } satisfies Tally);
+    }
     if (wasPlaying !== this.playing()) {
       // A game starting or ending changes how the room is listed, and whose
       // slot is kept for them while they are away.
@@ -965,6 +1026,7 @@ export class GameRoom extends Server<Env> {
       const message: ServerMessage = {
         type: "lobby",
         room: this.name,
+        build: BUILD,
         ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered()),
       };
       member.send(JSON.stringify(message));

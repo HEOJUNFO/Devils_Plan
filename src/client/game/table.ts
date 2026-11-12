@@ -91,6 +91,8 @@ export interface Table {
   say(slot: number, text: string): void;
   /** A key was pressed for the player by something that is not a keyboard; `code` as the browser names a key. */
   press(code: string): void;
+  /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
+  verdict(): string | null;
   /** Stops drawing and listening. */
   destroy(): void;
 }
@@ -1269,6 +1271,14 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(label, rect[0] + Math.round(rect[2] / 2), rect[1] + 2, strong ? C.amber : C.bone, "center");
   }
 
+  /** What this player came out of the game with, in the word the results lead with; `null` while it is being played, and for someone who watched. */
+  function verdict(): string | null {
+    const result = latest?.view.result ?? null;
+    const me = latest?.view.seat ?? null;
+    if (result === null || me === null) return null;
+    return WORDS.result.verdict(true, result.hitSeats.includes(me));
+  }
+
   function drawResults(): void {
     if (latest === null || latest.view.result === null) return;
     const result = latest.view.result;
@@ -1420,6 +1430,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
 
   return {
     update,
+    verdict,
     refused(reason: string): void {
       starting = false;
       pending = false;

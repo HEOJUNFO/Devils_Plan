@@ -7,6 +7,7 @@ import {
   listingOf,
   mayMakeAnother,
   parseReport,
+  quickPicks,
   roomsShown,
   type DirectoryConfig,
   type DirectoryEntry,
@@ -451,6 +452,25 @@ describe("countRooms", () => {
     const entries = [entry("AAAA", {}, NOW - config.staleHours * HOUR - 1), entry("BBBB")];
 
     expect(countRooms(entries, NOW, config)).toEqual({ [DEFAULT_GAME]: 1 });
+  });
+});
+
+describe("quickPicks", () => {
+  it("tries the rooms waiting for players with a place free, in the order the list has them", () => {
+    const rooms = [listing("AAAA", { players: 3 }), listing("BBBB", { players: 1 }), listing("CCCC", { players: 2 })];
+
+    expect(quickPicks(rooms)).toEqual(["AAAA", "BBBB", "CCCC"]);
+  });
+
+  it("leaves out a room that is full and a room in a game", () => {
+    const rooms = [listing("AAAA", { players: 4, maxPlayers: 4 }), listing("BBBB", { playing: true }), listing("CCCC")];
+
+    expect(quickPicks(rooms)).toEqual(["CCCC"]);
+  });
+
+  it("has nothing to try when no room is waiting", () => {
+    expect(quickPicks([])).toEqual([]);
+    expect(quickPicks([listing("AAAA", { playing: true })])).toEqual([]);
   });
 });
 

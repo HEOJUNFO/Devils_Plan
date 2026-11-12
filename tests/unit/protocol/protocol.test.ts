@@ -278,6 +278,11 @@ describe("parseDirectoryMessage", () => {
     expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [] }))?.counts).toBeUndefined();
   });
 
+  it("reads which build the directory's code is from, and takes anything but text as not said", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], build: "abc1234" }))).toEqual({ type: "rooms", rooms: [], build: "abc1234" });
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], build: 7 }))).toEqual({ type: "rooms", rooms: [] });
+  });
+
   it("drops counts that are not counts by game, keeping the list", () => {
     const rooms = [{ code: "ABCDE", game: DEFAULT_GAME, host: "ann", players: 2, maxPlayers: 6, playing: false }];
 

@@ -54,6 +54,8 @@ export interface MarketScreen {
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
   press(code: string): void;
+  /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
+  verdict(): string | null;
   destroy(): void;
 }
 
@@ -875,6 +877,14 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     return [wallet(), C.bone];
   }
 
+  /** What this player came out of the game with, in the word the results lead with; `null` while it is being played, and for someone who watched. */
+  function verdict(): string | null {
+    if (latest === null || latest.view.phase !== "ended") return null;
+    const view = latest.view;
+    const own = view.standings.find((each) => each.player === view.you);
+    return own === undefined ? null : WORDS.result.verdict(true, own.rank);
+  }
+
   function drawResults(): void {
     if (latest === null) return;
     const view = latest.view;
@@ -1054,6 +1064,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
 
   return {
     update,
+    verdict,
     refused(reason: string): void {
       starting = false;
       sent = null;

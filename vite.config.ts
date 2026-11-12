@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 import { SITE_SHEETS } from "./src/client/site-sheets";
@@ -53,8 +54,26 @@ function sitePages(): Plugin {
   };
 }
 
+/**
+ * Which commit a build is made from, in its first seven letters: what the
+ * page and the server each say they are (`src/shared/build.ts`). Cloudflare's
+ * build names the commit it was given; a build made by hand asks git. Where
+ * neither can say, the build is `dev`, as it is while developing.
+ */
+function buildOf(): string {
+  const named = process.env.WORKERS_CI_COMMIT_SHA;
+  if (named) return named.slice(0, 7);
+  try {
+    return execSync("git rev-parse --short=7 HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() || "dev";
+  } catch {
+    return "dev";
+  }
+}
+
 // `vite dev` serves the browser client and runs the Worker (and its Durable
 // Objects) in the real Workers runtime, reading wrangler.jsonc.
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [sitePages(), cloudflare()],
-});
+  // the page and the Worker are built from the one commit, and each is told which
+  define: { __BUILD__: JSON.stringify(command === "build" ? buildOf() : "dev") },
+}));

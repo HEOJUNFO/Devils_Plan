@@ -1,4 +1,5 @@
 import { Server, type Connection, type WSMessage } from "partyserver";
+import { BUILD } from "../shared/build";
 import directoryConfig from "../shared/directory-config.json";
 import {
   beyondLimit,
@@ -225,7 +226,7 @@ export class RoomDirectory extends Server<Env> {
 
   /** The list as sent to a viewer of `game`, or of every game. */
   private message(now: number, game: GameId | null, counts: DirectoryMessage["counts"]): string {
-    const message: DirectoryMessage = { type: "rooms", rooms: listRooms([...this.entries.values()], now, config, game), counts };
+    const message: DirectoryMessage = { type: "rooms", rooms: listRooms([...this.entries.values()], now, config, game), counts, build: BUILD };
     return JSON.stringify(message);
   }
 }

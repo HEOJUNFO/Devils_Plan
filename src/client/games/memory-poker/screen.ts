@@ -51,6 +51,8 @@ export interface PokerScreen {
   setHost(host: boolean): void;
   say(slot: number, text: string): void;
   press(code: string): void;
+  /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
+  verdict(): string | null;
   destroy(): void;
 }
 
@@ -622,6 +624,14 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     pen.txt(label, x + Math.round(w / 2), y + Math.round((h - 13) / 2), lit ? C.amber : live ? C.bone : C.dim, "center");
   }
 
+  /** What this player came out of the game with, in the word the results lead with; `null` while it is being played, and for someone who watched. */
+  function verdict(): string | null {
+    const mine = me();
+    if (latest === null || latest.view.phase !== "ended" || mine === null) return null;
+    const own = latest.view.standings.find((each) => each.player === mine);
+    return own === undefined ? null : WORDS.result.verdict(true, own.place);
+  }
+
   function drawResults(): void {
     if (latest === null) return;
     const view = latest.view;
@@ -754,6 +764,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
 
   return {
     update,
+    verdict,
     refused(reason: string): void {
       starting = false;
       pending = false;
