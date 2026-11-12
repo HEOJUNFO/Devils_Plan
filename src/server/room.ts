@@ -43,12 +43,15 @@ import {
 import roomConfig from "../shared/room-config.json";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
 import voiceConfigJson from "../shared/voice-config.json";
-import { ADDRESS_HEADER, withinLimit } from "./address";
+import { ADDRESS_HEADER, withinLimit, type Limiter } from "./address";
+import { MAKE_PATH, REPORT_PATH } from "./directory";
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
 const chatConfig: ChatConfig = chatConfigJson;
 const voiceConfig: VoiceConfig = voiceConfigJson;
+/** What the log calls the directory's count of rooms made by each address. */
+const ROOM_COUNT = "ROOM_COUNT";
 
 /**
  * What a connection remembers about itself. Stored in the WebSocket
@@ -422,25 +425,35 @@ export class GameRoom extends Server<Env> {
   ): Promise<void> {
     if (!isValidRoomCode(this.name, config)) return this.reject(connection, "bad-room");
 
+    /** Nobody's: never made, or everybody who was here has gone and it was only being kept for them. */
+    const free = (room: LobbyState | null): boolean => room === null || room.players.length === 0;
     let lobby = this.lobby;
     let made = false;
-    if (lobby === null) {
-      if (!request.create || !(await this.mayMake(from))) {
-        this.reject(connection, request.create ? "code-taken" : "not-found");
-        // Asking after a room that does not exist leaves nothing behind.
-        if (this.connectedSlots().size === 0) await this.forget();
-        return;
+    if (lobby === null && !request.create) {
+      this.reject(connection, "not-found");
+      // Asking after a room that does not exist leaves nothing behind.
+      if (this.connectedSlots().size === 0) await this.forget();
+      return;
+    }
+    if (request.create && free(lobby)) {
+      const may = await this.mayMake(from);
+      // The count was waited for, and someone else may have made the room in that wait: it is read again.
+      lobby = this.lobby;
+      if (free(lobby)) {
+        if (!may) {
+          this.reject(connection, "code-taken");
+          if (lobby === null && this.connectedSlots().size === 0) await this.forget();
+          return;
+        }
+        const kept = lobby !== null;
+        // Made, or made again as its new maker asks.
+        lobby = createLobby(request.game, request.listed, config);
+        made = true;
+        if (kept) await this.commitSession(null);
       }
-      lobby = createLobby(request.game, request.listed, config);
-      made = true;
-    } else if (request.create && lobby.players.length === 0) {
-      if (!(await this.mayMake(from))) return this.reject(connection, "code-taken");
-      // Everybody who was here has gone and the room was only being kept for
-      // them: it is made again, as its new maker asks.
-      lobby = createLobby(request.game, request.listed, config);
-      made = true;
-      await this.commitSession(null);
-    } else if (request.create && !findPlayer(lobby, request.token)) {
+    }
+    if (lobby === null) return this.reject(connection, "not-found");
+    if (!made && request.create && !findPlayer(lobby, request.token)) {
       // A reconnect repeats the original request, so the room's own members
       // may "create" it again; anyone else has collided with a code in use.
       return this.reject(connection, "code-taken");
@@ -781,12 +794,7 @@ export class GameRoom extends Server<Env> {
         this.told = body;
         return;
       }
-      const directory = this.env.RoomDirectory.get(this.env.RoomDirectory.idFromName(DIRECTORY_NAME));
-      const response = await directory.fetch("https://directory.internal/report", {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-partykit-room": DIRECTORY_NAME },
-        body,
-      });
+      const response = await this.askDirectory(REPORT_PATH, body);
       await response.body?.cancel();
       if (!response.ok) throw new Error(`the directory answered ${response.status}`);
       this.told = body;
@@ -823,12 +831,37 @@ export class GameRoom extends Server<Env> {
 
   /**
    * Whether a room may be made for a connection from `from`: an address may
-   * make so many rooms in a while and no more (`CREATE_LIMITER`,
-   * `wrangler.jsonc`), as making one is the dearest thing a stranger can ask
-   * for.
+   * make so many rooms in a while and no more (`makeLimits`,
+   * `directory-config.json`), as making one is the dearest thing a stranger
+   * can ask for. The directory keeps the count, the one count there is for
+   * every room. Asked only where a room would be made, and a room is made
+   * without the count while the directory cannot be asked (`withinLimit`).
    */
   private mayMake(from: string | null): Promise<boolean> {
-    return withinLimit(this.env.CREATE_LIMITER, from, "CREATE_LIMITER");
+    return withinLimit(this.roomCount, from, ROOM_COUNT);
+  }
+
+  /** The directory's count of rooms made by each address, asked as a limiter is. */
+  private readonly roomCount: Limiter = {
+    limit: async ({ key }) => {
+      const response = await this.askDirectory(MAKE_PATH, JSON.stringify({ from: key }));
+      if (!response.ok) {
+        await response.body?.cancel();
+        throw new Error(`the directory answered ${response.status}`);
+      }
+      const answer: { ok?: unknown } = await response.json();
+      return { success: answer.ok === true };
+    },
+  };
+
+  /** Asks the one directory there is, from inside the Worker. */
+  private askDirectory(path: string, body: string): Promise<Response> {
+    const directory = this.env.RoomDirectory.get(this.env.RoomDirectory.idFromName(DIRECTORY_NAME));
+    return directory.fetch(`https://directory.internal${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-partykit-room": DIRECTORY_NAME },
+      body,
+    });
   }
 
   /** Reads one stored value, or `null` when there is none. */

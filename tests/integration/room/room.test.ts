@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import directoryConfig from "../../../src/shared/directory-config.json";
 import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import type { LobbyView } from "../../../src/shared/lobby";
 import { CLOSE_LEFT, CLOSE_REJECTED, CLOSE_STALE } from "../../../src/shared/protocol";
@@ -19,6 +20,8 @@ const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
 const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
 const STALE_MS = roomConfig.staleConnectionSeconds * 1000;
+/** The rooms one address may make in a short while. */
+const [MAKE_SOON] = directoryConfig.makeLimits;
 /** How many tries a test gives a limit kept by address to show itself: far more than any such limit. */
 const MANY = 400;
 /** The room code a test makes its `n`th room under: `stem` and three more characters. */
@@ -477,28 +480,68 @@ describe("GameRoom", () => {
     expect(other.status).toBe(101);
   });
 
-  it("makes no more rooms for an address that makes them faster than the limit, and still lets it into one that is there", async () => {
+  /** Makes rooms from `from` under `stem` until one is refused or `most` are made; how many were made. */
+  const roomsMadeFrom = async (from: string | undefined, stem: string, most = MANY): Promise<number> => {
+    for (let n = 0; n < most; n++) {
+      const maker = await open(codeOf(stem, n), { player: 1, create: true, from });
+      const answer = await maker.next();
+      maker.close();
+      if (answer.type === "error") {
+        expect(answer.reason).toBe("code-taken");
+        return n;
+      }
+    }
+    return most;
+  };
+
+  it("makes exactly as many rooms for an address as the limit says, and still lets it into one that is there", async () => {
     const making = "203.0.113.20";
     const there = await open("LMTAG", { player: 0, create: true });
     await there.next();
-    let refused = -1;
 
-    for (let n = 0; n < MANY && refused < 0; n++) {
-      const maker = await open(codeOf("LR", n), { player: 1, create: true, from: making });
-      const answer = await maker.next();
-      if (answer.type === "error") {
-        expect(answer.reason).toBe("code-taken");
-        refused = n;
-      }
-      maker.close();
-    }
+    const made = await roomsMadeFrom(making, "LR");
     const guest = await open("LMTAG", { player: 1, from: making });
     const elsewhere = await open("LMTAH", { player: 2, create: true, from: "203.0.113.21" });
 
-    expect(refused).toBeGreaterThan(0);
+    // exactly: a count that is about right is one a script can outrun
+    expect(made).toBe(MAKE_SOON.burst);
     expect(await guest.next()).toMatchObject({ type: "lobby", you: 1 });
     expect(await elsewhere.next()).toMatchObject({ type: "lobby", you: 0 });
     for (const client of [there, guest, elsewhere]) client.close();
+  });
+
+  it("makes rooms for an address again once the while the limit is kept over has passed", async () => {
+    const making = "203.0.113.30";
+    expect(await roomsMadeFrom(making, "LT")).toBe(MAKE_SOON.burst);
+
+    advanceClock(MAKE_SOON.windowSeconds * 1000);
+
+    expect(await roomsMadeFrom(making, "LU", 1)).toBe(1);
+  });
+
+  it("counts the rooms made from every address of one IPv6 network together", async () => {
+    expect(await roomsMadeFrom("2001:db8:7:7::1", "LV")).toBe(MAKE_SOON.burst);
+
+    expect(await roomsMadeFrom("2001:db8:7:7:aaaa:bbbb:cccc:dddd", "LW")).toBe(0);
+    expect(await roomsMadeFrom("2001:db8:7:8::1", "LX", 1)).toBe(1);
+  });
+
+  it("makes a room once when two ask for the same code at the same moment", async () => {
+    const [one, other] = await Promise.all([connect("LMTAK", "", "203.0.113.50"), connect("LMTAK", "", "203.0.113.51")]);
+    one.send({ type: "join", token: tokenFor(0), nick: "one", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+    other.send({ type: "join", token: tokenFor(1), nick: "other", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+
+    const answers = [await one.next(), await other.next()];
+
+    // the count is asked of the directory while the room waits, and the second request comes in that wait
+    expect(answers.filter((answer) => answer.type === "lobby")).toHaveLength(1);
+    expect(answers.filter((answer) => answer.type === "error")).toEqual([{ type: "error", reason: "code-taken" }]);
+    one.close();
+    other.close();
+  });
+
+  it("makes a room for a connection with no address: the limit is a guard, and a test or the Worker itself has none", async () => {
+    expect(await roomsMadeFrom(undefined, "LY", MAKE_SOON.burst + 2)).toBe(MAKE_SOON.burst + 2);
   });
 
   it("closes a connection that never joined when the next one arrives after the deadline", async () => {

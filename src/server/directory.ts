@@ -5,6 +5,8 @@ import {
   countRooms,
   isStale,
   listRooms,
+  makeMemoryMs,
+  mayMakeAnother,
   parseReport,
   type DirectoryConfig,
   type DirectoryEntry,
@@ -14,9 +16,27 @@ import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
 import { parseDirectoryRequest, type DirectoryMessage } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
+import { countedAs } from "./address";
 
 const config: DirectoryConfig = directoryConfig;
 const rooms: RoomConfig = roomConfig;
+
+/** The path a room reports to, and the path it asks at whether one more room may be made. */
+export const REPORT_PATH = "/report";
+export const MAKE_PATH = "/make";
+/** The longest an address is written: an IPv6 address with an IPv4 one for its end. */
+const ADDRESS_MAX_LENGTH = 45;
+
+/**
+ * What is kept of an address that made a room: a digest of what it is
+ * counted as (`countedAs`), so that the table is not a list of addresses. It
+ * is no secret (there are few enough addresses to try them all), and it is
+ * kept no longer than the longest limit needs.
+ */
+async function keyOf(from: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(countedAs(from)));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
 
 /**
  * What the directory keeps of someone looking at the list: the game whose
@@ -41,6 +61,12 @@ interface ViewerState {
  * are, a viewer is sent no more than the list holds, with how many there are
  * of each game.
  *
+ * It also keeps the one count there is of rooms made by each network address
+ * (`config.makeLimits`), which a room asks before it is made. There is one
+ * directory and it does one thing at a time, so the count is exact wherever
+ * the rooms and their makers are: a count kept by each running copy of the
+ * Worker, as Cloudflare's rate limiting binding keeps it, is not.
+ *
  * Like a room, the directory hibernates between events, so the entries are
  * kept in SQLite and read back on each wake.
  */
@@ -57,6 +83,10 @@ export class RoomDirectory extends Server<Env> {
     this.ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS rooms (code TEXT PRIMARY KEY, v TEXT NOT NULL, updated_at INTEGER NOT NULL)",
     );
+    // one row for each room made, kept until the longest limit has no more use for it
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS made (key TEXT NOT NULL, at INTEGER NOT NULL)");
+    this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS made_by_key ON made (key, at)");
+    this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS made_by_time ON made (at)");
     this.entries = new Map();
     const rows = this.ctx.storage.sql
       .exec<{ code: string; v: string; updated_at: number }>("SELECT code, v, updated_at FROM rooms")
@@ -92,7 +122,11 @@ export class RoomDirectory extends Server<Env> {
     this.showPace.delete(connection.id);
   }
 
-  /** A room's report: how to list it, or that it is off the list. */
+  /**
+   * What a room asks of the directory, from inside the Worker: at
+   * `MAKE_PATH` whether one more room may be made, and anywhere else its
+   * report, how to list it or that it is off the list.
+   */
   async onRequest(request: Request): Promise<Response> {
     if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
     let raw: unknown;
@@ -101,6 +135,7 @@ export class RoomDirectory extends Server<Env> {
     } catch {
       return new Response("Bad Request", { status: 400 });
     }
+    if (new URL(request.url).pathname === MAKE_PATH) return this.answerMake(raw);
     const report = parseReport(raw, rooms);
     if (report === null) return new Response("Bad Request", { status: 400 });
 
@@ -121,6 +156,27 @@ export class RoomDirectory extends Server<Env> {
     this.forgetBeyondLimit();
     this.tellViewers(now);
     return new Response(null, { status: 204 });
+  }
+
+  /**
+   * Whether one more room may be made from the address in `raw` (`{ from }`),
+   * answered as `{ ok }`; a yes is counted as a room made. A no is not
+   * counted, so asking on does not push the day an address may make one again.
+   */
+  private async answerMake(raw: unknown): Promise<Response> {
+    const from = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>).from : undefined;
+    if (typeof from !== "string" || from === "" || from.length > ADDRESS_MAX_LENGTH) {
+      return new Response("Bad Request", { status: 400 });
+    }
+    const key = await keyOf(from);
+    // From here to the answer nothing is waited for, so no other room's question comes between the count and the row.
+    const now = Date.now();
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM made WHERE at <= ?", now - makeMemoryMs(config.makeLimits));
+    const madeAt = sql.exec<{ at: number }>("SELECT at FROM made WHERE key = ?", key).toArray().map((row) => row.at);
+    const ok = mayMakeAnother(madeAt, now, config.makeLimits);
+    if (ok) sql.exec("INSERT INTO made (key, at) VALUES (?, ?)", key, now);
+    return Response.json({ ok });
   }
 
   /** Drops entries whose rooms have been silent too long: a room's last word can be lost. */

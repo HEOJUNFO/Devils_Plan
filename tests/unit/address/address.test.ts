@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { withinLimit, type Limiter } from "../../../src/server/address";
+import { countedAs, withinLimit, type Limiter } from "../../../src/server/address";
 
 /** An address out of the range kept for examples. */
 const ADDRESS = "203.0.113.5";
@@ -93,5 +93,33 @@ describe("a limit kept by address", () => {
     expect(await withinLimit(undefined, ADDRESS, NAME)).toBe(true);
     expect(warned).toHaveBeenCalledTimes(1);
     expect(warned.mock.calls[0].join(" ")).toContain(NAME);
+  });
+});
+
+describe("what an address is counted as", () => {
+  it("counts an IPv4 address as itself", () => {
+    expect(countedAs("203.0.113.5")).toBe("203.0.113.5");
+  });
+
+  it("counts every IPv6 address of one network of 64 bits as one: such a network is one line, and all of it is its holder's to use", () => {
+    expect(countedAs("2001:db8:12:34:1:2:3:4")).toBe("2001:db8:12:34");
+    expect(countedAs("2001:db8:12:34:ffff:ffff:ffff:ffff")).toBe("2001:db8:12:34");
+    expect(countedAs("2001:db8:12:35:1:2:3:4")).toBe("2001:db8:12:35");
+  });
+
+  it("reads an IPv6 address however it is written", () => {
+    expect(countedAs("2001:db8::1")).toBe("2001:db8:0:0");
+    expect(countedAs("2001:DB8:0012:0034::1")).toBe("2001:db8:12:34");
+    expect(countedAs("2001:db8:12:34::")).toBe("2001:db8:12:34");
+    expect(countedAs("::1")).toBe("0:0:0:0");
+    expect(countedAs("2001:db8:12:34:5:6:192.0.2.1")).toBe("2001:db8:12:34");
+  });
+
+  it("counts what it cannot read as itself", () => {
+    expect(countedAs("not an address")).toBe("not an address");
+    expect(countedAs("1:2:3")).toBe("1:2:3");
+    expect(countedAs("1:2:3:4:5:6:7:8:9")).toBe("1:2:3:4:5:6:7:8:9");
+    expect(countedAs("1::2::3")).toBe("1::2::3");
+    expect(countedAs("2001:db8:zz:34:1:2:3:4")).toBe("2001:db8:zz:34:1:2:3:4");
   });
 });

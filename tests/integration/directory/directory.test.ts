@@ -1,5 +1,6 @@
-import { exports } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { runInDurableObject } from "cloudflare:test";
+import { env, exports } from "cloudflare:workers";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import type { RoomListing } from "../../../src/shared/directory";
 import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
@@ -11,7 +12,8 @@ import {
   type DirectoryRequest,
 } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
-import { Inbox, join as open, socket, type TestClient } from "../support";
+import { MAKE_PATH } from "../../../src/server/directory";
+import { advanceClock, Inbox, join as open, socket, type TestClient } from "../support";
 
 /** The most players the list says a room of the first game can have. */
 const MOST = Math.min(roomConfig.maxPlayers, GAMES[DEFAULT_GAME].maxPlayers);
@@ -71,6 +73,33 @@ async function marker(viewer: Viewer, code: string): Promise<TestClient> {
 
 const present = (room: RoomListing | undefined): boolean => room !== undefined;
 const absent = (room: RoomListing | undefined): boolean => room === undefined;
+
+/** The rooms one address may make in a short while and in a long one. */
+const [MAKE_SOON, MAKE_LATER] = directoryConfig.makeLimits;
+
+/** Asks the directory as a room does, from inside the Worker, with `body` for what is asked. */
+function askToMake(body: unknown): Promise<Response> {
+  const directory = env.RoomDirectory.get(env.RoomDirectory.idFromName(DIRECTORY_NAME));
+  return directory.fetch(`https://directory.internal${MAKE_PATH}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-partykit-room": DIRECTORY_NAME },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Asks for rooms from `from` until one is refused or `most` are let through; how many were. */
+async function letThrough(from: string, most: number): Promise<number> {
+  for (let n = 0; n < most; n++) {
+    const response = await askToMake({ from });
+    expect(response.status).toBe(200);
+    if (!((await response.json()) as { ok: boolean }).ok) return n;
+  }
+  return most;
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("RoomDirectory", () => {
   it("lists a room made for everyone with its game, its host and how many are in", async () => {
@@ -397,5 +426,63 @@ describe("RoomDirectory", () => {
     first.close();
     other.close();
     viewer.close();
+  });
+
+  it("holds an address that makes rooms slowly to the limit kept over a long while", async () => {
+    const making = "203.0.113.40";
+    let made = 0;
+
+    // as many as the short limit lets through, then a wait for it to pass, over and over
+    for (let round = 0; round * MAKE_SOON.burst <= MAKE_LATER.burst; round++) {
+      const now = await letThrough(making, MAKE_SOON.burst + 1);
+      made += now;
+      if (now < MAKE_SOON.burst) break;
+      expect(now).toBe(MAKE_SOON.burst);
+      advanceClock(MAKE_SOON.windowSeconds * 1000);
+    }
+
+    expect(made).toBe(MAKE_LATER.burst);
+    advanceClock(MAKE_LATER.windowSeconds * 1000);
+    expect(await letThrough(making, 1)).toBe(1);
+  });
+
+  it("keeps of an address that made a room no more than a digest, and that no longer than the long limit", async () => {
+    const making = "203.0.113.41";
+    const directory = env.RoomDirectory.get(env.RoomDirectory.idFromName(DIRECTORY_NAME));
+    const kept = (): Promise<string[]> =>
+      runInDurableObject(directory, (_object, state) =>
+        state.storage.sql
+          .exec<{ key: string }>("SELECT key FROM made")
+          .toArray()
+          .map((row) => row.key),
+      );
+    const before = await kept();
+    expect(await letThrough(making, 1)).toBe(1);
+
+    const mine = (await kept()).filter((key) => !before.includes(key));
+    advanceClock(MAKE_LATER.windowSeconds * 1000);
+    // the next question, from anyone, clears what is past use
+    expect(await letThrough("203.0.113.42", 1)).toBe(1);
+    const after = await kept();
+
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(after).not.toContain(mine[0]);
+  });
+
+  it("answers no question about making a room that names no address", async () => {
+    for (const body of [{}, { from: "" }, { from: 7 }, { from: "x".repeat(46) }, null, "203.0.113.43"]) {
+      expect((await askToMake(body)).status).toBe(400);
+    }
+  });
+
+  it("lets nobody outside ask whether a room may be made", async () => {
+    const asked = await exports.default.fetch(`http://example.com/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}${MAKE_PATH}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ from: "203.0.113.44" }),
+    });
+
+    expect(asked.status).toBe(404);
   });
 });

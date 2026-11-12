@@ -2,5 +2,9 @@
   "maxListed": 30,
   "maxStored": 300,
   "staleHours": 24,
-  "showLimit": { "burst": 20, "windowSeconds": 10 }
+  "showLimit": { "burst": 20, "windowSeconds": 10 },
+  "makeLimits": [
+    { "burst": 12, "windowSeconds": 60 },
+    { "burst": 120, "windowSeconds": 3600 }
+  ]
 }

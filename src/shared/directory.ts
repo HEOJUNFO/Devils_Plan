@@ -34,6 +34,16 @@ export interface DirectoryConfig {
    * a page that is not ours.
    */
   showLimit: MessageLimit;
+  /**
+   * How many rooms one network address may make: each entry so many within
+   * its window, and all of them hold at once (a few in a minute, and a good
+   * many more in an hour). Making a room is the dearest thing a stranger can
+   * ask of the game, and a script that makes them without end would use up
+   * what the whole game has for a day. An address is not a person (a
+   * household, a school, a phone network), so each is set well above what
+   * people behind one address do; the smoke check makes nine in a run.
+   */
+  makeLimits: readonly MessageLimit[];
 }
 
 /** How many rooms of each game there are to join. A game with none is left out. */
@@ -122,6 +132,21 @@ export function parseReport(raw: unknown, config: RoomConfig): RoomReport | null
     code: data.code,
     listing: { code: data.code, game: listing.game, host, players, maxPlayers, playing: listing.playing },
   };
+}
+
+/**
+ * Whether one more room may be made at `now` from an address that made rooms
+ * at the times `madeAt` (ms since the epoch): under every one of `limits`, a
+ * room counting against a limit until that limit's window has passed since it
+ * was made. A room said to be made after `now` counts: the clock was set back.
+ */
+export function mayMakeAnother(madeAt: readonly number[], now: number, limits: readonly MessageLimit[]): boolean {
+  return limits.every((limit) => madeAt.filter((at) => at > now - limit.windowSeconds * 1000).length < limit.burst);
+}
+
+/** How long a room made has to be remembered for `limits` to be kept, in ms: the longest of their windows. */
+export function makeMemoryMs(limits: readonly MessageLimit[]): number {
+  return Math.max(0, ...limits.map((limit) => limit.windowSeconds * 1000));
 }
 
 /**

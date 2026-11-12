@@ -9,7 +9,39 @@
  */
 export const ADDRESS_HEADER = "cf-connecting-ip";
 
-/** What a limit is asked of: Cloudflare's rate limiting binding, or something a test puts in its place. */
+/** How many groups of sixteen bits an IPv6 address has, and how many of them name the network it is on. */
+const IPV6_GROUPS = 8;
+const IPV6_NETWORK_GROUPS = 4;
+
+/**
+ * What the address `from` is counted as where the game keeps a count by
+ * address. An IPv4 address is counted as itself. An IPv6 address is counted
+ * as its network of 64 bits, written as that network's four groups: one line
+ * is given a whole such network, so a count kept by the single address is
+ * one its holder walks around by taking the next. What cannot be read as
+ * either is counted as itself.
+ */
+export function countedAs(from: string): string {
+  if (!from.includes(":")) return from;
+  const halves = from.toLowerCase().split("::");
+  if (halves.length > 2) return from;
+  const groupsOf = (half: string): string[] => (half === "" ? [] : half.split(":"));
+  const head = groupsOf(halves[0]);
+  const tail = halves.length === 2 ? groupsOf(halves[1]) : [];
+  // an IPv4 address written as the last two groups
+  const last = tail.length > 0 ? tail : head;
+  if (last.at(-1)?.includes(".")) last.splice(-1, 1, "0", "0");
+  const missing = IPV6_GROUPS - head.length - tail.length;
+  if (halves.length === 2 ? missing < 1 : missing !== 0) return from;
+  const groups = [...head, ...Array<string>(missing).fill("0"), ...tail];
+  if (!groups.every((group) => /^[0-9a-f]{1,4}$/.test(group))) return from;
+  return groups
+    .slice(0, IPV6_NETWORK_GROUPS)
+    .map((group) => parseInt(group, 16).toString(16))
+    .join(":");
+}
+
+/** What a limit is asked of: Cloudflare's rate limiting binding, the game's own count, or something a test puts in its place. */
 export interface Limiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;
 }
@@ -23,7 +55,8 @@ const TURNED_AWAY_EVERY_MS = 60_000;
 
 /**
  * Whether one more of something is taken from the address `from`, by the
- * count `limiter` keeps (the binding called `name` in `wrangler.jsonc`).
+ * count `limiter` keeps; `name` is what the log calls that count (for a
+ * binding, its name in `wrangler.jsonc`).
  *
  * The limit is a guard, and the game does not stop for it: a request with no
  * address is let through, and so is every request while the limiter cannot

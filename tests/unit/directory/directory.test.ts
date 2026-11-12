@@ -5,6 +5,7 @@ import {
   isStale,
   listRooms,
   listingOf,
+  mayMakeAnother,
   parseReport,
   roomsShown,
   type DirectoryConfig,
@@ -47,9 +48,26 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
   };
 }
 
+/** Rooms one address may make: a few in a short while, and a few more in a long one. */
+const MAKE_LIMITS = [
+  { burst: 3, windowSeconds: 60 },
+  { burst: 5, windowSeconds: 600 },
+];
+const SHORT_MS = MAKE_LIMITS[0].windowSeconds * 1000;
+const LONG_MS = MAKE_LIMITS[1].windowSeconds * 1000;
+/** The time the counts of rooms made are taken at, in ms since the epoch. */
+const MAKING_AT = 1_800_000_000_000;
+
 /** A short list and a short memory, so both limits are reached with a few entries. */
 function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryConfig {
-  return { maxListed: 3, maxStored: 5, staleHours: 2, showLimit: { burst: 3, windowSeconds: 10 }, ...overrides };
+  return {
+    maxListed: 3,
+    maxStored: 5,
+    staleHours: 2,
+    showLimit: { burst: 3, windowSeconds: 10 },
+    makeLimits: MAKE_LIMITS,
+    ...overrides,
+  };
 }
 
 /** A game that is not the one a listing here is of unless it says so. */
@@ -520,5 +538,45 @@ describe("roomsShown", () => {
 
     expect(shown.total).toBe(0);
     expect(shown.more).toBe(0);
+  });
+});
+
+describe("mayMakeAnother", () => {
+  /** Rooms made so many ms before `MAKING_AT`. */
+  const madeAgo = (...ago: number[]): number[] => ago.map((ms) => MAKING_AT - ms);
+
+  it("lets an address that has made none make one", () => {
+    expect(mayMakeAnother([], MAKING_AT, MAKE_LIMITS)).toBe(true);
+  });
+
+  it("lets an address make as many in the short while as the limit says, and not one more", () => {
+    expect(mayMakeAnother(madeAgo(3, 2), MAKING_AT, MAKE_LIMITS)).toBe(true);
+    expect(mayMakeAnother(madeAgo(3, 2, 1), MAKING_AT, MAKE_LIMITS)).toBe(false);
+  });
+
+  it("counts a room no longer once the short while has passed since it was made", () => {
+    expect(mayMakeAnother(madeAgo(SHORT_MS - 1, 2, 1), MAKING_AT, MAKE_LIMITS)).toBe(false);
+    expect(mayMakeAnother(madeAgo(SHORT_MS, 2, 1), MAKING_AT, MAKE_LIMITS)).toBe(true);
+  });
+
+  it("holds an address that keeps under the short limit to the long one", () => {
+    const spread = madeAgo(5 * SHORT_MS, 4 * SHORT_MS, 3 * SHORT_MS, 2 * SHORT_MS, SHORT_MS);
+
+    expect(mayMakeAnother(spread.slice(1), MAKING_AT, MAKE_LIMITS)).toBe(true);
+    expect(mayMakeAnother(spread, MAKING_AT, MAKE_LIMITS)).toBe(false);
+  });
+
+  it("counts a room no longer once the long while has passed since it was made", () => {
+    const spread = madeAgo(LONG_MS, 4 * SHORT_MS, 3 * SHORT_MS, 2 * SHORT_MS, SHORT_MS);
+
+    expect(mayMakeAnother(spread, MAKING_AT, MAKE_LIMITS)).toBe(true);
+  });
+
+  it("counts a room said to be made after now, as a clock set back would have it", () => {
+    expect(mayMakeAnother(madeAgo(-5, -4, -3), MAKING_AT, MAKE_LIMITS)).toBe(false);
+  });
+
+  it("keeps no limit where none is set", () => {
+    expect(mayMakeAnother(madeAgo(3, 2, 1), MAKING_AT, [])).toBe(true);
   });
 });
