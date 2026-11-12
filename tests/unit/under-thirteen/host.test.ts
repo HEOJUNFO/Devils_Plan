@@ -10,12 +10,14 @@ const host = underHost;
 
 /** The time the fixtures start at, in ms since the epoch. */
 const T0 = 1_800_000_000_000;
+const SPOT_MS = shipped.spotSeconds * 1000;
 const SUBMIT_MS = shipped.submitSeconds * 1000;
 const CHIPS_MS = shipped.chipsSeconds * 1000;
 const TURN_MS = shipped.turnSeconds * 1000;
 const PLACE_MS = shipped.placeSeconds * 1000;
 const PAUSE_MS = shipped.pauseSeconds * 1000;
 const STAND_MS = hostJson.standSeconds * 1000;
+const SPOT_BOT_MS = botJson.spotAfterSeconds * 1000;
 const FIRST_BOT_MS = botJson.submitAfterSeconds * 1000;
 const NEXT_BOT_MS = botJson.spreadSeconds * 1000;
 const BOT_TURN_MS = botJson.turnAfterSeconds * 1000;
@@ -46,11 +48,33 @@ function request(overrides: Partial<StartRequest> = {}): StartRequest {
   return { by: tokenOf(0), bots: false, allowBots: false, seed: 7, now: T0, turnSeconds: 0, ...overrides };
 }
 
-/** A game just started by player 0 for `players`, all connected. */
-function started(players: Candidate[], overrides: Partial<StartRequest> = {}): UnderSession {
+/** A game as player 0 starts it for `players`, all connected: with three or more, everyone has a spot to take first. */
+function begun(players: Candidate[], overrides: Partial<StartRequest> = {}): UnderSession {
   const result = host.start(null, players, request(overrides), presenceOf(players));
   if (!result.ok) throw new Error(`fixture start refused: ${result.reason}`);
   return result.session;
+}
+
+/**
+ * A game at the opening of round 1. Where spots are taken, each person takes
+ * the spot of their number the moment the game starts, and round 1 opens
+ * then; bots take theirs by the room's clock, and round 1 opens when the last
+ * of them has: `openedAt` says when that was.
+ */
+function started(players: Candidate[], overrides: Partial<StartRequest> = {}): UnderSession {
+  const presence = presenceOf(players);
+  const now = request(overrides).now;
+  let session = begun(players, overrides);
+  if (session.state.phase !== "spots") return session;
+  for (const player of players) session = act(session, players, player.slot, { type: "take", spot: player.slot }, now);
+  for (let step = 0; step < 20 && session.state.phase === "spots"; step++) session = host.tick(session, presence, host.deadline(session) ?? now);
+  if (session.state.phase !== "submit") throw new Error("the fixture game never came to round 1");
+  return session;
+}
+
+/** When the round the game is in was opened for cards and chips. */
+function openedAt(session: UnderSession): number {
+  return session.state.until - SUBMIT_MS;
 }
 
 /** What `player` is sent at `now`. */
@@ -152,6 +176,97 @@ describe("무거운 13 in a room: starting", () => {
     expect(session.players).toHaveLength(WITH_BOTS);
     expect(session.players.filter((seat) => seat.token === null).map((seat) => seat.nick)).toEqual(["봇 1", "봇 2", "봇 3"]);
     expect(seenBy(session, players, 0, T0).players.filter((player) => player.bot)).toHaveLength(WITH_BOTS - 1);
+  });
+});
+
+describe("무거운 13 in a room: choosing where to stand", () => {
+  it("opens a game of three or more with the spots to take, and says how long is left", () => {
+    const players = candidates(3);
+
+    const session = begun(players);
+    const seen = seenBy(session, players, 1, T0 + 4000);
+
+    expect(seen.view).toMatchObject({ phase: "spots", spots: [null, null, null], you: 1, players: [0, 1, 2] });
+    expect(seen.clock).toEqual({ phase: SPOT_MS - 4000, stand: null });
+    expect(host.deadline(session)).toBe(T0 + SPOT_MS);
+    expect(host.tick(session, presenceOf(players), T0 + SPOT_MS - 1)).toBe(session);
+  });
+
+  it("starts a game of two with round 1: there is no spot to take", () => {
+    const players = candidates(2);
+
+    const session = begun(players);
+
+    expect(seenBy(session, players, 0, T0).view).toMatchObject({ phase: "submit", round: 1, spots: [] });
+    expect(host.act(session, tokenOf(0), { type: "take", spot: 0 }, presenceOf(players), T0 + 1)).toEqual({ ok: false, reason: "spots-not-open" });
+  });
+
+  it("shows a spot taken to everyone at once, and gives it to nobody else", () => {
+    const players = candidates(3);
+
+    const session = act(begun(players), players, 1, { type: "take", spot: 2 }, T0 + 2000);
+
+    for (const viewer of [0, 1, 2, null]) expect(seenBy(session, players, viewer, T0 + 2000).view.spots).toEqual([null, null, 1]);
+    expect(host.act(session, tokenOf(0), { type: "take", spot: 2 }, presenceOf(players), T0 + 3000)).toEqual({ ok: false, reason: "spot-taken" });
+    expect(host.act(session, tokenOf(1), { type: "take", spot: 0 }, presenceOf(players), T0 + 3000)).toEqual({ ok: false, reason: "spot-held" });
+    expect(host.act(session, "token-of-a-watcher", { type: "take", spot: 0 }, presenceOf(players), T0 + 3000)).toEqual({ ok: false, reason: "not-seated" });
+  });
+
+  it("opens round 1 when the last of those in the room takes a spot, with the players in the order they stand", () => {
+    const players = candidates(3);
+    const now = T0 + 7000;
+    let session = act(begun(players), players, 0, { type: "take", spot: 2 }, T0 + 2000);
+    session = act(session, players, 2, { type: "take", spot: 0 }, T0 + 3000);
+    const waiting = session.state.phase;
+
+    session = act(session, players, 1, { type: "take", spot: 1 }, now);
+    const seen = seenBy(session, players, 1, now);
+
+    expect(waiting).toBe("spots");
+    expect(seen.view).toMatchObject({ phase: "submit", round: 1, players: [2, 1, 0], spots: [] });
+    expect(seen.clock.phase).toBe(SUBMIT_MS);
+    expect(host.deadline(session)).toBe(now + SUBMIT_MS);
+    // who is who has not changed: the players the screen names are listed by their numbers
+    expect(seen.players.map((player) => player.id)).toEqual([0, 1, 2]);
+  });
+
+  it("stands those who have not chosen when the time is up, however late the room's clock is", () => {
+    const players = candidates(4);
+    const taken = act(begun(players), players, 3, { type: "take", spot: 1 }, T0 + 2000);
+
+    const late = host.act(taken, tokenOf(0), { type: "take", spot: 3 }, presenceOf(players), T0 + SPOT_MS);
+    const after = host.tick(taken, presenceOf(players), T0 + SPOT_MS);
+
+    expect(late).toEqual({ ok: false, reason: "spots-not-open" });
+    expect(after.state.phase).toBe("submit");
+    expect(after.state.players).toEqual([0, 3, 1, 2]);
+    expect(host.deadline(after)).toBe(T0 + SPOT_MS + SUBMIT_MS);
+  });
+
+  it("waits for a player whose connection dropped, and not for one who has left the room", () => {
+    const players = candidates(3);
+    const away = presenceOf(players, [2]);
+    const gone = presenceOf(players, [], [2]);
+    const one = act(begun(players), players, 0, { type: "take", spot: 1 }, T0 + 1000, away);
+
+    const waiting = act(one, players, 1, { type: "take", spot: 2 }, T0 + 2000, away);
+    const going = act(one, players, 1, { type: "take", spot: 2 }, T0 + 2000, gone);
+
+    expect(waiting.state.phase).toBe("spots");
+    expect(going.state.phase).toBe("submit");
+    // the one who left is stood at the spot nobody took
+    expect(going.state.players).toEqual([2, 0, 1]);
+  });
+
+  it("keeps the time to take a spot while none of its players is connected", () => {
+    const players = candidates(3);
+    const nobody = presenceOf(players, [0, 1, 2]);
+
+    const frozen = host.attend(begun(players), nobody, T0 + 4000);
+    const back = host.attend(frozen, presenceOf(players), T0 + 64_000);
+
+    expect(seenBy(frozen, players, 0, T0 + 60_000, nobody).clock.phase).toBe(SPOT_MS - 4000);
+    expect(host.deadline(back)).toBe(T0 + SPOT_MS + 60_000);
   });
 });
 
@@ -278,7 +393,7 @@ describe("무거운 13 in a room: a round", () => {
   it("plays a whole game by the clock when nobody does anything: fourteen rounds, everything put in and placed by the room", () => {
     const players = candidates(3);
 
-    const over = runOut(started(players), presenceOf(players), 400);
+    const over = runOut(begun(players), presenceOf(players), 400);
     const seen = seenBy(over, players, 0, T0 + 3 * 3600_000);
 
     expect(host.running(over)).toBe(false);
@@ -372,15 +487,16 @@ describe("무거운 13 in a room: bots", () => {
   it("has each bot put in a card and a chip it holds, one after the other", () => {
     const session = started(person, { bots: true, allowBots: true });
     const present = presenceOf(person);
+    const opened = openedAt(session);
 
-    const first = host.tick(session, present, T0 + FIRST_BOT_MS);
-    const second = host.tick(first, present, T0 + FIRST_BOT_MS + NEXT_BOT_MS);
+    const first = host.tick(session, present, opened + FIRST_BOT_MS);
+    const second = host.tick(first, present, opened + FIRST_BOT_MS + NEXT_BOT_MS);
 
-    expect(host.deadline(session)).toBe(T0 + FIRST_BOT_MS);
-    expect(host.tick(session, present, T0 + FIRST_BOT_MS - 1)).toBe(session);
+    expect(host.deadline(session)).toBe(opened + FIRST_BOT_MS);
+    expect(host.tick(session, present, opened + FIRST_BOT_MS - 1)).toBe(session);
     expect(first.state.submissions.map((each) => [each.player, each.forced])).toEqual([[1, false]]);
     expect(second.state.submissions.map((each) => each.player)).toEqual([1, 2]);
-    expect(host.deadline(second)).toBe(T0 + FIRST_BOT_MS + 2 * NEXT_BOT_MS);
+    expect(host.deadline(second)).toBe(opened + FIRST_BOT_MS + 2 * NEXT_BOT_MS);
     for (const each of second.state.submissions) {
       expect(shipped.cards).toContain(each.card);
       expect(second.state.hands[each.player].cards).not.toContain(each.card);
@@ -389,7 +505,8 @@ describe("무거운 13 in a room: bots", () => {
 
   it("shows the chips once the person and every bot have put theirs in", () => {
     const present = presenceOf(person);
-    const mine = act(started(person, { bots: true, allowBots: true }), person, 0, { type: "submit", card: 3, chip: "red" }, T0 + 1000);
+    const session = started(person, { bots: true, allowBots: true });
+    const mine = act(session, person, 0, { type: "submit", card: 3, chip: "red" }, openedAt(session) + 1000);
 
     const after = runOut(mine, present, WITH_BOTS - 1);
 
@@ -399,7 +516,8 @@ describe("무거운 13 in a room: bots", () => {
 
   it("has a bot place its rock a moment into its turn, never passing", () => {
     const present = presenceOf(person);
-    let session = act(started(person, { bots: true, allowBots: true }), person, 0, { type: "submit", card: 0, chip: "red" }, T0 + 1000);
+    let session = started(person, { bots: true, allowBots: true });
+    session = act(session, person, 0, { type: "submit", card: 0, chip: "red" }, openedAt(session) + 1000);
     // the bots put theirs in, the chips are seen, the cards shown: the first rock is a bot's, the person having put in the lowest card
     session = runOut(session, present, WITH_BOTS);
     const turnStarted = session.state.until - TURN_MS;
@@ -415,7 +533,8 @@ describe("무거운 13 in a room: bots", () => {
 
   it("leaves a rock nobody is asked about to the room's own clock, a bot's too", () => {
     const present = presenceOf(person);
-    const mine = act(started(person, { bots: true, allowBots: true }), person, 0, { type: "submit", card: 6, chip: "red" }, T0 + 1000);
+    const round = started(person, { bots: true, allowBots: true });
+    const mine = act(round, person, 0, { type: "submit", card: 6, chip: "red" }, openedAt(round) + 1000);
     // the bots put theirs in, the cards are shown and the rocks placed until only the last in the order is left: a bot's, the person holding the highest card
     const session = runUntil(mine, present, (state) => state.phase === "place" && askedOf(state) === "nothing");
     const last = turnOf(session.state);
@@ -431,8 +550,27 @@ describe("무거운 13 in a room: bots", () => {
     expect(after.state.placements.at(-1)).toMatchObject({ player: last, passed: false, forced: false });
   });
 
-  it("finishes a game with a person who never does anything", () => {
-    const over = runOut(started(person, { bots: true, allowBots: true }), presenceOf(person), 600);
+  it("has each bot take the first free spot, one after the other, and opens round 1 when the last of them has one", () => {
+    const present = presenceOf(person);
+    // the person takes the third spot before any bot moves
+    const session = act(begun(person, { bots: true, allowBots: true }), person, 0, { type: "take", spot: 2 }, T0 + 500);
+
+    const first = host.tick(session, present, T0 + SPOT_BOT_MS);
+    const second = host.tick(first, present, T0 + SPOT_BOT_MS + NEXT_BOT_MS);
+    const third = host.tick(second, present, T0 + SPOT_BOT_MS + 2 * NEXT_BOT_MS);
+
+    expect(host.deadline(session)).toBe(T0 + SPOT_BOT_MS);
+    expect(host.tick(session, present, T0 + SPOT_BOT_MS - 1)).toBe(session);
+    expect(first.state.spots).toEqual([1, null, 0, null]);
+    expect(second.state.spots).toEqual([1, 2, 0, null]);
+    expect(host.deadline(second)).toBe(T0 + SPOT_BOT_MS + 2 * NEXT_BOT_MS);
+    expect(third.state.phase).toBe("submit");
+    expect(third.state.players).toEqual([1, 2, 0, 3]);
+    expect(openedAt(third)).toBe(T0 + SPOT_BOT_MS + 2 * NEXT_BOT_MS);
+  });
+
+  it("finishes a game with a person who never does anything, not even take a spot", () => {
+    const over = runOut(begun(person, { bots: true, allowBots: true }), presenceOf(person), 600);
 
     expect(host.running(over)).toBe(false);
     expect(over.state.history.at(-1)).toEqual({ type: "ended", reason: "rounds" });
@@ -461,10 +599,14 @@ describe("무거운 13 in a room: what is kept", () => {
 
   it("carries on with a game it stored, and with nothing else", () => {
     const session = started(candidates(2));
+    const choosing = act(begun(candidates(3)), candidates(3), 1, { type: "take", spot: 0 }, T0 + 1000);
 
     expect(host.usable(JSON.parse(JSON.stringify(session)))).toBe(true);
-    expect(host.usable({ ...session, version: 2 })).toBe(false);
-    expect(host.usable({ ...session, state: { ...session.state, version: 2 } })).toBe(false);
+    expect(host.usable(JSON.parse(JSON.stringify(choosing)))).toBe(true);
+    // a game stored before there were spots to take is of another version, and has none
+    expect(host.usable({ ...session, version: 1 })).toBe(false);
+    expect(host.usable({ ...session, state: { ...session.state, version: 1 } })).toBe(false);
+    expect(host.usable({ ...session, state: { ...session.state, spots: undefined } })).toBe(false);
     expect(host.usable({ ...session, state: { ...session.state, hands: "all of them" } })).toBe(false);
     expect(host.usable({ ...session, players: null })).toBe(false);
     expect(host.usable(null)).toBe(false);

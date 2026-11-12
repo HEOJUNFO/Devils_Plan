@@ -1,4 +1,5 @@
 {
+  "spotAfterSeconds": 2,
   "submitAfterSeconds": 4,
   "spreadSeconds": 2,
   "turnAfterSeconds": 2

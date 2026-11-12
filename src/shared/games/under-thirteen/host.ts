@@ -1,12 +1,14 @@
 /**
  * 무거운 13 as a room hosts it (`hosting.ts`): who the players are, when the
- * time to put in a card and a chip or to place a rock runs out, and what
- * each player is sent.
+ * time to take a spot, to put in a card and a chip or to place a rock runs
+ * out, and what each player is sent.
  *
  * The rules (`rules.ts`) know players by a number; here that number is the
  * lobby slot a player held when the game started, and each is tied to the
  * token of the player who held it, so someone who later takes that slot is
- * not taken for them. The slots, in order, are how the players sit.
+ * not taken for them. Where the players stand, which is the order between
+ * equal cards, is theirs to choose as the game starts (`rules.ts`); the slots
+ * say nothing of it.
  */
 import { randomInt, randomSource, seedFrom } from "../../game/rng";
 import type { Candidate, GameHost, HostResult, Presence, StartRequest } from "../../hosting";
@@ -43,14 +45,16 @@ export interface UnderHostConfig {
 
 /**
  * Values for the bot that fills places while developing. It is a test aid
- * and no more (.claude/rules/bots.md): it puts in a card and a chip by
- * chance from what it holds, never passes, and with the rainbow chip names a
- * stand by chance.
+ * and no more (.claude/rules/bots.md): it takes the first free spot, puts in
+ * a card and a chip by chance from what it holds, never passes, and with the
+ * rainbow chip names a stand by chance.
  */
 export interface UnderBotConfig {
+  /** Seconds into the time to take a spot that the first bot does. */
+  spotAfterSeconds: number;
   /** Seconds into the time to put in that the first bot does. */
   submitAfterSeconds: number;
-  /** Seconds each further bot takes longer than the one before it. */
+  /** Seconds each further bot takes longer than the one before it: to take a spot, and to put in. */
   spreadSeconds: number;
   /** Seconds into its turn that a bot has its rock placed. */
   turnAfterSeconds: number;
@@ -63,8 +67,8 @@ const bots: UnderBotConfig = botJson;
 /** With bots asked for, places are filled until there are this many players. */
 const PLAYERS_WITH_BOTS = 4;
 
-/** The version of a stored game this code can carry on with. */
-const VERSION = 1;
+/** The version of a stored game this code can carry on with: 2 since a game begins with spots to take. */
+const VERSION = 2;
 
 /** A player of one game. */
 export interface UnderSeat {
@@ -77,7 +81,7 @@ export interface UnderSeat {
 
 /** A game being played or just over, as the room stores it. Send only {@link UnderSnapshot} of it. */
 export interface UnderSession {
-  version: 1;
+  version: 2;
   state: UnderState;
   players: UnderSeat[];
   /** When the game started, in ms since the epoch. Tells one game in a room from the next. */
@@ -173,16 +177,23 @@ function settle(session: UnderSession, presence: Presence, now: number): UnderSe
 }
 
 /**
- * When each bot next does something, as the game stands: while cards and
- * chips are put in, each bot that has not yet, one after the other from when
- * the round opened; while rocks are placed, the bot whose rock it is, a
- * moment into its turn, where it is asked anything: a rock nobody is asked
- * about is the room's to place. Worked out from the game's own clock, so
- * that it stands still and moves on with it.
+ * When each bot next does something, as the game stands: while spots are
+ * taken, each bot that has none, one after the other from when the game
+ * started; while cards and chips are put in, each bot that has not yet, one
+ * after the other from when the round opened; while rocks are placed, the
+ * bot whose rock it is, a moment into its turn, where it is asked anything:
+ * a rock nobody is asked about is the room's to place. Worked out from the
+ * game's own clock, so that it stands still and moves on with it.
  */
 function botsDue(session: UnderSession): { player: number; at: number }[] {
   const state = session.state;
   const ids = session.players.filter((seat) => seat.token === null).map((seat) => seat.id);
+  if (state.phase === "spots") {
+    const opened = state.until - config.spotSeconds * 1000;
+    return ids
+      .map((player, index) => ({ player, at: opened + (bots.spotAfterSeconds + index * bots.spreadSeconds) * 1000 }))
+      .filter((due) => !state.spots.includes(due.player));
+  }
   if (state.phase === "submit") {
     const opened = state.until - config.submitSeconds * 1000;
     return ids
@@ -199,7 +210,11 @@ function botActs(session: UnderSession, player: number, now: number): UnderSessi
   const source = randomSource(session.rng);
   const state = session.state;
   let action: UnderAction;
-  if (state.phase === "submit") {
+  if (state.phase === "spots") {
+    const spot = state.spots.indexOf(null);
+    if (spot < 0) return session;
+    action = { type: "take", spot };
+  } else if (state.phase === "submit") {
     const hand = state.hands.find((each) => each.player === player);
     if (hand === undefined || hand.cards.length === 0 || hand.chips.length === 0) return session;
     action = { type: "submit", card: hand.cards[randomInt(source.next, hand.cards.length)], chip: hand.chips[randomInt(source.next, hand.chips.length)] };
@@ -324,6 +339,7 @@ export const underHost: GameHost<UnderSession, UnderHostRefusal> = {
     stored !== null &&
     (stored as Partial<UnderSession>).version === VERSION &&
     (stored as Partial<UnderSession>).state?.version === VERSION &&
+    Array.isArray((stored as Partial<UnderSession>).state?.spots) &&
     Array.isArray((stored as Partial<UnderSession>).state?.hands) &&
     Array.isArray((stored as Partial<UnderSession>).players),
 };

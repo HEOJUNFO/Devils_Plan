@@ -4,13 +4,13 @@
  * player's own cards and chips.
  *
  * Design: design/games/under-thirteen.md. The room decides everything; this
- * screen shows what it sends and asks it to take a card and a chip, a rock
- * placed, or a pass. What others hold is never sent, and what they put in
+ * screen shows what it sends and asks it to take a spot to stand at, a card
+ * and a chip, a rock placed, or a pass. What others hold is never sent, and what they put in
  * comes when the room shows it. Everything can be done with the pointer;
  * the keys are a shorter way to the same.
  */
 import { STANDS, sumOf, type Chip, type Stand, type UnderAction, type UnderEvent } from "../../../shared/games/under-thirteen/rules";
-import { hits, type Press, type Reach } from "../../../shared/frame";
+import { hits, type Box, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
@@ -84,12 +84,39 @@ const NARROW_TILE = 56;
 const PLACES_SHOWN = 3;
 /** How wide the lines of the results may be, beside the verdict and before the buttons. */
 const RESULT_WIDTH = 280;
+/**
+ * The ring of spots everyone stands at, drawn while they are taken: where its
+ * middle is, how far a spot's middle is above and below it, how tall a spot
+ * is drawn, and how far inside the spots the line of the ring runs. The ring
+ * begins 23 pixels down: the page's own buttons lie over the top left of the
+ * scene (the way out and the voice chat, or the menu under a finger), and a
+ * spot under them could not be pressed.
+ */
+const RING_Y = 121;
+const RING_RY = 90;
+const SPOT_H = 17;
+const RING_INSET = 10;
+/** How far past its edge a spot takes a finger. Spots that close take the lower number where two reach the same place: a spot is pointed at before it is taken. */
+const SPOT_REACH: Reach = 3;
+/** How many degrees apart the dots of the ring's line are. */
+const RING_DOT_DEGREES = 6;
 /** The stands' colours, and the rocks'. */
 const STAND_COLOURS: Record<Stand, string> = { red: "#e23b4a", green: "#3fbf5f", blue: "#3b82f6" };
 const ROCK = "#7c8296";
 const ROCK_TOP = "#aab0c2";
 
-type Box = readonly [number, number, number, number];
+/** How wide a spot is drawn, by how many there are: the more, the narrower, so that sixteen stand round the ring without touching. */
+const spotWidth = (count: number): number => (count > 12 ? 46 : count > 8 ? 56 : 64);
+
+/** Where spot `at` of `count` is drawn: the first at the top of the ring, the rest clockwise from it. */
+function spotRect(at: number, count: number): Box {
+  const width = spotWidth(count);
+  const reachX = SCENE_W / 2 - width / 2 - 3;
+  const angle = -Math.PI / 2 + (2 * Math.PI * at) / count;
+  const x = Math.round(SCENE_W / 2 + reachX * Math.cos(angle));
+  const y = Math.round(RING_Y + RING_RY * Math.sin(angle));
+  return [x - width / 2, y - Math.floor(SPOT_H / 2), width, SPOT_H];
+}
 
 const inRect = (p: { x: number; y: number }, r: Box): boolean => p.x >= r[0] && p.x < r[0] + r[2] && p.y >= r[1] && p.y < r[1] + r[3];
 
@@ -153,6 +180,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   let help = false;
   let note = "";
   let noteT = 0;
+  /** The spot pointed at to stand at, before it is taken. */
+  let spot: number | null = null;
   /** The card and the chip picked to put in, before they are. */
   let card: number | null = null;
   let chip: Chip | null = null;
@@ -177,6 +206,11 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   const me = (): number | null => latest?.view.you ?? null;
   const chipOf = (player: number): Chip | null => latest?.view.chips?.find((each) => each.player === player)?.chip ?? null;
   const cardOf = (player: number): number | null => latest?.view.cards?.find((each) => each.player === player)?.card ?? null;
+  /** Whether the player at this screen has a spot to take now. */
+  function choosing(): boolean {
+    const mine = me();
+    return latest !== null && mine !== null && latest.view.phase === "spots" && !latest.frozen && !latest.view.spots.includes(mine);
+  }
   /** Whether the player at this screen is to put in a card and a chip now. */
   function submitting(): boolean {
     const mine = me();
@@ -255,9 +289,26 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     } else dropped += wasAt;
     if (fresh) {
       speech.clear();
+      spot = null;
       card = null;
       chip = null;
       if (latest !== null) sfx.turn();
+    } else if (truth !== null && truth.view.phase === "spots") {
+      // Spots are told as they stand, not as things that happened: what changed is read off the room's last word.
+      const before = truth.view.spots;
+      const mine = message.view.you;
+      if (message.view.phase === "spots") {
+        // someone else has taken a spot: the player's own was sounded as they took it
+        if (message.view.spots.some((who, at) => who !== null && who !== mine && before[at] === null)) sfx.move();
+        // the spot pointed at has gone to someone else
+        if (spot !== null && message.view.spots[spot] !== null && message.view.spots[spot] !== mine) spot = null;
+      } else {
+        if (message.view.phase === "submit") sfx.turn();
+        const at = mine === null ? -1 : message.view.players.indexOf(mine);
+        // the room stood this player: they had no spot, and none they asked for is the one they have
+        if (mine !== null && at >= 0 && message.view.phase === "submit" && !before.includes(mine) && !(pending && spot === at)) say(WORDS.say.stoodForYou(at + 1));
+        spot = null;
+      }
     }
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
     // what was picked and not put in does not carry over to another round
@@ -300,6 +351,21 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
         submitted: [...view.submitted, mine],
       };
     });
+  }
+
+  function takeSpot(): void {
+    if (latest === null || !choosing() || pending) return;
+    if (spot === null) {
+      say(WORDS.say.pickSpot);
+      sfx.deny();
+      return;
+    }
+    const mine = me() as number;
+    const at = spot;
+    // The player stands there from the press. Whether someone else was a moment sooner is the room's to say:
+    // where its next word has them at this spot, that is what is shown.
+    sendAhead({ type: "take", spot: at }, (view) => (view.spots[at] !== null || view.spots.includes(mine) ? view : { ...view, spots: view.spots.map((who, n) => (n === at ? mine : who)) }));
+    if (pending) sfx.move();
   }
 
   function placeOn(stand: Stand | null): void {
@@ -386,6 +452,31 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
         if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
+      return;
+    }
+    if (view.phase === "spots") {
+      if (!choosing() || pending) return;
+      const free = view.spots.flatMap((who, at) => (who === null ? [at] : []));
+      for (const code of keys) {
+        const forward = code === "ArrowRight" || code === "ArrowDown";
+        if ((forward || code === "ArrowLeft" || code === "ArrowUp") && free.length > 0) {
+          // round the ring, over the spots that are free: clockwise with → and ↓
+          const at = spot === null ? -1 : free.indexOf(spot);
+          spot = at < 0 ? free[forward ? 0 : free.length - 1] : free[(at + (forward ? 1 : free.length - 1)) % free.length];
+          sfx.move();
+        }
+      }
+      let taking = pressed("Enter", "NumpadEnter") || clicked(SUBMIT_RECT);
+      // a free spot is pointed at by a press, and taken by a second press on it
+      const pressedSpot = free.find((at) => clicked(spotRect(at, view.spots.length), SPOT_REACH));
+      if (pressedSpot !== undefined) {
+        if (spot === pressedSpot) taking = true;
+        else {
+          spot = pressedSpot;
+          sfx.move();
+        }
+      }
+      if (taking) takeSpot();
       return;
     }
     if (me() === null || view.hand === null) return;
@@ -510,11 +601,71 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     });
   }
 
-  /** Under the stands: every player's tile of the round, in the order the rocks go on once that is known. */
+  /**
+   * The ring of spots, while they are taken: each spot with its number, or
+   * with the name of whoever stands there, the first at the top and the rest
+   * clockwise; a dotted line inside them with an arrowhead on each side that
+   * says which way that is; and in the middle what the spots are for.
+   */
+  function drawSpots(): void {
+    if (latest === null) return;
+    const view = latest.view;
+    const count = view.spots.length;
+    const mine = me();
+    const live = choosing() && !pending;
+    const midX = Math.round(SCENE_W / 2);
+    const lineX = SCENE_W / 2 - spotWidth(count) - 3 - RING_INSET;
+    const lineY = RING_RY - Math.floor(SPOT_H / 2) - RING_INSET;
+    for (let degrees = 0; degrees < 360; degrees += RING_DOT_DEGREES) {
+      const angle = (degrees * Math.PI) / 180;
+      pen.px(Math.round(SCENE_W / 2 + lineX * Math.cos(angle)), Math.round(RING_Y + lineY * Math.sin(angle)), 1, 1, C.steelD);
+    }
+    // clockwise: to the right along the top, down the right side, to the left along the bottom, up the left side
+    const heads: readonly [x: number, y: number, dx: number, dy: number][] = [
+      [midX, RING_Y - lineY, 1, 0],
+      [midX + Math.round(lineX), RING_Y, 0, 1],
+      [midX, RING_Y + lineY, -1, 0],
+      [midX - Math.round(lineX), RING_Y, 0, -1],
+    ];
+    for (const [x, y, dx, dy] of heads) {
+      // an arrowhead of three steps: its point leads, each step behind it is two pixels wider across
+      for (let back = 0; back < 3; back++) {
+        const px = x + dx * (2 - back);
+        const py = y + dy * (2 - back);
+        if (dx !== 0) pen.px(px, py - back, 1, 2 * back + 1, C.steel);
+        else pen.px(px - back, py, 2 * back + 1, 1, C.steel);
+      }
+    }
+    const words = WORDS.spots;
+    // asked of whoever has a spot to take; to anyone else the ring is named
+    pen.txt(choosing() ? words.title : words.heading, midX, RING_Y - 41, C.amber, "center");
+    words.lines.forEach((line, n) => pen.txt(line, midX, RING_Y - 22 + n * 15, C.bone, "center"));
+    pen.txt(words.kept, midX, RING_Y + 11, C.boneD, "center");
+    pen.txt(words.first(pen.fit(nickOf(view.first), 70)), midX, RING_Y + 30, C.brass, "center");
+    view.spots.forEach((who, at) => {
+      const rect = spotRect(at, count);
+      const [x, y, w, h] = rect;
+      const pointed = live && spot === at;
+      const free = who === null;
+      const first = who !== null && who === view.first;
+      const edge = pointed ? C.amberD : first ? C.brass : free && live && inRect(mouse, rect) ? C.steel : C.steelDD;
+      pen.px(x, y, w, h, edge);
+      pen.px(x + 1, y + 1, w - 2, h - 2, pointed ? "#3a2a12" : free ? (live ? C.btn : C.ink) : C.steelDD);
+      if (who === null) pen.txt(`${at + 1}`, x + Math.round(w / 2), y + 2, pointed ? C.amber : live ? C.bone : C.dim, "center");
+      else pen.txt(pen.fit(nickOf(who), w - 6), x + Math.round(w / 2), y + 2, who === mine ? C.amber : C.bone, "center");
+    });
+  }
+
+  /**
+   * Under the stands: every player's tile of the round, in the order the
+   * rocks go on once that is known, and until then as they stand, clockwise
+   * from the holder of the first-player marker: the order between equal cards.
+   */
   function drawTiles(): void {
     if (latest === null) return;
     const view = latest.view;
-    const order = view.order.length > 0 ? view.order : view.players;
+    const from = Math.max(0, view.players.indexOf(view.first));
+    const order = view.order.length > 0 ? view.order : [...view.players.slice(from), ...view.players.slice(0, from)];
     const rows = order.length > TILES_IN_ROW ? 2 : 1;
     const inRow = Math.ceil(order.length / rows);
     const width = Math.min(72, Math.floor((SCENE_W - 8) / inRow));
@@ -551,8 +702,11 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (latest === null) return;
     pen.px(0, 0, SCENE_W, BAR_Y, C.night);
     for (let y = 9; y < BAR_Y; y += 17) pen.px(0, y, SCENE_W, 1, C.wallD);
-    drawStands();
-    drawTiles();
+    if (latest.view.phase === "spots") drawSpots();
+    else {
+      drawStands();
+      drawTiles();
+    }
     if (latest.frozen) {
       // the game's own clock stands still; this one runs, and ends the game at nought
       const stand = latest.clock.stand === null ? null : Math.max(0, latest.clock.stand - (performance.now() - receivedAt));
@@ -571,6 +725,15 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (latest.frozen) return [WORDS.standing.paused, C.boneD];
     const ms = left(latest.clock.phase) ?? 0;
     const seconds = Math.ceil(ms / 1000);
+    if (view.phase === "spots") {
+      const have = view.spots.filter((who) => who !== null).length;
+      const of = view.spots.length;
+      if (mine === null) return [WORDS.standing.watchSpots(have, of, clockOf(ms)), C.bone];
+      // the player's own spot on its way to the room is drawn as taken: the room has yet to say so
+      if (pending) return [WORDS.standing.sending, C.boneD];
+      if (view.spots.includes(mine)) return [WORDS.standing.spotTaken(have, of, clockOf(ms)), C.teal];
+      return spot !== null ? [WORDS.standing.spotReady(spot + 1, clockOf(ms)), C.amber] : [WORDS.standing.spots(clockOf(ms)), C.amber];
+    }
     if (view.phase === "submit") {
       const have = view.submitted.length;
       const of = latest.players.length;
@@ -619,7 +782,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    pen.txt(WORDS.round(view.round, view.rounds), x, 3, C.bone);
+    pen.txt(view.phase === "spots" ? WORDS.spots.heading : WORDS.round(view.round, view.rounds), x, 3, C.bone);
     const phase = left(latest.clock.phase);
     if (phase !== null) pen.txt(clockOf(phase), W - 5, 3, Math.ceil(phase / 1000) <= HURRY_FROM ? C.crim : C.boneD, "right");
     // the players as they stand; before anyone has a penalty point nobody has a place yet
@@ -730,6 +893,16 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     const idle = TOUCH ? PAGE.menu.hint : WORDS.keys.idle;
     if (me() === null) {
       pen.txt(idle, 6, 240, C.dim);
+      return;
+    }
+    if (view.phase === "spots") {
+      if (!choosing()) {
+        pen.txt(idle, 6, 240, C.dim);
+        return;
+      }
+      pen.txt(WORDS.keys.spots, 6, 240, C.dim);
+      const live = !pending;
+      button(SUBMIT_RECT, WORDS.button.take, live && spot !== null, live);
       return;
     }
     if (view.phase === "submit") {

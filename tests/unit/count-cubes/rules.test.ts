@@ -29,6 +29,8 @@ const config: CubesConfig = shipped;
 const T0 = 1_800_000_000_000;
 const LOCK_MS = config.lockSeconds * 1000;
 const PROBLEM_MS = config.problemSeconds * 1000;
+/** How long after the problem is put up the game takes no answer, in ms. */
+const SOON_MS = config.minAnswerSeconds * 1000;
 /** How many seeds a property of every drawn solid is tried on. */
 const SEEDS = 300;
 
@@ -147,6 +149,13 @@ describe("큐브 세기: the numbers of the game", () => {
     expect(isValidConfig({ ...config, lockSeconds: 1.5 })).toBe(false);
   });
 
+  it("refuses a wait before the first answer that is no whole time, or as long as the problem is up", () => {
+    expect(isValidConfig({ ...config, minAnswerSeconds: 0 })).toBe(true);
+    expect(isValidConfig({ ...config, minAnswerSeconds: -1 })).toBe(false);
+    expect(isValidConfig({ ...config, minAnswerSeconds: 2.5 })).toBe(false);
+    expect(isValidConfig({ ...config, minAnswerSeconds: config.problemSeconds })).toBe(false);
+  });
+
   it("needs all the players but one to have the answer, and one of two", () => {
     expect(neededOf(16)).toBe(15);
     expect(neededOf(6)).toBe(5);
@@ -207,6 +216,59 @@ describe("큐브 세기: starting", () => {
   });
 });
 
+describe("큐브 세기: an answer sooner than a person could count", () => {
+  it("ships with a wait a person's count is never shorter than", () => {
+    expect(SOON_MS).toBeGreaterThan(0);
+  });
+
+  it("is not taken, though it is the right one", () => {
+    const state = game(4);
+
+    const result = applyAction(state, 2, { type: "answer", said: answerOf(state) }, T0 + SOON_MS - 1, config);
+
+    expect(result).toEqual({ ok: false, reason: "too-soon" });
+  });
+
+  it("shuts nobody out when it is a wrong one", () => {
+    const state = game(4);
+
+    const result = applyAction(state, 2, { type: "answer", said: answerOf(state) + 1 }, T0, config);
+
+    expect(result).toEqual({ ok: false, reason: "too-soon" });
+    expect(lockedUntil(state, 2)).toBe(0);
+  });
+
+  it("is taken from the moment the wait is over", () => {
+    const state = game(4);
+
+    const after = answer(state, 2, answerOf(state), T0 + SOON_MS);
+
+    expect(after.ranked).toEqual([{ player: 2, took: SOON_MS }]);
+  });
+
+  it("does not count the time the game stood still", () => {
+    const stood = 60_000;
+    const state = shiftClock(game(4), stood);
+
+    const early = applyAction(state, 2, { type: "answer", said: answerOf(state) }, T0 + stood + SOON_MS - 1, config);
+    const onTime = applyAction(state, 2, { type: "answer", said: answerOf(state) }, T0 + stood + SOON_MS, config);
+
+    expect(early).toEqual({ ok: false, reason: "too-soon" });
+    expect(onTime.ok).toBe(true);
+  });
+
+  it("is not taken either with the wait set longer", () => {
+    const longer: CubesConfig = { ...config, minAnswerSeconds: 30 };
+    const state = game(4);
+
+    const early = applyAction(state, 1, { type: "answer", said: answerOf(state) }, T0 + 29_999, longer);
+    const onTime = applyAction(state, 1, { type: "answer", said: answerOf(state) }, T0 + 30_000, longer);
+
+    expect(early).toEqual({ ok: false, reason: "too-soon" });
+    expect(onTime.ok).toBe(true);
+  });
+});
+
 describe("큐브 세기: answering", () => {
   it("gives the first right answer the first place, with the time it took", () => {
     const state = game(4);
@@ -221,7 +283,7 @@ describe("큐브 세기: answering", () => {
   it("ranks right answers in the order they came", () => {
     const state = game(4);
 
-    const after = answer(answer(state, 3, answerOf(state), T0 + 1000), 0, answerOf(state), T0 + 2000);
+    const after = answer(answer(state, 3, answerOf(state), T0 + SOON_MS + 1000), 0, answerOf(state), T0 + SOON_MS + 2000);
 
     expect(after.ranked.map((entry) => entry.player)).toEqual([3, 0]);
     expect(after.history[1]).toMatchObject({ type: "right", player: 0, place: 2 });
@@ -261,7 +323,7 @@ describe("큐브 세기: answering", () => {
 
   it("counts each wrong answer and starts the time again", () => {
     const state = game(4);
-    const first = T0 + 1000;
+    const first = T0 + SOON_MS + 1000;
     const second = first + LOCK_MS + 1;
 
     const after = answer(answer(state, 1, 0, first), 1, 0, second);
@@ -271,9 +333,9 @@ describe("큐브 세기: answering", () => {
 
   it("refuses a second answer from a player who has it", () => {
     const state = game(4);
-    const right = answer(state, 2, answerOf(state), T0 + 1000);
+    const right = answer(state, 2, answerOf(state), T0 + SOON_MS + 1000);
 
-    expect(applyAction(right, 2, { type: "answer", said: answerOf(state) }, T0 + 2000, config)).toEqual({ ok: false, reason: "already-right" });
+    expect(applyAction(right, 2, { type: "answer", said: answerOf(state) }, T0 + SOON_MS + 2000, config)).toEqual({ ok: false, reason: "already-right" });
   });
 
   it("refuses an answer from someone who is not playing", () => {
@@ -298,8 +360,8 @@ describe("큐브 세기: answering", () => {
     const state = game(4);
     const before = JSON.stringify(state);
 
-    answer(state, 1, answerOf(state) + 1, T0 + 1000);
-    answer(state, 2, answerOf(state), T0 + 1000);
+    answer(state, 1, answerOf(state) + 1, T0 + SOON_MS + 1000);
+    answer(state, 2, answerOf(state), T0 + SOON_MS + 1000);
 
     expect(JSON.stringify(state)).toBe(before);
   });
@@ -329,8 +391,8 @@ describe("큐브 세기: reading what was sent", () => {
 describe("큐브 세기: the end of the game", () => {
   it("goes on while more than one player is still without the answer", () => {
     const state = game(4);
-    const one = answer(state, 0, answerOf(state), T0 + 1000);
-    const two = answer(one, 1, answerOf(state), T0 + 2000);
+    const one = answer(state, 0, answerOf(state), T0 + SOON_MS + 1000);
+    const two = answer(one, 1, answerOf(state), T0 + SOON_MS + 2000);
 
     expect(closeIfDone(one, everyone)).toBe(one);
     expect(closeIfDone(two, everyone)).toBe(two);
@@ -338,7 +400,7 @@ describe("큐브 세기: the end of the game", () => {
 
   it("ends when all but one have the answer", () => {
     const state = game(4);
-    const three = [0, 1, 2].reduce((at, player, n) => answer(at, player, answerOf(state), T0 + 1000 * (n + 1)), state);
+    const three = [0, 1, 2].reduce((at, player, n) => answer(at, player, answerOf(state), T0 + SOON_MS + 1000 * (n + 1)), state);
 
     const over = closeIfDone(three, everyone);
 
@@ -350,7 +412,7 @@ describe("큐브 세기: the end of the game", () => {
   it("ends a game of two on the first right answer", () => {
     const state = game(2);
 
-    const over = closeIfDone(answer(state, 1, answerOf(state), T0 + 1000), everyone);
+    const over = closeIfDone(answer(state, 1, answerOf(state), T0 + SOON_MS + 1000), everyone);
 
     expect(over.phase).toBe("ended");
   });
@@ -358,8 +420,8 @@ describe("큐브 세기: the end of the game", () => {
   it("does not wait for a player who has left: the game ends when everyone still there has the answer", () => {
     const state = game(4);
     const there = (player: number): boolean => player !== 3;
-    const two = answer(answer(state, 0, answerOf(state), T0 + 1000), 1, answerOf(state), T0 + 2000);
-    const three = answer(two, 2, answerOf(state), T0 + 3000);
+    const two = answer(answer(state, 0, answerOf(state), T0 + SOON_MS + 1000), 1, answerOf(state), T0 + SOON_MS + 2000);
+    const three = answer(two, 2, answerOf(state), T0 + SOON_MS + 3000);
 
     // player 2 is still there without it, and is waited for although only one is: the one who left is the one left out
     expect(closeIfDone(two, there)).toBe(two);
@@ -369,8 +431,8 @@ describe("큐브 세기: the end of the game", () => {
   it("waits for everyone still there when more than one has left", () => {
     const state = game(4);
     const there = (player: number): boolean => player < 2;
-    const one = answer(state, 0, answerOf(state), T0 + 1000);
-    const two = answer(one, 1, answerOf(state), T0 + 2000);
+    const one = answer(state, 0, answerOf(state), T0 + SOON_MS + 1000);
+    const two = answer(one, 1, answerOf(state), T0 + SOON_MS + 2000);
 
     expect(closeIfDone(one, there)).toBe(one);
     expect(closeIfDone(two, there).phase).toBe("ended");
@@ -378,7 +440,7 @@ describe("큐브 세기: the end of the game", () => {
 
   it("ends when everyone without the answer has left", () => {
     const state = game(3);
-    const one = answer(state, 0, answerOf(state), T0 + 1000);
+    const one = answer(state, 0, answerOf(state), T0 + SOON_MS + 1000);
 
     expect(closeIfDone(one, (player) => player === 0).phase).toBe("ended");
   });
@@ -396,7 +458,7 @@ describe("큐브 세기: the end of the game", () => {
 
   it("keeps those who had the answer when the time ran out", () => {
     const state = game(4);
-    const one = answer(state, 2, answerOf(state), T0 + 1000);
+    const one = answer(state, 2, answerOf(state), T0 + SOON_MS + 1000);
 
     const over = applyTimeout(one, one.closesAt);
 
@@ -421,7 +483,7 @@ describe("큐브 세기: the end of the game", () => {
 
 describe("큐브 세기: standing still", () => {
   it("moves the problem's time and every shut-out on by the time the game stood", () => {
-    const state = answer(game(3), 1, 0, T0 + 1000);
+    const state = answer(game(3), 1, 0, T0 + SOON_MS + 1000);
     const stood = 45_000;
 
     const after = shiftClock(state, stood);
@@ -442,7 +504,7 @@ describe("큐브 세기: standing still", () => {
 
 describe("큐브 세기: what a player is sent", () => {
   it("keeps the answer back while the problem is up", () => {
-    const state = answer(game(3), 0, answerOf(game(3)), T0 + 1000);
+    const state = answer(game(3), 0, answerOf(game(3)), T0 + SOON_MS + 1000);
 
     expect(viewFor(state, 0).answer).toBeNull();
     expect(viewFor(state, 1).answer).toBeNull();
@@ -464,7 +526,7 @@ describe("큐브 세기: what a player is sent", () => {
   });
 
   it("says how many wrong answers each player has given", () => {
-    const state = answer(game(3), 1, 0, T0 + 1000);
+    const state = answer(game(3), 1, 0, T0 + SOON_MS + 1000);
 
     expect(viewFor(state, 0).wrong).toEqual([{ player: 1, count: 1 }]);
   });
@@ -474,7 +536,7 @@ describe("큐브 세기: what a player is sent", () => {
   });
 
   it("shows the solid and what has happened to everyone alike", () => {
-    const state = answer(game(3), 1, 0, T0 + 1000);
+    const state = answer(game(3), 1, 0, T0 + SOON_MS + 1000);
 
     expect(viewFor(state, 0).solid).toEqual(state.solid);
     expect(viewFor(state, null).history).toEqual(state.history);

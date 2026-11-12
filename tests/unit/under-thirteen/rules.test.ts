@@ -32,6 +32,8 @@ const config: UnderConfig = shipped;
 
 /** The time the fixtures start at, in ms since the epoch. */
 const T0 = 1_800_000_000_000;
+/** How long everyone has to take a spot, where spots are taken. */
+const SPOT_MS = config.spotSeconds * 1000;
 const SUBMIT_MS = config.submitSeconds * 1000;
 const CHIPS_MS = config.chipsSeconds * 1000;
 const TURN_MS = config.turnSeconds * 1000;
@@ -48,15 +50,44 @@ const SEEDS = 100;
 /** What a player puts in: a card and a chip. */
 type Pick = [card: number, chip: Chip];
 
-/** A game of `count` players, numbered from nought, started at `T0`, with player `first` holding the marker. */
-function game(count: number, first = 0, seed = 7): UnderState {
-  const created = createGame({ players: Array.from({ length: count }, (_, n) => n), seed, now: T0 }, config);
-  if (!created.ok) throw new Error(`fixture game refused: ${created.reason}`);
-  return { ...created.state, first };
-}
+const range = (count: number): number[] => Array.from({ length: count }, (_, n) => n);
 
 /** Everyone still holds a place in the room. */
 const everyone = (): boolean => true;
+
+/** A game of `count` players, numbered from nought, as it is made at `T0`: with three or more, everyone has a spot to take first. */
+function fresh(count: number, seed = 7): UnderState {
+  const created = createGame({ players: range(count), seed, now: T0 }, config);
+  if (!created.ok) throw new Error(`fixture game refused: ${created.reason}`);
+  return created.state;
+}
+
+/** `player` takes `spot`; the test expects it to be taken. */
+function take(state: UnderState, player: number, spot: number, now = T0 + 1000): UnderState {
+  const result = applyAction(state, player, { type: "take", spot }, now, config);
+  if (!result.ok) throw new Error(`fixture spot refused: ${result.reason}`);
+  return result.state;
+}
+
+/** Players 0, 1, 2 … take the spots `spots` names, at `now`, and round 1 opens. */
+function stood(state: UnderState, spots: number[], now = T0): UnderState {
+  return moveOn(
+    spots.reduce((next, spot, player) => take(next, player, spot, now), state),
+    everyone,
+    now,
+    config,
+  );
+}
+
+/**
+ * A game of `count` players at the opening of round 1, at `T0`, with player
+ * `first` holding the marker. Where spots are taken, each player stands at
+ * the spot of their number: clockwise is then the order of their numbers.
+ */
+function game(count: number, first = 0, seed = 7): UnderState {
+  const made = fresh(count, seed);
+  return { ...(made.phase === "spots" ? stood(made, range(count)) : made), first };
+}
 
 /** `player` puts in `pick`; the test expects it to be taken. */
 function submit(state: UnderState, player: number, pick: Pick, now = T0 + 1000): UnderState {
@@ -109,8 +140,6 @@ const FOUR: Pick[] = [
   [1, "rainbow"],
 ];
 
-const range = (count: number): number[] => Array.from({ length: count }, (_, n) => n);
-
 describe("무거운 13: the numbers of the game", () => {
   it("ships the show's numbers: thirteen, cards 0 to 6, two chips of each colour and a rainbow one, two sets, three minutes", () => {
     expect(isValidConfig(config)).toBe(true);
@@ -128,6 +157,9 @@ describe("무거운 13: the numbers of the game", () => {
     ["no card at all", { cards: [], chipsOfEach: 0, rainbowChips: 0 }],
     ["a card below nought", { cards: [-1, 1, 2, 3, 4, 5, 6] }],
     ["no set", { sets: 0 }],
+    ["no time to take a spot", { spotSeconds: 0 }],
+    // above the least there is, so it is the half that is refused and not the shortness
+    ["a second and a half to take a spot", { spotSeconds: 1.5 }],
     ["no time to put anything in", { submitSeconds: 0 }],
     ["no time for a turn", { turnSeconds: 0 }],
     ["half a second before a rock nobody is asked about", { placeSeconds: 0.5 }],
@@ -153,10 +185,10 @@ describe("무거운 13: starting", () => {
 
   it("gives the first-player marker to one of the players, by the seed, and over many games to each of them", () => {
     const firsts = range(SEEDS).map((seed) => {
-      const created = createGame({ players: [0, 1, 2, 3], seed, now: T0 }, config);
-      if (!created.ok) throw new Error(created.reason);
-      expect(created.state.history).toEqual([{ type: "round", round: 1, first: created.state.first }]);
-      return created.state.first;
+      const made = fresh(4, seed);
+      // round 1 is opened in the marker's name, once everyone stands somewhere
+      expect(stood(made, range(4)).history).toEqual([{ type: "round", round: 1, first: made.first }]);
+      return made.first;
     });
 
     expect([...new Set(firsts)].sort()).toEqual([0, 1, 2, 3]);
@@ -174,6 +206,173 @@ describe("무거운 13: starting", () => {
 
   it("refuses numbers that cannot be played", () => {
     expect(createGame({ players: [0, 1], seed: 1, now: T0 }, { ...config, rainbowChips: 3 })).toEqual({ ok: false, reason: "bad-config" });
+  });
+});
+
+describe("무거운 13: choosing where to stand", () => {
+  it("opens a game of three or more with a spot for everyone to take, and no round yet", () => {
+    const state = fresh(4);
+
+    expect(state.phase).toBe("spots");
+    expect(state.spots).toEqual([null, null, null, null]);
+    expect(state.players).toEqual([0, 1, 2, 3]);
+    expect(state.round).toBe(1);
+    expect(state.history).toEqual([]);
+    expect(state.until).toBe(T0 + SPOT_MS);
+    expect(deadline(state)).toBe(T0 + SPOT_MS);
+    expect(state.hands).toEqual(range(4).map((player) => ({ player, cards: [0, 1, 2, 3, 4, 5, 6], chips: chipSet(config) })));
+    expect(range(4)).toContain(state.first);
+  });
+
+  it("opens a game of two with round 1: between two the order is the same wherever they stand", () => {
+    const state = fresh(2);
+
+    expect(state.phase).toBe("submit");
+    expect(state.spots).toEqual([]);
+    expect(state.until).toBe(T0 + SUBMIT_MS);
+    expect(state.history).toEqual([{ type: "round", round: 1, first: state.first }]);
+    expect(applyAction(state, 0, { type: "take", spot: 0 }, T0 + 1000, config)).toEqual({ ok: false, reason: "spots-not-open" });
+  });
+
+  it("gives a player the free spot they ask for, and leaves the game it was given as it was", () => {
+    const state = fresh(4);
+    const before = structuredClone(state);
+
+    const next = take(state, 2, 0);
+
+    expect(next.spots).toEqual([2, null, null, null]);
+    expect(next.phase).toBe("spots");
+    expect(next.until).toBe(state.until);
+    expect(state).toEqual(before);
+  });
+
+  it.each([
+    ["a spot someone else stands at", 1, { type: "take", spot: 0 }, "spot-taken"],
+    ["another spot for someone who has one", 2, { type: "take", spot: 3 }, "spot-held"],
+    ["their own spot a second time", 2, { type: "take", spot: 0 }, "spot-held"],
+    ["a spot the ring does not have", 1, { type: "take", spot: 4 }, "bad-action"],
+    ["a spot with no number", 1, { type: "take" }, "bad-action"],
+    ["a card and a chip before round 1", 1, { type: "submit", card: 3, chip: "red" }, "not-submitting"],
+    ["a rock placed before round 1", 1, { type: "place" }, "not-placing"],
+    ["a pass before round 1", 1, { type: "pass" }, "not-placing"],
+    ["a spot for someone who is not playing", 7, { type: "take", spot: 1 }, "not-playing"],
+  ])("refuses %s", (_what, player, action, reason) => {
+    // player 2 stands at the first spot
+    const state = take(fresh(4), 2, 0);
+
+    expect(applyAction(state, player, action as never, T0 + 2000, config)).toEqual({ ok: false, reason });
+  });
+
+  it("gives no spot once round 1 is open, and none once the game is over", () => {
+    expect(applyAction(game(4), 0, { type: "take", spot: 1 }, T0 + 1000, config)).toEqual({ ok: false, reason: "spots-not-open" });
+    expect(applyAction(abandon(fresh(4)), 0, { type: "take", spot: 1 }, T0 + 1000, config)).toEqual({ ok: false, reason: "game-over" });
+  });
+
+  it("waits while someone who is there has no spot", () => {
+    const state = take(take(fresh(3), 0, 2), 1, 0);
+
+    expect(moveOn(state, everyone, T0 + 2000, config)).toBe(state);
+  });
+
+  it("opens round 1 once everyone has a spot: the players in the order they stand, and the whole time to put in from then", () => {
+    const now = T0 + 9000;
+    const made = fresh(4);
+
+    // player 0 at the third spot, 1 at the first, 2 at the fourth, 3 at the second
+    const state = stood(made, [2, 0, 3, 1], now);
+
+    expect(state.phase).toBe("submit");
+    expect(state.players).toEqual([1, 3, 0, 2]);
+    expect(state.spots).toEqual([]);
+    expect(state.round).toBe(1);
+    expect(state.until).toBe(now + SUBMIT_MS);
+    expect(state.first).toBe(made.first);
+    expect(state.history).toEqual([{ type: "round", round: 1, first: made.first }]);
+    expect(state.hands).toEqual(made.hands);
+    expect(state.penalties).toEqual(made.penalties);
+  });
+
+  it("takes players with the same card clockwise from the first player, by where they stand", () => {
+    // clockwise: players 1, 3, 0, 2; the marker is with player 3
+    const state: UnderState = { ...stood(fresh(4), [2, 0, 3, 1]), first: 3 };
+    const fours: Pick[] = [
+      [4, "red"],
+      [4, "green"],
+      [4, "blue"],
+      [4, "red"],
+    ];
+
+    expect(placing(state, fours).order).toEqual([3, 0, 2, 1]);
+  });
+
+  it("does not wait for someone who has gone: the room stands them at the free spots, in the order of their numbers", () => {
+    const now = T0 + 4000;
+    const taken = take(take(fresh(4), 0, 1), 3, 0);
+
+    const state = moveOn(taken, (player) => player === 0 || player === 3, now, config);
+
+    // the third and the fourth spot were free: player 1 is stood at the third, player 2 at the fourth
+    expect(state.phase).toBe("submit");
+    expect(state.players).toEqual([3, 0, 1, 2]);
+    expect(state.until).toBe(now + SUBMIT_MS);
+  });
+
+  it("stands everyone who has no spot when the time is up, and gives round 1 its whole time from then", () => {
+    const late = T0 + SPOT_MS + 3000;
+    // player 3 took the second spot; the first, third and fourth are free
+    const taken = take(fresh(4), 3, 1);
+
+    const state = applyTimeout(taken, late, config);
+
+    expect(state.phase).toBe("submit");
+    expect(state.players).toEqual([0, 3, 1, 2]);
+    expect(state.spots).toEqual([]);
+    expect(state.until).toBe(late + SUBMIT_MS);
+  });
+
+  it("changes nothing before the time to take a spot is up", () => {
+    const state = fresh(3);
+
+    expect(applyTimeout(state, T0 + SPOT_MS - 1, config)).toBe(state);
+  });
+
+  it("is over when fewer than two are left while spots are taken", () => {
+    const state = closeIfLeft(take(fresh(3), 0, 1), (player) => player === 2);
+
+    expect(state.phase).toBe("ended");
+    expect(state.history.at(-1)).toEqual({ type: "ended", reason: "left" });
+  });
+
+  it("tells everyone who stands where as soon as they do, and no more of spots once round 1 is open", () => {
+    const state = take(fresh(3), 1, 2);
+
+    for (const viewer of [0, 1, null]) {
+      expect(viewFor(state, viewer, config)).toMatchObject({ phase: "spots", round: 1, spots: [null, null, 1], players: [0, 1, 2], turn: null, asked: null, submitted: [], chips: null, cards: null });
+    }
+    expect(viewFor(game(3), 0, config).spots).toEqual([]);
+    expect(viewFor(stood(fresh(3), [2, 0, 1]), null, config)).toMatchObject({ phase: "submit", players: [1, 2, 0], spots: [] });
+  });
+
+  it("sends a copy of the spots: changing what was sent changes nothing of the game", () => {
+    const state = take(fresh(3), 1, 2);
+    const before = structuredClone(state);
+
+    const view = viewFor(state, 0, config);
+    view.spots[0] = 9;
+
+    expect(state).toEqual(before);
+  });
+
+  it("reads a spot taken off the wire, and nothing that names no spot", () => {
+    expect(parseAction({ type: "take", spot: 3, more: true })).toEqual({ type: "take", spot: 3 });
+    expect(parseAction({ type: "take", spot: 0 })).toEqual({ type: "take", spot: 0 });
+    for (const spot of [-1, 1.5, "1", null, undefined]) expect(parseAction({ type: "take", spot })).toBeNull();
+  });
+
+  it("moves the clock of the spots on by the time the game stood still", () => {
+    const state = fresh(3);
+
+    expect(shiftClock(state, 5000).until).toBe(T0 + SPOT_MS + 5000);
   });
 });
 

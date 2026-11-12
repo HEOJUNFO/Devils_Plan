@@ -10,9 +10,10 @@
 // cards, and two more a room of it on cards drawn for the game; then two
 // make a room of the fourth game, one of them wrong before the other is right;
 // then two make a room of the fifth game and play its first round; then two
-// make a room of the sixth game and play its first round, one of them passing;
-// then two make a room of the seventh game and play its 24 rounds to the end,
-// one of them using a secret and spending a piece.
+// make a room of the sixth game and play its first round, one of them passing,
+// and three more a room of it, who each take a spot to stand at and then put
+// in the same card; then two make a room of the seventh game and play its 24
+// rounds to the end, one of them using a secret and spending a piece.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -523,6 +524,12 @@ async function fourthGame() {
   // the cubes are counted from the solid as a player sees it: every column's height, added up
   const count = games[0].view.solid.heights.reduce((sum, height) => sum + height, 0);
 
+  // the sum above is what anyone can read off the wire at once: the room takes no answer that soon
+  players[1].send({ type: "action", action: { type: "answer", said: count } });
+  const soon = await players[1].until("the refusal of an answer in the first moment", (m) => m.type === "refused");
+  check("an answer sooner than a person could count is not taken", soon.reason === "too-soon", soon.reason);
+  await new Promise((resolve) => setTimeout(resolve, (games[0].clock.answersIn ?? 0) + 200));
+
   // a wrong answer shuts its player out for a while, and nobody is told what was said
   players[0].send({ type: "action", action: { type: "answer", said: count + 1 } });
   const wrong = await players[1].until("the wrong answer", (m) => m.type === "game" && m.view.wrong.length === 1);
@@ -729,6 +736,85 @@ async function sixthGame() {
   check("no card or chip is sent to the other player before it is shown", hidden);
   const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
   check("no token is sent in the sixth game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
+/**
+ * The sixth game with three in the room, off the list. Before round 1 each takes a spot of the ring, and it is the
+ * spots, not the order they came in, that tell equal cards apart. The check leaves when the first cards are shown.
+ */
+async function sixthGameSpots() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 3; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `spot${n}`, create: n === 0, game: SIXTH_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  await players[2].until("all three in the room", (m) => m.type === "lobby" && m.players.length === 3);
+
+  /** What `player` is refused when they ask for `action`. */
+  const refusalOf = async (player, action) => {
+    const seen = players[player].messages.length;
+    players[player].send({ type: "action", action });
+    return (await players[player].until("the refusal", (m) => m.type === "refused", seen)).reason;
+  };
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the sixth game to start for three", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "with three in the room the sixth game starts with spots to take, all of them free",
+    games.every(
+      (g, n) =>
+        g.type === "game" &&
+        g.view.you === n &&
+        g.view.phase === "spots" &&
+        g.view.round === 1 &&
+        g.view.spots.length === 3 &&
+        g.view.spots.every((who) => who === null) &&
+        g.view.players.join() === "0,1,2",
+    ),
+    games.map((g) => (g.type === "game" ? `${g.view.phase} ${JSON.stringify(g.view.spots)}` : g.type)).join(", "),
+  );
+  const early = await refusalOf(0, { type: "submit", card: 4, chip: "red" });
+  check("no card is put in while spots are being taken", early === "not-submitting", early);
+
+  // the last to come in takes the first spot: everyone is shown it
+  players[2].send({ type: "action", action: { type: "take", spot: 0 } });
+  const shown = await Promise.all(players.map((p) => p.until("the first spot to be taken", (m) => m.type === "game" && m.view.spots[0] === 2)));
+  check("a spot taken is shown to everyone", shown.every((g) => g.view.phase === "spots" && g.view.spots.join() === "2,,"), JSON.stringify(shown[0].view.spots));
+  const taken = await refusalOf(0, { type: "take", spot: 0 });
+  const held = await refusalOf(2, { type: "take", spot: 1 });
+  const off = await refusalOf(1, { type: "take", spot: 3 });
+  check("a spot is given once, is kept, and is one of the ring", taken === "spot-taken" && held === "spot-held" && off === "bad-action", `${taken}, ${held}, ${off}`);
+
+  // the other two stand so that clockwise runs against the order they came in: 2, 1, 0
+  const standing = [2, 1, 0];
+  players[1].send({ type: "action", action: { type: "take", spot: 1 } });
+  players[0].send({ type: "action", action: { type: "take", spot: 2 } });
+  const round = await Promise.all(players.map((p) => p.until("round 1 to open", (m) => m.type === "game" && m.view.phase === "submit")));
+  const first = games[0].view.first;
+  check(
+    "round 1 opens when the last spot is taken, with the players in the order they stand and the first player it started with",
+    round.every((g) => g.view.round === 1 && g.view.players.join() === standing.join() && g.view.spots.length === 0 && g.view.first === first && g.view.submitted.length === 0),
+    `standing ${round[0].view.players.join(" ")}, first ${round[0].view.first}`,
+  );
+
+  // all three put in the same card and the same chip: only where they stand tells them apart
+  for (const p of players) p.send({ type: "action", action: { type: "submit", card: 4, chip: "red" } });
+  const placing = await Promise.all(players.map((p) => p.until("the equal cards to be shown", (m) => m.type === "game" && m.view.phase === "place", 0, PAUSE_TIMEOUT_MS)));
+  const clockwise = standing.map((_, n) => standing[(standing.indexOf(first) + n) % standing.length]);
+  check(
+    "between equal cards the order is clockwise by the spots, from the first player",
+    placing.every((g) => g.view.order.join() === clockwise.join() && g.view.turn === first),
+    `first ${first}, order ${placing[0].view.order.join(" ")}`,
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent while spots are taken either", !sentAll.includes("smoke-check-token"));
 
   for (const p of players) p.send({ type: "leave" });
   for (const p of players) p.close();
@@ -1068,6 +1154,7 @@ const PARTS = [
   [FOURTH_GAME, fourthGame],
   [FIFTH_GAME, fifthGame],
   [SIXTH_GAME, sixthGame],
+  [SIXTH_GAME, sixthGameSpots],
   [SEVENTH_GAME, seventhGame],
 ];
 

@@ -6,6 +6,7 @@ import type { Chip, Stand } from "../../../src/shared/games/under-thirteen/rules
 import { advanceClock, closeAll, join, scheduledAlarm, type TestClient, type UnderMessage } from "../support";
 
 const GAME = "under-thirteen" as const;
+const SPOT_MS = shipped.spotSeconds * 1000;
 const SUBMIT_MS = shipped.submitSeconds * 1000;
 const ROUNDS = shipped.cards.length * shipped.sets;
 /** With bots asked for, the room fills up to this many players. */
@@ -26,10 +27,27 @@ async function players(room: string, count: number): Promise<TestClient[]> {
   return clients;
 }
 
-/** Starts a game at `clients` and returns each client's first view of it, in client order. */
-async function startGame(clients: TestClient[]): Promise<UnderMessage[]> {
+/** Starts a game at `clients` and returns each client's first view of it, in client order: with three or more, of the spots to take. */
+async function begin(clients: TestClient[]): Promise<UnderMessage[]> {
   clients[0].send({ type: "start", bots: false });
   return Promise.all(clients.map((client) => client.underWhere()));
+}
+
+/** `client` takes `spot`. */
+function take(client: TestClient, spot: number): void {
+  client.send({ type: "action", action: { type: "take", spot } });
+}
+
+/**
+ * Starts a game at `clients` and returns each client's first view of round 1,
+ * in client order. Where there are spots to take, everyone takes the spot of
+ * their number first: clockwise is then the order of their numbers.
+ */
+async function startGame(clients: TestClient[]): Promise<UnderMessage[]> {
+  const first = await begin(clients);
+  if (first[0].view.phase !== "spots") return first;
+  clients.forEach((client, n) => take(client, n));
+  return Promise.all(clients.map((client) => client.underWhere((game) => game.view.phase === "submit")));
 }
 
 /** `client` puts in `card` and `chip`. */
@@ -107,6 +125,65 @@ describe("GameRoom: a room of 무거운 13", () => {
     expect([0, 1, 2]).toContain(games[0].view.first);
     expect(games[0].clock.phase).toBeGreaterThan(0);
     expect(games[0].clock.phase).toBeLessThanOrEqual(SUBMIT_MS);
+    closeAll(clients);
+  });
+
+  it("has everyone take a spot before round 1: a spot taken is shown to all, given to nobody else, and the players are in the order they stand", async () => {
+    const clients = await players("UTAAM", 3);
+
+    const first = await begin(clients);
+    take(clients[1], 2);
+    const one = await Promise.all(clients.map((client) => client.underWhere((game) => game.view.spots.some((who) => who !== null))));
+    take(clients[0], 2);
+    const taken = await clients[0].refusal();
+    take(clients[1], 0);
+    const held = await clients[1].refusal();
+    take(clients[0], 0);
+    take(clients[2], 1);
+    const round = await Promise.all(clients.map((client) => client.underWhere((game) => game.view.phase === "submit")));
+
+    for (const game of first) {
+      expect(game.view).toMatchObject({ phase: "spots", round: 1, spots: [null, null, null], players: [0, 1, 2], submitted: [], turn: null });
+      expect(game.clock.phase).toBeGreaterThan(0);
+      expect(game.clock.phase).toBeLessThanOrEqual(SPOT_MS);
+    }
+    for (const game of one) expect(game.view.spots).toEqual([null, null, 1]);
+    expect(taken.reason).toBe("spot-taken");
+    expect(held.reason).toBe("spot-held");
+    for (const game of round) {
+      // clockwise from the first spot: player 0, player 2, player 1
+      expect(game.view).toMatchObject({ round: 1, players: [0, 2, 1], spots: [], first: first[0].view.first });
+      expect(game.clock.phase).toBeLessThanOrEqual(SUBMIT_MS);
+      expect(game.clock.phase).toBeGreaterThan(SPOT_MS);
+    }
+    closeAll(clients);
+  });
+
+  it("stands those who took no spot when the time is up, and carries the spots on after the room has slept", async () => {
+    const stub = env.GameRoom.getByName("UTAAN");
+    const clients = await players("UTAAN", 3);
+    await begin(clients);
+    take(clients[2], 0);
+    await clients[0].underWhere((game) => game.view.spots[0] === 2);
+
+    await evictDurableObject(stub);
+    await runAlarm(stub);
+    const round = await Promise.all(clients.map((client) => client.underWhere((game) => game.view.phase === "submit")));
+
+    // players 0 and 1 are stood at the two spots left, in the order of their numbers
+    for (const game of round) expect(game.view.players).toEqual([2, 0, 1]);
+    closeAll(clients);
+  });
+
+  it("starts a game of two with round 1: nobody has a spot to take", async () => {
+    const clients = await players("UTAAP", 2);
+
+    const first = await begin(clients);
+    take(clients[0], 0);
+    const refusal = await clients[0].refusal();
+
+    for (const game of first) expect(game.view).toMatchObject({ phase: "submit", round: 1, spots: [] });
+    expect(refusal.reason).toBe("spots-not-open");
     closeAll(clients);
   });
 
@@ -289,6 +366,11 @@ describe("GameRoom: 무거운 13 with bots", () => {
 
     person.send({ type: "start", bots: true });
     const game = await person.underWhere();
+    const began = Date.now();
+    // the person takes a spot; the bots take theirs by the room's clock, and round 1 opens when the last of them has
+    take(person, 3);
+    const round = await runClock(stub, person, (seen) => seen.view.phase === "submit");
+    const spotsTook = Date.now() - began;
     submit(person, 0, "red");
     // The bots put theirs in, the chips are seen and the cards shown, and the rocks go on by the room's clock: each
     // bot's own a moment into its turn, the last in the order by the room. The person's nought is the last unless a
@@ -303,6 +385,10 @@ describe("GameRoom: 무거운 13 with bots", () => {
 
     expect(game.players.map((player) => player.bot)).toEqual([false, true, true, true]);
     expect(game.players).toHaveLength(WITH_BOTS);
+    expect(game.view.phase).toBe("spots");
+    // each bot took the first spot free when its time came, which is before the room would have stood them itself
+    expect(round.view.players).toEqual([1, 2, 3, 0]);
+    expect(spotsTook).toBeLessThan(SPOT_MS);
     expect(over.view.placements.map((each) => each.forced)).toEqual([false, false, false, false]);
     expect(over.view.placements.find((each) => each.player === 0)).toMatchObject({ stand: "red", weight: 0 });
     person.close();

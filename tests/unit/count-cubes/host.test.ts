@@ -12,6 +12,8 @@ const host = cubesHost;
 const T0 = 1_800_000_000_000;
 const LOCK_MS = shipped.lockSeconds * 1000;
 const PROBLEM_MS = shipped.problemSeconds * 1000;
+/** How long after the problem is put up the game takes no answer, in ms. */
+const SOON_MS = shipped.minAnswerSeconds * 1000;
 const STAND_MS = hostJson.standSeconds * 1000;
 const FIRST_BOT_MS = botJson.answerAfterSeconds * 1000;
 /** With bots asked for, the room fills up to this many players. */
@@ -96,7 +98,7 @@ describe("큐브 세기 in a room: starting", () => {
   it("refuses a second game while one is being played, and takes one after it", () => {
     const players = candidates(2);
     const session = started(players);
-    const over = answer(session, players, 0, answerOf(session), T0 + 1000);
+    const over = answer(session, players, 0, answerOf(session), T0 + SOON_MS + 1000);
 
     expect(host.start(session, players, request(), presenceOf(players))).toEqual({ ok: false, reason: "already-playing" });
     expect(host.start(over, players, request({ now: T0 + 5000 }), presenceOf(players)).ok).toBe(true);
@@ -139,20 +141,43 @@ describe("큐브 세기 in a room: starting", () => {
 });
 
 describe("큐브 세기 in a room: answering", () => {
+  it("refuses an answer that comes sooner than a person could count, and takes it once the wait is over", () => {
+    const players = candidates(3);
+    const session = started(players);
+    const said = answerOf(session);
+
+    const early = host.act(session, tokenOf(1), { type: "answer", said }, presenceOf(players), T0 + SOON_MS - 1);
+    const onTime = host.act(session, tokenOf(1), { type: "answer", said }, presenceOf(players), T0 + SOON_MS);
+
+    expect(early).toEqual({ ok: false, reason: "too-soon" });
+    expect(onTime.ok).toBe(true);
+  });
+
+  it("tells the screen how long it is until an answer is taken, and nought once one is", () => {
+    const players = candidates(3);
+    const session = started(players);
+
+    expect(seenBy(session, players, 0, T0).clock.answersIn).toBe(SOON_MS);
+    expect(seenBy(session, players, 0, T0 + 1500).clock.answersIn).toBe(SOON_MS - 1500);
+    expect(seenBy(session, players, 0, T0 + SOON_MS).clock.answersIn).toBe(0);
+    expect(seenBy(session, players, null, T0 + SOON_MS + 60_000).clock.answersIn).toBe(0);
+  });
   it("gives a right answer its place, for everyone to see", () => {
     const players = candidates(3);
     const session = started(players);
 
-    const after = answer(session, players, 2, answerOf(session), T0 + 4000);
+    const took = SOON_MS + 4000;
 
-    expect(seenBy(after, players, 0, T0 + 4000).view.ranked).toEqual([{ player: 2, took: 4000 }]);
-    expect(seenBy(after, players, null, T0 + 4000).view.history).toEqual([{ type: "right", player: 2, place: 1, took: 4000 }]);
+    const after = answer(session, players, 2, answerOf(session), T0 + took);
+
+    expect(seenBy(after, players, 0, T0 + took).view.ranked).toEqual([{ player: 2, took }]);
+    expect(seenBy(after, players, null, T0 + took).view.history).toEqual([{ type: "right", player: 2, place: 1, took }]);
   });
 
   it("shuts out a player who was wrong, and says for how long", () => {
     const players = candidates(3);
     const session = started(players);
-    const at = T0 + 4000;
+    const at = T0 + SOON_MS + 4000;
 
     const after = answer(session, players, 1, answerOf(session) + 1, at);
 
@@ -169,13 +194,13 @@ describe("큐브 세기 in a room: answering", () => {
     const players = candidates(3);
     const session = started(players);
 
-    const one = answer(session, players, 0, answerOf(session), T0 + 1000);
-    const two = answer(one, players, 2, answerOf(session), T0 + 2000);
+    const one = answer(session, players, 0, answerOf(session), T0 + SOON_MS + 1000);
+    const two = answer(one, players, 2, answerOf(session), T0 + SOON_MS + 2000);
 
     expect(host.running(one)).toBe(true);
     expect(host.running(two)).toBe(false);
     expect(two.state.ranked).toHaveLength(neededOf(players.length));
-    expect(seenBy(two, players, 1, T0 + 2000).view.answer).toBe(answerOf(session));
+    expect(seenBy(two, players, 1, T0 + SOON_MS + 2000).view.answer).toBe(answerOf(session));
   });
 
   it("refuses an answer from someone watching", () => {
@@ -227,7 +252,7 @@ describe("큐브 세기 in a room: the clock", () => {
 
   it("ends the game when the problem's time is up, with those who had the answer", () => {
     const players = candidates(4);
-    const session = answer(started(players), players, 3, answerOf(started(players)), T0 + 1000);
+    const session = answer(started(players), players, 3, answerOf(started(players)), T0 + SOON_MS + 1000);
 
     const over = host.tick(session, presenceOf(players), T0 + PROBLEM_MS);
 
@@ -235,7 +260,7 @@ describe("큐브 세기 in a room: the clock", () => {
     expect(over.state.history.at(-1)).toEqual({ type: "ended", reason: "time" });
     expect(over.state.ranked.map((entry) => entry.player)).toEqual([3]);
     expect(host.deadline(over)).toBeNull();
-    expect(seenBy(over, players, 0, T0 + PROBLEM_MS).clock).toEqual({ problem: null, locks: [], stand: null });
+    expect(seenBy(over, players, 0, T0 + PROBLEM_MS).clock).toEqual({ problem: null, locks: [], stand: null, answersIn: 0 });
   });
 });
 
@@ -311,9 +336,9 @@ describe("큐브 세기 in a room: who is there", () => {
     const players = candidates(1);
     const session = started(players, { bots: true, allowBots: true });
     const stood = 50_000;
-    const still = host.attend(session, presenceOf(players, [0]), T0 + 1000);
+    const still = host.attend(session, presenceOf(players, [0]), T0 + SOON_MS + 1000);
 
-    const back = host.attend(still, presenceOf(players), T0 + 1000 + stood);
+    const back = host.attend(still, presenceOf(players), T0 + SOON_MS + 1000 + stood);
 
     expect(back.bots.map((bot) => bot.at)).toEqual(session.bots.map((bot) => bot.at + stood));
   });
@@ -321,7 +346,7 @@ describe("큐브 세기 in a room: who is there", () => {
   it("has no bot answer while it stands still", () => {
     const players = candidates(1);
     const session = started(players, { bots: true, allowBots: true });
-    const still = host.attend(session, presenceOf(players, [0]), T0 + 1000);
+    const still = host.attend(session, presenceOf(players, [0]), T0 + SOON_MS + 1000);
 
     const later = host.tick(still, presenceOf(players, [0]), T0 + FIRST_BOT_MS + 1000);
 
@@ -330,9 +355,9 @@ describe("큐브 세기 in a room: who is there", () => {
 
   it("is ended when it has stood as long as it may", () => {
     const players = candidates(2);
-    const still = host.attend(started(players), presenceOf(players, [0, 1]), T0 + 1000);
+    const still = host.attend(started(players), presenceOf(players, [0, 1]), T0 + SOON_MS + 1000);
 
-    const over = host.tick(still, presenceOf(players, [0, 1]), T0 + 1000 + STAND_MS);
+    const over = host.tick(still, presenceOf(players, [0, 1]), T0 + SOON_MS + 1000 + STAND_MS);
 
     expect(host.running(over)).toBe(false);
     expect(over.state.history.at(-1)).toEqual({ type: "ended", reason: "abandoned" });
@@ -341,7 +366,7 @@ describe("큐브 세기 in a room: who is there", () => {
   it("is ended at once when all its people have left the room", () => {
     const players = candidates(2);
 
-    const over = host.attend(started(players), presenceOf(players, [], [0, 1]), T0 + 1000);
+    const over = host.attend(started(players), presenceOf(players, [], [0, 1]), T0 + SOON_MS + 1000);
 
     expect(host.running(over)).toBe(false);
     expect(over.state.history.at(-1)).toEqual({ type: "ended", reason: "abandoned" });
@@ -351,10 +376,10 @@ describe("큐브 세기 in a room: who is there", () => {
     const players = candidates(4);
     const session = started(players);
     const gone = presenceOf(players, [], [2, 3]);
-    const one = answer(session, players, 0, answerOf(session), T0 + 1000);
+    const one = answer(session, players, 0, answerOf(session), T0 + SOON_MS + 1000);
 
-    const going = host.attend(one, gone, T0 + 2000);
-    const over = answer(going, players, 1, answerOf(session), T0 + 3000, gone);
+    const going = host.attend(one, gone, T0 + SOON_MS + 2000);
+    const over = answer(going, players, 1, answerOf(session), T0 + SOON_MS + 3000, gone);
 
     expect(host.running(going)).toBe(true);
     expect(host.running(over)).toBe(false);
@@ -364,9 +389,9 @@ describe("큐브 세기 in a room: who is there", () => {
   it("ends when the only ones without the answer leave", () => {
     const players = candidates(4);
     const session = started(players);
-    const two = answer(answer(session, players, 0, answerOf(session), T0 + 1000), players, 1, answerOf(session), T0 + 2000);
+    const two = answer(answer(session, players, 0, answerOf(session), T0 + SOON_MS + 1000), players, 1, answerOf(session), T0 + SOON_MS + 2000);
 
-    const over = host.attend(two, presenceOf(players, [], [2, 3]), T0 + 3000);
+    const over = host.attend(two, presenceOf(players, [], [2, 3]), T0 + SOON_MS + 3000);
 
     expect(host.running(two)).toBe(true);
     expect(host.running(over)).toBe(false);
@@ -376,9 +401,9 @@ describe("큐브 세기 in a room: who is there", () => {
   it("goes on waiting for a player who is only disconnected", () => {
     const players = candidates(3);
     const session = started(players);
-    const one = answer(session, players, 0, answerOf(session), T0 + 1000);
+    const one = answer(session, players, 0, answerOf(session), T0 + SOON_MS + 1000);
 
-    const going = host.attend(one, presenceOf(players, [1, 2]), T0 + 2000);
+    const going = host.attend(one, presenceOf(players, [1, 2]), T0 + SOON_MS + 2000);
 
     expect(host.running(going)).toBe(true);
     expect(going.frozenAt).toBeNull();
@@ -404,9 +429,9 @@ describe("큐브 세기 in a room: what is sent and kept", () => {
 
   it("keeps the answer back from everyone until the game is over", () => {
     const players = candidates(3);
-    const session = answer(started(players), players, 0, answerOf(started(players)), T0 + 1000);
+    const session = answer(started(players), players, 0, answerOf(started(players)), T0 + SOON_MS + 1000);
 
-    for (const viewer of [0, 1, 2, null]) expect(seenBy(session, players, viewer, T0 + 1000).view.answer).toBeNull();
+    for (const viewer of [0, 1, 2, null]) expect(seenBy(session, players, viewer, T0 + SOON_MS + 1000).view.answer).toBeNull();
   });
 
   it("marks who is connected and who has left", () => {
@@ -446,6 +471,6 @@ describe("큐브 세기 in a room: what is sent and kept", () => {
     const session = started(players);
 
     expect(host.same(session, host.attend(session, presenceOf(players), T0 + 1))).toBe(true);
-    expect(host.same(session, answer(session, players, 1, 0, T0 + 1))).toBe(false);
+    expect(host.same(session, answer(session, players, 1, 0, T0 + SOON_MS))).toBe(false);
   });
 });

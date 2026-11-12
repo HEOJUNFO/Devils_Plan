@@ -217,6 +217,10 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   function lockOf(player: number): number {
     return left(latest?.clock.locks.find((lock) => lock.player === player)?.left ?? null) ?? 0;
   }
+  /** How long it is until the room takes an answer to this problem, in ms; 0 once it does. */
+  function soonFor(): number {
+    return left(latest?.clock.answersIn ?? null) ?? 0;
+  }
   /** Whether the player at this screen could give an answer now. */
   function canAnswer(): boolean {
     const mine = me();
@@ -323,6 +327,10 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       say(WORDS.say.paused);
     } else if (!canAnswer()) {
       say(WORDS.say.lockedFor(Math.ceil(lockOf(mine ?? -1) / 1000)));
+      sfx.deny();
+    } else if (soonFor() > 0) {
+      // the room would refuse it: the number stays typed, to be entered again in a moment
+      say(WORDS.say.soonFor(Math.ceil(soonFor() / 1000)));
       sfx.deny();
     } else {
       pending = handlers.act({ type: "answer", said: result.said });

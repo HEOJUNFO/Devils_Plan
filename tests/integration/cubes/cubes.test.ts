@@ -9,6 +9,8 @@ import { advanceClock, closeAll, join, scheduledAlarm, tokenFor, type CubesMessa
 const GAME = "count-cubes" as const;
 const LOCK_MS = shipped.lockSeconds * 1000;
 const PROBLEM_MS = shipped.problemSeconds * 1000;
+/** How long after the problem is put up the room takes no answer, in ms. */
+const SOON_MS = shipped.minAnswerSeconds * 1000;
 const STAND_MS = hostJson.standSeconds * 1000;
 /** With bots asked for, the room fills up to this many players. */
 const WITH_BOTS = 4;
@@ -28,10 +30,16 @@ async function counters(room: string, count: number): Promise<TestClient[]> {
   return clients;
 }
 
-/** Starts a game at `clients` and returns each client's first view of it, in client order. */
-async function startGame(clients: TestClient[]): Promise<CubesMessage[]> {
+/**
+ * Starts a game at `clients` and returns each client's first view of it, in
+ * client order. The clock is then moved past the wait in which the room
+ * takes no answer, unless `counted` is false.
+ */
+async function startGame(clients: TestClient[], counted = true): Promise<CubesMessage[]> {
   clients[0].send({ type: "start", bots: false });
-  return Promise.all(clients.map((client) => client.cubesWhere()));
+  const games = await Promise.all(clients.map((client) => client.cubesWhere()));
+  if (counted) advanceClock(SOON_MS);
+  return games;
 }
 
 /** The answer to the problem `game` shows: a test counts the solid as a player would. */
@@ -138,6 +146,24 @@ describe("GameRoom: a room of 큐브 세기", () => {
     closeAll(clients);
   });
 
+  it("refuses an answer that comes sooner than a person could count, and takes it once the wait is over", async () => {
+    const clients = await counters("QAAAS", 3);
+    const games = await startGame(clients, false);
+
+    answer(clients[1], answerOf(games[1]));
+    const refusal = await clients[1].refusal();
+    advanceClock(SOON_MS);
+    answer(clients[1], answerOf(games[1]));
+    const after = await clients[1].cubesWhere((game) => game.view.ranked.length === 1);
+
+    expect(games[1].clock.answersIn).toBeGreaterThan(0);
+    expect(games[1].clock.answersIn).toBeLessThanOrEqual(SOON_MS);
+    expect(refusal.reason).toBe("too-soon");
+    expect(after.view.ranked[0].player).toBe(1);
+    expect(after.clock.answersIn).toBe(0);
+    closeAll(clients);
+  });
+
   it("ends when all but one have the answer, and only then gives the answer out", async () => {
     const clients = await counters("QAAAE", 3);
     const games = await startGame(clients);
@@ -152,7 +178,7 @@ describe("GameRoom: a room of 큐브 세기", () => {
       expect(game.view.ranked.map((entry) => entry.player)).toEqual([2, 0]);
       expect(game.view.answer).toBe(count);
       expect(game.view.history.at(-1)).toEqual({ type: "ended", reason: "ranked" });
-      expect(game.clock).toEqual({ problem: null, locks: [], stand: null });
+      expect(game.clock).toEqual({ problem: null, locks: [], stand: null, answersIn: 0 });
     }
     // while the problem was up nothing sent to anyone carried the answer
     for (const client of clients) {

@@ -32,6 +32,7 @@ const ko = {
       "모두가 0~6이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다. 칩의 색은 바위를 올릴 받침대를, 카드의 숫자는 바위의 무게를 정합니다. 내는 시간은 3분입니다.",
       [
         "칩을 먼저, 카드를 그다음에 공개하고, 한 사람씩 순서대로 바위를 올립니다. 레인보우 칩을 낸 사람들이 먼저이고 나머지가 그다음입니다. 그 안에서는 카드 숫자가 높은 사람부터, 숫자가 같으면 선 플레이어부터 시계 방향입니다.",
+        "세 명 이상이면 판을 시작할 때 각자 설 자리를 고릅니다. 한 번 서면 바꿀 수 없고, 시계 방향은 이 자리의 순서입니다.",
         "레인보우 칩을 냈으면 자기 차례에 받침대를 고릅니다.",
         "자기 차례에 바위를 놓거나, 라운드마다 한 번 패스할 수 있습니다. 순서가 마지막인 사람은 패스할 수 없고 바로 놓습니다.",
         "패스한 바위는 다른 바위가 모두 놓인 뒤에 더 묻지 않고 놓이며, 여럿이 패스했으면 먼저 패스한 사람이 가장 나중입니다.",
@@ -44,6 +45,9 @@ const ko = {
   notSent: "연결이 끊겨 보내지 못했습니다. 다시 해 주세요",
   /** Why the room refused what was asked, for the bar. */
   refused: {
+    "spots-not-open": "지금은 자리를 고르는 때가 아닙니다",
+    "spot-held": "이미 자리를 잡았습니다. 자리는 바꿀 수 없습니다",
+    "spot-taken": "다른 사람이 먼저 선 자리입니다",
     "not-submitting": "지금은 낼 수 없습니다",
     "already-submitted": "이미 냈습니다",
     "not-held": "그 카드나 칩은 이미 썼습니다",
@@ -75,6 +79,20 @@ const ko = {
   chip: { red: "빨강", green: "초록", blue: "파랑", rainbow: "레인보우" } as Record<Chip, string>,
   /** The column's heading, with the clock beside it. */
   round: (round: number, rounds: number) => `라운드 ${round}/${rounds}`,
+  /**
+   * While everyone takes a spot, before round 1: the column's heading, and
+   * the lines in the middle of the ring. With eight players or fewer the
+   * ring is at its narrowest, and its middle has this many pixels for each:
+   * the title 123, the two lines 143 and 149, `kept` 141, and `first` 120
+   * with a name of 70. `first` names whoever holds the first-player marker.
+   */
+  spots: {
+    heading: "자리 고르기",
+    title: "설 자리를 고르세요",
+    lines: ["숫자가 같으면 선부터", "시계 방향으로 놓습니다"],
+    kept: "한 번 서면 못 바꿉니다",
+    first: (who: string) => `선: ${who}`,
+  },
   /** Beside a name in the list: who holds the first-player marker. `_short` where the list is crowded: one letter does for both here. */
   firstMark: (_short: boolean): string => "선",
   /** In the list, beside a name: penalty points. */
@@ -85,6 +103,8 @@ const ko = {
   say: {
     paused: "판이 멈춰 있습니다",
     pickBoth: "카드 1장과 칩 1개를 고르세요",
+    pickSpot: "설 자리를 먼저 고르세요",
+    stoodForYou: (spot: number) => `시간이 지나 방이 ${spot}번 자리에 세웠습니다`,
     penalty: (points: number) => `받침대가 무너졌습니다: 벌점 ${points}`,
   },
   /** Over the stands while the game stands still; `seconds` until it is given up, where that is known. */
@@ -95,6 +115,11 @@ const ko = {
     over: "판이 끝났습니다",
     paused: "판이 멈춰 있습니다",
     sending: "보내는 중",
+    spots: (clock: string) => `설 자리를 고르세요 · 한 번 서면 바꿀 수 없습니다 · ${clock}`,
+    spotReady: (spot: number, clock: string) =>
+      byInput(`${spot}번 자리 · Enter로 섭니다 (서면 바꿀 수 없음) · ${clock}`, `${spot}번 자리 · 서기를 누르면 섭니다 (서면 바꿀 수 없음) · ${clock}`),
+    spotTaken: (have: number, of: number, clock: string) => `자리를 잡았습니다 · 다른 사람을 기다리는 중 (${have}/${of}) · ${clock}`,
+    watchSpots: (have: number, of: number, clock: string) => `관전 중 · 자리를 고르는 중 (${have}/${of}) · ${clock}`,
     submit: (clock: string) => `바위 카드 1장과 색깔 칩 1개를 몰래 내세요 · ${clock}`,
     ready: (clock: string) => byInput(`Enter로 냅니다 (내면 바꿀 수 없음) · ${clock}`, `내기를 누르면 냅니다 (내면 바꿀 수 없음) · ${clock}`),
     submitted: (have: number, of: number, clock: string) => `냈습니다 · 다른 사람을 기다리는 중 (${have}/${of}) · ${clock}`,
@@ -111,11 +136,12 @@ const ko = {
   },
   /** Under the standing line: what the keys do, by what is asked. */
   keys: {
+    spots: byInput("←→: 자리 · Enter: 서기 (눌러도 같음)", "자리를 누른 뒤 서기"),
     submit: byInput("숫자 키: 카드 · ←→: 칩 · Enter: 내기 (버튼도 같음)", "카드와 칩을 하나씩 누르고 내기"),
     idle: "H: 규칙 · M: 음소거 · T: 채팅",
   },
   /** The buttons of the bar. */
-  button: { submit: keyed("Enter", "내기"), place: keyed("Enter", "놓기"), pass: keyed("P", "패스"), again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
+  button: { take: keyed("Enter", "서기"), submit: keyed("Enter", "내기"), place: keyed("Enter", "놓기"), pass: keyed("P", "패스"), again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
   log: {
     round: (round: number, first: string) => `라운드 ${round} · 선 ${first}`,
     dealt: "카드와 칩을 다시 받음",
@@ -141,13 +167,13 @@ const ko = {
     { text: "" },
     { text: "칩을 먼저, 카드를 그다음에 공개하고, 한 사람씩 순서대로 바위를 올립니다:" },
     { text: "레인보우 칩이 먼저이고, 각각 카드 숫자가 높은 순, 같으면 선부터 시계 방향." },
+    { text: "세 명부터는 시작할 때 설 자리를 고릅니다 (못 바꿈): 시계 방향은 그 순서." },
     { text: "레인보우 칩을 냈으면 자기 차례에 받침대를 고릅니다.", tone: "dim" },
     { text: "자기 차례에 라운드마다 한 번 패스할 수 있습니다 (마지막 순서는 바로 놓음)." },
     { text: "패스한 바위는 맨 뒤에 묻지 않고 놓이며, 먼저 패스한 사람이 가장 나중입니다." },
     { text: "" },
     { text: `내 바위로 받침대의 합이 ${n.limit} 이상이 되면, 내 바위만 남기고 모두 걷어 내며` },
     { text: "걷어 낸 개수만큼 벌점을 받습니다. 마지막으로 벌점을 받은 사람이 다음 선." },
-    { text: "" },
     { text: `카드와 칩은 ${n.perSet}라운드에 한 번씩 쓰고, 같은 세트를 다시 받아 ${n.rounds}라운드까지.` },
     { text: "벌점이 가장 적으면 1위. 벌점이 같으면 더 최근에 벌점을 받은 사람이 아래.", tone: "dim" },
     { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
@@ -161,6 +187,7 @@ const en: typeof ko = {
       "Everyone secretly puts in one rock card, numbered 0 to 6, and one color chip. The chip's color says which stand the rock goes on; the card's number is the rock's weight. You have 3 minutes.",
       [
         "The chips are shown first, then the cards, and the rocks are placed one player at a time: those with a rainbow chip first, then the rest. In each group the higher card goes first, and between equal cards it is clockwise from the first player.",
+        "With three or more players, everyone picks a spot to stand at as the game starts. A spot once taken cannot be changed, and clockwise is the order of those spots.",
         "With the rainbow chip you choose the stand when your rock is placed.",
         "When your rock comes up you place it or pass, once a round. The last player in the order cannot pass: their rock is placed at once.",
         "A passed rock is placed after all the others, with nothing more asked; if several pass, the first to pass goes last.",
@@ -172,6 +199,9 @@ const en: typeof ko = {
   } as RulesSheet,
   notSent: "Not sent: the connection is down. Try again",
   refused: {
+    "spots-not-open": "Spots are not being taken now",
+    "spot-held": "You have a spot already, and it cannot be changed",
+    "spot-taken": "Someone else took that spot first",
     "not-submitting": "Nothing can be put in now",
     "already-submitted": "You have already put yours in",
     "not-held": "That card or chip is already used",
@@ -199,6 +229,13 @@ const en: typeof ko = {
   stand: { red: "Red", green: "Green", blue: "Blue" },
   chip: { red: "Red", green: "Green", blue: "Blue", rainbow: "Rainbow" },
   round: (round, rounds) => `Round ${round}/${rounds}`,
+  spots: {
+    heading: "Spots",
+    title: "Pick your spot",
+    lines: ["Ties go clockwise", "from the first player"],
+    kept: "A spot taken is kept",
+    first: (who) => `First: ${who}`,
+  },
   // "1st" beside a name reads as a place in the ranking: the word, where there is room for it
   firstMark: (short) => (short ? "1st" : "first"),
   points: (points, short) => (short ? `${points}` : `${points} pts`),
@@ -206,6 +243,8 @@ const en: typeof ko = {
   say: {
     paused: "The game is paused",
     pickBoth: "Pick one card and one chip",
+    pickSpot: "Pick a spot first",
+    stoodForYou: (spot) => `Time was up: the room put you at spot ${spot}`,
     penalty: (points) => `The stand gave way: ${points} penalty points`,
   },
   waitingBack: (seconds) => (seconds === null ? "Waiting for them to come back" : `Waiting for them to come back · ${seconds}s`),
@@ -214,6 +253,10 @@ const en: typeof ko = {
     over: "The game is over",
     paused: "The game is paused",
     sending: "Sending",
+    spots: (clock) => `Pick a spot to stand at · once taken it cannot be changed · ${clock}`,
+    spotReady: (spot, clock) => byInput(`Spot ${spot} · Enter takes it (it cannot be changed) · ${clock}`, `Spot ${spot} · tap Take (it cannot be changed) · ${clock}`),
+    spotTaken: (have, of, clock) => `You have your spot · waiting for the others (${have}/${of}) · ${clock}`,
+    watchSpots: (have, of, clock) => `Watching · spots being taken (${have}/${of}) · ${clock}`,
     submit: (clock) => `Secretly put in one rock card and one color chip · ${clock}`,
     ready: (clock) => byInput(`Enter puts them in (it cannot be changed) · ${clock}`, `Tap Put in (it cannot be changed) · ${clock}`),
     submitted: (have, of, clock) => `Yours is in · waiting for the others (${have}/${of}) · ${clock}`,
@@ -229,10 +272,11 @@ const en: typeof ko = {
     lastOver: (seconds) => `Last round over · result in ${seconds}s`,
   },
   keys: {
+    spots: byInput("←→: spot · Enter: take it (or click)", "Tap a spot, then Take"),
     submit: byInput("Digits: card · ←→: chip · Enter: put in (or the buttons)", "Tap a card and a chip, then Put in"),
     idle: "H: rules · M: mute · T: chat",
   },
-  button: { submit: keyed("Enter", "put in"), place: keyed("Enter", "place"), pass: keyed("P", "pass"), again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
+  button: { take: keyed("Enter", "take"), submit: keyed("Enter", "put in"), place: keyed("Enter", "place"), pass: keyed("P", "pass"), again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
   log: {
     round: (round, first) => `Round ${round} · first: ${first}`,
     dealt: "A fresh set is dealt",
@@ -256,10 +300,10 @@ const en: typeof ko = {
     { text: `You have ${Math.round(n.submitSeconds / 60)} minutes.`, tone: "dim" },
     { text: "Chips are shown first, then cards. Rocks go on one at a time:" },
     { text: "rainbow chips first; in each group higher cards, ties clockwise." },
+    { text: "With 3 or more, spots are picked first and kept: that is clockwise." },
     { text: "With the rainbow chip you choose the stand on your turn.", tone: "dim" },
     { text: "On your turn you may pass once a round, unless you are last:" },
     { text: "a passed rock goes on after the others, the first to pass last." },
-    { text: "" },
     { text: `If your rock brings a stand to ${n.limit} or more, every rock but yours is` },
     { text: "cleared and you take a penalty point for each one cleared." },
     { text: "The last to take a penalty is first player next round.", tone: "dim" },

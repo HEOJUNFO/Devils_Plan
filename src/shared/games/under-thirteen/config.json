@@ -4,6 +4,7 @@
   "chipsOfEach": 2,
   "rainbowChips": 1,
   "sets": 2,
+  "spotSeconds": 30,
   "submitSeconds": 180,
   "chipsSeconds": 4,
   "turnSeconds": 20,

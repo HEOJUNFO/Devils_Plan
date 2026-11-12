@@ -9,5 +9,6 @@
   "maxCuts": 6,
   "minAnswer": 40,
   "maxAnswer": 400,
-  "maxSaid": 999
+  "maxSaid": 999,
+  "minAnswerSeconds": 5
 }

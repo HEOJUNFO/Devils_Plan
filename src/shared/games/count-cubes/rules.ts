@@ -31,6 +31,13 @@ export interface CubesConfig {
   maxAnswer: number;
   /** The largest number a player can enter. */
   maxSaid: number;
+  /**
+   * (gap) Seconds after the problem is put up in which no answer is taken:
+   * sooner than this nobody has counted. The room's guard against an answer
+   * read off the numbers the picture is drawn from, which every player is
+   * sent. It stops the answer of the first moment and no more.
+   */
+  minAnswerSeconds: number;
 }
 
 /**
@@ -90,6 +97,7 @@ export function isValidConfig(config: CubesConfig): boolean {
     config.minAnswer,
     config.maxAnswer,
     config.maxSaid,
+    config.minAnswerSeconds,
   ].every(isWhole);
   return (
     whole &&
@@ -103,7 +111,9 @@ export function isValidConfig(config: CubesConfig): boolean {
     config.maxCuts >= config.minCuts &&
     config.minAnswer >= 1 &&
     config.maxAnswer >= config.minAnswer &&
-    config.maxSaid >= config.maxAnswer
+    config.maxSaid >= config.maxAnswer &&
+    config.minAnswerSeconds >= 0 &&
+    config.minAnswerSeconds < config.problemSeconds
   );
 }
 
@@ -212,7 +222,9 @@ export type CubesRefusal =
   /** The player already has the answer. */
   | "already-right"
   /** The player answered wrong and is still shut out. */
-  | "locked";
+  | "locked"
+  /** The problem has not been up for as long as a count takes ({@link CubesConfig.minAnswerSeconds}). */
+  | "too-soon";
 
 export type CubesResult = { ok: true; state: CubesState } | { ok: false; reason: CubesRefusal };
 
@@ -285,6 +297,11 @@ export function parseAction(raw: unknown): CubesAction | null {
   return { type: "answer", said: data.said };
 }
 
+/** From when the game takes an answer, in ms since the epoch: the problem has to have been up a while. */
+export function answersFrom(state: CubesState, config: CubesConfig): number {
+  return state.openedAt + config.minAnswerSeconds * 1000;
+}
+
 /** Until when `player` is shut out, in ms since the epoch; 0 when they are not. */
 export function lockedUntil(state: CubesState, player: number): number {
   return state.wrong.find((entry) => entry.player === player)?.until ?? 0;
@@ -313,8 +330,9 @@ export function closeIfDone(state: CubesState, there: (player: number) => boolea
 
 /**
  * An answer by `player` at `now`. Right: they take the next place. Wrong:
- * they are shut out for `lockSeconds` (document, rule 3). The state given is
- * not changed. Whether enough have it now is for {@link closeIfDone}, which
+ * they are shut out for `lockSeconds` (document, rule 3). One that comes
+ * before a count could have been made is not taken, right or wrong, and
+ * costs nothing ({@link answersFrom}). The state given is not changed. Whether enough have it now is for {@link closeIfDone}, which
  * needs to know who is still there.
  */
 export function applyAction(state: CubesState, player: number, action: CubesAction, now: number, config: CubesConfig): CubesResult {
@@ -324,6 +342,7 @@ export function applyAction(state: CubesState, player: number, action: CubesActi
   if (move === null || move.said > config.maxSaid) return { ok: false, reason: "bad-action" };
   if (state.ranked.some((entry) => entry.player === player)) return { ok: false, reason: "already-right" };
   if (now < lockedUntil(state, player)) return { ok: false, reason: "locked" };
+  if (now < answersFrom(state, config)) return { ok: false, reason: "too-soon" };
   const next = clone(state);
   if (move.said === countOf(state.solid)) {
     const took = Math.max(0, now - state.openedAt);

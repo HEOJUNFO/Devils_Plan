@@ -29,6 +29,7 @@ const ko = {
   /** Why the room refused what was asked, for the bar. */
   refused: {
     "locked": "아직 답할 수 없습니다",
+    "too-soon": "아직 답할 수 없습니다",
     "already-right": "이미 맞혔습니다",
     "bad-action": "그 숫자는 답으로 낼 수 없습니다",
     "game-over": "이 판은 끝났습니다",
@@ -58,6 +59,8 @@ const ko = {
     wrong: (seconds: number) => `오답! ${seconds}초 동안 답할 수 없습니다`,
     paused: "판이 멈춰 있습니다",
     lockedFor: (seconds: number) => `${seconds}초 뒤에 다시 답할 수 있습니다`,
+    /** An answer in the first moments of a problem, before the room takes one. */
+    soonFor: (seconds: number) => `${seconds}초 뒤부터 답할 수 있습니다`,
   },
   /** In the corner of the picture: how the solid is turned, and, once it has been, how the first view comes back. */
   turn: { hint: "끌어서 돌려 보기", back: keyed("V:", "처음 보던 쪽으로") },
@@ -144,6 +147,7 @@ const en: typeof ko = {
   notSent: "Not sent: the connection is down. Try again",
   refused: {
     "locked": "You cannot answer yet",
+    "too-soon": "You cannot answer yet",
     "already-right": "You already got it right",
     "bad-action": "That number cannot be given as an answer",
     "game-over": "This game is over",
@@ -169,6 +173,7 @@ const en: typeof ko = {
     wrong: (seconds) => `Wrong! You cannot answer for ${seconds} seconds`,
     paused: "The game is paused",
     lockedFor: (seconds) => `You can answer again in ${seconds}s`,
+    soonFor: (seconds) => `You can answer in ${seconds}s`,
   },
   turn: { hint: "Drag to turn", back: keyed("V:", "first view") },
   waitingBack: (seconds) => (seconds === null ? "Waiting for them to come back" : `Waiting for them to come back · ${seconds}s`),

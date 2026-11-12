@@ -15,8 +15,9 @@
  * a further question, a stand cleared at thirteen or more with the cube just
  * placed left on it, the last to take a penalty first in the next round, the
  * same set dealt again after seven rounds, fourteen rounds, the fewest
- * penalty points first. What a room needs beyond that is filled in, and
- * marked (gap).
+ * penalty points first. Before the first round everyone chooses where to
+ * stand, and stays there: clockwise is the order of those spots. What a room
+ * needs beyond that is filled in, and marked (gap).
  */
 import { randomInt, randomSource, seedFrom } from "../../game/rng";
 
@@ -38,6 +39,8 @@ export interface UnderConfig {
   rainbowChips: number;
   /** How many times the set of cards and chips is dealt (the show: twice, which makes fourteen rounds). */
   sets: number;
+  /** (gap) Seconds everyone has to take a spot before the first round. The show's players stood where they liked, with no time said. */
+  spotSeconds: number;
   /** Seconds everyone has to put in a card and a chip (the show: three minutes). */
   submitSeconds: number;
   /** (gap) Seconds the chips are shown before the cards are. */
@@ -82,6 +85,7 @@ export function isValidConfig(config: UnderConfig): boolean {
     config.chipsOfEach,
     config.rainbowChips,
     config.sets,
+    config.spotSeconds,
     config.submitSeconds,
     config.chipsSeconds,
     config.turnSeconds,
@@ -100,6 +104,7 @@ export function isValidConfig(config: UnderConfig): boolean {
     config.rainbowChips >= 0 &&
     STANDS.length * config.chipsOfEach + config.rainbowChips === config.cards.length &&
     config.sets >= 1 &&
+    config.spotSeconds >= 1 &&
     config.submitSeconds >= 1 &&
     config.chipsSeconds >= 0 &&
     config.turnSeconds >= 1 &&
@@ -109,11 +114,19 @@ export function isValidConfig(config: UnderConfig): boolean {
 }
 
 /**
- * Where a game stands: everyone puts in a card and a chip; the chips are
- * shown; the cards are shown and the rocks placed one player at a time; the
- * round's end is shown; or the game is over.
+ * Where a game stands: everyone takes a spot to stand at, once, before the
+ * first round; everyone puts in a card and a chip; the chips are shown; the
+ * cards are shown and the rocks placed one player at a time; the round's end
+ * is shown; or the game is over.
  */
-export type UnderPhase = "submit" | "chips" | "place" | "pause" | "ended";
+export type UnderPhase = "spots" | "submit" | "chips" | "place" | "pause" | "ended";
+
+/**
+ * With fewer players than this nobody takes a spot: between two, the order is
+ * the same wherever they stand (the holder of the first-player marker, then
+ * the other).
+ */
+export const SPOTS_FROM = 3;
 
 /** How a game ended: its rounds were played, too few were left to play it, or nobody was left to go on. */
 export type UnderEnd = "rounds" | "left" | "abandoned";
@@ -169,9 +182,19 @@ export type UnderEvent =
 
 /** One game, as the room stores it. Holds what players have put in before it is shown: send only {@link viewFor} of it. */
 export interface UnderState {
-  version: 1;
-  /** The players in the order they sit, which is clockwise: by the number each is known by. */
+  version: 2;
+  /**
+   * The players, by the number each is known by, in the order they stand,
+   * which is clockwise. While spots are taken, in the order of their numbers:
+   * who stands where is in `spots` until everyone does.
+   */
   players: number[];
+  /**
+   * While spots are taken: who stands at each spot of the ring, clockwise
+   * from the first, `null` at a spot nobody has taken. Empty at any other
+   * time: `players` is then the ring.
+   */
+  spots: (number | null)[];
   phase: UnderPhase;
   /** The round being played, from 1. */
   round: number;
@@ -203,6 +226,8 @@ export interface UnderState {
 
 /** What a player can ask. */
 export type UnderAction =
+  /** To take a spot of the ring, counted from 0: once, before the first round, and it stands. */
+  | { type: "take"; spot: number }
   /** To put in a card and a chip: once a round, and it stands. */
   | { type: "submit"; card: number; chip: Chip }
   /** To have their rock placed now: on the stand of their chip, or, with the rainbow chip, on the stand they name. */
@@ -218,6 +243,12 @@ export type UnderRefusal =
   | "not-playing"
   /** What was sent is nothing the game knows. */
   | "bad-action"
+  /** Spots are not being taken now: round 1 is open, or this game has none to take. */
+  | "spots-not-open"
+  /** The player stands somewhere already, and a spot once taken is kept. */
+  | "spot-held"
+  /** Someone else stands at that spot. */
+  | "spot-taken"
   /** Cards and chips are not being put in now. */
   | "not-submitting"
   /** The player has put theirs in already. */
@@ -253,8 +284,10 @@ export interface UnderView {
   perSet: number;
   /** The number of the player this is for; `null` for someone watching. */
   you: number | null;
-  /** The players in the order they sit, clockwise. */
+  /** The players in the order they stand, clockwise; while spots are taken, in the order of their numbers. */
   players: number[];
+  /** While spots are taken: who stands at each spot of the ring, clockwise, `null` at a free one. Empty at any other time. */
+  spots: (number | null)[];
   first: number;
   limit: number;
   stands: Record<Stand, number[]>;
@@ -285,6 +318,7 @@ const copyStands = (stands: Record<Stand, number[]>): Record<Stand, number[]> =>
 function clone(state: UnderState): UnderState {
   return {
     ...state,
+    spots: [...state.spots],
     hands: state.hands.map((hand) => ({ player: hand.player, cards: [...hand.cards], chips: [...hand.chips] })),
     stands: copyStands(state.stands),
     submissions: state.submissions.map((each) => ({ ...each })),
@@ -374,7 +408,35 @@ function openRound(state: UnderState, now: number, config: UnderConfig): void {
   state.history.push({ type: "round", round: state.round, first: state.first });
 }
 
-/** Starts a game for `players`. (gap) Who holds the first-player marker at the start is drawn from `seed`: a room has no ranking to take it from. */
+/**
+ * (gap) Stands every player who has no spot at the free spots, the lowest
+ * number at the first of them: what the room does for those who are not
+ * there, and for everyone left when the time is up. `state` is changed.
+ */
+function standTheRest(state: UnderState): void {
+  const free = state.spots.flatMap((who, spot) => (who === null ? [spot] : []));
+  // while spots are taken the players are in the order of their numbers
+  const rest = state.players.filter((player) => !state.spots.includes(player));
+  rest.forEach((player, n) => {
+    state.spots[free[n]] = player;
+  });
+}
+
+/** Everyone stands somewhere: the players are in that order from here on, and round 1 opens. `state` is changed. */
+function closeSpots(state: UnderState, now: number, config: UnderConfig): void {
+  standTheRest(state);
+  state.players = state.spots.filter((who): who is number => who !== null);
+  state.spots = [];
+  openRound(state, now, config);
+}
+
+/**
+ * Starts a game for `players`. Three or more first take a spot each
+ * ({@link SPOTS_FROM}); two begin with round 1. (gap) Who holds the
+ * first-player marker at the start is drawn from `seed`: a room has no
+ * ranking to take it from. It is drawn before anyone stands, as the show's
+ * players knew who was first when they chose where to stand.
+ */
 export function createGame(
   start: { players: readonly number[]; seed: number; now: number },
   config: UnderConfig,
@@ -385,10 +447,12 @@ export function createGame(
   if (start.players.length < 2) return { ok: false, reason: "too-few" };
   const players = [...start.players].sort((a, b) => a - b);
   const random = randomSource(seedFrom(start.seed));
+  const choosing = players.length >= SPOTS_FROM;
   const state: UnderState = {
-    version: 1,
+    version: 2,
     players,
-    phase: "submit",
+    spots: choosing ? players.map(() => null) : [],
+    phase: choosing ? "spots" : "submit",
     round: 1,
     first: players[randomInt(random.next, players.length)],
     hands: [],
@@ -405,7 +469,8 @@ export function createGame(
     history: [],
   };
   dealSet(state, config);
-  openRound(state, start.now, config);
+  if (choosing) state.until = start.now + config.spotSeconds * 1000;
+  else openRound(state, start.now, config);
   return { ok: true, state };
 }
 
@@ -414,6 +479,7 @@ export function parseAction(raw: unknown): UnderAction | null {
   if (typeof raw !== "object" || raw === null) return null;
   const data = raw as Record<string, unknown>;
   if (data.type === "pass") return { type: "pass" };
+  if (data.type === "take") return isWhole(data.spot) && data.spot >= 0 ? { type: "take", spot: data.spot } : null;
   if (data.type === "submit") return isWhole(data.card) && isChip(data.chip) ? { type: "submit", card: data.card, chip: data.chip } : null;
   if (data.type === "place") {
     if (data.stand === undefined) return { type: "place" };
@@ -500,8 +566,8 @@ function placeForThem(state: UnderState, now: number, config: UnderConfig): void
 
 /**
  * Something asked by `player` at `now`. The state given is not changed.
- * Whether everyone has now put theirs in is for {@link moveOn}, which needs
- * to know who is still there.
+ * Whether everyone now has a spot, or has put theirs in, is for
+ * {@link moveOn}, which needs to know who is still there.
  */
 export function applyAction(state: UnderState, player: number, action: UnderAction, now: number, config: UnderConfig): UnderResult {
   if (state.phase === "ended") return { ok: false, reason: "game-over" };
@@ -509,6 +575,15 @@ export function applyAction(state: UnderState, player: number, action: UnderActi
   const move = parseAction(action);
   if (move === null) return { ok: false, reason: "bad-action" };
   const next = clone(state);
+  if (move.type === "take") {
+    if (state.phase !== "spots") return { ok: false, reason: "spots-not-open" };
+    // a spot once taken is kept: the show's players could not change theirs
+    if (state.spots.includes(player)) return { ok: false, reason: "spot-held" };
+    if (move.spot >= state.spots.length) return { ok: false, reason: "bad-action" };
+    if (state.spots[move.spot] !== null) return { ok: false, reason: "spot-taken" };
+    next.spots[move.spot] = player;
+    return { ok: true, state: next };
+  }
   if (move.type === "submit") {
     if (state.phase !== "submit") return { ok: false, reason: "not-submitting" };
     if (state.submissions.some((each) => each.player === player)) return { ok: false, reason: "already-submitted" };
@@ -540,12 +615,21 @@ export function applyAction(state: UnderState, player: number, action: UnderActi
 
 /**
  * Moves the game on where nobody who is `there` is being waited for. While
- * cards and chips are put in: once everyone who is there has put theirs in,
- * the room puts in for those who have gone and the chips are shown. While
- * rocks are placed: the rock of someone who has gone is placed for them at
- * once. Returns `state` itself when there is someone to wait for.
+ * spots are taken: once everyone who is there has one, the room stands those
+ * who have gone and round 1 opens. While cards and chips are put in: once
+ * everyone who is there has put theirs in, the room puts in for those who
+ * have gone and the chips are shown. While rocks are placed: the rock of
+ * someone who has gone is placed for them at once. Returns `state` itself
+ * when there is someone to wait for.
  */
 export function moveOn(state: UnderState, there: (player: number) => boolean, now: number, config: UnderConfig): UnderState {
+  if (state.phase === "spots") {
+    const waiting = state.players.some((player) => there(player) && !state.spots.includes(player));
+    if (waiting) return state;
+    const next = clone(state);
+    closeSpots(next, now, config);
+    return next;
+  }
   if (state.phase === "submit") {
     const waiting = state.players.some((player) => there(player) && !state.submissions.some((each) => each.player === player));
     if (waiting) return state;
@@ -588,6 +672,10 @@ export function deadline(state: UnderState): number | null {
 export function applyTimeout(state: UnderState, now: number, config: UnderConfig): UnderState {
   if (state.phase === "ended" || now < state.until) return state;
   const next = clone(state);
+  if (state.phase === "spots") {
+    closeSpots(next, now, config);
+    return next;
+  }
   if (state.phase === "submit") {
     submitForTheRest(next);
     showChips(next, now, config);
@@ -658,7 +746,7 @@ export function viewFor(state: UnderState, player: number | null, config: UnderC
   const you = player !== null && state.players.includes(player) ? player : null;
   const hand = you === null ? undefined : state.hands.find((each) => each.player === you);
   const mine = you === null ? undefined : state.submissions.find((each) => each.player === you);
-  const chipsOut = state.phase !== "submit";
+  const chipsOut = state.phase !== "submit" && state.phase !== "spots";
   const cardsOut = chipsOut && state.phase !== "chips";
   const rounds = roundsOf(config);
   return {
@@ -668,6 +756,7 @@ export function viewFor(state: UnderState, player: number | null, config: UnderC
     perSet: rounds.perSet,
     you,
     players: [...state.players],
+    spots: [...state.spots],
     first: state.first,
     limit: config.limit,
     stands: copyStands(state.stands),

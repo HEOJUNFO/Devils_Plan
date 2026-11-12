@@ -15,6 +15,7 @@ import configJson from "./config.json";
 import hostJson from "./host-config.json";
 import {
   abandon,
+  answersFrom,
   applyAction,
   applyTimeout,
   closeIfDone,
@@ -126,9 +127,10 @@ export interface CubesSnapshot {
    * `problem`: until the problem comes down, `null` once the game is over.
    * `locks`: for each player shut out by a wrong answer, until they may
    * answer again. `stand`: until a game standing still is ended, `null`
-   * while it goes.
+   * while it goes. `answersIn`: until the game takes an answer, 0 once it
+   * does (`minAnswerSeconds` of the rules).
    */
-  clock: { problem: number | null; locks: { player: number; left: number }[]; stand: number | null };
+  clock: { problem: number | null; locks: { player: number; left: number }[]; stand: number | null; answersIn: number };
   /** Whether the game stands still because none of its players is connected. */
   frozen: boolean;
 }
@@ -289,6 +291,7 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
           ? []
           : state.wrong.filter((entry) => entry.until > at).map((entry) => ({ player: entry.player, left: entry.until - at })),
         stand: session.frozenAt === null ? null : Math.max(0, session.frozenAt + hosting.standSeconds * 1000 - now),
+        answersIn: over ? 0 : Math.max(0, answersFrom(state, config) - at),
       },
       frozen: session.frozenAt !== null,
     };
