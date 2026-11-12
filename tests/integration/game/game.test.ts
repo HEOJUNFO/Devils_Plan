@@ -401,7 +401,11 @@ describe("GameRoom: playing a game", () => {
     const away = game.players.find((player) => player.nick === "p1");
 
     // the end of the game sets this alarm itself: nothing holds the slot any more
-    await scheduledAlarm(stub);
+    // A game that the draw makes short ends before the idle slot's time is up, and an alarm run before
+    // its time gives nothing away: the clock is moved to when it is due. (This is the wait without an
+    // end noted above: 2 runs in some 330 on 2026-11-12, one of them on the build machine.)
+    const due = await scheduledAlarm(stub);
+    advanceClock(Math.max(0, due - Date.now()) + 1);
     expect(await runDurableObjectAlarm(stub), "the alarm the end of the game sets").toBe(true);
 
     // kept while the game lasted, given up once it was over
