@@ -32,6 +32,7 @@ import {
   PING,
   PONG,
   parseDirectoryMessage,
+  parseFeedbackAnswer,
   parseServerMessage,
   type ClientMessage,
   type DirectoryMessage,
@@ -42,13 +43,13 @@ import { liftFor, placeFrame } from "../shared/frame";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptRoom } from "../shared/resume";
 import chatConfig from "../shared/chat-config.json";
+import directoryConfig from "../shared/directory-config.json";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
 import { isMuted, setMuted, startAudio } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
-import siteLinks from "./site-links.json";
 import { drawLobbyArt } from "./lobby-art";
 import { storageKey } from "./storage";
 import { TOUCH } from "./touch";
@@ -76,6 +77,9 @@ const fakeMic =
 
 /** How many fresh codes to try when a newly made code is already in use. */
 const CREATE_ATTEMPTS = 3;
+
+/** How long a word about the game waits for the directory's answer before it is taken as not sent, in ms. */
+const FEEDBACK_WAIT_MS = 10_000;
 
 /** How long the way out of a game waits for its second press. */
 const LEAVE_CONFIRM_MS = 3000;
@@ -145,6 +149,11 @@ const langButton = el<HTMLButtonElement>("lang");
 const quickButton = el<HTMLButtonElement>("quick");
 const tabShare = el<HTMLButtonElement>("tab-share");
 const about = el<HTMLElement>("about");
+const feedbackButton = el<HTMLButtonElement>("feedback");
+const feedbackSheet = el<HTMLElement>("feedback-sheet");
+const feedbackText = el<HTMLTextAreaElement>("feedback-text");
+const feedbackNote = el<HTMLElement>("feedback-note");
+const feedbackSend = el<HTMLButtonElement>("feedback-send");
 
 /** What the page is called while no room is open. */
 const SITE_TITLE = WORDS.site.tab;
@@ -162,6 +171,11 @@ function writeWords(): void {
     ["quick", WORDS.entry.quick],
     ["tab-share", WORDS.game.share],
     ["version", WORDS.site.version(BUILD)],
+    ["feedback", WORDS.site.feedback],
+    ["feedback-title", WORDS.feedback.title],
+    ["feedback-hint", WORDS.feedback.hint],
+    ["feedback-close", WORDS.feedback.close],
+    ["feedback-send", WORDS.feedback.send],
     ["by-code", WORDS.entry.byCode],
     ["join", WORDS.entry.join],
     ["new-room-title", WORDS.newRoom.title],
@@ -201,11 +215,8 @@ function writeWords(): void {
   quickButton.title = WORDS.entry.quickHint;
   tabShare.title = WORDS.game.shareHint;
   tabShare.setAttribute("aria-label", WORDS.game.shareHint);
-  // Where a word about the game can be sent, where there is such a place (`site-links.json`): none, and the link is not shown.
-  const feedback = el<HTMLAnchorElement>("feedback");
-  feedback.textContent = WORDS.site.feedback;
-  feedback.hidden = siteLinks.feedback === "";
-  if (siteLinks.feedback !== "") feedback.href = siteLinks.feedback;
+  feedbackText.setAttribute("aria-label", WORDS.feedback.box);
+  feedbackText.maxLength = directoryConfig.feedback.maxLength;
   // One other language, on one button, named as its own readers name it. More would take a list.
   const [other] = OTHER_LANGS;
   if (other !== undefined) {
@@ -231,6 +242,11 @@ function loadToken(): string {
 // What the style sheet lays out for a finger: larger buttons, and one menu over a game (style.css).
 document.documentElement.classList.toggle("touch", TOUCH);
 
+/** Whether `target` is a box that is typed in: a line of one, or the larger one a word about the game is written in. */
+function isBox(target: unknown): target is HTMLInputElement | HTMLTextAreaElement {
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+}
+
 /** The window the frame was last fitted to, in CSS pixels. */
 let fitted = { width: 0, height: 0 };
 
@@ -242,7 +258,7 @@ let fitted = { width: 0, height: 0 };
 function fitFrame(): void {
   // Where a phone's browser shrinks the window for its keyboard, the frame is not shrunk to the strip
   // that is left while a box is typed in: it keeps its size and is lifted (`liftFrame`).
-  const typing = TOUCH && document.activeElement instanceof HTMLInputElement && innerWidth === fitted.width;
+  const typing = TOUCH && isBox(document.activeElement) && innerWidth === fitted.width;
   const height = typing ? Math.max(innerHeight, fitted.height) : innerHeight;
   fitted = { width: innerWidth, height };
   const placed = placeFrame({ width: innerWidth, height, density: devicePixelRatio || 1, coarse: TOUCH });
@@ -266,7 +282,7 @@ function liftFrame(): void {
   const seen = window.visualViewport;
   const box = document.activeElement;
   let lift = 0;
-  if (TOUCH && seen != null && box instanceof HTMLInputElement && frame.contains(box)) {
+  if (TOUCH && seen != null && isBox(box) && frame.contains(box)) {
     // where the box ends with the frame where it belongs
     const bottom = box.getBoundingClientRect().bottom + lifted;
     lift = liftFor(bottom, seen.offsetTop, seen.height, KEYBOARD_MARGIN);
@@ -282,7 +298,7 @@ if (TOUCH) {
   addEventListener("focusout", () => {
     liftFrame();
     // a browser that moved the page for its keyboard does not always move it back
-    if (!(document.activeElement instanceof HTMLInputElement)) scrollTo(0, 0);
+    if (!isBox(document.activeElement)) scrollTo(0, 0);
   });
 }
 
@@ -367,6 +383,9 @@ let waking = false;
 let quickRest: string[] | null = null;
 /** The build the server last said it is, where that is another than this page's and the page is to be loaded again for it. */
 let newerBuild: string | null = null;
+
+/** The wait for the directory's answer to a word about the game, while one has been sent and not answered. */
+let feedbackWait: ReturnType<typeof setTimeout> | null = null;
 
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
@@ -585,6 +604,8 @@ function keepAwake(): void {
 function showLobbyLinks(shown: boolean): void {
   langButton.hidden = !shown;
   about.hidden = !shown;
+  // the sheet for a word about the game belongs to the lobby, and goes with it
+  if (!shown) showFeedback(false);
 }
 
 /** The words under the scene, and whether the rules can be opened from there. */
@@ -709,7 +730,7 @@ function loadNewer(): void {
   if (table !== null || voice.on || creating || entering !== null || startAsked) return;
   // in the lobby: a code typed in, or a nickname other than the one kept, which a reload would put back
   const typedInLobby = currentCode === "" && (codeInput.value.trim() !== "" || nickInput.value !== (localStorage.getItem(storageKey("nick")) ?? ""));
-  if (chatInput.value !== "" || typedInLobby || !newRoom.hidden) return;
+  if (chatInput.value !== "" || typedInLobby || !newRoom.hidden || feedbackText.value !== "" || feedbackWait !== null) return;
   try {
     // noted first: a page that comes back the same is not loaded a second time (`outOfDate`)
     sessionStorage.setItem(storageKey("reloaded-from"), BUILD);
@@ -860,10 +881,15 @@ function watchRooms(): void {
     if (listSocket === current && listedGame !== null) askForGame();
   });
   current.addEventListener("message", (event) => {
+    if (listSocket !== current) return;
+    const answer = parseFeedbackAnswer(event.data);
+    if (answer !== null) return feedbackAnswered(answer.sent);
     const message = parseDirectoryMessage(event.data);
-    if (message === null || listSocket !== current) return;
+    if (message === null) return;
     roomsSent = message;
     renderRooms();
+    // a word about the game is offered only where the server can send one on
+    feedbackButton.hidden = message.feedback !== true;
     heardBuild(message.build);
   });
   current.addEventListener("close", () => {
@@ -871,8 +897,64 @@ function watchRooms(): void {
     if (listSocket !== current) return;
     roomsSent = null;
     renderRooms();
+    // a word sent on the connection that dropped is not going to be answered
+    if (feedbackWait !== null) feedbackAnswered(false);
   });
 }
+
+// ---- A word about the game ----------------------------------------------------------------------
+
+/** Opens the sheet a word about the game is written on, or puts it away; what was written and not sent is kept while the page is open. */
+function showFeedback(open: boolean): void {
+  feedbackSheet.hidden = !open;
+  if (!open) return;
+  feedbackNote.textContent = "";
+  feedbackNote.classList.remove("failed");
+  // Under a finger a box that takes the focus by itself brings the keyboard up over the sheet before it has been read.
+  if (!TOUCH) feedbackText.focus();
+}
+
+/** Says on the sheet how the sending stands: on its way, gone, or not. */
+function sayFeedback(text: string, failed: boolean, sending = false): void {
+  feedbackNote.textContent = text;
+  feedbackNote.classList.toggle("failed", failed);
+  feedbackSend.disabled = sending;
+  feedbackSend.textContent = sending ? WORDS.feedback.sending : WORDS.feedback.send;
+  feedbackSend.setAttribute("aria-busy", String(sending));
+}
+
+/**
+ * Sends what was written to the directory, over the connection the lobby
+ * has to it, with the language and the build of this page and nothing of the
+ * player. The directory answers whether it went on (`feedbackAnswered`); no
+ * answer in a while is taken as a no.
+ */
+function sendFeedback(): void {
+  if (feedbackWait !== null) return;
+  if (feedbackText.value.trim() === "") {
+    sayFeedback(WORDS.feedback.empty, true);
+    feedbackText.focus();
+    return;
+  }
+  if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return sayFeedback(WORDS.feedback.failed, true);
+  const request: DirectoryRequest = { type: "feedback", text: feedbackText.value, lang, build: BUILD };
+  listSocket.send(JSON.stringify(request));
+  sayFeedback("", false, true);
+  feedbackWait = setTimeout(() => feedbackAnswered(false), FEEDBACK_WAIT_MS);
+}
+
+/** The directory said whether the word about the game went on, or said nothing for too long. What was sent is cleared; what was not stays to be sent again. */
+function feedbackAnswered(sent: boolean): void {
+  if (feedbackWait === null) return;
+  clearTimeout(feedbackWait);
+  feedbackWait = null;
+  if (sent) feedbackText.value = "";
+  sayFeedback(sent ? WORDS.feedback.sent : WORDS.feedback.failed, !sent);
+}
+
+feedbackButton.addEventListener("click", () => showFeedback(true));
+el<HTMLButtonElement>("feedback-close").addEventListener("click", () => showFeedback(false));
+feedbackSend.addEventListener("click", sendFeedback);
 
 function unwatchRooms(): void {
   listSocket?.close();
@@ -1654,7 +1736,7 @@ for (const type of ["pointerup", "touchend", "click"] as const) {
 // the game. A text box keeps it: that is where pasting is.
 if (TOUCH) {
   frame.addEventListener("contextmenu", (event) => {
-    if (!(event.target instanceof HTMLInputElement)) event.preventDefault();
+    if (!isBox(event.target)) event.preventDefault();
   });
 }
 
@@ -1714,6 +1796,7 @@ el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
 addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!gameMenu.hidden) openMenu(false);
+  else if (!feedbackSheet.hidden) showFeedback(false);
   else if (!rules.hidden) rules.hidden = true;
   else if (!newRoom.hidden) closeNewRoom();
   else if (!roomsGames.hidden) {

@@ -22,8 +22,20 @@ const ko = {
     turnFull: "가로 전체 화면으로 보기",
     /** In the lobby's bar: which build the page is, to name when something is reported. */
     version: (build: string) => `버전 ${build}`,
-    /** On the link to where a word about the game can be sent. */
+    /** On the button that opens the sheet for a word about the game. */
     feedback: "의견 보내기",
+  },
+  /** A word about the game, for whoever makes it: the sheet it is written on. */
+  feedback: {
+    title: "의견 보내기",
+    hint: "버그, 불편한 점, 바라는 점을 적어 주세요. 닉네임이나 연락처는 함께 가지 않으니, 답을 받으려면 연락처를 적어 주세요.",
+    box: "보낼 내용",
+    send: "보내기",
+    sending: "보내는 중…",
+    close: "닫기",
+    empty: "내용을 적어 주세요.",
+    sent: "보냈습니다. 고맙습니다.",
+    failed: "지금은 보내지 못했습니다. 잠시 뒤에 다시 보내 주세요.",
   },
   entry: {
     sub: "방을 고르거나 만드세요",
@@ -223,6 +235,17 @@ const en: typeof ko = {
     turnFull: "Go full screen, sideways",
     version: (build) => `Version ${build}`,
     feedback: "Send feedback",
+  },
+  feedback: {
+    title: "Send feedback",
+    hint: "A bug, something awkward, something you wish for. Your nickname and contact do not go with it: for an answer, say where to reach you.",
+    box: "What to send",
+    send: "Send",
+    sending: "Sending…",
+    close: "Close",
+    empty: "Write something first.",
+    sent: "Sent. Thank you.",
+    failed: "It could not be sent now. Try again in a while.",
   },
   entry: {
     sub: "Pick a room or make one",

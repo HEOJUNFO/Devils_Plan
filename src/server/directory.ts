@@ -12,12 +12,14 @@ import {
   type DirectoryConfig,
   type DirectoryEntry,
 } from "../shared/directory";
+import { feedbackLetter, normalizeFeedback, type Letter } from "../shared/feedback";
 import { isGameId, type GameId } from "../shared/games";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
-import { parseDirectoryRequest, type DirectoryMessage } from "../shared/protocol";
+import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
 import { countedAs } from "./address";
+import { mailReady, sendLetter, type MailEnv } from "./mail";
 
 const config: DirectoryConfig = directoryConfig;
 const rooms: RoomConfig = roomConfig;
@@ -27,6 +29,8 @@ export const REPORT_PATH = "/report";
 export const MAKE_PATH = "/make";
 /** The longest an address is written: an IPv6 address with an IPv4 one for its end. */
 const ADDRESS_MAX_LENGTH = 45;
+/** How long a word about the game counts against the day's limit, in ms. */
+const DAY_MS = 86_400_000;
 
 /**
  * What is kept of an address that made a room: a digest of what it is
@@ -78,6 +82,8 @@ export class RoomDirectory extends Server<Env> {
   private entries = new Map<string, DirectoryEntry>();
   /** How fast each viewer has been asking for another game, by connection id. Forgotten in sleep, when nobody is asking. */
   private readonly showPace = new Map<string, Pace>();
+  /** How many words about the game each viewer has sent lately, by connection id. Forgotten in sleep: the day's limit is kept. */
+  private readonly feedbackPace = new Map<string, Pace>();
 
   /** Runs on first start and on every wake from hibernation. */
   onStart(): void {
@@ -88,6 +94,8 @@ export class RoomDirectory extends Server<Env> {
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS made (key TEXT NOT NULL, at INTEGER NOT NULL)");
     this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS made_by_key ON made (key, at)");
     this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS made_by_time ON made (at)");
+    // one row for each word about the game sent on, kept a day: when, and nothing of what or who
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS feedback (at INTEGER NOT NULL)");
     this.entries = new Map();
     const rows = this.ctx.storage.sql
       .exec<{ code: string; v: string; updated_at: number }>("SELECT code, v, updated_at FROM rooms")
@@ -105,12 +113,14 @@ export class RoomDirectory extends Server<Env> {
 
   /**
    * A viewer picked a game, or every game again: they are sent that list now
-   * and from now on. Anything else a viewer sends is not read.
+   * and from now on. Or a viewer wrote a word about the game, which is sent
+   * on. Anything else a viewer sends is not read.
    */
-  onMessage(connection: Connection<ViewerState>, message: WSMessage): void {
+  async onMessage(connection: Connection<ViewerState>, message: WSMessage): Promise<void> {
     const request = parseDirectoryRequest(message);
     if (request === null) return;
     const now = Date.now();
+    if (request.type === "feedback") return this.takeFeedback(connection, request, now);
     // A page of ours asks once for each game picked; one that is not may not make the directory sort without end.
     const paced = pace(this.showPace.get(connection.id), now, config.showLimit.burst, config.showLimit.windowSeconds);
     this.showPace.set(connection.id, paced.pace);
@@ -121,6 +131,48 @@ export class RoomDirectory extends Server<Env> {
 
   onClose(connection: Connection<ViewerState>): void {
     this.showPace.delete(connection.id);
+    this.feedbackPace.delete(connection.id);
+  }
+
+  /**
+   * Sends a viewer's word about the game on as a letter, and tells them
+   * whether it went. Not when there is nothing in it, when this viewer has
+   * sent their few for now, when the day's letters have all been sent, or
+   * where no letter can be sent from: none of which is told apart to the
+   * viewer, who can only try again later. Nothing of the viewer is kept or
+   * sent on, and the log gets that a letter went, never what it said.
+   */
+  private async takeFeedback(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "feedback" }>, now: number): Promise<void> {
+    const answer = (sent: boolean): void => {
+      const said: FeedbackAnswer = { type: "feedback", sent };
+      connection.send(JSON.stringify(said));
+    };
+    const limits = config.feedback;
+    const paced = pace(this.feedbackPace.get(connection.id), now, limits.viewerLimit.burst, limits.viewerLimit.windowSeconds);
+    this.feedbackPace.set(connection.id, paced.pace);
+    const text = normalizeFeedback(request.text, limits);
+    if (!paced.ok || text === null || !this.takesFeedback()) return answer(false);
+    // From here to the row nothing is waited for, so no other letter comes between the count and the row.
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM feedback WHERE at <= ?", now - DAY_MS);
+    if (sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feedback").one().n >= limits.dayLimit) {
+      console.log("feedback turned away: the day's letters are all sent");
+      return answer(false);
+    }
+    sql.exec("INSERT INTO feedback (at) VALUES (?)", now);
+    const sent = await this.sendLetter(feedbackLetter(text, { lang: request.lang, build: request.build }));
+    if (sent) console.log("feedback sent");
+    answer(sent);
+  }
+
+  /** Whether a word about the game can be sent on from here: see `mail.ts`. A method of its own so that a test can say so. */
+  takesFeedback(): boolean {
+    return mailReady(this.env as unknown as MailEnv);
+  }
+
+  /** Sends a letter, and says whether it went. A method of its own so that a test can stand in for the service that carries it. */
+  sendLetter(letter: Letter): Promise<boolean> {
+    return sendLetter(this.env as unknown as MailEnv, letter);
   }
 
   /**
@@ -226,7 +278,7 @@ export class RoomDirectory extends Server<Env> {
 
   /** The list as sent to a viewer of `game`, or of every game. */
   private message(now: number, game: GameId | null, counts: DirectoryMessage["counts"]): string {
-    const message: DirectoryMessage = { type: "rooms", rooms: listRooms([...this.entries.values()], now, config, game), counts, build: BUILD };
+    const message: DirectoryMessage = { type: "rooms", rooms: listRooms([...this.entries.values()], now, config, game), counts, build: BUILD, feedback: this.takesFeedback() };
     return JSON.stringify(message);
   }
 }

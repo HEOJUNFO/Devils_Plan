@@ -12,6 +12,7 @@ import type { PokerHostRefusal, PokerSnapshot } from "./games/memory-poker/host"
 import type { MarketHostRefusal, MarketSnapshot } from "./games/mystery-stock-market/host";
 import type { UnderHostRefusal, UnderSnapshot } from "./games/under-thirteen/host";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
+import { isLang, type Lang } from "./lang";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
 import { parseRtcSignal, type RtcSignal, type VoiceConfig, type VoiceMember } from "./voice";
@@ -157,21 +158,39 @@ export interface DirectoryMessage {
   counts?: RoomCounts;
   /** The build the directory's code is from (`build.ts`). Not sent by a directory from before builds were said. */
   build?: string;
+  /** Whether a word about the game can be sent from here (`DirectoryRequest`): the page offers it only where it can. */
+  feedback?: boolean;
 }
 
 /**
- * Client → directory: show the rooms of this game only, or of every game
- * (`null`, which is what a viewer is shown until they ask). The one thing
- * the directory reads of what a viewer sends. Asked again on every
- * reconnect: a new connection starts with every game.
+ * Directory → client: what became of the word about the game this viewer
+ * sent. `sent` is whether it went on its way; not why it did not, which is
+ * nothing its writer can do anything about but try again later.
  */
-export interface DirectoryRequest {
-  type: "show";
-  game: GameId | null;
+export interface FeedbackAnswer {
+  type: "feedback";
+  sent: boolean;
 }
 
-/** The longest text the directory reads as a request: the longest there is fits several times over. */
-export const MAX_DIRECTORY_REQUEST_LENGTH = 256;
+/**
+ * Client → directory, the two things it reads of what a viewer sends.
+ *
+ * `show`: the rooms of this game only, or of every game (`null`, which is
+ * what a viewer is shown until they ask). Asked again on every reconnect: a
+ * new connection starts with every game.
+ *
+ * `feedback`: a word about the game for whoever makes it (`feedback.ts`),
+ * with the language the page is read in and the build it is. Nothing of the
+ * player goes with it. Answered with a {@link FeedbackAnswer}.
+ */
+export type DirectoryRequest =
+  | { type: "show"; game: GameId | null }
+  | { type: "feedback"; text: string; lang: Lang; build: string };
+
+/** The longest text the directory reads as a request: a word about the game at its longest fits, each of its letters written the long way. */
+export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
+/** The longest a build's name is read. */
+const MAX_BUILD_LENGTH = 16;
 
 /** Client → server. */
 export type ClientMessage =
@@ -316,13 +335,28 @@ export function parseDirectoryMessage(raw: unknown): DirectoryMessage | null {
     message.counts = data.counts as RoomCounts;
   }
   if (typeof data.build === "string") message.build = data.build;
+  if (typeof data.feedback === "boolean") message.feedback = data.feedback;
   return message;
+}
+
+/** Parses the directory's answer to a word about the game, returning `null` for anything else. */
+export function parseFeedbackAnswer(raw: unknown): FeedbackAnswer | null {
+  const data = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (data === null || data.type !== "feedback" || typeof data.sent !== "boolean") return null;
+  return { type: "feedback", sent: data.sent };
 }
 
 /** Parses what a viewer sends the directory, returning `null` for anything unrecognised or oversized. */
 export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
   const data = parseObject(raw, MAX_DIRECTORY_REQUEST_LENGTH);
-  if (data === null || data.type !== "show") return null;
+  if (data === null) return null;
+  if (data.type === "feedback") {
+    if (typeof data.text !== "string" || !isLang(data.lang)) return null;
+    // which build the page says it is helps read the letter and is trusted for nothing: cut short, whatever it is
+    const build = typeof data.build === "string" ? data.build.slice(0, MAX_BUILD_LENGTH) : "";
+    return { type: "feedback", text: data.text, lang: data.lang, build };
+  }
+  if (data.type !== "show") return null;
   if (data.game !== null && !isGameId(data.game)) return null;
   return { type: "show", game: data.game };
 }

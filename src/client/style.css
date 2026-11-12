@@ -917,8 +917,78 @@ button.choice[aria-pressed="true"] {
   display: none;
 }
 
-#about a {
+/* The button for a word about the game: among the bar's words, as plain as they are. */
+#feedback {
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--bone-dim);
+  text-decoration: underline;
+}
+
+@media (hover: hover) {
+  #feedback:hover {
+    color: var(--bone);
+  }
+}
+
+/* A word about the game: a sheet over the lobby, as the rules are, with a box to write in. */
+#feedback-sheet {
+  position: absolute;
+  left: 60px;
+  top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 360px;
+  height: 196px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#feedback-sheet[hidden] {
+  display: none;
+}
+
+#feedback-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#feedback-text {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--edge);
+  border-radius: 0;
+  outline: none;
+  background: var(--ink);
+  color: var(--bone);
+  font: inherit;
+  resize: none;
+  scrollbar-color: var(--edge) var(--ink);
+  scrollbar-width: thin;
+}
+
+#feedback-text:focus {
+  border-color: var(--amber);
+}
+
+/* How it went, on the line over the buttons: there whether or not it has anything to say. */
+#feedback-note {
+  min-height: 15px;
+  color: var(--teal);
+}
+
+#feedback-note.failed {
+  color: var(--crimson);
+}
+
+#feedback-sheet .row {
+  justify-content: flex-end;
 }
 
 /* The way out of a game sits over the wall at the top left, clear of the panel. */
@@ -1027,6 +1097,17 @@ button.choice[aria-pressed="true"] {
   height: 24px;
   font-size: 16px;
   line-height: 20px;
+}
+
+:root.touch #feedback-text {
+  font-size: 16px;
+  line-height: 20px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+:root.touch #feedback-sheet button {
+  height: 24px;
 }
 
 /* What a box says while it is empty stays the size of the page's other words: only what is typed has to be 16, and "Say something" at 16 does not fit its box. */

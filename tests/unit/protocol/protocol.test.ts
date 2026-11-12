@@ -8,6 +8,7 @@ import {
   parseClientMessage,
   parseDirectoryMessage,
   parseDirectoryRequest,
+  parseFeedbackAnswer,
   parseServerMessage,
 } from "../../../src/shared/protocol";
 
@@ -283,6 +284,11 @@ describe("parseDirectoryMessage", () => {
     expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], build: 7 }))).toEqual({ type: "rooms", rooms: [] });
   });
 
+  it("reads whether a word about the game can be sent from here, and takes anything but yes or no as not said", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], feedback: true }))).toEqual({ type: "rooms", rooms: [], feedback: true });
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], feedback: "yes" }))).toEqual({ type: "rooms", rooms: [] });
+  });
+
   it("drops counts that are not counts by game, keeping the list", () => {
     const rooms = [{ code: "ABCDE", game: DEFAULT_GAME, host: "ann", players: 2, maxPlayers: 6, playing: false }];
 
@@ -292,7 +298,38 @@ describe("parseDirectoryMessage", () => {
   });
 });
 
+describe("parseFeedbackAnswer", () => {
+  it("reads whether the word about the game went on its way", () => {
+    expect(parseFeedbackAnswer(JSON.stringify({ type: "feedback", sent: true }))).toEqual({ type: "feedback", sent: true });
+    expect(parseFeedbackAnswer(JSON.stringify({ type: "feedback", sent: false }))).toEqual({ type: "feedback", sent: false });
+  });
+
+  it("rejects a list of rooms, and an answer that does not say", () => {
+    expect(parseFeedbackAnswer(JSON.stringify({ type: "rooms", rooms: [] }))).toBeNull();
+    expect(parseFeedbackAnswer(JSON.stringify({ type: "feedback" }))).toBeNull();
+    expect(parseFeedbackAnswer("feedback")).toBeNull();
+  });
+});
+
 describe("parseDirectoryRequest", () => {
+  it("reads a word about the game, with the language and the build of the page it was written on", () => {
+    const raw = JSON.stringify({ type: "feedback", text: "the list is slow", lang: "en", build: "abc1234" });
+
+    expect(parseDirectoryRequest(raw)).toEqual({ type: "feedback", text: "the list is slow", lang: "en", build: "abc1234" });
+  });
+
+  it("keeps only the fields of a word about the game, and cuts a build's name short", () => {
+    const raw = JSON.stringify({ type: "feedback", text: "hi", lang: "ko", build: "x".repeat(200), nick: "ann", token: "secret" });
+
+    expect(parseDirectoryRequest(raw)).toEqual({ type: "feedback", text: "hi", lang: "ko", build: "x".repeat(16) });
+  });
+
+  it("rejects a word about the game with no text, or in a language there are no words for", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "feedback", lang: "en", build: "a" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "feedback", text: 7, lang: "en", build: "a" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "feedback", text: "hi", lang: "xx", build: "a" }))).toBeNull();
+  });
+
   it("reads a request for the rooms of one game", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "show", game: DEFAULT_GAME }))).toEqual({ type: "show", game: DEFAULT_GAME });
   });

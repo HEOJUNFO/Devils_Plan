@@ -3,6 +3,7 @@ import { env, exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import type { RoomListing } from "../../../src/shared/directory";
+import type { Letter } from "../../../src/shared/feedback";
 import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
 import {
   DIRECTORY_NAME,
@@ -484,5 +485,176 @@ describe("RoomDirectory", () => {
     });
 
     expect(asked.status).toBe(404);
+  });
+});
+
+/** What became of a word about the game, as the directory answers it. */
+interface Answer {
+  type: string;
+  sent?: boolean;
+  feedback?: boolean;
+}
+
+/** Makes the directory take feedback and hand each letter to `letters` in place of the service that carries them; `goes` is whether the service takes it. */
+async function standInForMail(letters: Letter[], goes = true): Promise<void> {
+  const directory = env.RoomDirectory.get(env.RoomDirectory.idFromName(DIRECTORY_NAME));
+  await runInDurableObject(directory, (object, state) => {
+    // every test starts with none of the day's letters sent
+    state.storage.sql.exec("DELETE FROM feedback");
+    const taking = object as unknown as { takesFeedback(): boolean; sendLetter(letter: Letter): Promise<boolean> };
+    taking.takesFeedback = () => true;
+    taking.sendLetter = async (letter) => {
+      letters.push(letter);
+      return goes;
+    };
+  });
+}
+
+/** Puts the directory back to sending letters as it does by itself: here, with no key, not at all. */
+async function mailAsItIs(): Promise<void> {
+  const directory = env.RoomDirectory.get(env.RoomDirectory.idFromName(DIRECTORY_NAME));
+  await runInDurableObject(directory, (object) => {
+    const taking = object as unknown as Record<string, unknown>;
+    delete taking.takesFeedback;
+    delete taking.sendLetter;
+  });
+}
+
+/** Someone in the lobby who writes a word about the game. */
+async function writer(): Promise<Inbox<Answer>> {
+  const inbox = new Inbox<Answer>(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
+  // the list comes first, to everyone who connects
+  await inbox.next();
+  return inbox;
+}
+
+/** Reads forward to the answer to a word about the game. */
+async function answerTo(inbox: Inbox<Answer>): Promise<Answer> {
+  for (;;) {
+    const message = await inbox.next();
+    if (message.type === "feedback") return message;
+  }
+}
+
+function write(inbox: Inbox<Answer>, text: string): void {
+  const request: DirectoryRequest = { type: "feedback", text, lang: "ko", build: "abc1234" };
+  inbox.sendRaw(JSON.stringify(request));
+}
+
+describe("RoomDirectory: a word about the game", () => {
+  afterEach(async () => {
+    await mailAsItIs();
+  });
+
+  it("says with the list that no feedback is taken where no letter can be sent from, and sends none on", async () => {
+    await mailAsItIs();
+    const inbox = new Inbox<Answer>(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
+    const list = await inbox.next();
+
+    write(inbox, "anyone there?");
+
+    expect(list).toMatchObject({ type: "rooms", feedback: false });
+    expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: false });
+    inbox.close();
+  });
+
+  it("sends a word about the game on as a letter, with the language and build of its page and nothing of its writer", async () => {
+    const letters: Letter[] = [];
+    await standInForMail(letters);
+    const inbox = await writer();
+
+    write(inbox, "  방 목록이 느려요 \n\n두 번째 줄  ");
+
+    expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: true });
+    expect(letters).toEqual([{ subject: "[Brain Survival] 방 목록이 느려요", text: "방 목록이 느려요\n두 번째 줄\n\n--\nlanguage: ko\nbuild: abc1234" }]);
+    inbox.close();
+  });
+
+  it("says with the list that feedback is taken where a letter can be sent from", async () => {
+    await standInForMail([]);
+
+    const inbox = new Inbox<Answer>(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
+
+    expect(await inbox.next()).toMatchObject({ type: "rooms", feedback: true });
+    inbox.close();
+  });
+
+  it("tells the writer when the letter did not go", async () => {
+    const letters: Letter[] = [];
+    await standInForMail(letters, false);
+    const inbox = await writer();
+
+    write(inbox, "does this arrive?");
+
+    expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: false });
+    expect(letters).toHaveLength(1);
+    inbox.close();
+  });
+
+  it("sends nothing on for a text with nothing in it", async () => {
+    const letters: Letter[] = [];
+    await standInForMail(letters);
+    const inbox = await writer();
+
+    write(inbox, " \n \n");
+
+    expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: false });
+    expect(letters).toEqual([]);
+    inbox.close();
+  });
+
+  it("takes only so many from one viewer in a while", async () => {
+    const letters: Letter[] = [];
+    await standInForMail(letters);
+    const inbox = await writer();
+    const few = directoryConfig.feedback.viewerLimit.burst;
+
+    const answers: Answer[] = [];
+    for (let n = 0; n <= few; n++) {
+      write(inbox, `word ${n}`);
+      answers.push(await answerTo(inbox));
+    }
+
+    expect(answers.map((answer) => answer.sent)).toEqual([...Array<boolean>(few).fill(true), false]);
+    expect(letters).toHaveLength(few);
+    inbox.close();
+  });
+
+  it("sends on only so many in a day from everyone together, and again a day later", async () => {
+    const letters: Letter[] = [];
+    await standInForMail(letters);
+    const most = directoryConfig.feedback.dayLimit;
+    // each writer is a new viewer, so only the day's limit is met
+    const sendOne = async (n: number): Promise<boolean | undefined> => {
+      const inbox = await writer();
+      write(inbox, `word ${n}`);
+      const answer = await answerTo(inbox);
+      inbox.close();
+      return answer.sent;
+    };
+    for (let n = 0; n < most; n++) expect(await sendOne(n)).toBe(true);
+
+    const over = await sendOne(most);
+    advanceClock(86_400_000 + 1);
+    const nextDay = await sendOne(most + 1);
+
+    expect(over).toBe(false);
+    expect(nextDay).toBe(true);
+    expect(letters).toHaveLength(most + 1);
+  });
+
+  it("writes to the log that a letter went, and nothing of what it said", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    await standInForMail([]);
+    const inbox = await writer();
+
+    write(inbox, "a secret between us");
+    await answerTo(inbox);
+
+    const lines = said.mock.calls.map((call) => call.join(" "));
+    said.mockRestore();
+    expect(lines).toContain("feedback sent");
+    expect(lines.join("\n")).not.toContain("secret");
+    inbox.close();
   });
 });

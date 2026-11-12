@@ -110,8 +110,8 @@
         <button id="rules-open" type="button" hidden></button>
         <!-- The other language the page can be read in, named in that language; offered in the lobby. -->
         <button id="lang" type="button" hidden></button>
-        <!-- In the lobby: where to send a word about the game, where there is such a place, and which build the page is. -->
-        <p id="about" class="dim" hidden><a id="feedback" target="_blank" rel="noopener" hidden></a><span id="version"></span></p>
+        <!-- In the lobby: the button for a word about the game, where one can be sent on, and which build the page is. -->
+        <p id="about" class="dim" hidden><button id="feedback" type="button" hidden></button><span id="version"></span></p>
       </footer>
 
       <canvas id="table" hidden></canvas>
@@ -153,6 +153,18 @@
           <button id="menu-sound" type="button"></button>
           <button id="menu-full" type="button" hidden></button>
           <button id="menu-close" type="button" class="primary"></button>
+        </div>
+      </section>
+
+      <!-- A word about the game, for whoever makes it: sent through the list of rooms, which the lobby is connected to. -->
+      <section id="feedback-sheet" role="dialog" aria-modal="true" aria-labelledby="feedback-title" hidden>
+        <h2 id="feedback-title"></h2>
+        <p id="feedback-hint" class="dim"></p>
+        <textarea id="feedback-text" autocomplete="off"></textarea>
+        <p id="feedback-note" role="status"></p>
+        <div class="row">
+          <button id="feedback-close" type="button"></button>
+          <button id="feedback-send" type="button" class="primary"></button>
         </div>
       </section>
 

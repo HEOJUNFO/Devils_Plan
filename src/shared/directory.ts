@@ -8,6 +8,7 @@
  * it. Pure functions over plain data, so the same code is unit-tested directly
  * and run inside the directory's Durable Object.
  */
+import type { FeedbackConfig } from "./feedback";
 import { GAME_IDS, isGameId, type GameId } from "./games";
 import {
   capacityOf,
@@ -34,6 +35,8 @@ export interface DirectoryConfig {
    * a page that is not ours.
    */
   showLimit: MessageLimit;
+  /** A word about the game, sent through the directory: how long, and how many (`feedback.ts`). */
+  feedback: FeedbackConfig;
   /**
    * How many rooms one network address may make: each entry so many within
    * its window, and all of them hold at once (a few in a minute, and a good

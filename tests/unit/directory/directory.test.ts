@@ -66,6 +66,7 @@ function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryCon
     maxStored: 5,
     staleHours: 2,
     showLimit: { burst: 3, windowSeconds: 10 },
+    feedback: { maxLength: 40, viewerLimit: { burst: 2, windowSeconds: 60 }, dayLimit: 5 },
     makeLimits: MAKE_LIMITS,
     ...overrides,
   };
