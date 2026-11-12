@@ -122,6 +122,17 @@ export interface RoomConfig {
   turnSecondsChoices: number[];
   /** The length of turn a room on the list starts with. A room off it starts with no limit. */
   listedTurnSeconds: number;
+  /**
+   * Seconds everyone but the host may have been ready, with no game started,
+   * before the room asks the host's page whether its player is there
+   * ({@link waitingOnHost}). A host who has walked away from a page left
+   * open would otherwise hold the room for good: only the host starts a game.
+   */
+  hostIdleSeconds: number;
+  /** Seconds the host's page has to answer in. With no answer the room passes to the next host ({@link nextHost}). */
+  hostAnswerSeconds: number;
+  /** How many players the host has sent out a room remembers, the latest of them: they are not let back in. */
+  maxBarred: number;
 }
 
 /** How many messages of one sort a player may send: `burst` within any window of `windowSeconds`. */
@@ -160,6 +171,12 @@ export interface LobbyPlayer {
    * first leads it (see {@link leadersOf}).
    */
   teamSince?: number;
+  /**
+   * There while the player has said they are ready for the next game. Taken
+   * back when they go away, when a game starts, and when they become host:
+   * the host does not say so, the host starts.
+   */
+  ready?: true;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -180,6 +197,13 @@ export interface LobbyState {
   nextSeq?: number;
   /** The `teamSince` the next player to take a team gets. */
   nextTeamSince?: number;
+  /**
+   * The tokens of the players the host has sent out of the room, the latest
+   * `maxBarred` of them: they are not let back in. A token is a browser's,
+   * not a person's, so this keeps out whoever does not go to the trouble of
+   * a new one, and no more than that.
+   */
+  barred?: string[];
 }
 
 /** A player as everyone may see them. Carries no token. */
@@ -192,6 +216,8 @@ export interface PublicPlayer {
   team: number;
   /** Whether they lead that team: of those connected in it, the one who took it first. */
   leads: boolean;
+  /** Whether they have said they are ready for the next game. Never so for the host, nor for a player who is away. */
+  ready: boolean;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -216,7 +242,12 @@ export interface LobbyView {
 }
 
 /** Why a join was refused. */
-export type JoinRejection = "full" | "bad-nick" | "bad-token";
+export type JoinRejection =
+  | "full"
+  | "bad-nick"
+  | "bad-token"
+  /** The host sent this player out of the room, which does not let them back in. */
+  | "kicked";
 
 /** Outcome of {@link joinLobby}. */
 export type JoinResult =
@@ -343,6 +374,8 @@ export function joinLobby(
   const nick = normalizeNick(request.nick, config);
   if (nick === null) return { ok: false, reason: "bad-nick" };
 
+  if (state.barred?.includes(request.token) === true) return { ok: false, reason: "kicked" };
+
   const existing = findPlayer(state, request.token);
   if (existing) {
     // back from being away, if they were
@@ -409,7 +442,9 @@ export function markAway(state: LobbyState, connectedSlots: ReadonlySet<number>,
     }
     if (p.awaySince !== undefined) return p;
     changed = true;
-    return { ...p, awaySince: now };
+    // whoever is not here is not ready
+    const { ready: _ready, ...gone } = p;
+    return { ...gone, awaySince: now };
   });
   return changed ? { ...state, players } : state;
 }
@@ -495,6 +530,81 @@ export function leadersOf(state: LobbyState, among: ReadonlySet<number>): Set<nu
   return new Set([...first.values()].map((player) => player.slot));
 }
 
+/**
+ * Notes that the player holding `token` is ready for the next game, or no
+ * longer. Returns the state unchanged when it is already so, and for someone
+ * not in the room. The input state is not modified.
+ */
+export function setReady(state: LobbyState, token: string, ready: boolean): LobbyState {
+  const player = findPlayer(state, token);
+  if (player === undefined || (player.ready === true) === ready) return state;
+  const { ready: _ready, ...rest } = player;
+  return { ...state, players: state.players.map((p) => (p === player ? (ready ? { ...rest, ready: true as const } : rest) : p)) };
+}
+
+/** Takes back everyone's word that they are ready: a game has started. Unchanged when nobody was. The input state is not modified. */
+export function clearReady(state: LobbyState): LobbyState {
+  if (!state.players.some((p) => p.ready === true)) return state;
+  return { ...state, players: state.players.map(({ ready: _ready, ...rest }) => rest) };
+}
+
+/**
+ * Makes the player in `slot` the host: they count as having come into the
+ * room before everyone else, which is what the host is ({@link hostOf}), so
+ * they stay host while they are connected and are followed by whoever was
+ * host before them. Their word that they are ready is taken back. Returns
+ * `null` when nobody holds the slot. The input state is not modified.
+ */
+export function handHost(state: LobbyState, slot: number): LobbyState | null {
+  const player = state.players.find((p) => p.slot === slot);
+  if (player === undefined) return null;
+  const first = Math.min(...state.players.map((p) => seqOf(p)));
+  const { ready: _ready, ...rest } = player;
+  return { ...state, players: state.players.map((p) => (p === player ? { ...rest, seq: first - 1 } : p)) };
+}
+
+/**
+ * Sends the player in `slot` out of the room and notes their token, so that
+ * they are not let back in ({@link LobbyState.barred}). Returns `null` when
+ * nobody holds the slot. The input state is not modified.
+ */
+export function kickPlayer(state: LobbyState, slot: number, config: RoomConfig): LobbyState | null {
+  const player = state.players.find((p) => p.slot === slot);
+  if (player === undefined) return null;
+  const barred = [...(state.barred ?? []), player.token].slice(-config.maxBarred);
+  return { ...state, players: state.players.filter((p) => p !== player), barred };
+}
+
+/**
+ * Whether the room waits on its host alone: someone else is connected,
+ * everyone else who is connected has said they are ready, and as many are
+ * connected as the room's game takes at least. With fewer the host could not
+ * start it either, and the room waits for players, not for its host.
+ * `connectedSlots` are the slots with a live connection.
+ */
+export function waitingOnHost(state: LobbyState, connectedSlots: ReadonlySet<number>): boolean {
+  const host = hostOf(state, connectedSlots);
+  if (host === undefined) return false;
+  const others = state.players.filter((p) => p !== host && connectedSlots.has(p.slot));
+  if (others.length + 1 < GAMES[gameOf(state)].minPlayers) return false;
+  return others.length > 0 && others.every((p) => p.ready === true);
+}
+
+/**
+ * Who the room passes to when its host does not answer: of the connected
+ * players who are ready, the one who came into the room first. `undefined`
+ * when there is none.
+ */
+export function nextHost(state: LobbyState, connectedSlots: ReadonlySet<number>): LobbyPlayer | undefined {
+  const host = hostOf(state, connectedSlots);
+  let next: LobbyPlayer | undefined;
+  for (const player of state.players) {
+    if (player === host || player.ready !== true || !connectedSlots.has(player.slot)) continue;
+    if (next === undefined || seqOf(player) < seqOf(next)) next = player;
+  }
+  return next;
+}
+
 /** Puts the room on the list of rooms or takes it off. The input state is not modified. */
 export function setListed(state: LobbyState, listed: boolean): LobbyState {
   return (state.listed === true) === listed ? state : { ...state, listed };
@@ -512,6 +622,7 @@ export function viewLobby(
   voice = false,
 ): LobbyView {
   const leaders = leadersOf(state, connectedSlots);
+  const host = hostOf(state, connectedSlots);
   return {
     you: viewerSlot,
     maxPlayers: capacityOf(gameOf(state), config),
@@ -520,13 +631,14 @@ export function viewLobby(
     turnSeconds: turnSecondsOf(state),
     variant: variantOf(state),
     voice,
-    host: hostOf(state, connectedSlots)?.slot ?? null,
+    host: host?.slot ?? null,
     players: state.players.map((p) => ({
       slot: p.slot,
       nick: p.nick,
       connected: connectedSlots.has(p.slot),
       team: p.team ?? 0,
       leads: leaders.has(p.slot),
+      ready: p.ready === true && p !== host && connectedSlots.has(p.slot),
     })),
   };
 }

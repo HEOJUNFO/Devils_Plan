@@ -90,6 +90,8 @@ export interface WaitingScene {
   setRunning(running: boolean): void;
   /** The player in `slot` said a line. */
   say(slot: number, text: string): void;
+  /** Whose figure or name is at `x`, `y` of the picture, in its own pixels: their slot, or `null` where nobody is. */
+  slotAt(x: number, y: number): number | null;
 }
 
 /** A game as the page shows it. */

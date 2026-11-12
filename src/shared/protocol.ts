@@ -111,6 +111,13 @@ export type ServerMessage =
   /** A signal from another player in voice, passed on by the room so the two can connect directly. */
   | { type: "rtc"; from: number; signal: RtcSignal }
   /**
+   * Sent to the host's page alone, when everyone else has been ready a while
+   * and no game has started: is the host there? The page answers `here` by
+   * itself if its player has pressed or typed anything lately, and says
+   * nothing if not; with no answer the room passes to the next host.
+   */
+  | { type: "host-check" }
+  /**
    * The room is there and has nothing new to say: its answer to a `poke`,
    * sent to everyone, so that pages which have heard nothing for a while know
    * their silence is the game's and not a dead connection's.
@@ -221,6 +228,14 @@ export type ClientMessage =
   | { type: "team"; team: number }
   /** Put the room on the list of rooms anyone can join, or take it off; only the host may. */
   | { type: "listing"; listed: boolean }
+  /** Say that one is ready for the next game, or no longer; the host does not, the host starts. */
+  | { type: "ready"; ready: boolean }
+  /** Make the player in slot `to` the host; only the host may, and only to someone connected. */
+  | { type: "host"; to: number }
+  /** Send the player in `slot` out of the room, not to be let back in; only the host may, and not during a game. */
+  | { type: "kick"; slot: number }
+  /** The host's page answers a `host-check`: its player is there. */
+  | { type: "here" }
   /** Say a line to everyone in the room. */
   | { type: "chat"; text: string }
   /**
@@ -260,6 +275,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data === null) return null;
   if (data.type === "leave") return { type: "leave" };
   if (data.type === "poke") return { type: "poke" };
+  if (data.type === "here") return { type: "here" };
+  if (data.type === "ready") return typeof data.ready === "boolean" ? { type: "ready", ready: data.ready } : null;
+  if (data.type === "host") {
+    return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "host", to: data.to } : null;
+  }
+  if (data.type === "kick") {
+    return typeof data.slot === "number" && Number.isInteger(data.slot) && data.slot >= 0 ? { type: "kick", slot: data.slot } : null;
+  }
   if (data.type === "join") {
     if (typeof data.token !== "string" || typeof data.nick !== "string") return null;
     return {
@@ -315,6 +338,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     data.type === "chat" ||
     data.type === "voice" ||
     data.type === "rtc" ||
+    data.type === "host-check" ||
     data.type === "alive"
   ) {
     return data as ServerMessage;

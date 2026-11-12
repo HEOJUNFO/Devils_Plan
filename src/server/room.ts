@@ -7,16 +7,21 @@ import { HOSTS } from "../shared/hosts";
 import { CHANCE_WORDS, TIME_OF_SIGHT, type Presence } from "../shared/hosting";
 import {
   awayPlayers,
+  clearReady,
   createLobby,
   dropLapsed,
   findPlayer,
   gameOf,
+  handHost,
   hostOf,
   isValidRoomCode,
   joinLobby,
+  kickPlayer,
   leaveLobby,
   markAway,
+  nextHost,
   setListed,
+  setReady,
   setTeam,
   setTurnSeconds,
   setVariant,
@@ -24,6 +29,7 @@ import {
   turnSecondsOf,
   variantOf,
   viewLobby,
+  waitingOnHost,
   type LobbyState,
   type RoomConfig,
 } from "../shared/lobby";
@@ -105,7 +111,11 @@ type TimerKind =
   /** The game's own clock: whatever the game being played is waiting on has run out of time. */
   | "turn"
   /** A player who went away has been away long enough to lose their slot. */
-  | "slots";
+  | "slots"
+  /** Everyone but the host has been ready long enough, with no game started: the host's page is asked whether its player is there. */
+  | "host"
+  /** The host's page was asked and has had its time to answer: the room passes to the next host. */
+  | "host-answer";
 
 const LOBBY_KEY = "lobby";
 const GAME_KEY = "game";
@@ -236,6 +246,27 @@ export class GameRoom extends Server<Env> {
       // Does nothing unless the deadline has passed, so a repeated alarm is harmless.
       await this.commitSession(this.host().tick(session, this.presence(), Date.now()));
     },
+    "host": async () => {
+      // Things may have changed since the timer was set: asked only while the room still waits on its host alone.
+      if (!this.waitsOnHost()) return;
+      const host = this.hostSlot();
+      const check: ServerMessage = { type: "host-check" };
+      for (const [member, seat] of this.members()) if (seat.slot === host) member.send(JSON.stringify(check));
+      await this.timers.set("host-answer", Date.now() + config.hostAnswerSeconds * 1000);
+    },
+    "host-answer": async () => {
+      const lobby = this.lobby;
+      if (lobby === null || !this.waitsOnHost()) return;
+      // The host's page said nothing: its player is not at it. Whoever has waited longest of those ready is host now.
+      const next = nextHost(lobby, this.connectedSlots());
+      const handed = next === undefined ? null : handHost(lobby, next.slot);
+      if (handed === null) return;
+      this.saveLobby(handed);
+      this.broadcastLobby();
+      console.log(`host passed on: ${gameOf(handed)} the host did not answer`);
+      await this.report();
+      await this.scheduleHost();
+    },
   };
 
   /** Runs on first start and on every wake from hibernation. */
@@ -307,11 +338,11 @@ export class GameRoom extends Server<Env> {
     }
     // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
     const sort =
-      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant"
+      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant" || parsed.type === "host" || parsed.type === "kick"
         ? "setting"
         : parsed.type === "rtc"
           ? "signal"
-          : parsed.type === "team"
+          : parsed.type === "team" || parsed.type === "ready"
             ? "choice"
             : "other";
     if (parsed.type !== "chat" && parsed.type !== "leave" && !this.withinPace(seat.slot, sort)) {
@@ -332,6 +363,10 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "rtc") this.handleRtc(seat, parsed.to, parsed.signal);
     else if (parsed.type === "poke") this.handlePoke();
     else if (parsed.type === "team") this.handleTeam(connection, seat, parsed.team);
+    else if (parsed.type === "ready") await this.handleReady(seat, parsed.ready);
+    else if (parsed.type === "host") await this.handleHost(connection, seat.slot, parsed.to);
+    else if (parsed.type === "kick") await this.handleKick(connection, seat.slot, parsed.slot);
+    else if (parsed.type === "here") await this.handleHere(seat.slot);
   }
 
   /**
@@ -643,6 +678,84 @@ export class GameRoom extends Server<Env> {
     this.broadcastLobby();
   }
 
+  /** Notes that a player is ready for the next game, or no longer. Not during a game, and not for the host, who starts. */
+  private async handleReady(seat: Seat, ready: boolean): Promise<void> {
+    const lobby = this.lobby;
+    if (lobby === null || this.playing() || (ready && this.hostSlot() === seat.slot)) return;
+    const next = setReady(lobby, seat.token, ready);
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
+    await this.scheduleHost();
+  }
+
+  /** Makes the player in slot `to` the host, if the one asking is the host and `to` is someone else who is connected. */
+  private async handleHost(connection: Connection<ConnectionState>, slot: number, to: number): Promise<void> {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
+    const next = to === slot || !this.connectedSlots().has(to) ? null : handHost(lobby, to);
+    if (next === null) return this.refuse(connection, "bad-setting");
+    this.saveLobby(next);
+    this.broadcastLobby();
+    // the list of rooms names a room by its host
+    await this.report();
+    await this.scheduleHost();
+  }
+
+  /**
+   * Sends the player in `target` out of the room, if the one asking is the
+   * host: their connections are ended with the reason, and the room does not
+   * let them back in. Not during a game: a seat at the table is not emptied
+   * by another player.
+   */
+  private async handleKick(connection: Connection<ConnectionState>, slot: number, target: number): Promise<void> {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
+    if (this.playing()) return this.refuse(connection, "already-playing");
+    const next = target === slot ? null : kickPlayer(lobby, target, config);
+    if (next === null) return this.refuse(connection, "bad-setting");
+    const theirs = this.members().filter(([, seat]) => seat.slot === target);
+    const hadVoice = theirs.some(([, seat]) => seat.voice !== undefined);
+    this.saveLobby(next);
+    for (const [member] of theirs) this.reject(member, "kicked");
+    this.broadcastLobby();
+    if (hadVoice) this.broadcastVoice();
+    await this.presenceChanged();
+    await this.scheduleSlots();
+    await this.report();
+  }
+
+  /** The host's page answered that its player is there: the room is not passed on, and asks again later if it still waits. */
+  private async handleHere(slot: number): Promise<void> {
+    if (this.hostSlot() !== slot || this.timers.get("host-answer") === null) return;
+    await this.timers.clear("host-answer");
+    await this.scheduleHost();
+  }
+
+  /** Whether the room waits on its host alone, with no game being played: see {@link waitingOnHost}. */
+  private waitsOnHost(): boolean {
+    return this.lobby !== null && !this.playing() && waitingOnHost(this.lobby, this.connectedSlots());
+  }
+
+  /**
+   * Points the host timer: while the room waits on its host alone, at
+   * `hostIdleSeconds` from when it began to (a timer already set is left as
+   * it is, so the wait is not started over by whatever else happens); and
+   * clears it, with the wait for the host's answer, when it no longer does.
+   */
+  private async scheduleHost(): Promise<void> {
+    if (!this.waitsOnHost()) {
+      if (this.timers.get("host") !== null) await this.timers.clear("host");
+      if (this.timers.get("host-answer") !== null) await this.timers.clear("host-answer");
+      return;
+    }
+    if (this.timers.get("host") === null && this.timers.get("host-answer") === null) {
+      await this.timers.set("host", Date.now() + config.hostIdleSeconds * 1000);
+    }
+  }
+
   /** Puts the room on the list of rooms or takes it off, if the one asking is the host. */
   private async handleListing(connection: Connection<ConnectionState>, slot: number, listed: boolean): Promise<void> {
     const lobby = this.lobby;
@@ -748,6 +861,12 @@ export class GameRoom extends Server<Env> {
       presence,
     );
     if (!result.ok) return this.refuse(connection, result.reason as Refusal);
+    // Nobody is ready for the game after this one yet.
+    const cleared = clearReady(lobby);
+    if (cleared !== lobby) {
+      this.saveLobby(cleared);
+      this.broadcastLobby();
+    }
     // For the log: which game, and how many people sat down to it. Never the room's code or a name.
     const tally = this.tally();
     this.save(TALLY_KEY, { ...tally, games: tally.games + 1, began: Date.now() } satisfies Tally);
@@ -847,6 +966,8 @@ export class GameRoom extends Server<Env> {
     } else if (set !== due) {
       await this.timers.set("slots", due);
     }
+    // whoever came, went or lost their place may have been the host, or the one the room waited on
+    await this.scheduleHost();
   }
 
   /**

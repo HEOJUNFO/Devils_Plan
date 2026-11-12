@@ -119,6 +119,11 @@ const roomCode = el<HTMLElement>("room-code");
 const status = el<HTMLElement>("status");
 const players = el<HTMLOListElement>("players");
 const startButton = el<HTMLButtonElement>("start");
+const readyButton = el<HTMLButtonElement>("ready");
+const seatMenu = el<HTMLElement>("seat-menu");
+const seatName = el<HTMLElement>("seat-name");
+const seatHost = el<HTMLButtonElement>("seat-host");
+const seatKick = el<HTMLButtonElement>("seat-kick");
 const copyButton = el<HTMLButtonElement>("copy");
 const clockButton = el<HTMLButtonElement>("clock");
 const variantButton = el<HTMLButtonElement>("variant");
@@ -187,6 +192,10 @@ function writeWords(): void {
     ["create-go", WORDS.newRoom.go],
     ["copy", WORDS.room.copy],
     ["start", WORDS.room.start],
+    ["ready", WORDS.room.ready],
+    ["seat-host", WORDS.room.seatMenu.host],
+    ["seat-kick", WORDS.room.seatMenu.kick],
+    ["seat-close", WORDS.room.seatMenu.close],
     ["leave", WORDS.room.leave],
     ["rules-open", WORDS.bar.rules],
     ["rules-close", WORDS.bar.close],
@@ -322,7 +331,14 @@ let warming: ReturnType<typeof setTimeout> | null = null;
  * goes on from them: the room's answer is a moment away, and a button that
  * stays as it was until then reads as a press not taken.
  */
-let asked: { listed?: boolean; turnSeconds?: number; variant?: string; team?: number } = {};
+let asked: { listed?: boolean; turnSeconds?: number; variant?: string; team?: number; ready?: boolean } = {};
+/** When this player last pressed or typed anything on the page: how the page knows, asked by the room, that its host is there. */
+let lastInputAt = Date.now();
+/** Whether the room has asked if the host is there and the page could not say so by itself: the next press answers. */
+let hostAsked = false;
+/** The slot of the player the host's menu is open for, or `null` with the menu shut; and whether sending them out has had its first press. */
+let seatShown: number | null = null;
+let kickArmed = false;
 /** Whether the host has pressed start and the game is not on the screen yet. */
 let startAsked = false;
 /** Whether a room is being made: asked for, and not there yet. */
@@ -485,6 +501,7 @@ const chat = createChat(
     wordsOf(note) {
       if (note.kind === "came") return WORDS.room.came(note.nick);
       if (note.kind === "went") return WORDS.room.went(note.nick);
+      if (note.kind === "host") return WORDS.room.becameHost(note.nick);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
       if (note.kind === "too-fast") return WORDS.chat.tooFast;
       if (note.kind === "voice-joined") return WORDS.voice.joined;
@@ -637,6 +654,7 @@ function showScene(view: LobbyView | null): void {
 function showTable(game: GameId): GameScreen {
   // the game asked for is here: the button under it is the start button again
   if (startAsked) unask();
+  showSeatMenu(null);
   if (table !== null && tableGame !== game) {
     table.destroy();
     table = null;
@@ -1047,6 +1065,8 @@ function showLobby(message = ""): void {
   keptTable = false;
   currentCode = "";
   currentView = null;
+  hostAsked = false;
+  showSeatMenu(null);
   hideTable();
   chat.close();
   room.hidden = true;
@@ -1164,6 +1184,75 @@ function noteComings(before: LobbyView, after: LobbyView): void {
   const is = new Map(after.players.map((p) => [p.slot, p.nick]));
   for (const [slot, nick] of is) if (!was.has(slot)) chat.note({ kind: "came", nick });
   for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: "went", nick });
+  // The room has another host with both of them here before and after: it was passed on, by the host or by the
+  // room for a host who did not answer. Not said when a host's connection drops and comes back: the room goes
+  // to the next player and returns by itself, and a line for each way would fill the chat of a room on a bad line.
+  const here = (view: LobbyView, slot: number | null): boolean => view.players.some((p) => p.slot === slot && p.connected);
+  if (after.host !== before.host && here(after, before.host) && here(before, after.host)) {
+    const host = after.host === null ? undefined : is.get(after.host);
+    if (host !== undefined) chat.note({ kind: "host", nick: host });
+  }
+}
+
+/**
+ * Shows what the host can do with the player in `slot`, beside where their
+ * figure was pressed (`x`, `y` in the frame's own pixels), or with `null`
+ * puts the menu away.
+ */
+function showSeatMenu(slot: number | null, x = 0, y = 0): void {
+  const player = slot === null ? undefined : currentView?.players.find((p) => p.slot === slot);
+  seatShown = player === undefined ? null : player.slot;
+  kickArmed = false;
+  seatMenu.hidden = player === undefined;
+  if (player === undefined) return;
+  seatName.textContent = player.nick;
+  seatMenu.style.left = "0px";
+  seatMenu.style.top = "0px";
+  // as wide from the start as its longest words make it: the second press of sending out lands where the first did
+  seatMenu.style.minWidth = "";
+  seatKick.textContent = WORDS.room.seatMenu.kickConfirm;
+  seatMenu.style.minWidth = `${seatMenu.offsetWidth}px`;
+  syncSeatMenu();
+  // beside the press, and all of it inside the picture
+  seatMenu.style.left = `${Math.max(2, Math.min(x + 6, sceneCanvas.offsetWidth - seatMenu.offsetWidth - 2))}px`;
+  seatMenu.style.top = `${Math.max(2, Math.min(y - 8, sceneCanvas.offsetHeight - seatMenu.offsetHeight - 2))}px`;
+  seatHost.focus({ preventScroll: true });
+}
+
+/** The menu's buttons as the room now stands: the room is not passed to someone who is away, and nobody is sent out of nothing. */
+function syncSeatMenu(): void {
+  const player = seatShown === null ? undefined : currentView?.players.find((p) => p.slot === seatShown);
+  if (player === undefined || !isHost || table !== null) {
+    if (seatShown !== null) showSeatMenu(null);
+    return;
+  }
+  seatHost.disabled = !player.connected;
+  seatKick.textContent = kickArmed ? WORDS.room.seatMenu.kickConfirm : WORDS.room.seatMenu.kick;
+}
+
+/** The room asked whether its host is there: answered at once if anything was pressed lately, else by the next press. */
+function hostChecked(): void {
+  if (Date.now() - lastInputAt <= config.hostIdleSeconds * 1000) {
+    send({ type: "here" });
+    return;
+  }
+  hostAsked = true;
+  if (currentView !== null && currentCode !== "") renderRoom(currentCode, currentView);
+  // the room waits this long and no longer: after it the question is no longer open
+  setTimeout(() => {
+    if (!hostAsked) return;
+    hostAsked = false;
+    if (currentView !== null && currentCode !== "") renderRoom(currentCode, currentView);
+  }, config.hostAnswerSeconds * 1000);
+}
+
+/** Something was pressed or typed: the player is there, which answers the room if it has asked. */
+function noteInput(): void {
+  lastInputAt = Date.now();
+  if (!hostAsked) return;
+  hostAsked = false;
+  send({ type: "here" });
+  if (currentView !== null && currentCode !== "") renderRoom(currentCode, currentView);
 }
 
 /** The room before a game: who is here, the code to share, the chat, and the start. */
@@ -1198,7 +1287,9 @@ function renderRoom(code: string, view: LobbyView): void {
   for (let slot = 0; slot < view.maxPlayers; slot++) {
     const player = bySlot.get(slot);
     const row = document.createElement("li");
-    row.textContent = player ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected) : WORDS.room.emptySeat(slot + 1);
+    row.textContent = player
+      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready)
+      : WORDS.room.emptySeat(slot + 1);
     rows.push(row);
   }
   players.replaceChildren(...rows);
@@ -1206,6 +1297,16 @@ function renderRoom(code: string, view: LobbyView): void {
   const connected = view.players.filter((p) => p.connected);
   isHost = view.host === view.you;
   table?.setHost(isHost);
+  if (!isHost) hostAsked = false;
+  syncSeatMenu();
+  // The host starts; everyone else says when they are ready, on the button that stands where the host's start does.
+  const me = view.players.find((p) => p.slot === view.you);
+  if (isHost || asked.ready === (me?.ready ?? false)) delete asked.ready;
+  const amReady = asked.ready ?? me?.ready ?? false;
+  startButton.hidden = !isHost;
+  readyButton.hidden = isHost;
+  readyButton.textContent = amReady ? WORDS.room.unready : WORDS.room.ready;
+  readyButton.setAttribute("aria-pressed", String(amReady));
   renderStatus();
   syncChat();
 
@@ -1234,6 +1335,7 @@ function renderRoom(code: string, view: LobbyView): void {
   variantButton.title = isHost ? WORDS.room.variantHost : WORDS.room.variantGuest;
   if (game === null) {
     startButton.disabled = true;
+    readyButton.disabled = true;
     hint = WORDS.room.reloadForGame;
     renderRoomBar();
     return;
@@ -1259,14 +1361,28 @@ function renderRoom(code: string, view: LobbyView): void {
   startButton.disabled = !isHost || !enough || startAsked;
   startButton.textContent = startAsked ? WORDS.room.starting : WORDS.room.start;
   startButton.setAttribute("aria-busy", String(startAsked));
+  readyButton.disabled = false;
   const alone = connected.length === 1 && game.minPlayers === 1;
-  hint = !enough
-    ? WORDS.room.needPlayers(game.minPlayers, connected.length)
-    : broken !== undefined
-      ? WORDS.room.brokenTeam(broken[0], broken[1], game.teamSize)
-      : isHost
-        ? WORDS.room.hostReady(wantBots, alone)
-        : WORDS.room.waitHost;
+  // everyone but the host has said they are ready: the room now waits on its host alone
+  const others = connected.filter((p) => p.slot !== view.host);
+  const allReady = others.length > 0 && others.every((p) => (p.slot === view.you ? amReady : p.ready));
+  hint = hostAsked
+    ? WORDS.room.hostAsked
+    : !enough
+      ? WORDS.room.needPlayers(game.minPlayers, connected.length)
+      : broken !== undefined
+        ? WORDS.room.brokenTeam(broken[0], broken[1], game.teamSize)
+        : isHost
+          ? allReady
+            ? WORDS.room.hostAllReady
+            : view.players.length > 1 && !wantBots
+              ? WORDS.room.hostOthers
+              : WORDS.room.hostReady(wantBots, alone)
+          : allReady
+            ? WORDS.room.allReady
+            : amReady
+              ? WORDS.room.waitHost
+              : WORDS.room.pressReady;
   renderRoomBar();
 }
 
@@ -1410,6 +1526,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     }
     if (message.type === "rtc") {
       voice.signal(message.from, message.signal);
+      return;
+    }
+    if (message.type === "host-check") {
+      hostChecked();
       return;
     }
     if (message.type === "chat") {
@@ -1585,6 +1705,41 @@ startButton.addEventListener("click", () => {
   startAsked = true;
   renderRoom(currentCode, currentView);
 });
+readyButton.addEventListener("click", () => {
+  const view = currentView;
+  if (view === null) return;
+  const ready = !(asked.ready ?? view.players.find((p) => p.slot === view.you)?.ready ?? false);
+  askRoom({ type: "ready", ready }, { ready });
+});
+// The host presses a player's figure, or their name, for what can be done with them.
+sceneCanvas.addEventListener("click", (event) => {
+  const view = currentView;
+  if (!isHost || view === null || scene === null || table !== null) return;
+  const box = sceneCanvas.getBoundingClientRect();
+  if (box.width === 0 || box.height === 0) return;
+  // the frame is drawn larger or smaller than its own pixels: the press is put back into them
+  const x = ((event.clientX - box.left) / box.width) * sceneCanvas.width;
+  const y = ((event.clientY - box.top) / box.height) * sceneCanvas.height;
+  const slot = scene.slotAt(x, y);
+  showSeatMenu(slot === view.you ? null : slot, x, y);
+});
+seatHost.addEventListener("click", () => {
+  if (seatShown !== null) send({ type: "host", to: seatShown });
+  showSeatMenu(null);
+});
+seatKick.addEventListener("click", () => {
+  // twice, as the way out of a game is: nobody is sent out by a slip
+  if (!kickArmed) {
+    kickArmed = true;
+    syncSeatMenu();
+    return;
+  }
+  if (seatShown !== null) send({ type: "kick", slot: seatShown });
+  showSeatMenu(null);
+});
+el<HTMLButtonElement>("seat-close").addEventListener("click", () => showSeatMenu(null));
+window.addEventListener("pointerdown", noteInput, true);
+window.addEventListener("keydown", noteInput, true);
 listingButton.addEventListener("click", () => {
   if (currentView === null) return;
   const listed = !(asked.listed ?? currentView.listed);
@@ -1796,6 +1951,7 @@ el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
 addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!gameMenu.hidden) openMenu(false);
+  else if (!seatMenu.hidden) showSeatMenu(null);
   else if (!feedbackSheet.hidden) showFeedback(false);
   else if (!rules.hidden) rules.hidden = true;
   else if (!newRoom.hidden) closeNewRoom();

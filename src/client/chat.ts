@@ -16,11 +16,13 @@
 export type ChatNote =
   /** Someone came into the room, or went. */
   | { kind: "came" | "went"; nick: string }
+  /** Someone became the host: the host passed the room on, or was away when everyone else was ready. */
+  | { kind: "host"; nick: string }
   /** A line could not be sent, or was sent too soon after the last; the voice chat was joined, joined without a microphone, or is not to be had here. */
   | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" };
 
 /** The kinds of note that name a player, and those that do not. */
-const NAMED_NOTES: readonly string[] = ["came", "went"];
+const NAMED_NOTES: readonly string[] = ["came", "went", "host"];
 const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here"];
 
 /** One line as shown: something a player said, or a note from the page itself. */

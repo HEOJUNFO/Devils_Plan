@@ -21,7 +21,9 @@
   // room, a limit below that could not be asked, and what a room counts of
   // itself, which is all there is to tell how the game is used
   // (src/server/room.ts): "room made: <game> listed|unlisted",
-  // "game started: <game> <n> players", "game ended: <game> <n> min" and
+  // "game started: <game> <n> players", "game ended: <game> <n> min",
+  // "host passed on: <game> the host did not answer" (everyone else was
+  // ready and the host's page said nothing) and
   // "room emptied: <game> listed|unlisted games <n> most <n>" (how many
   // games it saw and the most people in it at once: "games 0 most 1" is a
   // room someone waited in alone). Never a code or a name. The line Cloudflare would

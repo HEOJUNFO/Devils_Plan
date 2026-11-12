@@ -24,6 +24,8 @@ const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
 const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
 const STALE_MS = roomConfig.staleConnectionSeconds * 1000;
+const HOST_IDLE_MS = roomConfig.hostIdleSeconds * 1000;
+const HOST_ANSWER_MS = roomConfig.hostAnswerSeconds * 1000;
 /** The rooms one address may make in a short while. */
 const [MAKE_SOON] = directoryConfig.makeLimits;
 /** How many tries a test gives a limit kept by address to show itself: far more than any such limit. */
@@ -62,7 +64,7 @@ describe("GameRoom", () => {
       variant: null,
       voice: true,
       host: 0,
-      players: [{ slot: 0, nick: "ann", connected: true, team: 0, leads: false }],
+      players: [{ slot: 0, nick: "ann", connected: true, team: 0, leads: false, ready: false }],
     });
     a.close();
   });
@@ -726,7 +728,7 @@ describe("GameRoom", () => {
     await runDurableObjectAlarm(stub);
 
     const lobby = await a.lobbyWhere((l) => l.players.length === 1);
-    expect(lobby.players).toEqual([{ slot: 0, nick: "p0", connected: true, team: 0, leads: false }]);
+    expect(lobby.players).toEqual([{ slot: 0, nick: "p0", connected: true, team: 0, leads: false, ready: false }]);
     const c = await open("AAAAY", { player: 2 });
     expect(await c.next()).toMatchObject({ you: 1 });
     a.close();
@@ -766,7 +768,7 @@ describe("GameRoom", () => {
     const lobby = await extra.next();
     expect(lobby).toMatchObject({ type: "lobby", you: 2 });
     expect(lobby.type === "lobby" ? lobby.players : []).toHaveLength(MOST);
-    expect(lobby.type === "lobby" ? lobby.players[2] : null).toEqual({ slot: 2, nick: "new", connected: true, team: 0, leads: false });
+    expect(lobby.type === "lobby" ? lobby.players[2] : null).toEqual({ slot: 2, nick: "new", connected: true, team: 0, leads: false, ready: false });
     for (const c of clients.filter((_, n) => n !== 2)) c.close();
     extra.close();
   });
@@ -1416,7 +1418,348 @@ describe("GameRoom", () => {
     b.send({ type: "leave" });
 
     const lobby = await a.lobbyWhere((l) => l.players.length === 1);
-    expect(lobby.players).toEqual([{ slot: 0, nick: "ann", connected: true, team: 0, leads: false }]);
+    expect(lobby.players).toEqual([{ slot: 0, nick: "ann", connected: true, team: 0, leads: false, ready: false }]);
     a.close();
+  });
+});
+
+describe("GameRoom: being ready, and the host", () => {
+  /** The alarm the room has set, or `null` when it waits for nothing. */
+  const alarmOf = (stub: DurableObjectStub): Promise<number | null> => runInDurableObject(stub, (_room, state) => state.storage.getAlarm());
+
+  /** Moves the clock to the alarm the room has set and runs it. */
+  async function runNextAlarm(stub: DurableObjectStub): Promise<void> {
+    const due = await scheduledAlarm(stub);
+    advanceClock(Math.max(0, due - Date.now()) + 1);
+    expect(await runDurableObjectAlarm(stub), "the alarm the room has set").toBe(true);
+  }
+
+  it("shows everyone a player who says they are ready, and that they no longer are", async () => {
+    const a = await open("RDYAA", { player: 0, create: true });
+    const b = await open("RDYAA", { player: 1 });
+    await a.lobbyOf(2);
+
+    b.send({ type: "ready", ready: true });
+
+    expect((await a.lobbyWhere((l) => l.players.some((p) => p.ready))).players.map((p) => p.ready)).toEqual([false, true]);
+    expect((await b.lobbyWhere((l) => l.players.some((p) => p.ready))).players.map((p) => p.ready)).toEqual([false, true]);
+    b.send({ type: "ready", ready: false });
+    expect((await a.lobbyWhere((l) => l.players.every((p) => !p.ready))).players.map((p) => p.ready)).toEqual([false, false]);
+    a.close();
+    b.close();
+  });
+
+  it("does not take the host's word that they are ready: the host starts", async () => {
+    const a = await open("RDYAB", { player: 0, create: true });
+    const b = await open("RDYAB", { player: 1 });
+    await a.lobbyOf(2);
+
+    a.send({ type: "ready", ready: true });
+    b.send({ type: "ready", ready: true });
+
+    // the room answers in the order it was asked: had it taken the host's word, that would have been said first
+    expect((await a.lobbyWhere()).players.map((p) => p.ready)).toEqual([false, true]);
+    a.close();
+    b.close();
+  });
+
+  it("takes back everyone's word once a game has started", async () => {
+    const a = await open("RDYAC", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAC", { player: 1, game: ALONE_GAME });
+    await a.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players.some((p) => p.ready));
+
+    a.send({ type: "start", bots: false });
+
+    expect((await a.lobbyWhere()).players.map((p) => p.ready)).toEqual([false, false]);
+    await a.nextOf("game");
+    a.close();
+    b.close();
+  });
+
+  it("makes another player the host when the host says so", async () => {
+    const a = await open("RDYAD", { player: 0, create: true });
+    const b = await open("RDYAD", { player: 1 });
+    await a.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players.some((p) => p.ready));
+
+    a.send({ type: "host", to: 1 });
+
+    const lobby = await b.lobbyWhere((l) => l.host === 1);
+    // the new host starts, and is no longer someone who waits to
+    expect(lobby.players.map((p) => p.ready)).toEqual([false, false]);
+    expect(await a.lobbyWhere((l) => l.host === 1)).toMatchObject({ host: 1, you: 0 });
+    a.close();
+    b.close();
+  });
+
+  it("keeps the host it was given when the one before comes back", async () => {
+    const a = await open("RDYAE", { player: 0, create: true });
+    const b = await open("RDYAE", { player: 1 });
+    await a.lobbyOf(2);
+    a.send({ type: "host", to: 1 });
+    await b.lobbyWhere((l) => l.host === 1);
+    a.close();
+    await b.lobbyWhere((l) => !l.players[0].connected);
+
+    const back = await open("RDYAE", { player: 0 });
+
+    expect(await back.lobbyWhere()).toMatchObject({ host: 1, you: 0 });
+    back.close();
+    b.close();
+  });
+
+  it("refuses to pass the host on for someone who is not the host", async () => {
+    const a = await open("RDYAF", { player: 0, create: true });
+    const b = await open("RDYAF", { player: 1 });
+    await a.lobbyOf(2);
+    await b.lobbyOf(2);
+
+    b.send({ type: "host", to: 1 });
+
+    expect(await b.refusal()).toEqual({ type: "refused", reason: "not-host" });
+    a.close();
+    b.close();
+  });
+
+  it("refuses to pass the host to oneself, to an empty place, or to someone who is away", async () => {
+    const a = await open("RDYAG", { player: 0, create: true });
+    const b = await open("RDYAG", { player: 1 });
+    await a.lobbyOf(2);
+    b.close();
+    await a.lobbyWhere((l) => !l.players[1].connected);
+
+    a.send({ type: "host", to: 0 });
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "bad-setting" });
+    a.send({ type: "host", to: 5 });
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "bad-setting" });
+    a.send({ type: "host", to: 1 });
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "bad-setting" });
+    a.close();
+  });
+
+  it("sends a player out when the host says so, and does not let them back in", async () => {
+    const a = await open("RDYAH", { player: 0, create: true });
+    const b = await open("RDYAH", { player: 1 });
+    const c = await open("RDYAH", { player: 2 });
+    await a.lobbyOf(3);
+    await c.lobbyOf(3);
+
+    a.send({ type: "kick", slot: 1 });
+
+    expect(await b.nextOf("error")).toEqual({ type: "error", reason: "kicked" });
+    expect(await b.closed).toBe(CLOSE_REJECTED);
+    expect((await a.lobbyWhere((l) => l.players.length === 2)).players.map((p) => p.slot)).toEqual([0, 2]);
+    expect((await c.lobbyWhere((l) => l.players.length === 2)).players.map((p) => p.slot)).toEqual([0, 2]);
+    const back = await open("RDYAH", { player: 1 });
+    expect(await back.next()).toEqual({ type: "error", reason: "kicked" });
+    expect(await back.closed).toBe(CLOSE_REJECTED);
+    // the place is free for someone else
+    const d = await open("RDYAH", { player: 3 });
+    expect(await d.lobbyWhere()).toMatchObject({ you: 1 });
+    a.close();
+    c.close();
+    d.close();
+  });
+
+  it("still keeps out a player it sent out after the room has slept", async () => {
+    const stub = env.GameRoom.getByName("RDYAJ");
+    const a = await open("RDYAJ", { player: 0, create: true });
+    const b = await open("RDYAJ", { player: 1 });
+    await a.lobbyOf(2);
+    a.send({ type: "kick", slot: 1 });
+    await b.closed;
+    await a.lobbyWhere((l) => l.players.length === 1);
+    a.close();
+    await a.closed;
+
+    await evictDurableObject(stub);
+
+    const back = await open("RDYAJ", { player: 1 });
+    expect(await back.next()).toEqual({ type: "error", reason: "kicked" });
+  });
+
+  it("refuses to send anyone out for someone who is not the host", async () => {
+    const a = await open("RDYAK", { player: 0, create: true });
+    const b = await open("RDYAK", { player: 1 });
+    await a.lobbyOf(2);
+    await b.lobbyOf(2);
+
+    b.send({ type: "kick", slot: 0 });
+
+    expect(await b.refusal()).toEqual({ type: "refused", reason: "not-host" });
+    a.send({ type: "kick", slot: 0 });
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "bad-setting" });
+    a.send({ type: "kick", slot: 5 });
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "bad-setting" });
+    a.close();
+    b.close();
+  });
+
+  it("sends nobody out of a game that is being played", async () => {
+    const a = await open("RDYAL", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAL", { player: 1, game: ALONE_GAME });
+    await a.lobbyOf(2);
+    a.send({ type: "start", bots: false });
+    await a.nextOf("game");
+
+    a.send({ type: "kick", slot: 1 });
+
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "already-playing" });
+    a.close();
+    b.close();
+  });
+
+  it("asks the host whether they are there once everyone else has been ready a while, and passes on with no answer", async () => {
+    const stub = env.GameRoom.getByName("RDYAM");
+    const a = await open("RDYAM", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAM", { player: 1, game: ALONE_GAME });
+    const c = await open("RDYAM", { player: 2, game: ALONE_GAME });
+    await a.lobbyOf(3);
+    c.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[2].ready);
+    // not yet: one of the others is not ready
+    expect(await alarmOf(stub)).toBeNull();
+    const since = Date.now();
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready);
+
+    expect(await scheduledAlarm(stub)).toBeGreaterThanOrEqual(since + HOST_IDLE_MS);
+    await runNextAlarm(stub);
+
+    expect(await a.nextOf("host-check")).toEqual({ type: "host-check" });
+    const asked = Date.now();
+    expect(await scheduledAlarm(stub)).toBeLessThanOrEqual(asked + HOST_ANSWER_MS);
+    await runNextAlarm(stub);
+    // of those ready, the one who came in first; the host it left is still in the room
+    expect(await c.lobbyWhere((l) => l.host !== 0)).toMatchObject({ host: 1 });
+    expect((await a.lobbyWhere((l) => l.host !== 0)).players.map((p) => p.slot)).toEqual([0, 1, 2]);
+    // and the room no longer waits: its old host is not ready
+    expect(await alarmOf(stub)).toBeNull();
+    a.close();
+    b.close();
+    c.close();
+  });
+
+  it("does not wait on the host of a room with fewer players than its game takes", async () => {
+    const stub = env.GameRoom.getByName("RDYAT");
+    const a = await open("RDYAT", { player: 0, create: true });
+    const b = await open("RDYAT", { player: 1 });
+    await a.lobbyOf(2);
+
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready);
+    // the room has answered what was asked of it up to here
+    b.say("ready when you are");
+    await b.nextOf("chat");
+
+    expect(GAMES[DEFAULT_GAME].minPlayers).toBeGreaterThan(2);
+    expect(await alarmOf(stub)).toBeNull();
+    a.close();
+    b.close();
+  });
+
+  it("asks only the host", async () => {
+    const stub = env.GameRoom.getByName("RDYAN");
+    const a = await open("RDYAN", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAN", { player: 1, game: ALONE_GAME });
+    await a.lobbyOf(2);
+    await b.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await b.lobbyWhere((l) => l.players[1].ready);
+
+    await runNextAlarm(stub);
+    await a.nextOf("host-check");
+    // what the room says next to the other player is that the room has passed to them, with nothing before it
+    await runNextAlarm(stub);
+
+    expect(await b.next()).toMatchObject({ type: "lobby", host: 1 });
+    a.close();
+    b.close();
+  });
+
+  it("leaves the room with a host whose page answers, and asks again later", async () => {
+    const stub = env.GameRoom.getByName("RDYAP");
+    const a = await open("RDYAP", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAP", { player: 1, game: ALONE_GAME });
+    await a.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready);
+    await runNextAlarm(stub);
+    await a.nextOf("host-check");
+    const answered = Date.now();
+
+    a.send({ type: "here" });
+
+    // the wait starts over, a whole one
+    await vi.waitFor(async () => expect(await alarmOf(stub)).toBeGreaterThanOrEqual(answered + HOST_IDLE_MS));
+    await runNextAlarm(stub);
+    expect(await a.nextOf("host-check")).toEqual({ type: "host-check" });
+    // nothing was said of another host in between
+    b.send({ type: "ready", ready: false });
+    expect(await b.lobbyWhere((l) => !l.players[1].ready)).toMatchObject({ host: 0 });
+    a.close();
+    b.close();
+  });
+
+  it("does not take an answer from anyone but the host", async () => {
+    const stub = env.GameRoom.getByName("RDYAQ");
+    const a = await open("RDYAQ", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAQ", { player: 1, game: ALONE_GAME });
+    await a.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready);
+    await runNextAlarm(stub);
+    await a.nextOf("host-check");
+
+    b.send({ type: "here" });
+    b.say("still waiting");
+    await b.nextOf("chat");
+
+    await runNextAlarm(stub);
+    expect(await b.lobbyWhere((l) => l.host !== 0)).toMatchObject({ host: 1 });
+    a.close();
+    b.close();
+  });
+
+  it("stops waiting on the host when someone is no longer ready", async () => {
+    const stub = env.GameRoom.getByName("RDYAR");
+    const a = await open("RDYAR", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAR", { player: 1, game: ALONE_GAME });
+    await a.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready);
+    await scheduledAlarm(stub);
+
+    b.send({ type: "ready", ready: false });
+    await a.lobbyWhere((l) => !l.players[1].ready);
+
+    await vi.waitFor(async () => expect(await alarmOf(stub)).toBeNull());
+    a.close();
+    b.close();
+  });
+
+  it("does not ask the host while a game is being played", async () => {
+    const stub = env.GameRoom.getByName("RDYAS");
+    const a = await open("RDYAS", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYAS", { player: 1, game: ALONE_GAME });
+    await a.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready);
+    await scheduledAlarm(stub);
+
+    a.send({ type: "start", bots: false });
+    await a.nextOf("game");
+
+    // the room keeps its waits by name: the one for its host is gone, whatever the game has set for itself
+    const waits = await runInDurableObject(stub, (room) => {
+      const timers = (room as unknown as { timers: { get(kind: string): number | null } }).timers;
+      return [timers.get("host"), timers.get("host-answer")];
+    });
+    expect(waits).toEqual([null, null]);
+    a.close();
+    b.close();
   });
 });

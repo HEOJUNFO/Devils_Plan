@@ -991,6 +991,37 @@ button.choice[aria-pressed="true"] {
   justify-content: flex-end;
 }
 
+/* What the host can do with a player, beside the figure that was pressed (main.ts puts it there). */
+#seat-menu {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 6px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+}
+
+#seat-menu[hidden] {
+  display: none;
+}
+
+#seat-name {
+  overflow: hidden;
+  max-width: 96px;
+  color: var(--amber);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#seat-menu button {
+  white-space: nowrap;
+}
+
+:root.touch #seat-menu button {
+  height: 24px;
+}
+
 /* The way out of a game sits over the wall at the top left, clear of the panel. */
 #leave-game {
   position: absolute;

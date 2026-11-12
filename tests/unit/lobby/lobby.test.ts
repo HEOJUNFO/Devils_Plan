@@ -3,6 +3,12 @@ import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
 import {
   awayPlayers,
   capacityOf,
+  clearReady,
+  handHost,
+  kickPlayer,
+  nextHost,
+  setReady,
+  waitingOnHost,
   createLobby,
   dropLapsed,
   gameOf,
@@ -41,6 +47,9 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     maxStrayMessages: 2,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
+    hostIdleSeconds: 60,
+    hostAnswerSeconds: 10,
+    maxBarred: 2,
     messageLimits: {
       setting: { burst: 3, windowSeconds: 30 },
       signal: { burst: 20, windowSeconds: 10 },
@@ -64,6 +73,8 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
 /** A game in which players may team up before the start, and one in which they may not. */
 const TEAM_GAME: GameId = "count-rectangles";
 const SOLO_GAME: GameId = "russian-roulette";
+/** A game one player can start alone. */
+const ALONE_GAME: GameId = "count-cubes";
 const TEAM_SIZE = GAMES[TEAM_GAME].teamSize;
 
 /** A well-formed token that is different for each `n`. */
@@ -968,5 +979,258 @@ describe("isValidToken", () => {
 
   it("rejects characters that are not URL-safe", () => {
     expect(isValidToken("has spaces and !! symbols")).toBe(false);
+  });
+});
+
+describe("being ready", () => {
+  it("shows a player who said so as ready, and nobody else", () => {
+    const config = testConfig();
+    const state = setReady(lobbyWith(3, config), tokenFor(1), true);
+
+    const view = viewLobby(state, new Set([0, 1, 2]), 0, config);
+
+    expect(view.players.map((p) => p.ready)).toEqual([false, true, false]);
+  });
+
+  it("takes it back when the player says so", () => {
+    const config = testConfig();
+    const ready = setReady(lobbyWith(2, config), tokenFor(1), true);
+
+    const view = viewLobby(setReady(ready, tokenFor(1), false), new Set([0, 1]), 0, config);
+
+    expect(view.players.map((p) => p.ready)).toEqual([false, false]);
+  });
+
+  it("changes nothing when it is already so, or for someone not in the room", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+    const ready = setReady(state, tokenFor(1), true);
+
+    expect(setReady(state, tokenFor(1), false)).toBe(state);
+    expect(setReady(ready, tokenFor(1), true)).toBe(ready);
+    expect(setReady(state, tokenFor(9), true)).toBe(state);
+  });
+
+  it("does not modify the state it was given", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+    const before = JSON.stringify(state);
+
+    setReady(state, tokenFor(1), true);
+
+    expect(JSON.stringify(state)).toBe(before);
+  });
+
+  it("never shows the host as ready: the host starts", () => {
+    const config = testConfig();
+    const state = setReady(lobbyWith(2, config), tokenFor(0), true);
+
+    expect(viewLobby(state, new Set([0, 1]), 1, config).players.map((p) => p.ready)).toEqual([false, false]);
+  });
+
+  it("does not show a player who is not connected as ready", () => {
+    const config = testConfig();
+    const state = setReady(lobbyWith(3, config), tokenFor(2), true);
+
+    expect(viewLobby(state, new Set([0, 1]), 0, config).players.map((p) => p.ready)).toEqual([false, false, false]);
+  });
+
+  it("is taken back from a player who goes away", () => {
+    const config = testConfig();
+    const ready = setReady(lobbyWith(3, config), tokenFor(2), true);
+
+    const away = markAway(ready, new Set([0, 1]), NOW);
+
+    expect(viewLobby(away, new Set([0, 1, 2]), 0, config).players.map((p) => p.ready)).toEqual([false, false, false]);
+  });
+
+  it("is taken back from everyone when a game starts", () => {
+    const config = testConfig();
+    const ready = setReady(setReady(lobbyWith(3, config), tokenFor(1), true), tokenFor(2), true);
+
+    const view = viewLobby(clearReady(ready), new Set([0, 1, 2]), 0, config);
+
+    expect(view.players.map((p) => p.ready)).toEqual([false, false, false]);
+  });
+
+  it("leaves a room where nobody was ready as it is", () => {
+    const state = lobbyWith(2, testConfig());
+
+    expect(clearReady(state)).toBe(state);
+  });
+});
+
+describe("handHost", () => {
+  it("makes the player in the slot the host", () => {
+    const config = testConfig();
+
+    const handed = handHost(lobbyWith(3, config), 2);
+
+    expect(handed === null ? null : hostOf(handed, new Set([0, 1, 2]))?.slot).toBe(2);
+  });
+
+  it("leaves whoever was host before as the next in line", () => {
+    const config = testConfig();
+
+    const handed = handHost(lobbyWith(3, config), 2);
+
+    expect(handed === null ? null : hostOf(handed, new Set([0, 1]))?.slot).toBe(0);
+  });
+
+  it("can be done again, to anyone", () => {
+    const config = testConfig();
+    const once = handHost(lobbyWith(3, config), 2);
+    if (once === null) throw new Error("fixture hand-over refused");
+
+    const twice = handHost(once, 1);
+
+    expect(twice === null ? null : hostOf(twice, new Set([0, 1, 2]))?.slot).toBe(1);
+    expect(twice === null ? null : hostOf(twice, new Set([0, 2]))?.slot).toBe(2);
+  });
+
+  it("takes back the new host's word that they are ready", () => {
+    const config = testConfig();
+    const ready = setReady(lobbyWith(2, config), tokenFor(1), true);
+    const handed = handHost(ready, 1);
+    if (handed === null) throw new Error("fixture hand-over refused");
+
+    // shown from the seat of a third who would see them as ready were they still: the old host is host again
+    const back = handHost(handed, 0);
+
+    expect(back === null ? null : viewLobby(back, new Set([0, 1]), 0, config).players.map((p) => p.ready)).toEqual([false, false]);
+  });
+
+  it("is refused for a slot nobody holds", () => {
+    expect(handHost(lobbyWith(2, testConfig()), 2)).toBeNull();
+  });
+
+  it("does not modify the state it was given", () => {
+    const state = lobbyWith(2, testConfig());
+    const before = JSON.stringify(state);
+
+    handHost(state, 1);
+
+    expect(JSON.stringify(state)).toBe(before);
+  });
+});
+
+describe("kickPlayer", () => {
+  it("takes the player out of the room", () => {
+    const config = testConfig();
+
+    const kicked = kickPlayer(lobbyWith(3, config), 1, config);
+
+    expect(kicked === null ? null : viewLobby(kicked, new Set([0, 2]), 0, config).players.map((p) => p.slot)).toEqual([0, 2]);
+  });
+
+  it("does not let them back in", () => {
+    const config = testConfig();
+    const kicked = kickPlayer(lobbyWith(3, config), 1, config);
+    if (kicked === null) throw new Error("fixture kick refused");
+
+    expect(joinLobby(kicked, { token: tokenFor(1), nick: "p1" }, config)).toEqual({ ok: false, reason: "kicked" });
+  });
+
+  it("lets someone else take the place", () => {
+    const config = testConfig();
+    const kicked = kickPlayer(lobbyWith(3, config), 1, config);
+    if (kicked === null) throw new Error("fixture kick refused");
+
+    expect(joinLobby(kicked, { token: tokenFor(7), nick: "new" }, config)).toMatchObject({ ok: true, slot: 1 });
+  });
+
+  it("remembers the latest it sent out, as many as the room keeps, and forgets those before", () => {
+    const config = testConfig({ maxPlayers: 5 });
+    let state: LobbyState = lobbyWith(5, config);
+    const sentOut = Array.from({ length: config.maxBarred + 1 }, (_, n) => n + 1);
+    for (const slot of sentOut) {
+      const next = kickPlayer(state, slot, config);
+      if (next === null) throw new Error(`fixture kick of ${slot} refused`);
+      state = next;
+    }
+
+    const answers = sentOut.map((slot) => joinLobby(state, { token: tokenFor(slot), nick: "back" }, config).ok);
+
+    expect(answers).toEqual([true, ...Array.from({ length: config.maxBarred }, () => false)]);
+  });
+
+  it("is refused for a slot nobody holds", () => {
+    const config = testConfig();
+
+    expect(kickPlayer(lobbyWith(2, config), 2, config)).toBeNull();
+  });
+
+  it("does not modify the state it was given", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+    const before = JSON.stringify(state);
+
+    kickPlayer(state, 1, config);
+
+    expect(JSON.stringify(state)).toBe(before);
+  });
+});
+
+describe("a room that waits on its host", () => {
+  /** A room of `count` players for a game one player can start: with that many, the host could start it. */
+  const roomOf = (count: number, config: RoomConfig): LobbyState => ({ ...lobbyWith(count, config), game: ALONE_GAME });
+
+  it("does once everyone else who is connected is ready", () => {
+    const config = testConfig();
+    const one = setReady(roomOf(3, config), tokenFor(1), true);
+    const both = setReady(one, tokenFor(2), true);
+
+    expect(waitingOnHost(one, new Set([0, 1, 2]))).toBe(false);
+    expect(waitingOnHost(both, new Set([0, 1, 2]))).toBe(true);
+  });
+
+  it("does not wait for someone who is not connected to be ready", () => {
+    const config = testConfig();
+    const one = setReady(roomOf(3, config), tokenFor(1), true);
+
+    expect(waitingOnHost(one, new Set([0, 1]))).toBe(true);
+  });
+
+  it("does not while the host is alone, or nobody is connected", () => {
+    const config = testConfig();
+    const state = setReady(roomOf(2, config), tokenFor(1), true);
+
+    expect(waitingOnHost(state, new Set([0]))).toBe(false);
+    expect(waitingOnHost(state, new Set())).toBe(false);
+  });
+
+  it("does not while fewer are connected than its game takes: the host could not start it either", () => {
+    const config = testConfig();
+    const few = setReady(lobbyWith(GAMES[DEFAULT_GAME].minPlayers - 1, { ...config, maxPlayers: GAMES[DEFAULT_GAME].minPlayers }), tokenFor(1), true);
+    const all = new Set(few.players.map((p) => p.slot));
+    const ready = few.players.slice(2).reduce((state, p) => setReady(state, p.token, true), few);
+
+    expect(GAMES[DEFAULT_GAME].minPlayers).toBeGreaterThan(2);
+    expect(waitingOnHost(ready, all)).toBe(false);
+  });
+
+  it("passes to whoever came first of those ready and connected", () => {
+    const config = testConfig();
+    const both = setReady(setReady(roomOf(3, config), tokenFor(1), true), tokenFor(2), true);
+
+    expect(nextHost(both, new Set([0, 1, 2]))?.slot).toBe(1);
+    expect(nextHost(both, new Set([0, 2]))?.slot).toBe(2);
+  });
+
+  it("passes to nobody when nobody else is ready", () => {
+    const config = testConfig();
+
+    expect(nextHost(roomOf(3, config), new Set([0, 1, 2]))).toBeUndefined();
+  });
+
+  it("no longer waits once it has passed: the host it left is not ready", () => {
+    const config = testConfig();
+    const both = setReady(setReady(roomOf(3, config), tokenFor(1), true), tokenFor(2), true);
+    const next = nextHost(both, new Set([0, 1, 2]));
+    const handed = next === undefined ? null : handHost(both, next.slot);
+    if (handed === null) throw new Error("fixture hand-over refused");
+
+    expect(hostOf(handed, new Set([0, 1, 2]))?.slot).toBe(1);
+    expect(waitingOnHost(handed, new Set([0, 1, 2]))).toBe(false);
   });
 });

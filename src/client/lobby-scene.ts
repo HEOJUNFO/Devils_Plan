@@ -40,6 +40,8 @@ export interface LobbyScene {
   setRunning(running: boolean): void;
   /** The player in `slot` said a line: it shows over their seat for a moment. */
   say(slot: number, text: string): void;
+  /** Whose figure or name is at `x`, `y` of the picture, in its own pixels: their slot, or `null` where nobody is. */
+  slotAt(x: number, y: number): number | null;
 }
 
 /** The widest a name is drawn beside a seat, in pixels. */
@@ -65,6 +67,10 @@ const HALL_NAME_ROOM = 74;
 /** The host's mark: a plate a pixel wider than its word on each side, and the gap before it. */
 const HOST_MARK_EDGE = 2;
 const HOST_MARK_GAP = 3;
+/** The mark of a player who is ready, a tick: how wide it is with the gap before it. */
+const READY_MARK_W = 10;
+/** A figure as a press finds it: how far to each side of its middle, and how far over and under its shoulders. */
+const FIGURE_REACH = { side: 14, over: 22, under: 14 };
 /** How far the lamp's light reaches over the rows of chairs, against 1 over a table: nobody sits in the dark. */
 const HALL_LIGHT = 1.6;
 /** In a row of chairs: how far under the top of its row a figure's shoulders are, and its name. */
@@ -133,6 +139,8 @@ export function createLobbyScene(
   let started = performance.now() / 1000;
   /** By slot: the line over that seat, and when it goes, in the picture's own seconds. */
   const speech = new Map<number, { lines: string[]; until: number }>();
+  /** Where each player was last drawn, figure and name: what a press is looked up in. */
+  let drawn: { slot: number; name: boolean; x: number; y: number; w: number; h: number }[] = [];
 
   function draw(): void {
     const time = performance.now() / 1000 - started;
@@ -164,35 +172,50 @@ export function createLobbyScene(
     for (const place of places) if (place.at.back) seat(place);
     light.draw(pen, CX + sway, CY - 4, rows ? HALL_LIGHT : 1);
 
+    drawn = [];
     if (lobby === null) return;
     const host = lobby.host;
     for (const place of places) {
       const player = bySlot.get(place.slot);
       if (!player) continue;
       const lead = place.slot === host;
+      // after the name: the host's mark, or the tick of someone ready (the host is never that: the host starts)
+      const after = lead ? HOST_MARK_W : player.ready ? READY_MARK_W : 0;
       const y = place.at.label.y;
+      drawn.push({
+        slot: place.slot,
+        name: false,
+        x: place.at.x - FIGURE_REACH.side,
+        y: place.at.y - FIGURE_REACH.over,
+        w: FIGURE_REACH.side * 2,
+        h: FIGURE_REACH.over + FIGURE_REACH.under,
+      });
       if (place.row) {
         // under the chair: the name with its marks, cut to the chair's share of the row; the team goes beside the figure
         const mark = voice(place.slot);
-        const marks = (lead ? HOST_MARK_W : 0) + (mark !== "out" ? VOICE_MARK_W : 0);
+        const marks = after + (mark !== "out" ? VOICE_MARK_W : 0);
         const name = pen.fit(player.nick, Math.min(NAME_WIDTH, HALL_NAME_ROOM - marks));
-        const width = pen.width(name) + (lead ? HOST_MARK_W : 0);
+        const width = pen.width(name) + after;
         const x = place.at.label.x - Math.round((width - (mark !== "out" ? VOICE_MARK_W : 0)) / 2);
         pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
         if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
         if (lead) drawHostMark(x + width - (HOST_MARK_W - HOST_MARK_GAP), y);
+        else if (player.ready) drawReadyMark(x + width - (READY_MARK_W - HOST_MARK_GAP), y);
+        drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
         const beside = place.at.y - 6;
         if (!player.connected) pen.txt(WORDS.scene.offline, place.at.x + 15, beside, C.dim);
         else if (player.team > 0) drawTeamTag(place.at.x + 15, beside, player.team, player.leads);
         continue;
       }
       const name = pen.fit(player.nick, NAME_WIDTH);
-      const width = pen.width(name) + (lead ? HOST_MARK_W : 0);
+      const width = pen.width(name) + after;
       const x = place.at.label.align === "center" ? place.at.label.x - Math.round(width / 2) : place.at.label.x;
       pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
       const mark = voice(place.slot);
       if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
       if (lead) drawHostMark(x + width - (HOST_MARK_W - HOST_MARK_GAP), y);
+      else if (player.ready) drawReadyMark(x + width - (READY_MARK_W - HOST_MARK_GAP), y);
+      drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
       if (!player.connected) pen.txt(WORDS.scene.offline, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
       else if (player.team > 0) {
         // the team chosen for the next game, each team in its own colour
@@ -231,6 +254,21 @@ export function createLobbyScene(
     pen.px(x, y, word + HOST_MARK_EDGE, 13, C.amberD);
     pen.px(x + 1, y + 1, word, 11, C.ink);
     pen.txt(WORDS.scene.host, x + 1, y + 1, C.amber);
+  }
+
+  /** The mark of a player who is ready for the next game, a tick: its top left at `x`, `y` of the name's line. */
+  function drawReadyMark(x: number, y: number): void {
+    // two strokes, each two pixels tall: down to the right, then up
+    const strokes = [
+      [0, 6],
+      [1, 7],
+      [2, 8],
+      [3, 7],
+      [4, 6],
+      [5, 5],
+      [6, 4],
+    ];
+    for (const [dx, dy] of strokes) pen.px(x + dx, y + dy, 1, 2, C.teal);
   }
 
   /** The frame asked of the browser and not yet come, or 0. */
@@ -274,6 +312,11 @@ export function createLobbyScene(
       if (!running) return;
       const now = performance.now() / 1000 - started;
       speech.set(slot, { lines: speechLines(pen, text), until: now + speechSeconds(text) });
+    },
+    slotAt(x: number, y: number): number | null {
+      // the name is looked up before the figure: two figures stand closer than their names do
+      const at = (each: (typeof drawn)[number]): boolean => x >= each.x && x < each.x + each.w && y >= each.y && y < each.y + each.h;
+      return (drawn.find((each) => each.name && at(each)) ?? drawn.find((each) => !each.name && at(each)))?.slot ?? null;
     },
   };
 }

@@ -9,6 +9,9 @@
   "maxStrayMessages": 3,
   "awayTurnSeconds": 30,
   "awaySlotSeconds": 180,
+  "hostIdleSeconds": 60,
+  "hostAnswerSeconds": 10,
+  "maxBarred": 32,
   "messageLimits": {
     "setting": { "burst": 4, "windowSeconds": 60 },
     "signal": { "burst": 400, "windowSeconds": 10 },

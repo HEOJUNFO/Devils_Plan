@@ -120,15 +120,34 @@ const ko = {
     /** Over the room's code when the page was loaded again and the room has not answered yet. */
     returning: "방으로 돌아오는 중",
     newGame: "새 게임",
-    seat: (seat: number, nick: string, me: boolean, connected: boolean) => `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? "접속" : "끊김"}`,
+    /** On the button of everyone but the host: said once, taken back with the same button. */
+    ready: "준비",
+    unready: "준비 취소",
+    seat: (seat: number, nick: string, me: boolean, connected: boolean, ready: boolean) =>
+      `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? (ready ? "준비" : "접속") : "끊김"}`,
     emptySeat: (seat: number) => `${seat}번 빈 자리`,
     came: (nick: string) => `${nick} 님이 들어왔습니다`,
     went: (nick: string) => `${nick} 님이 나갔습니다`,
+    becameHost: (nick: string) => `${nick} 님이 방장이 됐습니다`,
     needPlayers: (min: number, here: number) => `${min}명이 모이면 방장이 시작할 수 있습니다. 지금 ${here}명.`,
     brokenTeam: (team: number, size: number, teamSize: number) =>
       `팀 ${team}은 ${size}명이라 팀이 아닙니다 (${teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`,
     hostReady: (bots: boolean, alone: boolean) => `${bots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}${alone ? "혼자서도 할 수 있습니다. " : ""}준비되면 시작하세요.`,
+    /** To the host with others in the room: what a press on one of them does. */
+    hostOthers: "준비되면 시작하세요. 인물을 누르면 방장을 넘기거나 내보냅니다.",
+    hostAllReady: "모두 준비했습니다. 게임을 시작하세요.",
+    /** To the host, when the room has asked whether they are there and nothing was pressed lately. */
+    hostAsked: "자리에 계신가요? 아무 곳이나 누르면 방장으로 남습니다.",
+    pressReady: "준비되면 준비를 눌러 주세요.",
     waitHost: "방장이 시작하기를 기다리는 중입니다.",
+    allReady: "모두 준비했습니다. 방장이 자리에 없으면 방장이 넘어갑니다.",
+    /** What the host can do with another player, on the menu a press on their figure opens. */
+    seatMenu: {
+      host: "방장 넘기기",
+      kick: "내보내기",
+      kickConfirm: "한 번 더 누르면 내보냄",
+      close: "닫기",
+    },
     reloadForGame: "새로고침하면 이 게임을 할 수 있습니다.",
     left: "방에서 나왔습니다. 다른 창에서 나갔거나 자리를 오래 비웠습니다.",
   },
@@ -211,6 +230,7 @@ const ko = {
     "not-found": "그런 방이 없습니다.",
     "code-taken": "방을 만들지 못했습니다. 다시 시도해 주세요.",
     "join-timeout": "연결이 너무 오래 걸렸습니다. 다시 시도해 주세요.",
+    "kicked": "방장이 이 방에서 내보냈습니다.",
   } satisfies Record<RejectReason, string>,
   /** Why something asked of the room was refused, for the waiting room. Refused moves are explained on the game screen. */
   refused: {
@@ -320,14 +340,28 @@ const en: typeof ko = {
     offline: "Connection lost. Reconnecting",
     returning: "Returning to the room",
     newGame: "New game",
-    seat: (seat, nick, me, connected) => `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? "connected" : "disconnected"}`,
+    ready: "Ready",
+    unready: "Not ready",
+    seat: (seat, nick, me, connected, ready) => `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}`,
     emptySeat: (seat) => `Seat ${seat}, empty`,
     came: (nick) => `${nick} came in`,
     went: (nick) => `${nick} left`,
+    becameHost: (nick) => `${nick} is the host now`,
     needPlayers: (min, here) => `The host can start once ${min} are here. ${here} now.`,
     brokenTeam: (team, size, teamSize) => `Team ${team} has ${size}, not ${teamSize}, so it is no team: its players start alone.`,
     hostReady: (bots, alone) => `${bots ? "Bots fill the empty seats (development). " : ""}${alone ? "You can play alone. " : ""}Start when ready.`,
+    hostOthers: "Start when ready. Press a player to pass host or remove.",
+    hostAllReady: "Everyone is ready. Start the game.",
+    hostAsked: "Still there? Press anywhere to stay the host.",
+    pressReady: "Press Ready when you are.",
     waitHost: "Waiting for the host to start.",
+    allReady: "Everyone is ready. If the host is away, the host passes on.",
+    seatMenu: {
+      host: "Make host",
+      kick: "Remove",
+      kickConfirm: "Press again to remove",
+      close: "Close",
+    },
     reloadForGame: "Reload the page to play this game.",
     left: "You are out of the room: you left in another window, or were away too long.",
   },
@@ -396,6 +430,7 @@ const en: typeof ko = {
     "not-found": "There is no such room.",
     "code-taken": "The room could not be made. Try again.",
     "join-timeout": "Connecting took too long. Try again.",
+    "kicked": "The host removed you from this room.",
   },
   refused: {
     "not-host": "Only the host can do that.",

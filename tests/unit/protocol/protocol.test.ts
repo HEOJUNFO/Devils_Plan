@@ -61,6 +61,11 @@ describe("parseClientMessage", () => {
   it("reads a change of listing", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: true }))).toEqual({ type: "listing", listed: true });
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: false }))).toEqual({ type: "listing", listed: false });
+    expect(parseClientMessage(JSON.stringify({ type: "ready", ready: true }))).toEqual({ type: "ready", ready: true });
+    expect(parseClientMessage(JSON.stringify({ type: "ready", ready: false }))).toEqual({ type: "ready", ready: false });
+    expect(parseClientMessage(JSON.stringify({ type: "host", to: 3 }))).toEqual({ type: "host", to: 3 });
+    expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0 }))).toEqual({ type: "kick", slot: 0 });
+    expect(parseClientMessage(JSON.stringify({ type: "here", extra: 1 }))).toEqual({ type: "here" });
   });
 
   it("reads a chat line as it was typed", () => {
@@ -128,6 +133,15 @@ describe("parseClientMessage", () => {
   it("rejects a change of listing that does not say which way", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: "true" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "ready" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "ready", ready: 1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "host" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "host", to: -1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "host", to: 1.5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "host", to: "1" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "kick" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "kick", slot: -1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0.5 }))).toBeNull();
   });
 
   it("treats a join without a create flag as not creating", () => {
@@ -223,6 +237,14 @@ describe("parseClientMessage", () => {
 });
 
 describe("parseServerMessage", () => {
+  it("accepts the room's question to its host", () => {
+    expect(parseServerMessage(JSON.stringify({ type: "host-check" }))).toEqual({ type: "host-check" });
+  });
+
+  it("accepts the reason a player sent out by the host is given", () => {
+    expect(parseServerMessage(JSON.stringify({ type: "error", reason: "kicked" }))).toEqual({ type: "error", reason: "kicked" });
+  });
+
   it("reads an error with its reason", () => {
     const raw = JSON.stringify({ type: "error", reason: "full" });
 

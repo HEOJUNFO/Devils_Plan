@@ -29,6 +29,9 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     maxStrayMessages: 2,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
+    hostIdleSeconds: 60,
+    hostAnswerSeconds: 10,
+    maxBarred: 2,
     messageLimits: {
       setting: { burst: 3, windowSeconds: 30 },
       signal: { burst: 20, windowSeconds: 10 },
