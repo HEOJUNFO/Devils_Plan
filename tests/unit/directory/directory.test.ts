@@ -23,6 +23,8 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     nickMaxLength: 6,
     emptyRoomTtlMinutes: 10,
     joinTimeoutSeconds: 5,
+    maxPendingConnections: 8,
+    maxStrayMessages: 2,
     awayTurnSeconds: 5,
     awaySlotSeconds: 60,
     messageLimits: {

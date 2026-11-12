@@ -227,16 +227,28 @@ export class TestClient extends Inbox<ServerMessage> {
   }
 }
 
+/**
+ * Asks the Worker for a WebSocket to `path`, and returns its answer whatever
+ * it is. `from` is the network address the request is said to come from, as
+ * Cloudflare says it to a deployed Worker; without it the request has none,
+ * and the limits kept by address do not apply.
+ */
+export function knock(path: string, from?: string): Promise<Response> {
+  const headers: Record<string, string> = { Upgrade: "websocket" };
+  if (from !== undefined) headers["CF-Connecting-IP"] = from;
+  return exports.default.fetch(`http://example.com${path}`, { headers });
+}
+
 /** Opens a WebSocket to `path` through the Worker. */
-export async function socket(path: string): Promise<WebSocket> {
-  const response = await exports.default.fetch(`http://example.com${path}`, { headers: { Upgrade: "websocket" } });
+export async function socket(path: string, from?: string): Promise<WebSocket> {
+  const response = await knock(path, from);
   expect(response.status).toBe(101);
   return response.webSocket!;
 }
 
 /** Opens a WebSocket to `room` without joining. `query` is put in the address as it is. */
-export async function connect(room: string, query = ""): Promise<TestClient> {
-  return new TestClient(await socket(`/parties/${PARTY_NAME}/${room}${query}`));
+export async function connect(room: string, query = "", from?: string): Promise<TestClient> {
+  return new TestClient(await socket(`/parties/${PARTY_NAME}/${room}${query}`, from));
 }
 
 /** How a test player comes into a room. Player `n` holds token `tokenFor(n)` and is called `p<n>` unless said otherwise. */
@@ -249,11 +261,13 @@ export interface JoinOptions {
   game?: GameId;
   /** Whether the page says it pings. A test player does not, unless the test is about that. */
   pings?: boolean;
+  /** The network address the player connects from; none unless the test is about the limits kept by address. */
+  from?: string;
 }
 
 /** Connects to `room` and sends `join`, as the browser client does. */
 export async function join(room: string, options: JoinOptions): Promise<TestClient> {
-  const client = await connect(room);
+  const client = await connect(room, "", options.from);
   client.send({
     type: "join",
     token: options.token ?? tokenFor(options.player),

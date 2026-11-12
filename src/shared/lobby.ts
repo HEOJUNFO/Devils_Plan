@@ -26,6 +26,20 @@ export interface RoomConfig {
   emptyRoomTtlMinutes: number;
   /** Seconds a new connection has to send `join` before it may be closed. */
   joinTimeoutSeconds: number;
+  /**
+   * How many connections that have not sent `join` yet a room keeps open at
+   * once. One more, and those that have waited longest are closed: a page of
+   * ours joins the moment it connects, so a room of sixteen coming in
+   * together is nowhere near it.
+   */
+  maxPendingConnections: number;
+  /**
+   * How many messages other than `join` a connection may send before it has
+   * joined. A page of ours sends none; the few allowed are for one that
+   * arrives while the room is still seating the page that sent it. One more
+   * and the connection is closed.
+   */
+  maxStrayMessages: number;
   /** Seconds a player with no live connection has for a move before the room makes it. */
   awayTurnSeconds: number;
   /**

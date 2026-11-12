@@ -8,12 +8,32 @@ import { routePartykitRequest } from "partyserver";
 import { isValidRoomCode, type RoomConfig } from "../shared/lobby";
 import { DIRECTORY_NAME } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
+import { ADDRESS_HEADER } from "./address";
 
 export { RoomDirectory } from "./directory";
 export { GameRoom } from "./room";
 
 const rooms: RoomConfig = roomConfig;
 const notFound = (): Response => new Response("Not Found", { status: 404 });
+const tooMany = (): Response => new Response("Too Many Requests", { status: 429 });
+
+/**
+ * Whether one more connection is taken from the address `connecting` comes
+ * from: so many in a while and no more (`CONNECT_LIMITER`, `wrangler.jsonc`).
+ * Every connection wakes a room or the directory, and a script that opens
+ * them without end would use up what the whole game has for a day. Where the
+ * address is not known, or the count cannot be had, the connection is taken:
+ * the limit is a guard, and the game does not stop for it.
+ */
+async function withinLimit(connecting: Request, env: Env): Promise<boolean> {
+  const from = connecting.headers.get(ADDRESS_HEADER);
+  if (from === null) return true;
+  try {
+    return (await env.CONNECT_LIMITER.limit({ key: from })).success;
+  } catch {
+    return true;
+  }
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -22,7 +42,9 @@ export default {
       // are how the parties talk to each other inside the Worker (a room
       // reporting to the directory), so none is let in from outside.
       onBeforeRequest: notFound,
-      onBeforeConnect: (connecting, party) => {
+      onBeforeConnect: async (connecting, party) => {
+        // Counted before anything else: asking after names that cannot be a room counts as well.
+        if (!(await withinLimit(connecting, env))) return tooMany();
         // A Durable Object comes into being, and keeps what it stores, the
         // first time its name is used: only names that can be a room, and the
         // one directory there is, get that far.

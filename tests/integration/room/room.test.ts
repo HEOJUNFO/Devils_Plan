@@ -7,7 +7,7 @@ import { CLOSE_LEFT, CLOSE_REJECTED, CLOSE_STALE } from "../../../src/shared/pro
 import roomConfig from "../../../src/shared/room-config.json";
 import { exports } from "cloudflare:workers";
 import { PARTY_NAME } from "../../../src/shared/protocol";
-import { advanceClock, connect, heardWere, join as open, scheduledAlarm, tokenFor, type HeardRecord } from "../support";
+import { advanceClock, connect, heardWere, join as open, knock, scheduledAlarm, tokenFor, type HeardRecord } from "../support";
 
 /** How many players a room of `game` holds: worked out here, not by the code the tests are about. */
 const holds = (game: GameId): number => Math.min(roomConfig.maxPlayers, GAMES[game].maxPlayers);
@@ -19,6 +19,14 @@ const EMPTY_ROOM_TTL_MS = roomConfig.emptyRoomTtlMinutes * 60_000;
 const JOIN_TIMEOUT_MS = roomConfig.joinTimeoutSeconds * 1000;
 const AWAY_SLOT_MS = roomConfig.awaySlotSeconds * 1000;
 const STALE_MS = roomConfig.staleConnectionSeconds * 1000;
+/** How many tries a test gives a limit kept by address to show itself: far more than any such limit. */
+const MANY = 400;
+/** The room code a test makes its `n`th room under: `stem` and three more characters. */
+const codeOf = (stem: string, n: number): string => {
+  const letters = roomConfig.roomCodeAlphabet;
+  const digit = (place: number): string => letters[Math.floor(n / letters.length ** place) % letters.length];
+  return `${stem}${digit(2)}${digit(1)}${digit(0)}`;
+};
 
 afterEach(() => {
   vi.useRealTimers();
@@ -373,6 +381,108 @@ describe("GameRoom", () => {
     a.close();
     b.close();
     watcher.close();
+  });
+
+  it("takes a join from a connection that sent a thing or two first", async () => {
+    const a = await connect("LMTAA");
+    for (let n = 0; n < roomConfig.maxStrayMessages; n++) a.send({ type: "poke" });
+
+    a.send({ type: "join", token: tokenFor(0), nick: "p0", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+
+    expect(await a.next()).toMatchObject({ type: "lobby", you: 0 });
+    a.close();
+  });
+
+  it("closes a connection that goes on sending without joining", async () => {
+    const a = await connect("LMTAB");
+
+    for (let n = 0; n <= roomConfig.maxStrayMessages; n++) a.send({ type: "poke" });
+
+    expect(await a.closed).toBe(CLOSE_REJECTED);
+  });
+
+  it("counts what cannot be read as well, of a connection that has not joined", async () => {
+    const a = await connect("LMTAC");
+
+    for (let n = 0; n <= roomConfig.maxStrayMessages; n++) a.sendRaw("not a message");
+
+    expect(await a.closed).toBe(CLOSE_REJECTED);
+  });
+
+  it("closes those that have waited longest to join, once more wait than a room keeps", async () => {
+    // each a moment after the one before, so that which has waited longest is plain
+    const first = await connect("LMTAD");
+    advanceClock(10);
+    const second = await connect("LMTAD");
+    advanceClock(10);
+    const rest = [];
+    for (let n = 2; n < roomConfig.maxPendingConnections; n++) rest.push(await connect("LMTAD"));
+
+    const one = await connect("LMTAD");
+    const made = await open("LMTAD", { player: 0, create: true });
+
+    expect(await first.next()).toEqual({ type: "error", reason: "join-timeout" });
+    expect(await first.closed).toBe(CLOSE_REJECTED);
+    expect(await second.next()).toEqual({ type: "error", reason: "join-timeout" });
+    // the one who came last and means to join is let in
+    expect(await made.next()).toMatchObject({ type: "lobby", you: 0 });
+    for (const client of [...rest, one, made]) client.close();
+  });
+
+  it("counts a join sent again by a seated connection against that player's pace", async () => {
+    const a = await open("LMTAE", { player: 0, create: true });
+    await a.next();
+    const again = { type: "join", token: tokenFor(0), nick: "p0", create: true, game: DEFAULT_GAME, listed: false, pings: false } as const;
+
+    for (let n = 0; n <= roomConfig.messageLimits.other.burst; n++) a.send(again);
+
+    for (;;) {
+      const message = await a.next();
+      if (message.type !== "refused") continue;
+      expect(message).toEqual({ type: "refused", reason: "too-fast" });
+      break;
+    }
+    a.close();
+  });
+
+  it("turns away an address that connects faster than the limit, and no other", async () => {
+    const flooding = "203.0.113.7";
+    let refused = -1;
+
+    for (let n = 0; n < MANY && refused < 0; n++) {
+      const response = await knock(`/parties/${PARTY_NAME}/${codeOf("LC", n)}`, flooding);
+      if (response.status === 429) refused = n;
+      else response.webSocket?.accept();
+    }
+    const other = await knock(`/parties/${PARTY_NAME}/LMTAF`, "203.0.113.8");
+
+    // it was let in a good many times first: a house of players behind one address is not a flood
+    expect(refused).toBeGreaterThanOrEqual(2 * roomConfig.maxPlayers);
+    expect(other.status).toBe(101);
+  });
+
+  it("makes no more rooms for an address that makes them faster than the limit, and still lets it into one that is there", async () => {
+    const making = "203.0.113.20";
+    const there = await open("LMTAG", { player: 0, create: true });
+    await there.next();
+    let refused = -1;
+
+    for (let n = 0; n < MANY && refused < 0; n++) {
+      const maker = await open(codeOf("LR", n), { player: 1, create: true, from: making });
+      const answer = await maker.next();
+      if (answer.type === "error") {
+        expect(answer.reason).toBe("code-taken");
+        refused = n;
+      }
+      maker.close();
+    }
+    const guest = await open("LMTAG", { player: 1, from: making });
+    const elsewhere = await open("LMTAH", { player: 2, create: true, from: "203.0.113.21" });
+
+    expect(refused).toBeGreaterThan(0);
+    expect(await guest.next()).toMatchObject({ type: "lobby", you: 1 });
+    expect(await elsewhere.next()).toMatchObject({ type: "lobby", you: 0 });
+    for (const client of [there, guest, elsewhere]) client.close();
   });
 
   it("closes a connection that never joined when the next one arrives after the deadline", async () => {

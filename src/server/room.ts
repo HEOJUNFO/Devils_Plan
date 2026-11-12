@@ -1,4 +1,4 @@
-import { Server, type Connection, type WSMessage } from "partyserver";
+import { Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shared/chat";
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
@@ -43,6 +43,7 @@ import {
 import roomConfig from "../shared/room-config.json";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
 import voiceConfigJson from "../shared/voice-config.json";
+import { ADDRESS_HEADER } from "./address";
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
@@ -55,8 +56,13 @@ const voiceConfig: VoiceConfig = voiceConfigJson;
  * the room.
  */
 type ConnectionState =
-  /** Open, but has not sent `join` yet. `since` is when it connected. */
-  | { kind: "pending"; since: number }
+  /**
+   * Open, but has not sent `join` yet. `since` is when it connected, `strays`
+   * how many messages it has sent that were not a `join`, and `from` the
+   * network address it connected from, where the platform says one: kept
+   * only until it joins, for the limit on making rooms, and never sent.
+   */
+  | { kind: "pending"; since: number; strays: number; from: string | null }
   | Seat
   /**
    * Ended by the room: it left, was refused, or stopped answering. The socket
@@ -233,9 +239,9 @@ export class GameRoom extends Server<Env> {
    * A new connection is not a player yet: it must send `join`. Nothing in the
    * URL is read, so credentials placed there are ignored.
    */
-  onConnect(connection: Connection<ConnectionState>): void {
+  onConnect(connection: Connection<ConnectionState>, context: ConnectionContext): void {
     const now = Date.now();
-    connection.setState({ kind: "pending", since: now });
+    connection.setState({ kind: "pending", since: now, strays: 0, from: context.request.headers.get(ADDRESS_HEADER) });
     this.closeStalePending(now, connection.id);
   }
 
@@ -244,13 +250,20 @@ export class GameRoom extends Server<Env> {
     // A connection the room has ended can stay open at the far end and go on sending: none of it is read.
     if (connection.state?.kind === "gone") return;
     const parsed = parseClientMessage(message);
+    const pending = connection.state?.kind === "pending" ? connection.state : null;
+    if (pending !== null && parsed?.type !== "join") {
+      // It is nobody yet and may only join. What else it sends makes the room do no work, and
+      // a connection that goes on sending is not a page of ours: it is closed.
+      if (pending.strays >= config.maxStrayMessages) this.end(connection, CLOSE_REJECTED, "join-first");
+      else connection.setState({ ...pending, strays: pending.strays + 1 });
+      return;
+    }
     if (parsed === null) return;
     this.openStorage();
     // Whatever was asked is answered as things really stand: without those who have gone silent.
     await this.sweep(Date.now());
-    if (parsed.type === "join") {
-      // Only a connection that has not joined yet may: a second `join` on a seated connection is ignored.
-      if (connection.state?.kind === "pending") await this.handleJoin(connection, parsed);
+    if (pending !== null && parsed.type === "join") {
+      await this.handleJoin(connection, parsed, pending.from);
       return;
     }
     const seat = this.seatOf(connection);
@@ -274,6 +287,8 @@ export class GameRoom extends Server<Env> {
       if (sort !== "signal") this.refuse(connection, "too-fast");
       return;
     }
+    // Only a connection that has not joined yet may join: on a seated one it is counted against the pace, and ignored.
+    if (parsed.type === "join") return;
     if (parsed.type === "leave") await this.handleLeave(seat.slot);
     else if (parsed.type === "start") await this.handleStart(connection, seat.slot, parsed.bots);
     else if (parsed.type === "action") await this.handleAction(connection, seat.slot, parsed.action);
@@ -403,19 +418,21 @@ export class GameRoom extends Server<Env> {
   private async handleJoin(
     connection: Connection<ConnectionState>,
     request: Extract<ClientMessage, { type: "join" }>,
+    from: string | null,
   ): Promise<void> {
     if (!isValidRoomCode(this.name, config)) return this.reject(connection, "bad-room");
 
     let lobby = this.lobby;
     if (lobby === null) {
-      if (!request.create) {
-        this.reject(connection, "not-found");
+      if (!request.create || !(await this.mayMake(from))) {
+        this.reject(connection, request.create ? "code-taken" : "not-found");
         // Asking after a room that does not exist leaves nothing behind.
         if (this.connectedSlots().size === 0) await this.forget();
         return;
       }
       lobby = createLobby(request.game, request.listed, config);
     } else if (request.create && lobby.players.length === 0) {
+      if (!(await this.mayMake(from))) return this.reject(connection, "code-taken");
       // Everybody who was here has gone and the room was only being kept for
       // them: it is made again, as its new maker asks.
       lobby = createLobby(request.game, request.listed, config);
@@ -777,15 +794,40 @@ export class GameRoom extends Server<Env> {
   }
 
   /**
-   * Closes connections that opened but never joined within the allowed time.
+   * Closes connections that opened but never joined within the allowed time,
+   * and, where more wait than the room keeps, those that have waited longest.
    * Checked whenever someone connects rather than on a timer: an idle
    * connection to a hibernating room costs nothing, so there is no hurry.
    */
   private closeStalePending(now: number, exceptId: string): void {
     const deadline = now - config.joinTimeoutSeconds * 1000;
+    const waiting: { connection: Connection<ConnectionState>; since: number }[] = [];
     for (const c of this.getConnections<ConnectionState>()) {
       if (c.id === exceptId || c.state?.kind !== "pending") continue;
       if (c.state.since <= deadline) this.reject(c, "join-timeout");
+      else waiting.push({ connection: c, since: c.state.since });
+    }
+    // No more wait than the room keeps (the one that has just come counts): those that have
+    // waited longest go first, so that a crowd of connections doing nothing keeps nobody out.
+    const over = waiting.length + 1 - config.maxPendingConnections;
+    if (over <= 0) return;
+    waiting.sort((a, b) => a.since - b.since);
+    for (const { connection } of waiting.slice(0, over)) this.reject(connection, "join-timeout");
+  }
+
+  /**
+   * Whether a room may be made for a connection from `from`: an address may
+   * make so many rooms in a while and no more (`CREATE_LIMITER`,
+   * `wrangler.jsonc`), as making one is the dearest thing a stranger can ask
+   * for. Where the address is not known, or the count cannot be had, the
+   * room is made: the limit is a guard, and the game does not stop for it.
+   */
+  private async mayMake(from: string | null): Promise<boolean> {
+    if (from === null) return true;
+    try {
+      return (await this.env.CREATE_LIMITER.limit({ key: from })).success;
+    } catch {
+      return true;
     }
   }
 

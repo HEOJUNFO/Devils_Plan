@@ -11,6 +11,21 @@
   // here is what the deployed Worker gets; `npm run dev` reads `.dev.vars`
   // (not committed), where ALLOW_BOTS=true turns them on for local play.
   "vars": { "ALLOW_BOTS": "false" },
+  // Limits kept by the network address a connection comes from, against a
+  // script that opens connections or makes rooms without end: each of those
+  // wakes a Durable Object and writes to its storage, and the free plan has
+  // so many of each a day for the whole game. An address is not a person (a
+  // household, a school, a phone network), so both are set well above what a
+  // room of sixteen behind one address does: two connections a player, and
+  // again when a deploy cuts everyone off. The count is kept by Cloudflare
+  // location and is not exact. `namespace_id` is any whole number this
+  // account uses for nothing else.
+  "ratelimits": [
+    // connections to a room or to the list of rooms (src/server/index.ts)
+    { "name": "CONNECT_LIMITER", "namespace_id": "52731", "simple": { "limit": 120, "period": 60 } },
+    // rooms made (src/server/room.ts): the smoke check makes nine in a run
+    { "name": "CREATE_LIMITER", "namespace_id": "52732", "simple": { "limit": 12, "period": 60 } }
+  ],
   // The browser client is built by Vite; the Cloudflare Vite plugin points the
   // assets directory at that build. Room traffic must reach the Worker first.
   "assets": {
