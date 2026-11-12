@@ -1585,6 +1585,19 @@ button.choice[aria-pressed="true"] {
   line-height: 24px;
 }
 
+/* The two links on the lobby's last line stay words among words, and take a finger from as far off as a button is tall: over them the bar's second line, which takes none. */
+:root.touch #record-open,
+:root.touch #feedback {
+  position: relative;
+}
+
+:root.touch #record-open::before,
+:root.touch #feedback::before {
+  position: absolute;
+  inset: -8px -3px -3px;
+  content: "";
+}
+
 /* The tabs over a game's column keep their height, which the column is laid out round, and take a finger from further off. */
 :root.touch #tabs button {
   position: relative;
