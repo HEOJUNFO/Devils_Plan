@@ -471,7 +471,7 @@ const en: typeof ko = {
     team: (team) => `Team ${team}`,
   },
   bar: {
-    lobby: ["Join an open room, or make one and gather people.", "For friends only: make a private room and send the invite link."],
+    lobby: ["Join an open room, or make one and gather people.", "Friends only? Make a private room and send the invite link."],
     others: (count, more) =>
       `${more ? `${count}+ others are` : count === 1 ? "1 other is" : `${count} others are`} here now. A public room lets them join.`,
     rules: "Rules",
