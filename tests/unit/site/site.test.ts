@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import { LANGS, type Lang } from "../../../src/shared/lang";
-import { appHead, appNoScript, escapeHtml, gamePath, homePath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
+import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
+import { invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
 import { siteStyle } from "../../../src/shared/site/style";
 import { ORIGIN, OWNER_CODES, SITE_WORDS } from "../../../src/shared/site/words";
 
@@ -224,5 +225,58 @@ describe("the head of the game's own page", () => {
 
   it("links a reader without the script to the page about the games, in every language", () => {
     for (const lang of LANGS) expect(appNoScript()).toContain(`<a href="${homePath(lang)}">`);
+  });
+});
+
+describe("the pages links of invitation go through", () => {
+  const meta = (body: string, property: string): string => unescape(one(body, new RegExp(`<meta property="${property}" content="([^"]*)"`)));
+  /** Each such page with the game and the language it is for. */
+  const invites = LANGS.flatMap((lang) => GAME_IDS.map((game) => ({ lang, game, body: inviteFiles().find((made) => `/${made.path}` === `${invitePath(lang, game)}index.html`)?.body ?? "" })));
+
+  it("are one for each game in each language, at the address a link is made with", () => {
+    expect(inviteFiles()).toHaveLength(LANGS.length * GAME_IDS.length);
+    for (const invite of invites) expect(invite.body, invitePath(invite.lang, invite.game)).not.toBe("");
+  });
+
+  it("name the game in an address as its page of rules does", () => {
+    for (const game of GAME_IDS) expect(invitePath("ko", game)).toBe(`/i/ko/${slugOf(game)}/`);
+    expect(invitePath("en", "under-thirteen")).not.toContain("under-thirteen");
+  });
+
+  it("give a messenger the game's name, what it is about and a picture of its own", () => {
+    for (const { lang, game, body } of invites) {
+      expect(meta(body, "og:title")).toContain(GAMES[game].title[lang]);
+      expect(meta(body, "og:description")).toContain(GAMES[game].summary[lang]);
+      expect(meta(body, "og:image")).toBe(ORIGIN + invitePicture(lang, game));
+      expect(meta(body, "og:url")).toBe(ORIGIN + invitePath(lang, game));
+      expect(body).toContain(`<html lang="${lang}">`);
+    }
+  });
+
+  it("have a picture each, no two the same", () => {
+    const pictures = invites.map(({ lang, game }) => invitePicture(lang, game));
+
+    expect(new Set(pictures).size).toBe(pictures.length);
+  });
+
+  it("go on to the game's own page with whatever follows the #, and keep nothing of themselves to come back to", () => {
+    for (const { body } of invites) expect(body).toContain('<script>location.replace("/" + location.hash);</script>');
+  });
+
+  it("ask a search engine to leave them out, and are not in the sitemap", () => {
+    for (const { lang, game, body } of invites) {
+      expect(body).toContain('<meta name="robots" content="noindex" />');
+      expect(file("sitemap.xml")).not.toContain(invitePath(lang, game));
+    }
+  });
+
+  it("do not name the show: they are the card a shared link shows", () => {
+    for (const { body } of invites) {
+      expect(body).not.toMatch(/데블스|Devil/);
+    }
+  });
+
+  it("write a game's name and summary as text, not as markup", () => {
+    for (const { body } of invites) expect(body).not.toMatch(/content="[^"]*[<>][^"]*"/);
   });
 });

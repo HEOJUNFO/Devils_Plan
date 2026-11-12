@@ -2,6 +2,10 @@
 
   public/og-ko.png, public/og-en.png   1200 by 630: the card a messenger or a
                                        social site draws for a link (og:image)
+  public/invite-<lang>-<game>.png      1200 by 630: the card for a link that
+                                       invites someone to a room of one game
+                                       (the page such a link goes through:
+                                       `inviteFiles` in src/shared/site/pages.ts)
   public/icon-180.png                  the page's pixel mark as a file with an
                                        address, which a search result and a
                                        phone's home screen take it from
@@ -34,6 +38,15 @@ NAME = "brain-survival"
 # The game's colours (src/client/style.css).
 NIGHT, BAR, LINE = "#0d1020", "#0b0d19", "#2c3044"
 BONE, BONE_DIM, AMBER, TEAL = "#efe6cc", "#a8a08a", "#ffb43c", "#3fd0b6"
+
+# What a game is called in an address where its id is not its name (`slugOf` in src/shared/site/paths.ts): keep the two the same.
+SLUGS = {"under-thirteen": "heavy-13"}
+
+# On a card that invites to one game, under what the game is about: who it is for, and what to do.
+INVITES = {
+    "ko": lambda low, high: f"{low}~{high}명 · 링크를 열면 방으로 들어갑니다",
+    "en": lambda low, high: f"{low}–{high} players · open the link to join the room",
+}
 
 # The headline in each language, on two lines: `home.heading` of src/shared/site/words.ts.
 HEADLINES = {
@@ -102,6 +115,41 @@ def card(lang: str) -> Image.Image:
     return picture
 
 
+def wrapped(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, width: int) -> list[str]:
+    """`text` broken between words into lines no wider than `width`."""
+    lines, line = [], ""
+    for word in text.split(" "):
+        longer = f"{line} {word}" if line else word
+        if line and draw.textlength(longer, font=font) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = longer
+    return [*lines, line]
+
+
+def invite(lang: str, game: dict) -> Image.Image:
+    """The card for a link that invites to a room of `game`: its name, what it is about, how many play."""
+    picture = Image.new("RGB", (1200, 630), NIGHT)
+    draw = ImageDraw.Draw(picture)
+    draw.fontmode = "1"
+    draw.rectangle([24, 24, 1175, 605], outline=LINE, width=6)
+    mark(draw, 84, 84, 6)
+    draw.text((180, 96), NAME, font=face(48), fill=BONE)
+    address = face(24)
+    draw.text((1116 - draw.textlength(ADDRESS, font=address), 114), ADDRESS, font=address, fill=TEAL)
+    # the name as large as fits on one line
+    title = game["title"][lang]
+    size = next(size for size in (120, 96, 72) if draw.textlength(title, font=face(size)) <= 1032 or size == 72)
+    draw.text((84, 216), title, font=face(size), fill=AMBER)
+    y = 216 + size + 36
+    for line in wrapped(draw, game["summary"][lang], face(36), 1032):
+        draw.text((84, y), line, font=face(36), fill=BONE)
+        y += 48
+    draw.text((84, 528), INVITES[lang](game["minPlayers"], game["maxPlayers"]), font=face(36), fill=BONE_DIM)
+    return picture
+
+
 def icon() -> Image.Image:
     picture = Image.new("RGB", (180, 180), NIGHT)
     mark(ImageDraw.Draw(picture), 30, 30, 10)
@@ -112,6 +160,8 @@ if __name__ == "__main__":
     public = ROOT / "public"
     for lang in HEADLINES:
         card(lang).save(public / f"og-{lang}.png", optimize=True)
+        for game_id, game in GAMES.items():
+            invite(lang, game).save(public / f"invite-{lang}-{SLUGS.get(game_id, game_id)}.png", optimize=True)
     icon().save(public / "icon-180.png", optimize=True)
     for made in sorted(public.glob("*.png")):
         print(f"{made.relative_to(ROOT)}: {made.stat().st_size} bytes")

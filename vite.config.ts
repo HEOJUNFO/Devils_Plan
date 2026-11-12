@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 import { SITE_SHEETS } from "./src/client/site-sheets";
-import { appHead, appNoScript, siteFiles } from "./src/shared/site/pages";
+import { appHead, appNoScript, inviteFiles, siteFiles } from "./src/shared/site/pages";
 import { siteStyle } from "./src/shared/site/style";
 
 /**
@@ -28,7 +28,7 @@ function sitePages(): Plugin {
       ];
     },
     configureServer(server) {
-      const files = new Map(siteFiles(SITE_SHEETS, { font: SOURCE_FONT, style: DEV_STYLE }).map((file) => [`/${file.path}`, file.body]));
+      const files = new Map([...siteFiles(SITE_SHEETS, { font: SOURCE_FONT, style: DEV_STYLE }), ...inviteFiles()].map((file) => [`/${file.path}`, file.body]));
       files.set(DEV_STYLE, siteStyle(SOURCE_FONT));
       const types: Record<string, string> = { html: "text/html", css: "text/css", xml: "application/xml", txt: "text/plain" };
       server.middlewares.use((request, response, next) => {
@@ -47,7 +47,7 @@ function sitePages(): Plugin {
       const font = Object.keys(bundle).find((name) => /Galmuri11-common-.*\.woff2$/.test(name));
       if (font === undefined) throw new Error("site-pages: the build has no Galmuri11-common font to give the pages");
       const style = this.emitFile({ type: "asset", name: "site.css", source: siteStyle(`/${font}`) });
-      for (const file of siteFiles(SITE_SHEETS, { font: `/${font}`, style: `/${this.getFileName(style)}` })) {
+      for (const file of [...siteFiles(SITE_SHEETS, { font: `/${font}`, style: `/${this.getFileName(style)}` }), ...inviteFiles()]) {
         this.emitFile({ type: "asset", fileName: file.path, source: file.body });
       }
     },

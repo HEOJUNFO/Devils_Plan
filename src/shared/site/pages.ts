@@ -20,6 +20,7 @@
  */
 import { GAMES, GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
+import { invitePath, invitePicture, slugOf } from "./paths";
 import { LANG_NAMES, ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "./words";
 
 /** A game's rules as its sheet has them: a heading, then paragraphs and lists of points (`RulesSheet` of the client). */
@@ -50,13 +51,6 @@ export interface HeadTag {
   children?: string;
 }
 
-/**
- * What a game is called in an address, where its id is not its name: the id
- * of 무거운 13 is from before it had the show's name, and an address is read
- * (`.claude/rules/game-names.md`).
- */
-const SLUGS: Partial<Record<GameId, string>> = { "under-thirteen": "heavy-13" };
-
 /** The picture a shared link shows, and its size. */
 const PICTURE = { width: 1200, height: 630 };
 
@@ -74,7 +68,7 @@ export function homePath(lang: Lang): string {
 
 /** The address of a game's page of rules, in `lang`. */
 export function gamePath(lang: Lang, game: GameId): string {
-  return `/${lang}/${SLUGS[game] ?? game}/`;
+  return `/${lang}/${slugOf(game)}/`;
 }
 
 /** The address that opens the game itself in `lang`. */
@@ -386,6 +380,61 @@ ${first.frame.notTheShow}
 
 ${[FALLBACK_LANG, ...LANGS.filter((lang) => lang !== FALLBACK_LANG)].map(section).join("\n\n")}
 `;
+}
+
+/**
+ * The page a link of invitation to a room of `game` goes through, in `lang`.
+ *
+ * A messenger that is sent the link asks for this page and draws a card from
+ * its head: the game's name, what it is about, a picture with the name on it.
+ * A person who opens the link is taken on at once to the game's own page,
+ * with the room's code, which follows a `#` and so reaches only their own
+ * browser. A search engine is asked to leave the page out: it says nothing
+ * the game's page of rules does not.
+ */
+function invitePage(lang: Lang, game: GameId): string {
+  const words = SITE_WORDS[lang];
+  const name = GAMES[game].title[lang];
+  const title = words.invite.title(name);
+  const description = words.invite.description(GAMES[game].summary[lang], players(lang, game));
+  const head: HeadTag[] = [
+    { tag: "title", children: `${title} | ${SITE_NAME}` },
+    { tag: "meta", attrs: { name: "description", content: description } },
+    { tag: "meta", attrs: { name: "robots", content: "noindex" } },
+    { tag: "meta", attrs: { property: "og:type", content: "website" } },
+    { tag: "meta", attrs: { property: "og:site_name", content: SITE_NAME } },
+    { tag: "meta", attrs: { property: "og:title", content: title } },
+    { tag: "meta", attrs: { property: "og:description", content: description } },
+    { tag: "meta", attrs: { property: "og:url", content: ORIGIN + invitePath(lang, game) } },
+    { tag: "meta", attrs: { property: "og:locale", content: LOCALES[lang] } },
+    { tag: "meta", attrs: { property: "og:image", content: ORIGIN + invitePicture(lang, game) } },
+    { tag: "meta", attrs: { property: "og:image:width", content: String(PICTURE.width) } },
+    { tag: "meta", attrs: { property: "og:image:height", content: String(PICTURE.height) } },
+    { tag: "meta", attrs: { property: "og:image:alt", content: words.invite.picture(name) } },
+    { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
+    // On to the game's own page with whatever followed the `#`, and nothing kept of this page to come back to.
+    { tag: "script", children: 'location.replace("/" + location.hash);' },
+  ];
+  return `<!doctype html>
+<html lang="${lang}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#0d1020" />
+<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(MARK.replace(' aria-hidden="true"', ""))}" />
+${head.map(renderTag).join("\n")}
+</head>
+<body style="margin:0;padding:16px;background:#0d1020;color:#efe6cc;font:16px/1.5 sans-serif">
+<p>${escapeHtml(words.invite.going)}</p>
+<p><a href="/" style="color:#ffb43c" onclick="this.href='/'+location.hash">${escapeHtml(words.invite.open)}</a></p>
+</body>
+</html>
+`;
+}
+
+/** The pages links of invitation go through: one for each game in each language (`invitePath`). */
+export function inviteFiles(): SiteFile[] {
+  return LANGS.flatMap((lang) => GAME_IDS.map((game) => ({ path: `${invitePath(lang, game).slice(1)}index.html`, body: invitePage(lang, game) })));
 }
 
 /** Every file of the site besides the game's own page: the pages, and what tells a crawler where they are. */

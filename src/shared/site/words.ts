@@ -119,6 +119,19 @@ const ko = {
   },
   /** How many play, as it is said in a sentence and in a list. */
   count: (min: number, max: number) => `${min}~${max}명`,
+  /**
+   * The page a link of invitation goes through (`inviteFiles`): what a
+   * messenger shows of it, and the two lines it has itself for the moment
+   * before it has gone on to the room. The show is not named here: this is
+   * the card a shared link shows (`.claude/rules/game-names.md`).
+   */
+  invite: {
+    title: (name: string) => `${name} 같이 해요`,
+    description: (summary: string, players: string) => `${summary} ${players}이 실시간으로 합니다. 링크를 열면 바로 방으로 들어갑니다.`,
+    picture: (name: string) => `${SITE_NAME}: ${name} 초대`,
+    going: "방으로 가는 중입니다.",
+    open: "방으로 가기",
+  },
 };
 
 const en: typeof ko = {
@@ -182,6 +195,13 @@ const en: typeof ko = {
     others: "Other games",
   },
   count: (min: number, max: number) => `${min}–${max} players`,
+  invite: {
+    title: (name: string) => `Play ${name} with me`,
+    description: (summary: string, players: string) => `${summary} ${players}, live. Open the link to go straight into the room.`,
+    picture: (name: string) => `${SITE_NAME}: an invitation to ${name}`,
+    going: "Going to the room.",
+    open: "Go to the room",
+  },
 };
 
 /** The words of these pages, in every language: a page is written in each. */

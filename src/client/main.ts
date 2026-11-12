@@ -46,6 +46,7 @@ import {
   type RejectReason,
 } from "../shared/protocol";
 import { liftFor, placeFrame } from "../shared/frame";
+import { invitePath } from "../shared/site/paths";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptRoom } from "../shared/resume";
 import { QUICK_WORDS } from "../shared/chat";
@@ -2238,8 +2239,11 @@ function passOn(button: HTMLButtonElement, label: string, text: string, url: str
 }
 
 copyButton.addEventListener("click", () => {
-  const link = `${location.origin}${location.pathname}#${currentCode}`;
-  const game = currentView !== null && isGameId(currentView.game) ? GAMES[currentView.game].title[lang] : "";
+  const invited = currentView !== null && isGameId(currentView.game) ? currentView.game : null;
+  // Through the page that tells whatever draws a card for a link (a messenger) which game this is, in the
+  // language of the one inviting; it goes on to the room at once. The code follows the `#` and is sent to nobody.
+  const link = `${location.origin}${invited === null ? location.pathname : invitePath(lang, invited)}#${currentCode}`;
+  const game = invited === null ? "" : GAMES[invited].title[lang];
   // copied, it is the link alone, as an address is pasted; the sheet sends a line with it
   passOn(copyButton, WORDS.room.copy, game === "" ? "" : WORDS.share.invite(game), link, link, () => {
     // the code is on screen to read out
