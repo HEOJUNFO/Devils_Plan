@@ -23,7 +23,8 @@
   // (src/server/room.ts): "room made: <game> listed|unlisted",
   // "game started: <game> <n> players", "game ended: <game> <n> min",
   // "host passed on: <game> the host did not answer" (everyone else was
-  // ready and the host's page said nothing) and
+  // ready and the host's page said nothing), "game changed: <game> to
+  // <game>" (the host turned the room to another game) and
   // "room emptied: <game> listed|unlisted games <n> most <n>" (how many
   // games it saw and the most people in it at once: "games 0 most 1" is a
   // room someone waited in alone). Never a code or a name. The line Cloudflare would

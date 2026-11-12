@@ -120,6 +120,11 @@ const ko = {
     /** Over the room's code when the page was loaded again and the room has not answered yet. */
     returning: "방으로 돌아오는 중",
     newGame: "새 게임",
+    /** On the host's button that opens the choice of another game for the room: short, beside two others. */
+    swap: "게임",
+    swapHelp: "누르면 이 방에서 할 게임을 바꿉니다",
+    /** In the chat, when the host has made the room one for another game. */
+    gameChanged: (game: string) => `이제 이 방의 게임은 ${game}입니다`,
     /** On the button of everyone but the host: said once, taken back with the same button. */
     ready: "준비",
     unready: "준비 취소",
@@ -150,6 +155,13 @@ const ko = {
     },
     reloadForGame: "새로고침하면 이 게임을 할 수 있습니다.",
     left: "방에서 나왔습니다. 다른 창에서 나갔거나 자리를 오래 비웠습니다.",
+  },
+  /** The host's choice of another game for the room. */
+  swap: {
+    title: "게임 바꾸기",
+    hint: "바꾸면 준비 표시와 팀 선택은 처음으로 돌아갑니다.",
+    tooMany: "지금 인원이 다 들어가지 않는 게임은 고를 수 없습니다.",
+    close: "닫기",
   },
   /** In the picture of the room: the marks beside a figure. */
   scene: {
@@ -340,6 +352,9 @@ const en: typeof ko = {
     offline: "Connection lost. Reconnecting",
     returning: "Returning to the room",
     newGame: "New game",
+    swap: "Game",
+    swapHelp: "Press to change the game this room plays",
+    gameChanged: (game) => `This room now plays ${game}`,
     ready: "Ready",
     unready: "Not ready",
     seat: (seat, nick, me, connected, ready) => `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}`,
@@ -364,6 +379,12 @@ const en: typeof ko = {
     },
     reloadForGame: "Reload the page to play this game.",
     left: "You are out of the room: you left in another window, or were away too long.",
+  },
+  swap: {
+    title: "Change the game",
+    hint: "Changing it takes back ready marks and teams.",
+    tooMany: "A game that cannot hold everyone here cannot be picked.",
+    close: "Close",
   },
   scene: {
     host: "Host",

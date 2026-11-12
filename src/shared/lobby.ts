@@ -318,6 +318,43 @@ export function capacityOf(game: GameId, config: RoomConfig): number {
   return Math.min(config.maxPlayers, GAMES[game].maxPlayers);
 }
 
+/**
+ * Whether a room whose players hold `slots` could be one for `game`: every
+ * slot is one a room of that game has. A player keeps their slot for as long
+ * as they stay (their connections, their voice and their seat at a table go
+ * by it), so a room is not made one for a game with fewer places than the
+ * highest slot held.
+ */
+export function gameHolds(slots: readonly number[], game: GameId, config: RoomConfig): boolean {
+  const holds = capacityOf(game, config);
+  return slots.every((slot) => slot < holds);
+}
+
+/**
+ * Makes the room one for `game`, for the games started in it from now on.
+ * What was chosen for the game it had goes with it: the variant, everyone's
+ * team, and everyone's word that they are ready (it was for another game).
+ * The length of a turn is kept between two games played in turns; a game
+ * without turns has none, and coming from one the room starts as a new room
+ * of the game would. Returns `null` when someone holds a slot the game has
+ * no place for ({@link gameHolds}), and the state unchanged when the room is
+ * for that game already. The input state is not modified.
+ */
+export function setGame(state: LobbyState, game: GameId, config: RoomConfig): LobbyState | null {
+  if (gameOf(state) === game) return state;
+  if (!gameHolds(state.players.map((p) => p.slot), game, config)) return null;
+  const turnSeconds = !GAMES[game].turns
+    ? 0
+    : GAMES[gameOf(state)].turns
+      ? turnSecondsOf(state)
+      : state.listed === true
+        ? config.listedTurnSeconds
+        : 0;
+  const { variant: _variant, ...rest } = state;
+  const players = state.players.map(({ team: _team, teamSince: _teamSince, ready: _ready, ...player }) => player);
+  return { ...rest, game, turnSeconds, players };
+}
+
 /** Whether `token` has the shape of a player token (16–64 URL-safe characters). */
 export function isValidToken(token: string): boolean {
   return TOKEN_PATTERN.test(token);

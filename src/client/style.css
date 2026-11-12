@@ -991,6 +991,54 @@ button.choice[aria-pressed="true"] {
   justify-content: flex-end;
 }
 
+/* The host's choice of another game for the room: over the middle of the frame, the games two to a row. */
+#swap-sheet {
+  position: absolute;
+  left: 60px;
+  top: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 360px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#swap-sheet[hidden] {
+  display: none;
+}
+
+#swap-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#swap-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+#swap-choices button {
+  overflow: hidden;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+#swap-sheet .row {
+  justify-content: flex-end;
+}
+
+:root.touch #swap-sheet button {
+  height: 24px;
+}
+
+:root.touch #swap-sheet {
+  top: 8px;
+}
+
 /* What the host can do with a player, beside the figure that was pressed (main.ts puts it there). */
 #seat-menu {
   position: absolute;

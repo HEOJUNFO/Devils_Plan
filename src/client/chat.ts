@@ -18,6 +18,8 @@ export type ChatNote =
   | { kind: "came" | "went"; nick: string }
   /** Someone became the host: the host passed the room on, or was away when everyone else was ready. */
   | { kind: "host"; nick: string }
+  /** The host made the room one for another game: which, by its id (its name is put in when the note is shown). */
+  | { kind: "game"; game: string }
   /** A line could not be sent, or was sent too soon after the last; the voice chat was joined, joined without a microphone, or is not to be had here. */
   | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" };
 
@@ -42,7 +44,8 @@ function isLine(value: unknown): value is Line {
   const line = value as { text?: unknown; note?: unknown };
   if (typeof line.text === "string") return true;
   if (typeof line.note !== "object" || line.note === null) return false;
-  const note = line.note as { kind?: unknown; nick?: unknown };
+  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown };
+  if (note.kind === "game") return typeof note.game === "string";
   return typeof note.kind === "string" && (PLAIN_NOTES.includes(note.kind) || (NAMED_NOTES.includes(note.kind) && typeof note.nick === "string"));
 }
 

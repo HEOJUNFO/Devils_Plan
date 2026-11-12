@@ -228,6 +228,8 @@ export type ClientMessage =
   | { type: "team"; team: number }
   /** Put the room on the list of rooms anyone can join, or take it off; only the host may. */
   | { type: "listing"; listed: boolean }
+  /** Make the room one for another game; only the host may, and not during a game. */
+  | { type: "pick"; game: GameId }
   /** Say that one is ready for the next game, or no longer; the host does not, the host starts. */
   | { type: "ready"; ready: boolean }
   /** Make the player in slot `to` the host; only the host may, and only to someone connected. */
@@ -276,6 +278,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "leave") return { type: "leave" };
   if (data.type === "poke") return { type: "poke" };
   if (data.type === "here") return { type: "here" };
+  if (data.type === "pick") return isGameId(data.game) ? { type: "pick", game: data.game } : null;
   if (data.type === "ready") return typeof data.ready === "boolean" ? { type: "ready", ready: data.ready } : null;
   if (data.type === "host") {
     return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "host", to: data.to } : null;

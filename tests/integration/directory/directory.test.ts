@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import type { RoomListing } from "../../../src/shared/directory";
 import type { Letter } from "../../../src/shared/feedback";
-import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
+import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import {
   DIRECTORY_NAME,
   DIRECTORY_PARTY,
@@ -235,6 +235,20 @@ describe("RoomDirectory", () => {
     expect(toldHidden.listed).toBe(false);
     expect(shown).toMatchObject({ code: "DAAAM", players: 1 });
     expect(toldShown.listed).toBe(true);
+    a.close();
+    viewer.close();
+  });
+
+  it("lists a room under the game its host turns it to, with as many places as that game has", async () => {
+    const viewer = await watch();
+    const other = GAME_IDS.find((id) => GAMES[id].maxPlayers !== GAMES[DEFAULT_GAME].maxPlayers)!;
+    const a = await open("DAAAX", { player: 0, create: true, listed: true });
+    await viewer.roomWhere("DAAAX", present);
+
+    a.send({ type: "pick", game: other });
+
+    const listed = await viewer.roomWhere("DAAAX", (room) => room?.game === other);
+    expect(listed).toMatchObject({ code: "DAAAX", game: other, players: 1, maxPlayers: Math.min(roomConfig.maxPlayers, GAMES[other].maxPlayers) });
     a.close();
     viewer.close();
   });

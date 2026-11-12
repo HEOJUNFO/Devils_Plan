@@ -102,6 +102,7 @@
         <div class="row bottom">
           <button id="leave" type="button"></button>
           <button id="listing" type="button" hidden></button>
+          <button id="swap" type="button" hidden></button>
         </div>
       </section>
 
@@ -163,6 +164,17 @@
         <button id="seat-host" type="button"></button>
         <button id="seat-kick" type="button"></button>
         <button id="seat-close" type="button"></button>
+      </section>
+
+      <!-- The host's choice of another game for the room. -->
+      <section id="swap-sheet" role="dialog" aria-modal="true" aria-labelledby="swap-title" hidden>
+        <h2 id="swap-title"></h2>
+        <div id="swap-choices" role="group" aria-labelledby="swap-title"></div>
+        <p id="swap-hint" class="dim"></p>
+        <p id="swap-note" class="dim"></p>
+        <div class="row">
+          <button id="swap-close" type="button"></button>
+        </div>
       </section>
 
       <!-- A word about the game, for whoever makes it: sent through the list of rooms, which the lobby is connected to. -->

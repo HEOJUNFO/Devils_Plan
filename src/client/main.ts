@@ -16,6 +16,7 @@ import { BUILD, outOfDate } from "../shared/build";
 import { quickPicks, roomsShown, type RoomListing } from "../shared/directory";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
 import {
+  gameHolds,
   generateRoomCode,
   isValidRoomCode,
   normalizeNick,
@@ -120,6 +121,10 @@ const status = el<HTMLElement>("status");
 const players = el<HTMLOListElement>("players");
 const startButton = el<HTMLButtonElement>("start");
 const readyButton = el<HTMLButtonElement>("ready");
+const swapButton = el<HTMLButtonElement>("swap");
+const swapSheet = el<HTMLElement>("swap-sheet");
+const swapChoices = el<HTMLElement>("swap-choices");
+const swapNote = el<HTMLElement>("swap-note");
 const seatMenu = el<HTMLElement>("seat-menu");
 const seatName = el<HTMLElement>("seat-name");
 const seatHost = el<HTMLButtonElement>("seat-host");
@@ -193,6 +198,10 @@ function writeWords(): void {
     ["copy", WORDS.room.copy],
     ["start", WORDS.room.start],
     ["ready", WORDS.room.ready],
+    ["swap", WORDS.room.swap],
+    ["swap-title", WORDS.swap.title],
+    ["swap-hint", WORDS.swap.hint],
+    ["swap-close", WORDS.swap.close],
     ["seat-host", WORDS.room.seatMenu.host],
     ["seat-kick", WORDS.room.seatMenu.kick],
     ["seat-close", WORDS.room.seatMenu.close],
@@ -502,6 +511,7 @@ const chat = createChat(
       if (note.kind === "came") return WORDS.room.came(note.nick);
       if (note.kind === "went") return WORDS.room.went(note.nick);
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
+      if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
       if (note.kind === "too-fast") return WORDS.chat.tooFast;
       if (note.kind === "voice-joined") return WORDS.voice.joined;
@@ -655,6 +665,7 @@ function showTable(game: GameId): GameScreen {
   // the game asked for is here: the button under it is the start button again
   if (startAsked) unask();
   showSeatMenu(null);
+  showSwap(false);
   if (table !== null && tableGame !== game) {
     table.destroy();
     table = null;
@@ -1067,6 +1078,7 @@ function showLobby(message = ""): void {
   currentView = null;
   hostAsked = false;
   showSeatMenu(null);
+  swapSheet.hidden = true;
   hideTable();
   chat.close();
   room.hidden = true;
@@ -1184,6 +1196,7 @@ function noteComings(before: LobbyView, after: LobbyView): void {
   const is = new Map(after.players.map((p) => [p.slot, p.nick]));
   for (const [slot, nick] of is) if (!was.has(slot)) chat.note({ kind: "came", nick });
   for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: "went", nick });
+  if (after.game !== before.game) chat.note({ kind: "game", game: after.game });
   // The room has another host with both of them here before and after: it was passed on, by the host or by the
   // room for a host who did not answer. Not said when a host's connection drops and comes back: the room goes
   // to the next player and returns by itself, and a line for each way would fill the chat of a room on a bad line.
@@ -1192,6 +1205,40 @@ function noteComings(before: LobbyView, after: LobbyView): void {
     const host = after.host === null ? undefined : is.get(after.host);
     if (host !== undefined) chat.note({ kind: "host", nick: host });
   }
+}
+
+/**
+ * Shows the host's choice of another game for the room, or puts it away.
+ * A game with no place for a slot someone holds cannot be chosen: the room
+ * would refuse it.
+ */
+function showSwap(shown: boolean): void {
+  const view = currentView;
+  if (!shown || view === null || !isHost || table !== null) {
+    swapSheet.hidden = true;
+    return;
+  }
+  const slots = view.players.map((p) => p.slot);
+  const choices = GAME_IDS.map((id) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "choice";
+    button.textContent = GAMES[id].title[lang];
+    button.setAttribute("aria-pressed", String(id === view.game));
+    button.disabled = id !== view.game && !gameHolds(slots, id, config);
+    button.addEventListener("click", () => {
+      if (id !== view.game) send({ type: "pick", game: id });
+      showSwap(false);
+      swapButton.focus({ preventScroll: true });
+    });
+    return button;
+  });
+  swapChoices.replaceChildren(...choices);
+  swapNote.textContent = choices.some((button) => button.disabled) ? WORDS.swap.tooMany : "";
+  swapNote.hidden = swapNote.textContent === "";
+  const opening = swapSheet.hidden;
+  swapSheet.hidden = false;
+  if (opening) (choices[GAME_IDS.indexOf(view.game as GameId)] ?? choices[0])?.focus({ preventScroll: true });
 }
 
 /**
@@ -1299,6 +1346,10 @@ function renderRoom(code: string, view: LobbyView): void {
   table?.setHost(isHost);
   if (!isHost) hostAsked = false;
   syncSeatMenu();
+  // the choice of another game is the host's, and is drawn again for who is here now
+  swapButton.hidden = !isHost;
+  swapButton.title = WORDS.room.swapHelp;
+  if (!swapSheet.hidden) showSwap(true);
   // The host starts; everyone else says when they are ready, on the button that stands where the host's start does.
   const me = view.players.find((p) => p.slot === view.you);
   if (isHost || asked.ready === (me?.ready ?? false)) delete asked.ready;
@@ -1738,6 +1789,8 @@ seatKick.addEventListener("click", () => {
   showSeatMenu(null);
 });
 el<HTMLButtonElement>("seat-close").addEventListener("click", () => showSeatMenu(null));
+swapButton.addEventListener("click", () => showSwap(swapSheet.hidden === true));
+el<HTMLButtonElement>("swap-close").addEventListener("click", () => showSwap(false));
 window.addEventListener("pointerdown", noteInput, true);
 window.addEventListener("keydown", noteInput, true);
 listingButton.addEventListener("click", () => {
@@ -1952,6 +2005,7 @@ addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!gameMenu.hidden) openMenu(false);
   else if (!seatMenu.hidden) showSeatMenu(null);
+  else if (!swapSheet.hidden) showSwap(false);
   else if (!feedbackSheet.hidden) showFeedback(false);
   else if (!rules.hidden) rules.hidden = true;
   else if (!newRoom.hidden) closeNewRoom();

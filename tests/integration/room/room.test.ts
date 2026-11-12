@@ -1763,3 +1763,143 @@ describe("GameRoom: being ready, and the host", () => {
     b.close();
   });
 });
+
+describe("GameRoom: another game for the room", () => {
+  /** A game one player can start other than `ALONE_GAME`, and the game with the fewest places. */
+  const OTHER_ALONE_GAME = GAME_IDS.find((id) => id !== ALONE_GAME && GAMES[id].minPlayers === 1)!;
+  const SMALL_GAME = GAME_IDS.reduce((least, id) => (GAMES[id].maxPlayers < GAMES[least].maxPlayers ? id : least));
+
+  it("makes the room one for the game the host picks, and tells everyone", async () => {
+    const a = await open("PCKAA", { player: 0, create: true });
+    const b = await open("PCKAA", { player: 1 });
+    await a.lobbyOf(2);
+    await b.lobbyOf(2);
+
+    a.send({ type: "pick", game: BIG_GAME });
+
+    expect(await a.lobbyWhere((l) => l.game !== DEFAULT_GAME)).toMatchObject({ game: BIG_GAME, maxPlayers: holds(BIG_GAME), host: 0 });
+    expect(await b.lobbyWhere((l) => l.game !== DEFAULT_GAME)).toMatchObject({ game: BIG_GAME, maxPlayers: holds(BIG_GAME), you: 1 });
+    a.close();
+    b.close();
+  });
+
+  it("is still the room of the game picked after it has slept", async () => {
+    const stub = env.GameRoom.getByName("PCKAB");
+    const a = await open("PCKAB", { player: 0, create: true });
+    await a.lobbyOf(1);
+    a.send({ type: "pick", game: BIG_GAME });
+    await a.lobbyWhere((l) => l.game === BIG_GAME);
+    a.close();
+    await a.closed;
+
+    await evictDurableObject(stub);
+
+    const back = await open("PCKAB", { player: 0 });
+    expect(await back.lobbyWhere()).toMatchObject({ game: BIG_GAME });
+    back.close();
+  });
+
+  it("takes back everyone's word that they are ready: it was for another game", async () => {
+    const a = await open("PCKAC", { player: 0, create: true });
+    const b = await open("PCKAC", { player: 1 });
+    await a.lobbyOf(2);
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready);
+
+    a.send({ type: "pick", game: BIG_GAME });
+
+    expect((await b.lobbyWhere((l) => l.game === BIG_GAME)).players.map((p) => p.ready)).toEqual([false, false]);
+    a.close();
+    b.close();
+  });
+
+  it("refuses another game from someone who is not the host", async () => {
+    const a = await open("PCKAD", { player: 0, create: true });
+    const b = await open("PCKAD", { player: 1 });
+    await a.lobbyOf(2);
+    await b.lobbyOf(2);
+
+    b.send({ type: "pick", game: BIG_GAME });
+
+    expect(await b.refusal()).toEqual({ type: "refused", reason: "not-host" });
+    const c = await open("PCKAD", { player: 2 });
+    expect(await c.lobbyWhere()).toMatchObject({ game: DEFAULT_GAME });
+    a.close();
+    b.close();
+    c.close();
+  });
+
+  it("refuses another game while one is being played", async () => {
+    const a = await open("PCKAE", { player: 0, create: true, game: ALONE_GAME });
+    await a.lobbyOf(1);
+    a.send({ type: "start", bots: false });
+    await a.nextOf("game");
+
+    a.send({ type: "pick", game: OTHER_ALONE_GAME });
+
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "already-playing" });
+    a.close();
+  });
+
+  it("refuses a game with fewer places than are taken", async () => {
+    const most = holds(SMALL_GAME);
+    const clients = [await open("PCKAF", { player: 0, create: true, game: BIG_GAME })];
+    for (let n = 1; n <= most; n++) clients.push(await open("PCKAF", { player: n, game: BIG_GAME }));
+    await clients[0].lobbyOf(most + 1);
+
+    clients[0].send({ type: "pick", game: SMALL_GAME });
+
+    expect(holds(BIG_GAME)).toBeGreaterThan(most);
+    expect(await clients[0].refusal()).toEqual({ type: "refused", reason: "bad-setting" });
+    for (const client of clients) client.close();
+  });
+
+  it("lets go of the end of the last game, and starts a game of the one picked", async () => {
+    const stub = env.GameRoom.getByName("PCKAG");
+    const a = await open("PCKAG", { player: 0, create: true, game: ALONE_GAME });
+    await a.lobbyOf(1);
+    a.send({ type: "start", bots: false });
+    await a.cubesWhere();
+    await scheduledAlarm(stub);
+    advanceClock(cubesConfig.problemSeconds * 1000 + 1);
+    await runDurableObjectAlarm(stub);
+    await a.cubesWhere((game) => game.view.phase === "ended");
+
+    a.send({ type: "pick", game: OTHER_ALONE_GAME });
+    await a.lobbyWhere((l) => l.game === OTHER_ALONE_GAME);
+
+    const stored = await runInDurableObject(stub, (_room, state) =>
+      state.storage.sql.exec<{ k: string }>("SELECT k FROM room_state").toArray().map((row) => row.k),
+    );
+    expect(stored).not.toContain("game");
+    // someone who comes in now is told of no game: the one that ended was of the game the room had
+    const b = await open("PCKAG", { player: 1, game: ALONE_GAME });
+    b.say("hello");
+    const types: string[] = [];
+    for (;;) {
+      const message = await b.next();
+      types.push(message.type);
+      if (message.type === "chat") break;
+    }
+    expect(types).not.toContain("game");
+    a.send({ type: "start", bots: false });
+    expect(await a.nextOf("game")).toMatchObject({ game: OTHER_ALONE_GAME });
+    a.close();
+    b.close();
+  });
+
+  it("writes to the log which game the room turned to, and from which", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    const a = await open("PCKAH", { player: 0, create: true });
+    await a.lobbyOf(1);
+
+    a.send({ type: "pick", game: BIG_GAME });
+    await a.lobbyWhere((l) => l.game === BIG_GAME);
+
+    const lines = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("game changed"));
+    said.mockRestore();
+    expect(lines).toEqual([`game changed: ${DEFAULT_GAME} to ${BIG_GAME}`]);
+    expect(lines.join(" ")).not.toContain("PCKAH");
+    a.close();
+  });
+});

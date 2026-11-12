@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_GAME, GAMES, type GameId } from "../../../src/shared/games";
+import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import {
   awayPlayers,
   capacityOf,
   clearReady,
+  gameHolds,
+  setGame,
   handHost,
   kickPlayer,
   nextHost,
@@ -1232,5 +1234,145 @@ describe("a room that waits on its host", () => {
 
     expect(hostOf(handed, new Set([0, 1, 2]))?.slot).toBe(1);
     expect(waitingOnHost(handed, new Set([0, 1, 2]))).toBe(false);
+  });
+});
+
+describe("setGame", () => {
+  /** A game played in turns and one that is not; one with variants; and the game with the fewest places, with one that has more. */
+  const TURN_GAME = GAME_IDS.find((id) => GAMES[id].turns)!;
+  const NO_TURN_GAME = GAME_IDS.find((id) => !GAMES[id].turns)!;
+  const VARIANT_GAME = GAME_IDS.find((id) => GAMES[id].variants.length > 1)!;
+  const SMALL_GAME = GAME_IDS.reduce((least, id) => (GAMES[id].maxPlayers < GAMES[least].maxPlayers ? id : least));
+  const BIG_GAME = GAME_IDS.reduce((most, id) => (GAMES[id].maxPlayers > GAMES[most].maxPlayers ? id : most));
+  /** A room of `game` with players 0..count-1. */
+  const roomOf = (game: GameId, count: number, config: RoomConfig, listed = false): LobbyState => {
+    let state = createLobby(game, listed, config);
+    for (let n = 0; n < count; n++) {
+      const result = joinLobby(state, { token: tokenFor(n), nick: `p${n}` }, config);
+      if (!result.ok) throw new Error(`fixture join ${n} refused: ${result.reason}`);
+      state = result.state;
+    }
+    return state;
+  };
+
+  it("makes the room one for the game asked for, with as many places as that game has", () => {
+    const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    const changed = setGame(roomOf(SMALL_GAME, 2, config), BIG_GAME, config);
+
+    const view = changed === null ? null : viewLobby(changed, new Set([0, 1]), 0, config);
+
+    expect(view).toMatchObject({ game: BIG_GAME, maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    expect(view?.players.map((p) => p.nick)).toEqual(["p0", "p1"]);
+  });
+
+  it("changes nothing when the room is for that game already", () => {
+    const config = testConfig();
+    const state = roomOf(TEAM_GAME, 2, config);
+
+    expect(setGame(state, TEAM_GAME, config)).toBe(state);
+  });
+
+  it("is refused when someone holds a place the game does not have", () => {
+    const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    const full = roomOf(BIG_GAME, GAMES[SMALL_GAME].maxPlayers + 1, config);
+
+    expect(GAMES[SMALL_GAME].maxPlayers).toBeLessThan(GAMES[BIG_GAME].maxPlayers);
+    expect(setGame(full, SMALL_GAME, config)).toBeNull();
+  });
+
+  it("is refused for a high place held even when few are in the room", () => {
+    const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    const full = roomOf(BIG_GAME, GAMES[SMALL_GAME].maxPlayers + 1, config);
+    // everyone but the first and the last has left: two players, one of them in a place the small game has not
+    const two = full.players.slice(1, -1).reduce((state, p) => leaveLobby(state, p.token), full);
+
+    expect(two.players.map((p) => p.slot)).toEqual([0, GAMES[SMALL_GAME].maxPlayers]);
+    expect(setGame(two, SMALL_GAME, config)).toBeNull();
+    expect(gameHolds([0, GAMES[SMALL_GAME].maxPlayers], SMALL_GAME, config)).toBe(false);
+    expect(gameHolds([0, GAMES[SMALL_GAME].maxPlayers - 1], SMALL_GAME, config)).toBe(true);
+  });
+
+  it("is allowed when exactly as many are in as the game has places", () => {
+    const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    const full = roomOf(BIG_GAME, GAMES[SMALL_GAME].maxPlayers, config);
+
+    expect(setGame(full, SMALL_GAME, config)).not.toBeNull();
+  });
+
+  it("takes back everyone's team and everyone's word that they are ready", () => {
+    const config = testConfig({ maxPlayers: TEAM_SIZE * 2 });
+    const teamed = setTeam(roomOf(TEAM_GAME, 2, config), tokenFor(0), 1, config);
+    if (teamed === null) throw new Error("fixture team refused");
+    const ready = setReady(teamed, tokenFor(1), true);
+
+    const other = GAME_IDS.find((id) => id !== TEAM_GAME)!;
+    const away = setGame(ready, other, config);
+    if (away === null) throw new Error("fixture change refused");
+
+    // seen in a room of the game with teams again: a team kept through the change would show there
+    const back = setGame(away, TEAM_GAME, config);
+
+    const view = back === null ? null : viewLobby(back, new Set([0, 1]), 0, config);
+    expect(view?.players.map((p) => [p.team, p.leads, p.ready])).toEqual([
+      [0, false, false],
+      [0, false, false],
+    ]);
+  });
+
+  it("forgets the way the game it had was played: the room comes back to it at that game's first", () => {
+    const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    const variants = GAMES[VARIANT_GAME].variants;
+    const chosen = setVariant(roomOf(VARIANT_GAME, 1, config), variants[1].id);
+    if (chosen === null) throw new Error("fixture variant refused");
+    const other = GAME_IDS.find((id) => id !== VARIANT_GAME)!;
+
+    const away = setGame(chosen, other, config);
+    const back = away === null ? null : setGame(away, VARIANT_GAME, config);
+
+    expect(variantOf(chosen)).toBe(variants[1].id);
+    expect(back === null ? null : variantOf(back)).toBe(variants[0].id);
+  });
+
+  it("leaves a game without turns no limit on a turn", () => {
+    const config = testConfig();
+    const timed = setTurnSeconds(roomOf(TURN_GAME, 1, config), config.turnSecondsChoices[1], config);
+    if (timed === null) throw new Error("fixture clock refused");
+
+    const changed = setGame(timed, NO_TURN_GAME, config);
+
+    expect(changed === null ? null : turnSecondsOf(changed)).toBe(0);
+  });
+
+  it("starts a game played in turns as a new room of it would: with the limit of a room on the list, or none", () => {
+    const config = testConfig();
+
+    const listed = setGame(roomOf(NO_TURN_GAME, 1, config, true), TURN_GAME, config);
+    const unlisted = setGame(roomOf(NO_TURN_GAME, 1, config, false), TURN_GAME, config);
+
+    expect(listed === null ? null : turnSecondsOf(listed)).toBe(config.listedTurnSeconds);
+    expect(unlisted === null ? null : turnSecondsOf(unlisted)).toBe(0);
+  });
+
+  it("keeps who is host, who is on the list and who was sent out", () => {
+    const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    const handed = handHost(roomOf(BIG_GAME, 3, config, true), 2);
+    const kicked = handed === null ? null : kickPlayer(handed, 1, config);
+    if (kicked === null) throw new Error("fixture refused");
+
+    const changed = setGame(kicked, SMALL_GAME, config);
+    if (changed === null) throw new Error("change refused");
+
+    expect(viewLobby(changed, new Set([0, 2]), 0, config)).toMatchObject({ host: 2, listed: true });
+    expect(joinLobby(changed, { token: tokenFor(1), nick: "p1" }, config)).toEqual({ ok: false, reason: "kicked" });
+  });
+
+  it("does not modify the state it was given", () => {
+    const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
+    const state = roomOf(SMALL_GAME, 2, config);
+    const before = JSON.stringify(state);
+
+    setGame(state, BIG_GAME, config);
+
+    expect(JSON.stringify(state)).toBe(before);
   });
 });

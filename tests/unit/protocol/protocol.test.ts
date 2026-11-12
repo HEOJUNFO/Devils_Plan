@@ -66,6 +66,7 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "host", to: 3 }))).toEqual({ type: "host", to: 3 });
     expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0 }))).toEqual({ type: "kick", slot: 0 });
     expect(parseClientMessage(JSON.stringify({ type: "here", extra: 1 }))).toEqual({ type: "here" });
+    expect(parseClientMessage(JSON.stringify({ type: "pick", game: "count-cubes" }))).toEqual({ type: "pick", game: "count-cubes" });
   });
 
   it("reads a chat line as it was typed", () => {
@@ -142,6 +143,9 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "kick" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "kick", slot: -1 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0.5 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "pick" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "pick", game: "no-such-game" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "pick", game: 3 }))).toBeNull();
   });
 
   it("treats a join without a create flag as not creating", () => {

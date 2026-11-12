@@ -3,6 +3,7 @@ import { BUILD } from "../shared/build";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shared/chat";
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
+import type { GameId } from "../shared/games";
 import { HOSTS } from "../shared/hosts";
 import { CHANCE_WORDS, TIME_OF_SIGHT, type Presence } from "../shared/hosting";
 import {
@@ -20,6 +21,7 @@ import {
   leaveLobby,
   markAway,
   nextHost,
+  setGame,
   setListed,
   setReady,
   setTeam,
@@ -338,7 +340,7 @@ export class GameRoom extends Server<Env> {
     }
     // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
     const sort =
-      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant" || parsed.type === "host" || parsed.type === "kick"
+      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant" || parsed.type === "host" || parsed.type === "kick" || parsed.type === "pick"
         ? "setting"
         : parsed.type === "rtc"
           ? "signal"
@@ -367,6 +369,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "host") await this.handleHost(connection, seat.slot, parsed.to);
     else if (parsed.type === "kick") await this.handleKick(connection, seat.slot, parsed.slot);
     else if (parsed.type === "here") await this.handleHere(seat.slot);
+    else if (parsed.type === "pick") await this.handlePick(connection, seat.slot, parsed.game);
   }
 
   /**
@@ -665,6 +668,30 @@ export class GameRoom extends Server<Env> {
     if (next === lobby) return;
     this.saveLobby(next);
     this.broadcastLobby();
+  }
+
+  /**
+   * Makes the room one for another game, if the one asking is the host and
+   * no game is being played. The end of the last game, kept for those still
+   * looking at it, is let go: it is of the game the room had.
+   */
+  private async handlePick(connection: Connection<ConnectionState>, slot: number, game: GameId): Promise<void> {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
+    if (this.playing()) return this.refuse(connection, "already-playing");
+    const next = setGame(lobby, game, config);
+    if (next === null) return this.refuse(connection, "bad-setting");
+    if (next === lobby) return;
+    // while the room is still for the game that end is of: what compares and clears it is that game's
+    if (this.session !== null) await this.commitSession(null);
+    this.saveLobby(next);
+    this.broadcastLobby();
+    // For the log: which game a room turns to from which. Never the room's code or a name.
+    console.log(`game changed: ${gameOf(lobby)} to ${game}`);
+    // the list of rooms says which game a room is for, and how many it holds
+    await this.report();
+    await this.scheduleHost();
   }
 
   /** Puts a player in the team they chose for the next game, where the room's game has teams. */
