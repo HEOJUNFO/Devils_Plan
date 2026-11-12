@@ -138,6 +138,9 @@ const swapSheet = el<HTMLElement>("swap-sheet");
 const quickSheet = el<HTMLElement>("quick-sheet");
 const quickWords = el<HTMLElement>("quick-words");
 const chatSend = el<HTMLButtonElement>("chat-send");
+const joinButton = el<HTMLButtonElement>("join");
+const createButton = el<HTMLButtonElement>("create");
+const entrySub = el<HTMLElement>("entry-sub");
 const swapChoices = el<HTMLElement>("swap-choices");
 const swapNote = el<HTMLElement>("swap-note");
 const seatMenu = el<HTMLElement>("seat-menu");
@@ -2068,6 +2071,24 @@ function quickJoin(): void {
   quickRest = rest;
 }
 
+/** The code a link brought, for as long as the box for a room's code holds it: an invitation not yet taken up. */
+let invitedCode = "";
+
+/**
+ * What the form says, and which of its buttons is the lit one, by what the
+ * box for a room's code holds. Someone who opened a link to a room finds the
+ * code in the box and nothing else changed: the form now says that they were
+ * invited and what to do, and lights the button that goes there, where it
+ * lit the one that makes a room of their own.
+ */
+function syncEntry(): void {
+  const code = codeInput.value.trim().toUpperCase();
+  const toRoom = isValidRoomCode(code, config);
+  joinButton.classList.toggle("primary", toRoom);
+  createButton.classList.toggle("primary", !toRoom);
+  entrySub.textContent = toRoom && code === invitedCode ? WORDS.entry.invited(code) : WORDS.entry.sub;
+}
+
 function joinFromInput(): void {
   const code = codeInput.value.trim().toUpperCase();
   if (readNick() === null) return;
@@ -2085,10 +2106,11 @@ function leaveRoom(): void {
   disconnect();
   history.replaceState(null, "", `${location.pathname}${location.search}`);
   codeInput.value = "";
+  syncEntry();
   showLobby();
 }
 
-el<HTMLButtonElement>("create").addEventListener("click", showNewRoom);
+createButton.addEventListener("click", showNewRoom);
 quickButton.addEventListener("click", quickJoin);
 // The games to pick from open and close at the same button; opened, the keyboard is on the game picked.
 roomsPick.addEventListener("click", () => {
@@ -2106,7 +2128,8 @@ listedNo.addEventListener("click", () => {
   chosenListed = false;
   renderNewRoom();
 });
-el<HTMLButtonElement>("join").addEventListener("click", joinFromInput);
+joinButton.addEventListener("click", joinFromInput);
+codeInput.addEventListener("input", syncEntry);
 nickInput.addEventListener("keydown", (event) => {
   // Enter in the nickname box does what the box below it is ready for.
   if (event.key !== "Enter" || event.isComposing) return;
@@ -2416,6 +2439,8 @@ function followAddress(): void {
     showLobby();
   }
   codeInput.value = linked;
+  invitedCode = linked;
+  syncEntry();
   const nick = normalizeNick(nickInput.value, config);
   if (nick !== null) connect(linked, false, nick);
   else nickInput.focus();

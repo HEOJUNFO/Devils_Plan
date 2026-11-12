@@ -412,6 +412,8 @@ h1 {
 }
 
 .sub {
+  /* two lines for someone invited to a room (main.ts) */
+  white-space: pre-line;
   margin-bottom: 9px;
   padding-bottom: 7px;
   border-bottom: 1px solid var(--line);
