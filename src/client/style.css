@@ -991,6 +991,78 @@ button.choice[aria-pressed="true"] {
   justify-content: flex-end;
 }
 
+/* The inbox, for whoever makes the game: nearly the whole frame, its list scrolling. */
+#inbox-sheet {
+  position: absolute;
+  left: 20px;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 440px;
+  height: 254px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#inbox-sheet[hidden] {
+  display: none;
+}
+
+#inbox-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#inbox-key {
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+#inbox-note {
+  min-height: 15px;
+  color: var(--teal);
+}
+
+#inbox-note.failed {
+  color: var(--crimson);
+}
+
+#inbox-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-color: var(--edge) var(--ink);
+  scrollbar-width: thin;
+}
+
+#inbox-list li {
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+
+#inbox-list li p:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* What was written, as it was written: its line breaks kept, a long word broken, and it can be picked out to copy. */
+#inbox-list .word {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+:root.touch #inbox-sheet button {
+  height: 24px;
+}
+
 /* The host's choice of another game for the room: over the middle of the frame, the games two to a row. */
 #swap-sheet {
   position: absolute;

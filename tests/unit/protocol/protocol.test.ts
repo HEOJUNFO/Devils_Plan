@@ -9,6 +9,7 @@ import {
   parseDirectoryMessage,
   parseDirectoryRequest,
   parseFeedbackAnswer,
+  parseInboxAnswer,
   parseServerMessage,
 } from "../../../src/shared/protocol";
 
@@ -337,6 +338,33 @@ describe("parseFeedbackAnswer", () => {
   });
 });
 
+describe("parseInboxAnswer", () => {
+  it("reads the words kept", () => {
+    const word = { id: 3, at: 1_700_000_000_000, text: "the list is slow", lang: "en", build: "abc1234" };
+
+    expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [word] }))).toEqual({ type: "inbox", words: [word] });
+    expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [] }))).toEqual({ type: "inbox", words: [] });
+  });
+
+  it("reads that the inbox did not open", () => {
+    expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: null }))).toEqual({ type: "inbox", words: null });
+  });
+
+  it("leaves out what is not a word as they are kept", () => {
+    const word = { id: 3, at: 1, text: "kept", lang: "ko", build: "a" };
+    const raw = JSON.stringify({ type: "inbox", words: [word, null, { ...word, id: "3" }, { ...word, lang: "xx" }, { ...word, text: 7 }, "word"] });
+
+    expect(parseInboxAnswer(raw)).toEqual({ type: "inbox", words: [word] });
+  });
+
+  it("rejects anything else", () => {
+    expect(parseInboxAnswer(JSON.stringify({ type: "rooms", rooms: [] }))).toBeNull();
+    expect(parseInboxAnswer(JSON.stringify({ type: "inbox" }))).toBeNull();
+    expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: "none" }))).toBeNull();
+    expect(parseInboxAnswer("inbox")).toBeNull();
+  });
+});
+
 describe("parseDirectoryRequest", () => {
   it("reads a word about the game, with the language and the build of the page it was written on", () => {
     const raw = JSON.stringify({ type: "feedback", text: "the list is slow", lang: "en", build: "abc1234" });
@@ -354,6 +382,21 @@ describe("parseDirectoryRequest", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "feedback", lang: "en", build: "a" }))).toBeNull();
     expect(parseDirectoryRequest(JSON.stringify({ type: "feedback", text: 7, lang: "en", build: "a" }))).toBeNull();
     expect(parseDirectoryRequest(JSON.stringify({ type: "feedback", text: "hi", lang: "xx", build: "a" }))).toBeNull();
+  });
+
+  it("reads a request for the inbox, with its key, and with the word to throw away where one is named", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "my key" }))).toEqual({ type: "inbox", key: "my key" });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "my key", drop: 12, more: 1 }))).toEqual({ type: "inbox", key: "my key", drop: 12 });
+  });
+
+  it("rejects a request for the inbox with no key, a key too long to be one, or a word to throw away that names none", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: 5 }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "k".repeat(201) }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "k", drop: -1 }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "k", drop: 1.5 }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "k", drop: "1" }))).toBeNull();
   });
 
   it("reads a request for the rooms of one game", () => {

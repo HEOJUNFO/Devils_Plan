@@ -166,6 +166,18 @@
         <button id="seat-close" type="button"></button>
       </section>
 
+      <!-- What players have written about the game, for whoever makes it: the lobby opened with ?inbox, and a key. -->
+      <section id="inbox-sheet" role="dialog" aria-modal="true" aria-labelledby="inbox-title" hidden>
+        <h2 id="inbox-title"></h2>
+        <form id="inbox-form" class="row">
+          <input id="inbox-key" type="password" autocomplete="off" />
+          <button id="inbox-open" type="submit" class="primary"></button>
+          <button id="inbox-close" type="button"></button>
+        </form>
+        <p id="inbox-note" role="status"></p>
+        <ol id="inbox-list"></ol>
+      </section>
+
       <!-- The host's choice of another game for the room. -->
       <section id="swap-sheet" role="dialog" aria-modal="true" aria-labelledby="swap-title" hidden>
         <h2 id="swap-title"></h2>

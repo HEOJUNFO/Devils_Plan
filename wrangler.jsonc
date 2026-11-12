@@ -11,11 +11,11 @@
   // here is what the deployed Worker gets; `npm run dev` reads `.dev.vars`
   // (not committed), where ALLOW_BOTS=true turns them on for local play.
   "vars": { "ALLOW_BOTS": "false" },
-  // Two more are secrets of the deployed Worker, set there with
-  // `npx wrangler secret put <name>` and written nowhere in the repository:
-  // RESEND_API_KEY and FEEDBACK_TO, the key and the address a player's word
-  // about the game is sent on with (src/server/mail.ts). Without them the
-  // game takes no feedback and its lobby offers none.
+  // One more is a secret of the deployed Worker, set there with
+  // `npx wrangler secret put FEEDBACK_KEY` and written nowhere in the
+  // repository: the key with which whoever makes the game reads what players
+  // wrote about it, in the lobby opened with `?inbox` (src/server/inbox.ts).
+  // Without it the game takes no feedback and its lobby offers none.
   // What the Worker and the rooms write to their log is kept, to be read in
   // the Cloudflare dashboard (Workers & Pages > play > Logs): an error in a
   // room, a limit below that could not be asked, and what a room counts of

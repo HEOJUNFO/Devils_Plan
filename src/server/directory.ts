@@ -12,14 +12,15 @@ import {
   type DirectoryConfig,
   type DirectoryEntry,
 } from "../shared/directory";
-import { feedbackLetter, normalizeFeedback, type Letter } from "../shared/feedback";
+import { normalizeFeedback, type StoredWord } from "../shared/feedback";
+import { isLang } from "../shared/lang";
 import { isGameId, type GameId } from "../shared/games";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
-import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer } from "../shared/protocol";
+import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
 import { countedAs } from "./address";
-import { mailReady, sendLetter, type MailEnv } from "./mail";
+import { inboxKey, sameKey, type InboxEnv } from "./inbox";
 
 const config: DirectoryConfig = directoryConfig;
 const rooms: RoomConfig = roomConfig;
@@ -94,8 +95,14 @@ export class RoomDirectory extends Server<Env> {
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS made (key TEXT NOT NULL, at INTEGER NOT NULL)");
     this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS made_by_key ON made (key, at)");
     this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS made_by_time ON made (at)");
-    // one row for each word about the game sent on, kept a day: when, and nothing of what or who
+    // one row for each word about the game taken, kept a day: when, and nothing of what or who
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS feedback (at INTEGER NOT NULL)");
+    // the words themselves, the latest `feedback.keep` of them: what was written, when, and the language and build of its page
+    this.ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS words (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, text TEXT NOT NULL, lang TEXT NOT NULL, build TEXT NOT NULL)",
+    );
+    // one row for each wrong key the inbox was tried with, kept for as long as the limit on them looks back
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS misses (at INTEGER NOT NULL)");
     this.entries = new Map();
     const rows = this.ctx.storage.sql
       .exec<{ code: string; v: string; updated_at: number }>("SELECT code, v, updated_at FROM rooms")
@@ -121,6 +128,7 @@ export class RoomDirectory extends Server<Env> {
     if (request === null) return;
     const now = Date.now();
     if (request.type === "feedback") return this.takeFeedback(connection, request, now);
+    if (request.type === "inbox") return this.readInbox(connection, request, now);
     // A page of ours asks once for each game picked; one that is not may not make the directory sort without end.
     const paced = pace(this.showPace.get(connection.id), now, config.showLimit.burst, config.showLimit.windowSeconds);
     this.showPace.set(connection.id, paced.pace);
@@ -135,14 +143,15 @@ export class RoomDirectory extends Server<Env> {
   }
 
   /**
-   * Sends a viewer's word about the game on as a letter, and tells them
-   * whether it went. Not when there is nothing in it, when this viewer has
-   * sent their few for now, when the day's letters have all been sent, or
-   * where no letter can be sent from: none of which is told apart to the
-   * viewer, who can only try again later. Nothing of the viewer is kept or
-   * sent on, and the log gets that a letter went, never what it said.
+   * Keeps a viewer's word about the game for whoever makes it to read
+   * (`readInbox`), and tells the viewer that it was. Not when there is
+   * nothing in it, when this viewer has sent their few for now, when the
+   * day's words have all been taken, or where nobody could read it: none of
+   * which is told apart to the viewer, who can only try again later.
+   * Nothing of the viewer is kept, and the log gets that a word was kept,
+   * never what it said.
    */
-  private async takeFeedback(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "feedback" }>, now: number): Promise<void> {
+  private takeFeedback(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "feedback" }>, now: number): void {
     const answer = (sent: boolean): void => {
       const said: FeedbackAnswer = { type: "feedback", sent };
       connection.send(JSON.stringify(said));
@@ -152,27 +161,63 @@ export class RoomDirectory extends Server<Env> {
     this.feedbackPace.set(connection.id, paced.pace);
     const text = normalizeFeedback(request.text, limits);
     if (!paced.ok || text === null || !this.takesFeedback()) return answer(false);
-    // From here to the row nothing is waited for, so no other letter comes between the count and the row.
+    // Nothing is waited for from here to the rows, so no other word comes between the count and the row.
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM feedback WHERE at <= ?", now - DAY_MS);
     if (sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM feedback").one().n >= limits.dayLimit) {
-      console.log("feedback turned away: the day's letters are all sent");
+      console.log("feedback turned away: the day's words are all taken");
       return answer(false);
     }
     sql.exec("INSERT INTO feedback (at) VALUES (?)", now);
-    const sent = await this.sendLetter(feedbackLetter(text, { lang: request.lang, build: request.build }));
-    if (sent) console.log("feedback sent");
-    answer(sent);
+    sql.exec("INSERT INTO words (at, text, lang, build) VALUES (?, ?, ?, ?)", now, text, request.lang, request.build);
+    // the latest so many are kept: the oldest make way
+    sql.exec("DELETE FROM words WHERE id NOT IN (SELECT id FROM words ORDER BY id DESC LIMIT ?)", limits.keep);
+    console.log("feedback kept");
+    answer(true);
   }
 
-  /** Whether a word about the game can be sent on from here: see `mail.ts`. A method of its own so that a test can say so. */
+  /**
+   * Sends whoever asked with the key the words that are kept, the latest
+   * first, having thrown away the one they named if they named one. With no
+   * key set, with a key that is not it, or after too many wrong keys from
+   * everyone together in a while, the answer is that the inbox did not open,
+   * and which of the three is not said. A wrong key is counted; the right
+   * one is not, and after too many wrong ones it does not open either until
+   * the while has passed: guessing is then no faster for being spread over
+   * many connections, and the worst a stranger can do is keep the reader out
+   * for that while.
+   */
+  private async readInbox(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "inbox" }>, now: number): Promise<void> {
+    const answer = (words: StoredWord[] | null): void => {
+      const said: InboxAnswer = { type: "inbox", words };
+      connection.send(JSON.stringify(said));
+    };
+    const kept = this.inboxKey();
+    if (kept === null) return answer(null);
+    const limit = config.feedback.readLimit;
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM misses WHERE at <= ?", now - limit.windowSeconds * 1000);
+    if (sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM misses").one().n >= limit.burst) return answer(null);
+    if (!(await sameKey(request.key, kept))) {
+      sql.exec("INSERT INTO misses (at) VALUES (?)", now);
+      console.log("inbox not opened: a wrong key");
+      return answer(null);
+    }
+    if (request.drop !== undefined) sql.exec("DELETE FROM words WHERE id = ?", request.drop);
+    const rows = sql
+      .exec<{ id: number; at: number; text: string; lang: string; build: string }>("SELECT id, at, text, lang, build FROM words ORDER BY id DESC")
+      .toArray();
+    answer(rows.map((row) => ({ id: row.id, at: row.at, text: row.text, lang: isLang(row.lang) ? row.lang : ("en" as const), build: row.build })));
+  }
+
+  /** Whether a word about the game is taken here: where there is a key to read it with. */
   takesFeedback(): boolean {
-    return mailReady(this.env as unknown as MailEnv);
+    return this.inboxKey() !== null;
   }
 
-  /** Sends a letter, and says whether it went. A method of its own so that a test can stand in for the service that carries it. */
-  sendLetter(letter: Letter): Promise<boolean> {
-    return sendLetter(this.env as unknown as MailEnv, letter);
+  /** The key the inbox opens with, or `null` where none is set: see `inbox.ts`. A method of its own so that a test can set one. */
+  inboxKey(): string | null {
+    return inboxKey(this.env as unknown as InboxEnv);
   }
 
   /**

@@ -1,12 +1,13 @@
 /**
  * A word about the game, from a player to whoever makes it: what it may be,
- * and the letter it is sent as.
+ * and how it is kept.
  *
  * It is written in the lobby and goes through the list of rooms, which the
- * lobby is connected to (`DirectoryRequest`); the directory sends it on as a
- * letter (`src/server/mail.ts`). Nothing of the player goes with it: no
- * nickname, no token, no address. Whoever wants an answer says in the text
- * where to reach them. Pure functions over plain data.
+ * lobby is connected to (`DirectoryRequest`); the directory keeps it, and
+ * whoever makes the game reads it there with a key (`src/server/inbox.ts`).
+ * Nothing of the player is kept with it: no nickname, no token, no address.
+ * Whoever wants an answer says in the text where to reach them. Pure
+ * functions over plain data.
  */
 import type { MessageLimit } from "./lobby";
 import type { Lang } from "./lang";
@@ -19,11 +20,20 @@ export interface FeedbackConfig {
   /** How many one viewer of the list may send within one window. */
   viewerLimit: MessageLimit;
   /**
-   * How many are sent on in a day, from everyone together. Each is a letter,
-   * and the service that carries them carries so many a day for nothing; a
-   * script that wrote without end would otherwise fill the reader's box.
+   * How many are kept in a day, from everyone together: a script that wrote
+   * without end would otherwise push everything a player wrote out of what
+   * is kept.
    */
   dayLimit: number;
+  /** How many are kept in all, the latest of them: the oldest make way. */
+  keep: number;
+  /**
+   * How many wrong keys the inbox is tried with within one window, from
+   * everyone together, before it opens for no key at all until the window
+   * has passed: a key is its reader's own text, and may be one that could
+   * be guessed in a million tries.
+   */
+  readLimit: MessageLimit;
 }
 
 /**
@@ -40,23 +50,14 @@ export function normalizeFeedback(raw: string, config: FeedbackConfig): string |
   return text.length > 0 ? text : null;
 }
 
-/** A letter: what it is headed and what it says. */
-export interface Letter {
-  subject: string;
+/** A word about the game as the directory keeps it, and as its reader is shown it. Nothing of its writer is in it. */
+export interface StoredWord {
+  /** Which of the words kept this is: what its reader names it by to have it thrown away. */
+  id: number;
+  /** When it was written, in milliseconds since the epoch. */
+  at: number;
   text: string;
-}
-
-/**
- * The letter `text` is sent on as: the text first, then what its reader needs
- * to make sense of it, which is the language the page was read in and the
- * build it was. In English, whichever language the text is in: it is read by
- * the one who makes the game.
- */
-export function feedbackLetter(text: string, from: { lang: Lang; build: string }): Letter {
-  const first = Array.from(text.split("\n")[0] ?? "");
-  const head = first.length > 40 ? `${first.slice(0, 40).join("")}…` : first.join("");
-  return {
-    subject: `[Brain Survival] ${head}`,
-    text: `${text}\n\n--\nlanguage: ${from.lang}\nbuild: ${from.build}`,
-  };
+  /** The language its writer's page was read in, and the build that page was. */
+  lang: Lang;
+  build: string;
 }

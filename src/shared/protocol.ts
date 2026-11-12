@@ -11,6 +11,7 @@ import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host
 import type { PokerHostRefusal, PokerSnapshot } from "./games/memory-poker/host";
 import type { MarketHostRefusal, MarketSnapshot } from "./games/mystery-stock-market/host";
 import type { UnderHostRefusal, UnderSnapshot } from "./games/under-thirteen/host";
+import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
 import type { JoinRejection, LobbyView } from "./lobby";
@@ -180,7 +181,18 @@ export interface FeedbackAnswer {
 }
 
 /**
- * Client → directory, the two things it reads of what a viewer sends.
+ * Directory → client: the words about the game that are kept, the latest
+ * first, for whoever asked with the key; `null` where the inbox did not
+ * open (no key is set, the key is not it, or too many wrong ones were
+ * tried lately: not told apart).
+ */
+export interface InboxAnswer {
+  type: "inbox";
+  words: StoredWord[] | null;
+}
+
+/**
+ * Client → directory, the three things it reads of what a viewer sends.
  *
  * `show`: the rooms of this game only, or of every game (`null`, which is
  * what a viewer is shown until they ask). Asked again on every reconnect: a
@@ -189,15 +201,23 @@ export interface FeedbackAnswer {
  * `feedback`: a word about the game for whoever makes it (`feedback.ts`),
  * with the language the page is read in and the build it is. Nothing of the
  * player goes with it. Answered with a {@link FeedbackAnswer}.
+ *
+ * `inbox`: the words kept, for whoever makes the game, with the key they
+ * are read with (`src/server/inbox.ts`). The key is in the message, never in
+ * an address, as a player's token is. With `drop`, the word of that id is
+ * thrown away first. Answered with an {@link InboxAnswer}.
  */
 export type DirectoryRequest =
   | { type: "show"; game: GameId | null }
-  | { type: "feedback"; text: string; lang: Lang; build: string };
+  | { type: "feedback"; text: string; lang: Lang; build: string }
+  | { type: "inbox"; key: string; drop?: number };
 
 /** The longest text the directory reads as a request: a word about the game at its longest fits, each of its letters written the long way. */
 export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
 /** The longest a build's name is read. */
 const MAX_BUILD_LENGTH = 16;
+/** The longest a key to the inbox is read. */
+const MAX_KEY_LENGTH = 200;
 
 /** Client → server. */
 export type ClientMessage =
@@ -373,15 +393,38 @@ export function parseFeedbackAnswer(raw: unknown): FeedbackAnswer | null {
   return { type: "feedback", sent: data.sent };
 }
 
+/** Parses the directory's answer to a request for the inbox, returning `null` for anything else. What is not a word as the directory keeps them is left out. */
+export function parseInboxAnswer(raw: unknown): InboxAnswer | null {
+  const data = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (data === null || data.type !== "inbox") return null;
+  if (data.words === null) return { type: "inbox", words: null };
+  if (!Array.isArray(data.words)) return null;
+  const words: StoredWord[] = [];
+  for (const each of data.words as unknown[]) {
+    if (typeof each !== "object" || each === null) continue;
+    const word = each as Record<string, unknown>;
+    if (typeof word.id !== "number" || typeof word.at !== "number" || typeof word.text !== "string") continue;
+    if (!isLang(word.lang) || typeof word.build !== "string") continue;
+    words.push({ id: word.id, at: word.at, text: word.text, lang: word.lang, build: word.build });
+  }
+  return { type: "inbox", words };
+}
+
 /** Parses what a viewer sends the directory, returning `null` for anything unrecognised or oversized. */
 export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
   const data = parseObject(raw, MAX_DIRECTORY_REQUEST_LENGTH);
   if (data === null) return null;
   if (data.type === "feedback") {
     if (typeof data.text !== "string" || !isLang(data.lang)) return null;
-    // which build the page says it is helps read the letter and is trusted for nothing: cut short, whatever it is
+    // which build the page says it is helps read the word and is trusted for nothing: cut short, whatever it is
     const build = typeof data.build === "string" ? data.build.slice(0, MAX_BUILD_LENGTH) : "";
     return { type: "feedback", text: data.text, lang: data.lang, build };
+  }
+  if (data.type === "inbox") {
+    if (typeof data.key !== "string" || data.key === "" || data.key.length > MAX_KEY_LENGTH) return null;
+    if (data.drop === undefined) return { type: "inbox", key: data.key };
+    if (typeof data.drop !== "number" || !Number.isInteger(data.drop) || data.drop < 0) return null;
+    return { type: "inbox", key: data.key, drop: data.drop };
   }
   if (data.type !== "show") return null;
   if (data.game !== null && !isGameId(data.game)) return null;

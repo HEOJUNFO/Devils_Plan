@@ -3,7 +3,7 @@ import { env, exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import type { RoomListing } from "../../../src/shared/directory";
-import type { Letter } from "../../../src/shared/feedback";
+import type { StoredWord } from "../../../src/shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import {
   DIRECTORY_NAME,
@@ -502,39 +502,34 @@ describe("RoomDirectory", () => {
   });
 });
 
-/** What became of a word about the game, as the directory answers it. */
+/** What the directory answers a writer or a reader: what became of a word about the game, or the words kept. */
 interface Answer {
   type: string;
   sent?: boolean;
   feedback?: boolean;
+  words?: StoredWord[] | null;
 }
 
-/** Makes the directory take feedback and hand each letter to `letters` in place of the service that carries them; `goes` is whether the service takes it. */
-async function standInForMail(letters: Letter[], goes = true): Promise<void> {
-  const directory = env.RoomDirectory.get(env.RoomDirectory.idFromName(DIRECTORY_NAME));
-  await runInDurableObject(directory, (object, state) => {
-    // every test starts with none of the day's letters sent
-    state.storage.sql.exec("DELETE FROM feedback");
-    const taking = object as unknown as { takesFeedback(): boolean; sendLetter(letter: Letter): Promise<boolean> };
-    taking.takesFeedback = () => true;
-    taking.sendLetter = async (letter) => {
-      letters.push(letter);
-      return goes;
-    };
+/** The key the inbox is read with in these tests. */
+const KEY = "a key of the reader's own";
+const directoryStub = (): DurableObjectStub => env.RoomDirectory.get(env.RoomDirectory.idFromName(DIRECTORY_NAME));
+
+/** Gives the directory a key to its inbox, and starts it with nothing kept, none of the day's words taken and no wrong key tried. */
+async function withKey(key: string | null = KEY): Promise<void> {
+  await runInDurableObject(directoryStub(), (object, state) => {
+    for (const table of ["feedback", "words", "misses"]) state.storage.sql.exec(`DELETE FROM ${table}`);
+    (object as unknown as { inboxKey(): string | null }).inboxKey = () => key;
   });
 }
 
-/** Puts the directory back to sending letters as it does by itself: here, with no key, not at all. */
-async function mailAsItIs(): Promise<void> {
-  const directory = env.RoomDirectory.get(env.RoomDirectory.idFromName(DIRECTORY_NAME));
-  await runInDurableObject(directory, (object) => {
-    const taking = object as unknown as Record<string, unknown>;
-    delete taking.takesFeedback;
-    delete taking.sendLetter;
+/** Puts the directory back to the key it has by itself: here, none. */
+async function keyAsItIs(): Promise<void> {
+  await runInDurableObject(directoryStub(), (object) => {
+    delete (object as unknown as Record<string, unknown>).inboxKey;
   });
 }
 
-/** Someone in the lobby who writes a word about the game. */
+/** Someone in the lobby: a writer of a word about the game, or its reader. */
 async function writer(): Promise<Inbox<Answer>> {
   const inbox = new Inbox<Answer>(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
   // the list comes first, to everyone who connects
@@ -542,11 +537,11 @@ async function writer(): Promise<Inbox<Answer>> {
   return inbox;
 }
 
-/** Reads forward to the answer to a word about the game. */
-async function answerTo(inbox: Inbox<Answer>): Promise<Answer> {
+/** Reads forward to the directory's next answer of `type`. */
+async function answerTo(inbox: Inbox<Answer>, type = "feedback"): Promise<Answer> {
   for (;;) {
     const message = await inbox.next();
-    if (message.type === "feedback") return message;
+    if (message.type === type) return message;
   }
 }
 
@@ -555,13 +550,29 @@ function write(inbox: Inbox<Answer>, text: string): void {
   inbox.sendRaw(JSON.stringify(request));
 }
 
+/** Asks for the inbox with `key`, throwing the word `drop` away first where one is named, and gives what is answered: the words, or `null`. */
+async function read(inbox: Inbox<Answer>, key: string = KEY, drop?: number): Promise<StoredWord[] | null | undefined> {
+  const request: DirectoryRequest = drop === undefined ? { type: "inbox", key } : { type: "inbox", key, drop };
+  inbox.sendRaw(JSON.stringify(request));
+  return (await answerTo(inbox, "inbox")).words;
+}
+
+/** Writes `text` as a viewer of its own, so that only the limits on everyone together are met. */
+async function writeAsNew(text: string): Promise<boolean | undefined> {
+  const inbox = await writer();
+  write(inbox, text);
+  const answer = await answerTo(inbox);
+  inbox.close();
+  return answer.sent;
+}
+
 describe("RoomDirectory: a word about the game", () => {
   afterEach(async () => {
-    await mailAsItIs();
+    await keyAsItIs();
   });
 
-  it("says with the list that no feedback is taken where no letter can be sent from, and sends none on", async () => {
-    await mailAsItIs();
+  it("says with the list that no feedback is taken where there is no key to read it with, and keeps none", async () => {
+    await withKey(null);
     const inbox = new Inbox<Answer>(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
     const list = await inbox.next();
 
@@ -569,23 +580,13 @@ describe("RoomDirectory: a word about the game", () => {
 
     expect(list).toMatchObject({ type: "rooms", feedback: false });
     expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: false });
+    const kept = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec("SELECT id FROM words").toArray());
+    expect(kept).toEqual([]);
     inbox.close();
   });
 
-  it("sends a word about the game on as a letter, with the language and build of its page and nothing of its writer", async () => {
-    const letters: Letter[] = [];
-    await standInForMail(letters);
-    const inbox = await writer();
-
-    write(inbox, "  방 목록이 느려요 \n\n두 번째 줄  ");
-
-    expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: true });
-    expect(letters).toEqual([{ subject: "[Brain Survival] 방 목록이 느려요", text: "방 목록이 느려요\n두 번째 줄\n\n--\nlanguage: ko\nbuild: abc1234" }]);
-    inbox.close();
-  });
-
-  it("says with the list that feedback is taken where a letter can be sent from", async () => {
-    await standInForMail([]);
+  it("says with the list that feedback is taken where there is a key", async () => {
+    await withKey();
 
     const inbox = new Inbox<Answer>(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
 
@@ -593,33 +594,144 @@ describe("RoomDirectory: a word about the game", () => {
     inbox.close();
   });
 
-  it("tells the writer when the letter did not go", async () => {
-    const letters: Letter[] = [];
-    await standInForMail(letters, false);
+  it("keeps a word about the game for its reader, with the language and build of its page and nothing of its writer", async () => {
+    await withKey();
     const inbox = await writer();
+    const before = Date.now();
 
-    write(inbox, "does this arrive?");
+    write(inbox, "  방 목록이 느려요 \n\n두 번째 줄  ");
 
-    expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: false });
-    expect(letters).toHaveLength(1);
+    expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: true });
+    const words = await read(inbox);
+    expect(words).toEqual([{ id: expect.any(Number), at: expect.any(Number), text: "방 목록이 느려요\n두 번째 줄", lang: "ko", build: "abc1234" }]);
+    expect(words?.[0].at).toBeGreaterThanOrEqual(before);
+    // what is kept is those five things and no more: no address, no connection, no name
+    const columns = await runInDurableObject(directoryStub(), (_object, state) =>
+      state.storage.sql.exec<{ name: string }>("SELECT name FROM pragma_table_info('words')").toArray().map((row) => row.name),
+    );
+    expect(columns.sort()).toEqual(["at", "build", "id", "lang", "text"]);
     inbox.close();
   });
 
-  it("sends nothing on for a text with nothing in it", async () => {
-    const letters: Letter[] = [];
-    await standInForMail(letters);
+  it("gives the reader the latest first", async () => {
+    await withKey();
+    await writeAsNew("first");
+    await writeAsNew("second");
+    const reader = await writer();
+
+    const words = await read(reader);
+
+    expect(words?.map((word) => word.text)).toEqual(["second", "first"]);
+    reader.close();
+  });
+
+  it("opens the inbox for nobody without the key", async () => {
+    await withKey();
+    await writeAsNew("for the reader's eyes");
+    const stranger = await writer();
+
+    expect(await read(stranger, "not the key")).toBeNull();
+    expect(await read(stranger, KEY.slice(0, -1))).toBeNull();
+    stranger.close();
+  });
+
+  it("opens the inbox for no key at all where none is set", async () => {
+    await withKey(null);
+    const stranger = await writer();
+
+    expect(await read(stranger, KEY)).toBeNull();
+    stranger.close();
+  });
+
+  it("stops opening after so many wrong keys from everyone together, for the right one too, and opens again when the while has passed", async () => {
+    await withKey();
+    await writeAsNew("still here");
+    const tries = directoryConfig.feedback.readLimit.burst;
+    // each guess from a connection of its own: the count is of everyone together
+    for (let n = 0; n < tries; n++) {
+      const guesser = await writer();
+      expect(await read(guesser, `guess ${n}`)).toBeNull();
+      guesser.close();
+    }
+    const reader = await writer();
+
+    const shut = await read(reader);
+    advanceClock(directoryConfig.feedback.readLimit.windowSeconds * 1000 + 1);
+    const open = await read(reader);
+
+    expect(shut).toBeNull();
+    expect(open?.map((word) => word.text)).toEqual(["still here"]);
+    reader.close();
+  });
+
+  it("does not count the right key against the reader", async () => {
+    await withKey();
+    const reader = await writer();
+
+    for (let n = 0; n <= directoryConfig.feedback.readLimit.burst; n++) expect(await read(reader)).toEqual([]);
+    reader.close();
+  });
+
+  it("throws away the word its reader names, and no other", async () => {
+    await withKey();
+    await writeAsNew("keep me");
+    await writeAsNew("drop me");
+    const reader = await writer();
+    const words = await read(reader);
+    const drop = words?.find((word) => word.text === "drop me");
+
+    const left = await read(reader, KEY, drop?.id);
+
+    expect(left?.map((word) => word.text)).toEqual(["keep me"]);
+    reader.close();
+  });
+
+  it("throws nothing away for someone without the key", async () => {
+    await withKey();
+    await writeAsNew("keep me");
+    const reader = await writer();
+    const id = (await read(reader))?.[0].id;
+    const stranger = await writer();
+
+    expect(await read(stranger, "not the key", id)).toBeNull();
+
+    expect((await read(reader))?.map((word) => word.text)).toEqual(["keep me"]);
+    reader.close();
+    stranger.close();
+  });
+
+  it("keeps the latest so many, the oldest making way", async () => {
+    await withKey();
+    const keep = directoryConfig.feedback.keep;
+    // put in as the directory keeps them, a day apart: writing so many would meet the day's limit first
+    await runInDurableObject(directoryStub(), (_object, state) => {
+      for (let n = 0; n < keep; n++) state.storage.sql.exec("INSERT INTO words (at, text, lang, build) VALUES (?, ?, 'ko', 'a')", n, `old ${n}`);
+    });
+
+    expect(await writeAsNew("the newest")).toBe(true);
+
+    const reader = await writer();
+    const words = await read(reader);
+    expect(words).toHaveLength(keep);
+    expect(words?.[0].text).toBe("the newest");
+    expect(words?.map((word) => word.text)).not.toContain("old 0");
+    expect(words?.at(-1)?.text).toBe("old 1");
+    reader.close();
+  });
+
+  it("keeps nothing of a text with nothing in it", async () => {
+    await withKey();
     const inbox = await writer();
 
     write(inbox, " \n \n");
 
     expect(await answerTo(inbox)).toEqual({ type: "feedback", sent: false });
-    expect(letters).toEqual([]);
+    expect(await read(inbox)).toEqual([]);
     inbox.close();
   });
 
   it("takes only so many from one viewer in a while", async () => {
-    const letters: Letter[] = [];
-    await standInForMail(letters);
+    await withKey();
     const inbox = await writer();
     const few = directoryConfig.feedback.viewerLimit.burst;
 
@@ -630,45 +742,42 @@ describe("RoomDirectory: a word about the game", () => {
     }
 
     expect(answers.map((answer) => answer.sent)).toEqual([...Array<boolean>(few).fill(true), false]);
-    expect(letters).toHaveLength(few);
+    expect(await read(inbox)).toHaveLength(few);
     inbox.close();
   });
 
-  it("sends on only so many in a day from everyone together, and again a day later", async () => {
-    const letters: Letter[] = [];
-    await standInForMail(letters);
+  it("takes only so many in a day from everyone together, and again a day later", async () => {
+    await withKey();
     const most = directoryConfig.feedback.dayLimit;
-    // each writer is a new viewer, so only the day's limit is met
-    const sendOne = async (n: number): Promise<boolean | undefined> => {
-      const inbox = await writer();
-      write(inbox, `word ${n}`);
-      const answer = await answerTo(inbox);
-      inbox.close();
-      return answer.sent;
-    };
-    for (let n = 0; n < most; n++) expect(await sendOne(n)).toBe(true);
+    for (let n = 0; n < most; n++) expect(await writeAsNew(`word ${n}`)).toBe(true);
 
-    const over = await sendOne(most);
+    const over = await writeAsNew(`word ${most}`);
     advanceClock(86_400_000 + 1);
-    const nextDay = await sendOne(most + 1);
+    const nextDay = await writeAsNew(`word ${most + 1}`);
 
     expect(over).toBe(false);
     expect(nextDay).toBe(true);
-    expect(letters).toHaveLength(most + 1);
+    const reader = await writer();
+    expect(await read(reader)).toHaveLength(most + 1);
+    reader.close();
   });
 
-  it("writes to the log that a letter went, and nothing of what it said", async () => {
+  it("writes to the log that a word was kept and that a wrong key was tried, and nothing of the word or the key", async () => {
     const said = vi.spyOn(console, "log").mockImplementation(() => {});
-    await standInForMail([]);
+    await withKey();
     const inbox = await writer();
 
     write(inbox, "a secret between us");
     await answerTo(inbox);
+    await read(inbox, "a wrong guess");
 
     const lines = said.mock.calls.map((call) => call.join(" "));
     said.mockRestore();
-    expect(lines).toContain("feedback sent");
+    expect(lines).toContain("feedback kept");
+    expect(lines).toContain("inbox not opened: a wrong key");
     expect(lines.join("\n")).not.toContain("secret");
+    expect(lines.join("\n")).not.toContain("guess");
+    expect(lines.join("\n")).not.toContain(KEY);
     inbox.close();
   });
 });

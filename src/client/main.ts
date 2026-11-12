@@ -14,6 +14,7 @@
 import { PartySocket } from "partysocket";
 import { BUILD, outOfDate } from "../shared/build";
 import { quickPicks, roomsShown, type RoomListing } from "../shared/directory";
+import type { StoredWord } from "../shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
 import {
   gameHolds,
@@ -34,6 +35,7 @@ import {
   PONG,
   parseDirectoryMessage,
   parseFeedbackAnswer,
+  parseInboxAnswer,
   parseServerMessage,
   type ClientMessage,
   type DirectoryMessage,
@@ -67,6 +69,8 @@ const KEYBOARD_MARGIN = 8;
  * development grants it; the deployed one refuses.
  */
 const wantBots = new URLSearchParams(location.search).get("bots") === "1";
+/** `?inbox` opens the lobby with the sheet on which whoever makes the game reads what players wrote about it, with a key. */
+const wantInbox = new URLSearchParams(location.search).has("inbox");
 
 /**
  * `?fakemic=1`, on a development host only, puts a tone in place of the
@@ -161,6 +165,11 @@ const tabShare = el<HTMLButtonElement>("tab-share");
 const about = el<HTMLElement>("about");
 const feedbackButton = el<HTMLButtonElement>("feedback");
 const feedbackSheet = el<HTMLElement>("feedback-sheet");
+const inboxSheet = el<HTMLElement>("inbox-sheet");
+const inboxKey = el<HTMLInputElement>("inbox-key");
+const inboxOpen = el<HTMLButtonElement>("inbox-open");
+const inboxNote = el<HTMLElement>("inbox-note");
+const inboxList = el<HTMLOListElement>("inbox-list");
 const feedbackText = el<HTMLTextAreaElement>("feedback-text");
 const feedbackNote = el<HTMLElement>("feedback-note");
 const feedbackSend = el<HTMLButtonElement>("feedback-send");
@@ -186,6 +195,9 @@ function writeWords(): void {
     ["feedback-hint", WORDS.feedback.hint],
     ["feedback-close", WORDS.feedback.close],
     ["feedback-send", WORDS.feedback.send],
+    ["inbox-title", WORDS.inbox.title],
+    ["inbox-open", WORDS.inbox.open],
+    ["inbox-close", WORDS.inbox.close],
     ["by-code", WORDS.entry.byCode],
     ["join", WORDS.entry.join],
     ["new-room-title", WORDS.newRoom.title],
@@ -230,6 +242,8 @@ function writeWords(): void {
   ];
   for (const [id, text] of labelled) el(id).setAttribute("aria-label", text);
   chatInput.placeholder = WORDS.chat.say;
+  inboxKey.placeholder = WORDS.inbox.key;
+  inboxKey.setAttribute("aria-label", WORDS.inbox.key);
   quickButton.title = WORDS.entry.quickHint;
   tabShare.title = WORDS.game.shareHint;
   tabShare.setAttribute("aria-label", WORDS.game.shareHint);
@@ -411,6 +425,10 @@ let newerBuild: string | null = null;
 
 /** The wait for the directory's answer to a word about the game, while one has been sent and not answered. */
 let feedbackWait: ReturnType<typeof setTimeout> | null = null;
+/** The wait for the directory's answer to a request for the inbox, while one is on its way. */
+let inboxWait: ReturnType<typeof setTimeout> | null = null;
+/** Whether the inbox asked for with `?inbox` has been put on show: once, when the lobby first is. */
+let inboxShown = false;
 
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
@@ -631,8 +649,13 @@ function keepAwake(): void {
 function showLobbyLinks(shown: boolean): void {
   langButton.hidden = !shown;
   about.hidden = !shown;
-  // the sheet for a word about the game belongs to the lobby, and goes with it
+  // the sheet for a word about the game belongs to the lobby, and goes with it; so does the inbox
   if (!shown) showFeedback(false);
+  if (!shown) showInbox(false);
+  else if (wantInbox && !inboxShown) {
+    inboxShown = true;
+    showInbox(true);
+  }
 }
 
 /** The words under the scene, and whether the rules can be opened from there. */
@@ -760,6 +783,8 @@ function loadNewer(): void {
   // in the lobby: a code typed in, or a nickname other than the one kept, which a reload would put back
   const typedInLobby = currentCode === "" && (codeInput.value.trim() !== "" || nickInput.value !== (localStorage.getItem(storageKey("nick")) ?? ""));
   if (chatInput.value !== "" || typedInLobby || !newRoom.hidden || feedbackText.value !== "" || feedbackWait !== null) return;
+  // whoever is reading the inbox is not sent back to its key
+  if (!inboxSheet.hidden) return;
   try {
     // noted first: a page that comes back the same is not loaded a second time (`outOfDate`)
     sessionStorage.setItem(storageKey("reloaded-from"), BUILD);
@@ -913,11 +938,13 @@ function watchRooms(): void {
     if (listSocket !== current) return;
     const answer = parseFeedbackAnswer(event.data);
     if (answer !== null) return feedbackAnswered(answer.sent);
+    const inbox = parseInboxAnswer(event.data);
+    if (inbox !== null) return inboxAnswered(inbox.words);
     const message = parseDirectoryMessage(event.data);
     if (message === null) return;
     roomsSent = message;
     renderRooms();
-    // a word about the game is offered only where the server can send one on
+    // a word about the game is offered only where the server keeps them for someone to read
     feedbackButton.hidden = message.feedback !== true;
     heardBuild(message.build);
   });
@@ -980,6 +1007,88 @@ function feedbackAnswered(sent: boolean): void {
   if (sent) feedbackText.value = "";
   sayFeedback(sent ? WORDS.feedback.sent : WORDS.feedback.failed, !sent);
 }
+
+// ---- The inbox: what players wrote, for whoever makes the game -----------------------------------
+
+/** Opens the sheet the inbox is read on, or puts it away with what it showed. */
+function showInbox(open: boolean): void {
+  inboxSheet.hidden = !open;
+  if (open) {
+    if (!TOUCH) inboxKey.focus();
+    return;
+  }
+  inboxList.replaceChildren();
+  inboxNote.textContent = "";
+  inboxKey.value = "";
+}
+
+/** Says on the sheet how the asking stands. */
+function sayInbox(text: string, failed: boolean, asking = false): void {
+  inboxNote.textContent = text;
+  inboxNote.classList.toggle("failed", failed);
+  inboxOpen.disabled = asking;
+  inboxOpen.textContent = asking ? WORDS.inbox.opening : WORDS.inbox.open;
+}
+
+/**
+ * Asks the directory for the words kept, with the key typed, over the
+ * connection the lobby has to it; with `drop`, to throw that one away first.
+ * The key goes in the message and is kept nowhere but the box it was typed in.
+ */
+function askInbox(drop?: number): void {
+  if (inboxWait !== null || inboxKey.value === "") return;
+  if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return sayInbox(WORDS.inbox.offline, true);
+  const request: DirectoryRequest = drop === undefined ? { type: "inbox", key: inboxKey.value } : { type: "inbox", key: inboxKey.value, drop };
+  listSocket.send(JSON.stringify(request));
+  sayInbox("", false, true);
+  inboxWait = setTimeout(() => {
+    inboxWait = null;
+    sayInbox(WORDS.inbox.offline, true);
+  }, FEEDBACK_WAIT_MS);
+}
+
+/** The directory answered: the words kept, the latest first, or that the inbox did not open. */
+function inboxAnswered(words: StoredWord[] | null): void {
+  if (inboxWait !== null) clearTimeout(inboxWait);
+  inboxWait = null;
+  if (inboxSheet.hidden) return;
+  if (words === null) {
+    inboxList.replaceChildren();
+    return sayInbox(WORDS.inbox.refused, true);
+  }
+  sayInbox(words.length === 0 ? WORDS.inbox.none : WORDS.inbox.count(words.length), false);
+  inboxList.replaceChildren(
+    ...words.map((word) => {
+      const row = document.createElement("li");
+      const head = document.createElement("p");
+      head.className = "dim";
+      head.textContent = WORDS.inbox.head(new Date(word.at).toLocaleString(lang === "ko" ? "ko-KR" : "en-US"), word.lang, word.build);
+      // what a stranger wrote is shown as text and nothing else
+      const text = document.createElement("p");
+      text.className = "word";
+      text.textContent = word.text;
+      const drop = document.createElement("button");
+      drop.type = "button";
+      drop.textContent = WORDS.inbox.drop;
+      let armed = false;
+      drop.addEventListener("click", () => {
+        // twice, as the way out of a game is: nothing is thrown away by a slip
+        if (armed) return askInbox(word.id);
+        armed = true;
+        drop.textContent = WORDS.inbox.dropConfirm;
+      });
+      head.append(drop);
+      row.append(head, text);
+      return row;
+    }),
+  );
+}
+
+el<HTMLFormElement>("inbox-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  askInbox();
+});
+el<HTMLButtonElement>("inbox-close").addEventListener("click", () => showInbox(false));
 
 feedbackButton.addEventListener("click", () => showFeedback(true));
 el<HTMLButtonElement>("feedback-close").addEventListener("click", () => showFeedback(false));
@@ -2007,6 +2116,7 @@ addEventListener("keydown", (event) => {
   else if (!seatMenu.hidden) showSeatMenu(null);
   else if (!swapSheet.hidden) showSwap(false);
   else if (!feedbackSheet.hidden) showFeedback(false);
+  else if (!inboxSheet.hidden) showInbox(false);
   else if (!rules.hidden) rules.hidden = true;
   else if (!newRoom.hidden) closeNewRoom();
   else if (!roomsGames.hidden) {

@@ -37,6 +37,22 @@ const ko = {
     sent: "보냈습니다. 고맙습니다.",
     failed: "지금은 보내지 못했습니다. 잠시 뒤에 다시 보내 주세요.",
   },
+  /** What players have written about the game, for whoever makes it: opened with `?inbox` and the key. */
+  inbox: {
+    title: "의견함",
+    key: "열쇠",
+    open: "열기",
+    opening: "여는 중…",
+    close: "닫기",
+    refused: "열지 못했습니다. 열쇠를 확인하고, 여러 번 틀렸다면 10분 뒤에 다시 해 주세요.",
+    offline: "서버에 연결되지 않았습니다. 잠시 뒤에 다시 해 주세요.",
+    none: "아직 온 의견이 없습니다.",
+    count: (count: number) => `의견 ${count}건, 새것부터`,
+    /** Over each: when it was written, and the language and build of the page it was written on. */
+    head: (when: string, lang: string, build: string) => `${when} · ${lang} · ${build}`,
+    drop: "지우기",
+    dropConfirm: "한 번 더 누르면 지움",
+  },
   entry: {
     sub: "방을 고르거나 만드세요",
     nick: "닉네임",
@@ -278,6 +294,20 @@ const en: typeof ko = {
     empty: "Write something first.",
     sent: "Sent. Thank you.",
     failed: "It could not be sent now. Try again in a while.",
+  },
+  inbox: {
+    title: "Inbox",
+    key: "Key",
+    open: "Open",
+    opening: "Opening…",
+    close: "Close",
+    refused: "It did not open. Check the key; after several wrong ones, try again in 10 minutes.",
+    offline: "Not connected to the server. Try again in a while.",
+    none: "Nothing has been written yet.",
+    count: (count) => `${count} written, newest first`,
+    head: (when, lang, build) => `${when} · ${lang} · ${build}`,
+    drop: "Delete",
+    dropConfirm: "Press again to delete",
   },
   entry: {
     sub: "Pick a room or make one",
