@@ -1,0 +1,8 @@
+{
+  "on": true,
+  "utcOffsetMinutes": 540,
+  "hour": 21,
+  "minute": 0,
+  "lengthMinutes": 60,
+  "games": ["under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass", "mystery-stock-market", "russian-roulette"]
+}

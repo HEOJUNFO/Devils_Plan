@@ -1,5 +1,5 @@
 import recordConfig from "../shared/record-config.json";
-import { counted, finishOf, noRecord, recordFrom, recordText, type GameMessage, type MyRecord } from "../shared/record";
+import { counted, finishOf, forgotten, noRecord, recordFrom, recordText, type Finish, type GameMessage, type MyRecord } from "../shared/record";
 import { storageKey } from "./storage";
 
 /**
@@ -25,7 +25,13 @@ export function myRecord(): MyRecord {
  * not been counted. Returns whether the record changed.
  */
 export function noteFinish(message: GameMessage): boolean {
-  const finish = finishOf(message);
+  let finish: Finish | null;
+  try {
+    finish = finishOf(message, recordConfig);
+  } catch {
+    // What the room sent is read as it came: a game whose end cannot be read is not counted, and is shown all the same.
+    return false;
+  }
   if (finish === null) return false;
   const before = myRecord();
   const after = counted(before, finish, recordConfig);
@@ -39,10 +45,10 @@ export function noteFinish(message: GameMessage): boolean {
   return true;
 }
 
-/** Forgets the record. */
+/** Forgets the record: every count in it. Which games were counted last stays known, so that none of them is counted again. */
 export function clearRecord(): void {
   try {
-    localStorage.removeItem(KEY);
+    localStorage.setItem(KEY, recordText(forgotten(myRecord())));
   } catch {
     // nothing was kept where nothing can be
   }

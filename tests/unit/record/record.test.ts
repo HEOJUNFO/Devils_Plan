@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { GAME_IDS, type GameId } from "../../../src/shared/games";
 import {
   counted,
-  finishOf,
+  finishOf as finishBy,
+  forgotten,
   noRecord,
   playedAny,
   recordFrom,
@@ -13,7 +14,7 @@ import {
   type RecordConfig,
 } from "../../../src/shared/record";
 
-const CONFIG: RecordConfig = { seenMost: 3 };
+const CONFIG: RecordConfig = { seenMost: 3, peopleAtLeast: 2 };
 const ROOM = "ABCDE";
 const STARTED = 1_700_000_000_000;
 
@@ -27,6 +28,9 @@ const PEOPLE = [
 function message(game: GameId, view: object, players: object[] = PEOPLE): GameMessage {
   return { type: "game", room: ROOM, game, startedAt: STARTED, view, players } as unknown as GameMessage;
 }
+
+/** The finish of `sent`, by the numbers of these tests. */
+const finishOf = (sent: GameMessage): Finish | null => finishBy(sent, CONFIG);
 
 /** How the game was over: its own way, or one that cut it short. */
 const ended = (reason: string): object[] => [{ type: "round", round: 1 }, { type: "ended", reason }];
@@ -52,6 +56,21 @@ describe("finishOf", () => {
     const view = { phase: "ended", you: 0, standings: [{ player: 0, place: 1 }], history: ended("rounds") };
 
     expect(finishOf(message("memory-poker", view, withBot))).toBeNull();
+  });
+
+  it("is nothing for a game played alone, and for one the others had left by its end: a place among nobody is not one", () => {
+    const view = { phase: "ended", you: 0, ranked: [{ player: 0, took: 1 }], history: ended("ranked") };
+    const gone = [PEOPLE[0], { ...PEOPLE[1], left: true }];
+
+    expect(finishOf(message("count-cubes", view, [PEOPLE[0]]))).toBeNull();
+    expect(finishOf(message("count-cubes", view, gone))).toBeNull();
+  });
+
+  it("counts a game someone was away from at the end but had not left", () => {
+    const view = { phase: "ended", you: 0, ranked: [{ player: 0, took: 1 }], history: ended("ranked") };
+    const away = [PEOPLE[0], { ...PEOPLE[1], connected: false }];
+
+    expect(finishOf(message("count-cubes", view, away))?.top).toBe(true);
   });
 
   it("is nothing for a game cut short: one everybody left, one too few were left to play", () => {
@@ -180,6 +199,17 @@ describe("recordFrom", () => {
     });
 
     expect(recordFrom(stored)).toEqual({ games: { "lay-the-grass": { played: 4, top: 1 } }, seen: ["A.1", "A.2"] });
+  });
+});
+
+describe("forgotten", () => {
+  it("has no game in it, and still knows the games it counted: one of them heard of again is not counted into the empty record", () => {
+    const record = counted(noRecord(), finish("A.1"), CONFIG);
+
+    const empty = forgotten(record);
+
+    expect(playedAny(empty)).toBe(false);
+    expect(counted(empty, finish("A.1"), CONFIG)).toBe(empty);
   });
 });
 

@@ -87,10 +87,14 @@ function topOf(message: GameMessage): boolean | null {
  * The game `message` shows the end of, for the record of the player it was
  * sent to. `null` while the game is played, for someone who watched, for a
  * game cut short, and for a game a bot sat in: bots are there to try a game
- * with, and a game against them is not one played.
+ * with, and a game against them is not one played. `null` too when fewer
+ * than `config.peopleAtLeast` people were still in the room at the end,
+ * the player among them: the room makes the moves of someone who left, and
+ * first place among nobody, or in a game started alone, is not a place.
  */
-export function finishOf(message: GameMessage): Finish | null {
+export function finishOf(message: GameMessage, config: RecordConfig): Finish | null {
   if (message.players.some((player) => player.bot)) return null;
+  if (message.players.filter((player) => !player.left).length < config.peopleAtLeast) return null;
   const top = topOf(message);
   return top === null ? null : { key: `${message.room}.${message.startedAt}`, game: message.game, top };
 }
@@ -111,9 +115,14 @@ export interface MyRecord {
   seen: string[];
 }
 
-/** `seenMost`: how many of the games counted last are remembered, so that none is counted twice. */
+/**
+ * `seenMost`: how many of the games counted last are remembered, so that
+ * none is counted twice. `peopleAtLeast`: how many people have to be in the
+ * room at a game's end, the player among them, for the game to be counted.
+ */
 export interface RecordConfig {
   seenMost: number;
+  peopleAtLeast: number;
 }
 
 /** The record of someone who has played nothing. */
@@ -133,6 +142,15 @@ export function counted(record: MyRecord, finish: Finish, config: RecordConfig):
     games: { ...record.games, [finish.game]: { played: before.played + 1, top: before.top + (finish.top ? 1 : 0) } },
     seen: [...record.seen, finish.key].slice(-config.seenMost),
   };
+}
+
+/**
+ * `record` with every count forgotten. The games it counted last are still
+ * known: the end of one of them is sent again to a tab still on its result,
+ * and would be the first game of the empty record.
+ */
+export function forgotten(record: MyRecord): MyRecord {
+  return { games: {}, seen: [...record.seen] };
 }
 
 /** Whether `record` has any game in it. */

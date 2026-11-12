@@ -41,7 +41,7 @@ const ko = {
   record: {
     open: "내 기록",
     title: "내 기록",
-    hint: "이 브라우저에만 남습니다. 끝까지 한 판만 세고, 중간에 끝난 판은 세지 않습니다.",
+    hint: "이 브라우저에만 남습니다. 둘 이상이 끝까지 한 판만 세고, 혼자 한 판은 세지 않습니다.",
     /** One game's line: how many were played, and how many at the top, by what that game calls its top. */
     row: (played: number, top: number, kind: string) => `${played}판 · ${kind} ${top}번`,
     kinds: { alive: "생존", won: "승리", first: "1위" },
@@ -105,6 +105,18 @@ const ko = {
     /** Under the last row, when there are more rooms than the list holds: of every game, and of the game picked. */
     moreOfAll: (rooms: number) => `${rooms}개 더 있습니다. 위에서 게임을 골라 좁혀 보세요.`,
     moreOfGame: (rooms: number) => `${rooms}개 더 있습니다. 들어가기 좋은 방부터 보여 줍니다.`,
+  },
+  /** Over the rooms: the hour at which people are asked to gather for a game, in the reader's own time. */
+  meet: {
+    today: "오늘",
+    tomorrow: "내일",
+    title: (day: string, time: string) => `${day} ${time} 모임`,
+    /** While it is on, with when it ends. */
+    now: "지금 모이는 시간",
+    until: (time: string) => `${time}까지`,
+    inTime: (hours: number, minutes: number) => (hours > 0 ? `${hours}시간 ${minutes}분 뒤` : `${minutes}분 뒤`),
+    /** Under it: which game, and what to do then. */
+    what: (game: string) => `${game} · 이 시간에 공개 방으로 모여요`,
   },
   newRoom: {
     title: "새 방",
@@ -351,7 +363,7 @@ const en: typeof ko = {
   record: {
     open: "My record",
     title: "My record",
-    hint: "Kept in this browser only. Games played to the end are counted; games cut short are not.",
+    hint: "Kept in this browser only. A game counts when two or more played it to the end.",
     row: (played, top, kind) => `${played} played · ${kind} ${top}`,
     kinds: { alive: "Alive", won: "Won", first: "1st" },
     clear: "Clear record",
@@ -403,6 +415,15 @@ const en: typeof ko = {
     noneOf: (game) => `No open rooms of ${game}. Make a public one and it is listed here.`,
     moreOfAll: (rooms) => `${rooms} more. Pick a game above.`,
     moreOfGame: (rooms) => `${rooms} more. The best to join are shown first.`,
+  },
+  meet: {
+    today: "Today",
+    tomorrow: "Tomorrow",
+    title: (day, time) => `${day} ${time} meet-up`,
+    now: "Meet-up on now",
+    until: (time) => `until ${time}`,
+    inTime: (hours, minutes) => (hours > 0 ? `in ${hours} h ${minutes} min` : `in ${minutes} min`),
+    what: (game) => `${game} · meet in public rooms`,
   },
   newRoom: {
     title: "New room",

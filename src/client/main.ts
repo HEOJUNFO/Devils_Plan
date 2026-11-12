@@ -53,6 +53,8 @@ import { keepRoom, keptRoom } from "../shared/resume";
 import { QUICK_WORDS } from "../shared/chat";
 import chatConfig from "../shared/chat-config.json";
 import directoryConfig from "../shared/directory-config.json";
+import meetConfig from "../shared/meet-config.json";
+import { meetNear } from "../shared/meet";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
@@ -1013,8 +1015,47 @@ function askForGame(): void {
   listSocket.send(JSON.stringify(request));
 }
 
+/** The row over the rooms that says when people are asked to gather. */
+const meetButton = el<HTMLButtonElement>("meet");
+/** How often that row is written again while the lobby is on show, in ms: it counts the minutes down. */
+const MEET_EVERY_MS = 20_000;
+
+/**
+ * Says over the rooms when the next gathering is and for which game, in the
+ * reader's own time, or that one is on. Nothing where none is set.
+ */
+function renderMeet(): void {
+  const now = Date.now();
+  const meet = meetNear(now, meetConfig);
+  meetButton.hidden = meet === null;
+  if (meet === null) return;
+  const timeOf = (at: number): string => new Date(at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  // today or tomorrow by the reader's own calendar: the hour is held in one place and read in every other
+  const dayOf = (at: number): number => {
+    const date = new Date(at);
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  };
+  const minutes = Math.max(1, Math.ceil((meet.start - now) / 60_000));
+  const [title, when, what] = [...meetButton.children];
+  title.textContent = meet.on ? WORDS.meet.now : WORDS.meet.title(dayOf(meet.start) > dayOf(now) ? WORDS.meet.tomorrow : WORDS.meet.today, timeOf(meet.start));
+  when.textContent = meet.on ? WORDS.meet.until(timeOf(meet.end)) : WORDS.meet.inTime(Math.floor(minutes / 60), minutes % 60);
+  what.textContent = WORDS.meet.what(GAMES[meet.game].title[lang]);
+  meetButton.classList.toggle("on", meet.on);
+  meetButton.dataset.game = meet.game;
+}
+
+// a press lists the rooms of the game people gather for: where they are, or where one is to be made
+meetButton.addEventListener("click", () => {
+  const game = meetButton.dataset.game;
+  if (isGameId(game)) pickGame(game);
+});
+setInterval(() => {
+  if (listSocket !== null) renderMeet();
+}, MEET_EVERY_MS);
+
 /** Draws the list of rooms as last sent, for the game picked. */
 function renderRooms(): void {
+  renderMeet();
   // what is shown is worked out from what was sent: a newer server may list a game this page has not heard of, which cannot be played here
   const shown = roomsSent === null ? null : roomsShown(roomsSent.rooms, roomsSent.counts, listedGame);
   const known = shown?.rooms ?? [];
@@ -1135,10 +1176,17 @@ function syncRecord(): void {
 
 /** Opens the sheet with the player's own record on it, as it is kept now, or puts it away. */
 function showRecord(open: boolean): void {
+  // the keys go back to the button that opened the sheet, where it is still there
+  const within = recordSheet.contains(document.activeElement);
   recordSheet.hidden = !open;
   clearArmed = false;
   recordClear.textContent = WORDS.record.clear;
-  if (!open) return;
+  if (!open) {
+    if (within && !recordOpen.hidden && !about.hidden) recordOpen.focus({ preventScroll: true });
+    return;
+  }
+  // one sheet over the lobby at a time: this one and the one for a word about the game lie in the same place
+  showFeedback(false);
   const { games } = myRecord();
   recordList.replaceChildren(
     ...GAME_IDS.flatMap((game) => {
@@ -1166,8 +1214,8 @@ recordClear.addEventListener("click", () => {
     return;
   }
   clearRecord();
-  showRecord(false);
   syncRecord();
+  showRecord(false);
 });
 syncRecord();
 
@@ -1177,6 +1225,8 @@ syncRecord();
 function showFeedback(open: boolean): void {
   feedbackSheet.hidden = !open;
   if (!open) return;
+  // one sheet over the lobby at a time
+  showRecord(false);
   feedbackNote.textContent = "";
   feedbackNote.classList.remove("failed");
   // Under a finger a box that takes the focus by itself brings the keyboard up over the sheet before it has been read.

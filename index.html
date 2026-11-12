@@ -38,6 +38,8 @@
           <p id="rooms-count"></p>
         </header>
         <div id="rooms-games" role="group" hidden></div>
+        <!-- When people are asked to gather, and for which game (`src/shared/meet.ts`): a press lists that game's rooms. -->
+        <button id="meet" type="button" class="room-row" hidden><span class="room-host"></span><span class="room-count"></span><span class="room-game"></span></button>
         <p id="rooms-note" role="status"></p>
         <ol id="room-list"></ol>
       </section>
