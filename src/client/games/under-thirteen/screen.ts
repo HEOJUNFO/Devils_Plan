@@ -9,7 +9,7 @@
  * comes when the room shows it. Everything can be done with the pointer;
  * the keys are a shorter way to the same.
  */
-import { STANDS, sumOf, type Chip, type Stand, type UnderEvent } from "../../../shared/games/under-thirteen/rules";
+import { STANDS, sumOf, type Chip, type Stand, type UnderAction, type UnderEvent } from "../../../shared/games/under-thirteen/rules";
 import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
@@ -136,6 +136,17 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   let pending = false;
   /** The host has asked for the next game and the room has not answered yet. */
   let starting = false;
+  /** The game as the room last sent it: what is shown again if a move drawn ahead of the room is refused. */
+  let truth: UnderMessage | null = null;
+  /**
+   * The player's own move on its way to the room, as the change it makes to what the room sent. It is drawn
+   * at once: the room is a moment away, and a rock that goes on its stand only when the room answers reads as
+   * a press not taken. It is drawn again over whatever the room sends before its answer, and dropped when the
+   * answer comes (the room's game then has the move in it) or the move is refused.
+   */
+  let ahead: ((view: UnderMessage["view"]) => UnderMessage["view"]) | null = null;
+  /** The kind of happening already shown and sounded for the move drawn ahead: the room's word of it is not shown a second time. */
+  let shownAhead: UnderEvent["type"] | null = null;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -186,6 +197,11 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   /** Shows one thing that happened: a sound, and a word when it was a penalty of the player's own. */
   function show(event: UnderEvent): void {
     const mine = me();
+    // the player's own move was shown as it was made; one the room made for them was not
+    if (shownAhead !== null && event.type === shownAhead && "player" in event && event.player === mine && !("forced" in event && event.forced)) {
+      shownAhead = null;
+      return;
+    }
     if (event.type === "round") {
       if (event.round > 1) sfx.turn();
     } else if (event.type === "chips" || event.type === "cards") sfx.swap();
@@ -197,6 +213,23 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
         sfx.lose();
       } else sfx.deny();
     }
+  }
+
+  /** Sends the player's move and, if it went, draws it at once as `change` makes it (see `ahead`). */
+  function sendAhead(action: UnderAction, change: (view: UnderMessage["view"]) => UnderMessage["view"], shown: UnderEvent["type"] | null = null): void {
+    pending = handlers.act(action);
+    if (!pending) return say(WORDS.notSent);
+    if (latest === null) return;
+    ahead = change;
+    shownAhead = shown;
+    latest = { ...latest, view: change(latest.view) };
+  }
+
+  /** Takes back a move drawn ahead of the room: the game is shown as the room last sent it. */
+  function takeBack(): void {
+    ahead = null;
+    shownAhead = null;
+    if (truth !== null) latest = truth;
   }
 
   /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
@@ -232,9 +265,15 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       card = null;
       chip = null;
     }
-    latest = message;
+    // The room marks the game it sends in answer to this page's move. What it sends meanwhile, for another
+    // player's move, leaves this one on its way; a game that has gone on to another phase waits for nothing.
+    const answered = message.answer === true || latest === null || latest.startedAt !== message.startedAt || latest.view.phase !== message.view.phase;
+    truth = message;
+    if (answered) ahead = null;
+    // a move still on its way is drawn over what the room sends meanwhile, which does not have it yet
+    latest = ahead === null ? message : { ...message, view: ahead(message.view) };
     receivedAt = performance.now();
-    pending = false;
+    if (answered) pending = false;
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
   }
@@ -247,8 +286,20 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       sfx.deny();
       return;
     }
-    pending = handlers.act({ type: "submit", card, chip });
-    if (!pending) say(WORDS.notSent);
+    const mine = me();
+    const put = { card, chip };
+    // The card and the chip are out of the hand from the press, and the player is among those who have put
+    // theirs in. What the others put in, and the chips shown once all have, come from the room.
+    sendAhead({ type: "submit", ...put }, (view) => {
+      if (mine === null || view.hand === null || view.submitted.includes(mine)) return view;
+      const at = view.hand.chips.indexOf(put.chip);
+      return {
+        ...view,
+        hand: { cards: view.hand.cards.filter((each) => each !== put.card), chips: view.hand.chips.filter((_, index) => index !== at) },
+        mine: put,
+        submitted: [...view.submitted, mine],
+      };
+    });
   }
 
   function placeOn(stand: Stand | null): void {
@@ -258,8 +309,44 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       say(WORDS.refused["choose-stand"]);
       return;
     }
-    pending = handlers.act(mine === "rainbow" ? { type: "place", stand } : { type: "place" });
-    if (!pending) say(WORDS.notSent);
+    const player = me() as number;
+    const weight = cardOf(player);
+    const on: Stand | null = mine === "rainbow" ? stand : mine;
+    const action: UnderAction = mine === "rainbow" && stand !== null ? { type: "place", stand } : { type: "place" };
+    if (weight === null || on === null) {
+      // nothing to draw the rock from: it is sent and the room shows it
+      pending = handlers.act(action);
+      if (!pending) say(WORDS.notSent);
+      return;
+    }
+    // The rock is on its stand from the press, as the room's own rule puts it there: a stand brought to the
+    // limit keeps this rock alone. Whose rock is next, and the points, come with the room's answer.
+    const sum = sumOf([...latest.view.stands[on], weight]);
+    const cleared = sum >= latest.view.limit ? latest.view.stands[on].length : 0;
+    sendAhead(
+      action,
+      (view) => {
+        if (!view.queue.includes(player)) return view;
+        const rocks = [...view.stands[on], weight];
+        const over = sumOf(rocks) >= view.limit;
+        return {
+          ...view,
+          stands: { ...view.stands, [on]: over ? [weight] : rocks },
+          queue: view.queue.filter((each) => each !== player),
+          passed: view.passed.filter((each) => each !== player),
+          placements: [...view.placements, { player, stand: on, weight, sum: sumOf(rocks), cleared: over ? rocks.length - 1 : 0, passed: view.passed.includes(player), forced: false }],
+          turn: null,
+          asked: null,
+        };
+      },
+      "placed",
+    );
+    if (!pending) return;
+    if (cleared === 0) sfx.move();
+    else {
+      say(WORDS.say.penalty(cleared));
+      sfx.lose();
+    }
   }
 
   function passNow(): void {
@@ -269,8 +356,14 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       sfx.deny();
       return;
     }
-    pending = handlers.act({ type: "pass" });
-    if (!pending) say(WORDS.notSent);
+    const player = me() as number;
+    // passed from the press: the rock goes to the end of the order, and the turn is someone else's
+    sendAhead(
+      { type: "pass" },
+      (view) => (!view.queue.includes(player) || view.passed.includes(player) ? view : { ...view, queue: view.queue.filter((each) => each !== player), passed: [...view.passed, player], turn: null, asked: null }),
+      "passed",
+    );
+    if (pending) sfx.back();
   }
 
   function stepInput(): void {
@@ -352,6 +445,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
         seen += 1;
         if (event !== undefined) show(event);
       }
+      // the room has answered and its word of the move has been passed over, or was never in it
+      if (ahead === null) shownAhead = null;
     }
     stepInput();
     keys.length = 0;
@@ -487,7 +582,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (view.phase === "chips") return [WORDS.standing.chips, C.bone];
     if (view.phase === "pause") return [view.round >= view.rounds ? WORDS.standing.lastOver(seconds) : WORDS.standing.roundOver(view.round, seconds), C.bone];
     const turn = view.turn;
-    if (turn === null) return ["", C.boneD];
+    // the player's own rock or pass, drawn ahead of the room: whose rock is next the room has yet to say
+    if (turn === null) return [pending ? WORDS.standing.sending : "", C.boneD];
     if (turn !== mine) return [WORDS.standing.theirTurn(pen.fit(nickOf(turn), 80), seconds), C.bone];
     if (pending) return [WORDS.standing.sending, C.boneD];
     const theirs = chipOf(turn);
@@ -749,12 +845,15 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     refused(reason: string): void {
       starting = false;
       pending = false;
+      takeBack();
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
       starting = false;
       pending = false;
+      // whether the move reached the room is not known: the game the room sends on coming back will say
+      takeBack();
       offline = true;
     },
     setHost(value: boolean): void {

@@ -134,6 +134,10 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
   let pending = false;
   /** The host has asked for the next game and the room has not answered yet. */
   let starting = false;
+  /** The game as the room last sent it: what is shown again if the final choice drawn ahead of the room is refused. */
+  let truth: PokerMessage | null = null;
+  /** Whether the player's own final choice has been sounded as it was made: the room's word of it is then not sounded again. */
+  let lockSounded = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -201,7 +205,9 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       if (event.round > 1) sfx.turn();
     } else if (event.type === "turned") sfx.swap();
     else if (event.type === "locked") {
-      if (event.player === mine) sfx.pick();
+      // the player's own was sounded as it was made
+      if (event.player === mine && lockSounded) lockSounded = false;
+      else if (event.player === mine) sfx.pick();
       else sfx.move();
     } else if (event.type === "shown") {
       const mark = mine === null ? null : markOf(mine, event.outcomes);
@@ -209,6 +215,18 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       else if (mark === "loss") sfx.lose();
       else sfx.back();
     }
+  }
+
+  /**
+   * The game with the player's own choice shown as final, which it is from the press: the room is a moment
+   * away, and a choice that reads as open until the room answers reads as a press not taken. What the others
+   * chose, and the round shown once all have, come from the room.
+   */
+  function withLock(message: PokerMessage): PokerMessage {
+    const view = message.view;
+    const mine = view.you;
+    if (mine === null || view.mine === null || view.mine.locked || view.phase !== "choose") return message;
+    return { ...message, view: { ...view, mine: { cells: [...selection], locked: true }, locked: view.locked.includes(mine) ? view.locked : [...view.locked, mine] } };
   }
 
   /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
@@ -236,11 +254,13 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     const round = `${message.startedAt}:${message.view.round}`;
     if (message.view.phase !== "choose") touched = null;
     if (touched !== round) selection = [...(message.view.mine?.cells ?? [])];
-    latest = message;
+    truth = message;
     receivedAt = performance.now();
     // A final choice goes as two messages and the room answers each, and others' choices are sent here meanwhile:
     // it is on its way until the room shows it final, or the choosing is over. (A refusal and a lost line end it too.)
     if (message.view.phase !== "choose" || message.view.mine?.locked === true) pending = false;
+    // on its way still, it is drawn over what the room sends meanwhile, which does not have it yet
+    latest = pending ? withLock(message) : message;
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
   }
@@ -281,7 +301,10 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       return;
     }
     pending = handlers.act({ type: "pick", cells: selection }) && handlers.act({ type: "lock" });
-    if (!pending) say(WORDS.notSent);
+    if (!pending) return say(WORDS.notSent);
+    latest = withLock(latest);
+    lockSounded = true;
+    sfx.pick();
   }
 
   function stepInput(): void {
@@ -346,6 +369,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     }
     if (latest !== null) {
       while (seen < latest.view.history.length) show(latest.view.history[seen++]);
+      // the room has answered and its word of the choice has been passed over, or was never in it
+      if (!pending) lockSounded = false;
     }
     stepInput();
     keys.length = 0;
@@ -732,6 +757,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     refused(reason: string): void {
       starting = false;
       pending = false;
+      lockSounded = false;
+      if (truth !== null) latest = truth;
       // what the room holds is what counts again: this page's own choice did not go through
       touched = null;
       selection = [...(latest?.view.mine?.cells ?? [])];
@@ -741,6 +768,9 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     lost(): void {
       starting = false;
       pending = false;
+      lockSounded = false;
+      // whether the choice reached the room is not known: the game the room sends on coming back will say
+      if (truth !== null) latest = truth;
       offline = true;
     },
     setHost(value: boolean): void {

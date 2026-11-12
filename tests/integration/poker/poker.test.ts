@@ -141,6 +141,27 @@ describe("GameRoom: a room of 기억 포커", () => {
     closeAll(clients);
   });
 
+  it("marks the game it sends in answer to a move, for whoever made the move and nobody else", async () => {
+    const stub = env.GameRoom.getByName("MPAAQ");
+    const clients = await players("MPAAQ", 3);
+    const started = await startGame(clients);
+    await turnOver(stub, clients);
+
+    // a pick shows on no other screen: only the one who picked is sent anything, and it is their answer
+    pick(clients[1], [3, 9]);
+    const picked = await clients[1].pokerWhere((game) => game.view.mine?.cells.length === 2);
+    // a final choice shows on every screen: all are sent the game, one of them in answer
+    lock(clients[1]);
+    const after = await Promise.all(clients.map((client) => client.pokerWhere((game) => game.view.locked.length === 1)));
+
+    for (const first of started) expect(first.answer).toBeUndefined();
+    expect(picked.answer).toBe(true);
+    expect(after[1].answer).toBe(true);
+    expect(after[0].answer).toBeUndefined();
+    expect(after[2].answer).toBeUndefined();
+    closeAll(clients);
+  });
+
   it("shows the round as soon as everyone has chosen: the board again, the hand each made, and the winner those hands give", async () => {
     const stub = env.GameRoom.getByName("MPAAD");
     const clients = await players("MPAAD", 2);

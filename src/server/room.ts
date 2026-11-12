@@ -903,7 +903,9 @@ export class GameRoom extends Server<Env> {
       if (member !== always && this.sights.get(member.id) === sight) continue;
       this.sights.set(member.id, sight);
       // which game it is comes first; the rest is what that game's host says this player may see
-      member.send(JSON.stringify({ type: "game", room: this.name, game, ...host.view(session, seat.token, presence, now) }));
+      // to whoever made the move it is marked as the answer to it: their page is waiting for that, among whatever else is sent
+      const answer = member === always ? { answer: true } : {};
+      member.send(JSON.stringify({ type: "game", room: this.name, game, ...answer, ...host.view(session, seat.token, presence, now) }));
     }
   }
 

@@ -190,6 +190,17 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   let sent: MarketMove | null = null;
   /** The host has asked for the next game and the room has not answered yet. */
   let starting = false;
+  /** The game as the room last sent it: what is shown again if a move drawn ahead of the room is refused. */
+  let truth: MarketMessage | null = null;
+  /**
+   * The move on its way to the room, as the change it makes to the player's own holdings in what the room
+   * sent, where that can be worked out here: an order at a price on show, for cash on show, is worked out by
+   * the room in the same way. It is drawn, and said, at once: the room is a moment away, and shares that turn
+   * up only when it answers read as a press not taken. It is drawn again over whatever the room sends before
+   * its answer, and dropped when the answer comes or the move is refused. `null` for a move that waits for
+   * the room to be shown (a stock whose price is covered, a piece spent on a rule).
+   */
+  let ahead: ((view: MarketMessage["view"]) => MarketMessage["view"]) | null = null;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -285,10 +296,52 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     if (!starting) say(WORDS.notSent);
   }
 
+  /** What `move` makes of the player's own holdings, where this page can tell (see `ahead`); `null` where only the room can. */
+  function foreseen(move: MarketMove, from: MarketMessage): ((view: MarketMessage["view"]) => MarketMessage["view"]) | null {
+    const own = (change: (mine: NonNullable<MarketMessage["view"]["mine"]>, view: MarketMessage["view"]) => NonNullable<MarketMessage["view"]["mine"]> | null) => {
+      return (view: MarketMessage["view"]): MarketMessage["view"] => {
+        const next = view.mine === null ? null : change(view.mine, view);
+        return next === null ? view : { ...view, mine: next };
+      };
+    };
+    const priceIn = (view: MarketMessage["view"], id: MarketMove extends infer Each ? (Each extends { stock: infer Id } ? Id : never) : never): number | null =>
+      view.stocks.find((each) => each.id === id)?.price ?? null;
+    if (move.type === "buy" || move.type === "sell") {
+      // a price or a purse that is covered leaves nothing to work the order out from
+      if (from.view.mine === null || from.view.mine.cash === null || priceIn(from.view, move.stock) === null) return null;
+      const sign = move.type === "buy" ? 1 : -1;
+      return own((mine, view) => {
+        const price = priceIn(view, move.stock);
+        if (price === null || mine.cash === null) return null;
+        return { ...mine, shares: { ...mine.shares, [move.stock]: mine.shares[move.stock] + sign * move.shares }, cash: mine.cash - sign * move.shares * price };
+      });
+    }
+    if (move.type === "cash") {
+      if (from.view.mine === null || from.view.mine.cash === null) return null;
+      const gain = from.rules.pieceCash;
+      return own((mine) => (mine.cash === null ? null : { ...mine, cash: mine.cash + gain, assets: mine.assets === null ? null : mine.assets + gain, pieces: mine.pieces - 1 }));
+    }
+    if (move.type === "secret") return own((mine) => ({ ...mine, secret: false }));
+    if (move.type === "done") return own((mine) => ({ ...mine, done: true }));
+    return null;
+  }
+
+  /** Says what a move did, with its sound: when the room shows it, or at once for one drawn ahead. */
+  function sayDone(move: MarketMove, rules: MarketMessage["rules"]): void {
+    const name = "stock" in move ? WORDS.short[move.stock] : "";
+    if (move.type === "buy") say(WORDS.say.bought(name, WORDS.shares(move.shares)));
+    else if (move.type === "sell") say(WORDS.say.sold(name, WORDS.shares(move.shares)));
+    else if (move.type === "secret") say(WORDS.say.secret(name));
+    else if (move.type === "peek") say(WORDS.say.peeked(name));
+    else if (move.type === "cash") say(WORDS.say.cashed(WORDS.won(rules.pieceCash)));
+    if (move.type !== "done") sfx.pick();
+  }
+
   function update(message: MarketMessage): void {
     // the next game has begun: what was asked for is here
     if (message.view.phase !== "ended") starting = false;
-    const before = latest;
+    // what the room last sent, not that with a move of this page's drawn over it
+    const before = truth;
     const fresh = before === null || before.startedAt !== message.startedAt;
     if (fresh) {
       // A game met part-way is shown as it stands; only what happens from here on is played out.
@@ -314,28 +367,39 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
         mode = "trade";
         sent = null;
       } else if (sent !== null && took(sent, before, message)) {
-        const name = "stock" in sent ? WORDS.short[sent.stock] : "";
-        if (sent.type === "buy") say(WORDS.say.bought(name, WORDS.shares(sent.shares)));
-        else if (sent.type === "sell") say(WORDS.say.sold(name, WORDS.shares(sent.shares)));
-        else if (sent.type === "secret") say(WORDS.say.secret(name));
-        else if (sent.type === "peek") say(WORDS.say.peeked(name));
-        else if (sent.type === "cash") say(WORDS.say.cashed(WORDS.won(message.rules.pieceCash)));
-        if (sent.type !== "done") sfx.pick();
+        // one drawn ahead was said as it was made
+        if (ahead === null) sayDone(sent, message.rules);
+        sent = null;
+      } else if (sent !== null && message.answer === true) {
+        // the room has answered and nothing of the move shows: it is not waited for any longer
         sent = null;
       }
     }
-    latest = message;
+    truth = message;
+    if (sent === null) ahead = null;
+    // a move still on its way is drawn over what the room sends meanwhile, which does not have it yet
+    latest = ahead === null ? message : { ...message, view: ahead(message.view) };
     receivedAt = performance.now();
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
   }
 
   // ---- Input -----------------------------------------------------------------------------------------
-  /** Asks the room for `move` in the round being played. */
+  /** Asks the room for `move` in the round being played, and shows it at once where its outcome can be told here (`ahead`). */
   function ask(move: MarketMove): void {
     if (latest === null || sent !== null) return;
-    if (handlers.act({ ...move, round: latest.view.round })) sent = move;
-    else say(WORDS.notSent);
+    if (!handlers.act({ ...move, round: latest.view.round })) return say(WORDS.notSent);
+    sent = move;
+    ahead = foreseen(move, latest);
+    if (ahead === null) return;
+    sayDone(move, latest.rules);
+    latest = { ...latest, view: ahead(latest.view) };
+  }
+
+  /** Takes back a move drawn ahead of the room: the game is shown as the room last sent it. */
+  function takeBack(): void {
+    if (ahead !== null && truth !== null) latest = truth;
+    ahead = null;
   }
 
   function order(type: "buy" | "sell"): void {
@@ -343,6 +407,19 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     if (stock === undefined || !atWork()) return;
     if (shares() < 1) {
       say(WORDS.say.noShares);
+      sfx.deny();
+      return;
+    }
+    // What the room would refuse for want of cash or of shares is not sent, where this page can tell: with the
+    // price and the purse on show it works an order out as the room does.
+    const own = latest?.view.mine ?? null;
+    if (own !== null && type === "sell" && own.shares[stock.id] < shares()) {
+      say(WORDS.refused["no-shares"]);
+      sfx.deny();
+      return;
+    }
+    if (own !== null && type === "buy" && own.cash !== null && stock.price !== null && shares() * stock.price > own.cash) {
+      say(WORDS.refused["no-cash"]);
       sfx.deny();
       return;
     }
@@ -786,7 +863,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       if (mode === "done") return [WORDS.standing.askDone, C.amber];
     }
     // what was asked of the room is on its way: said at once, over whatever the last move left written
-    if (sent !== null && !offline) return [WORDS.standing.sending, C.boneD];
+    // (a move drawn ahead has been said already: its own words stand)
+    if (sent !== null && ahead === null && !offline) return [WORDS.standing.sending, C.boneD];
     if (noteT > 0) return [note, C.amber];
     if (offline) return [WORDS.standing.offline, C.crim];
     if (view.phase === "ended") return [WORDS.standing.over, C.amber];
@@ -979,6 +1057,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     refused(reason: string): void {
       starting = false;
       sent = null;
+      takeBack();
       mode = "trade";
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
@@ -986,6 +1065,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     lost(): void {
       starting = false;
       sent = null;
+      // whether the move reached the room is not known: the game the room sends on coming back will say
+      takeBack();
       offline = true;
     },
     setHost(value: boolean): void {

@@ -23,6 +23,7 @@ import {
   waysToLay,
   type ChoiceNo,
   type Cut,
+  type GrassAction,
   type GrassEvent,
   type Option,
   type Placement,
@@ -179,6 +180,17 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   let pending = false;
   /** The host has asked for the next game and the room has not answered yet. */
   let starting = false;
+  /** The game as the room last sent it: what is shown again if a move drawn ahead of the room is refused. */
+  let truth: GrassMessage | null = null;
+  /**
+   * The player's own move on its way to the room, as the change it makes to what the room sent. It is drawn
+   * at once: the room is a moment away, and a tile that lies down only when the room answers reads as a press
+   * not taken. It is drawn again over whatever the room sends before its answer, and dropped when the answer
+   * comes (the room's game then has the move in it) or the move is refused.
+   */
+  let ahead: ((view: GrassMessage["view"]) => GrassMessage["view"]) | null = null;
+  /** The kind of happening already shown and sounded for the move drawn ahead: the room's word of it is not shown a second time. */
+  let shownAhead: GrassEvent["type"] | null = null;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -299,6 +311,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
 
   /** Shows one thing that happened: a sound, and something to see where it happened. */
   function show(event: GrassEvent): void {
+    // the player's own move was shown as it was made; one the room made for them was not
+    if (shownAhead !== null && event.type === shownAhead && "player" in event && event.player === me() && !("forced" in event && event.forced)) {
+      shownAhead = null;
+      return;
+    }
     if (event.type === "park") {
       chosen = null;
       hand = null;
@@ -314,6 +331,23 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     } else if (event.type === "fail" || event.type === "skip") {
       sfx.deny();
     }
+  }
+
+  /** Sends the player's move and, if it went, draws it at once as `change` makes it (see `ahead`). */
+  function sendAhead(action: GrassAction, change: (view: GrassMessage["view"]) => GrassMessage["view"], shown: GrassEvent["type"] | null = null): void {
+    pending = handlers.act(action);
+    if (!pending) return say(WORDS.notSent);
+    if (latest === null) return;
+    ahead = change;
+    shownAhead = shown;
+    latest = { ...latest, view: change(latest.view) };
+  }
+
+  /** Takes back a move drawn ahead of the room: the game is shown as the room last sent it. */
+  function takeBack(): void {
+    ahead = null;
+    shownAhead = null;
+    if (truth !== null) latest = truth;
   }
 
   /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
@@ -343,9 +377,15 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     fingered = null;
     const wasMine = myTurn() || choosing();
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
-    latest = message;
+    // The room marks the game it sends in answer to this page's move. What it sends meanwhile, for another
+    // player's move, leaves this one on its way; a game that has gone on to another phase waits for nothing.
+    const answered = message.answer === true || latest === null || latest.startedAt !== message.startedAt || latest.view.phase !== message.view.phase;
+    truth = message;
+    if (answered) ahead = null;
+    // a move still on its way is drawn over what the room sends meanwhile, which does not have it yet
+    latest = ahead === null ? message : { ...message, view: ahead(message.view) };
     receivedAt = performance.now();
-    pending = false;
+    if (answered) pending = false;
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
     // a new choice is looked at afresh: nothing pointed at, the cards up
@@ -455,8 +495,12 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       };
       const send = (): void => {
         if (pointed === null) return;
-        pending = handlers.act({ type: "choose", option: pointed });
-        if (!pending) say(WORDS.notSent);
+        const option = pointed;
+        const mine = me();
+        // the card is the player's from the press: what the others chose comes with the room's answer
+        sendAhead({ type: "choose", option }, (view) =>
+          view.choosing === null || mine === null ? view : { ...view, choosing: { ...view.choosing, mine: option, chosen: [...view.choosing.chosen.filter((each) => each !== mine), mine] } },
+        );
       };
       for (const code of keys) {
         const digit = digitOf(code);
@@ -482,8 +526,15 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     if (picking() && !pending) {
       const send = (): void => {
         if (chosen === null) return;
-        pending = handlers.act({ type: "pick", tile: chosen });
-        if (!pending) say(WORDS.notSent);
+        const tile = chosen;
+        const mine = me();
+        // the tile is marked the player's from the press, and the turn to pick is no longer theirs
+        sendAhead(
+          { type: "pick", tile },
+          (view) => (mine === null ? view : { ...view, picks: [...view.picks.filter((each) => each.player !== mine), { player: mine, tile }], turn: view.turn === mine ? null : view.turn }),
+          "pick",
+        );
+        if (pending) sfx.pick();
       };
       // a tile is pointed at first and confirmed second: a pick cannot be taken back
       for (const code of keys) {
@@ -527,8 +578,19 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
           sfx.deny();
           return;
         }
-        pending = handlers.act({ type: tree ? "tree" : "manhole", row: at.row, col: at.col });
-        if (!pending) say(WORDS.notSent);
+        const mine = me();
+        // the tree or the manhole is on the park from the press; a first manhole adds, a second takes away
+        sendAhead(
+          { type: tree ? "tree" : "manhole", row: at.row, col: at.col },
+          (view) => {
+            if (mine === null) return view;
+            if (tree) return { ...view, trees: [...view.trees, { row: at.row, col: at.col, by: mine }] };
+            const value = view.manholes.some((each) => each.by === mine) ? -1 : 1;
+            return { ...view, manholes: [...view.manholes, { row: at.row, col: at.col, value, by: mine }] };
+          },
+          tree ? "tree" : "manhole",
+        );
+        if (pending) sfx.pick();
       };
       let spot: { row: number; col: number } = (mouse.moved ? cellAt(mouse) : null) ?? cursor;
       for (const code of keys) {
@@ -581,8 +643,19 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const lay = (): void => {
         if (hand === null) return;
         if (fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees })) {
-          pending = handlers.act({ type: "lay", row: hand.row, col: hand.col, turns: hand.turns, ...(cut.length > 0 ? { cut } : {}) });
-          if (!pending) say(WORDS.notSent);
+          const mine = me();
+          const laid = { tile: number, row: hand.row, col: hand.col, turns: hand.turns, ...(cut.length > 0 ? { cut: [...cut] } : {}) };
+          // The tile lies on the park from the press, where the room will put it: it has just been found to fit
+          // by the room's own rule. Whose turn is next, and the points if the park is full, come with the answer.
+          sendAhead(
+            { type: "lay", row: laid.row, col: laid.col, turns: laid.turns, ...(laid.cut === undefined ? {} : { cut: laid.cut }) },
+            (view) => (mine === null ? view : { ...view, placed: [...view.placed.filter((each) => each.player !== mine), { player: mine, ...laid }], turn: view.turn === mine ? null : view.turn }),
+            "lay",
+          );
+          if (pending && mine !== null) {
+            lit.set(mine, 0.8);
+            sfx.earn();
+          }
         } else {
           say(WORDS.refused["does-not-fit"]);
           sfx.deny();
@@ -647,6 +720,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     }
     if (latest !== null) {
       while (seen < latest.view.history.length) show(latest.view.history[seen++]);
+      // the room has answered and its word of the move has been passed over, or was never in it
+      if (ahead === null) shownAhead = null;
       // my own time is nearly up: a tick a second
       const mine = myTurn() || choosing() ? left(latest.clock.turn) : null;
       const second = mine === null ? null : Math.ceil(mine / 1000);
@@ -1321,12 +1396,15 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     refused(reason: string): void {
       starting = false;
       pending = false;
+      takeBack();
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
       starting = false;
       pending = false;
+      // whether the move reached the room is not known: the game the room sends on coming back will say
+      takeBack();
       offline = true;
     },
     setHost(value: boolean): void {

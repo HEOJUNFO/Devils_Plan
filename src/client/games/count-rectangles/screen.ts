@@ -203,6 +203,15 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   let pending = false;
   /** The host has asked for the next game and the room has not answered yet. */
   let starting = false;
+  /** The game as the room last sent it: what is shown again if a choice drawn ahead of the room is refused. */
+  let truth: RectMessage | null = null;
+  /**
+   * The player's own choice on its way to the room, as the change it makes to what the room sent: the card is
+   * theirs from the press, where it used to be only once the room answered. Drawn again over whatever the room
+   * sends before its answer, dropped when the answer comes or the choice is refused. (A buzz is not drawn ahead:
+   * who was first is the room's to say. Nor an answer: whether it is right is.)
+   */
+  let ahead: ((view: RectMessage["view"]) => RectMessage["view"]) | null = null;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   /**
@@ -386,9 +395,14 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       revealEach = litSeconds(message.clock.next, message.view.solutions?.length ?? 0);
     }
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
-    latest = message;
+    // The room marks the game it sends in answer to this page's move. What it sends meanwhile, for another
+    // player's move, leaves this one on its way; a game that has gone on to another phase waits for nothing.
+    const answered = message.answer === true || latest === null || latest.startedAt !== message.startedAt || latest.view.phase !== message.view.phase;
+    truth = message;
+    if (answered) ahead = null;
+    latest = ahead === null ? message : { ...message, view: ahead(message.view) };
     receivedAt = performance.now();
-    pending = false;
+    if (answered) pending = false;
     offline = false;
     handlers.crowded(isCrowded(unitRows(message.view.units), UNIT_ROWS));
     if (buzzed) {
@@ -400,6 +414,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         pending = true;
       } else {
         buzzed = false;
+        // the buzz is decided, whichever message said so
+        pending = false;
         if (!answering()) {
           // someone else was first
           typed = "";
@@ -441,8 +457,13 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       };
       const send = (): void => {
         if (pointed === null || pending) return;
-        pending = handlers.act({ type: "choose", option: pointed });
-        if (!pending) say(WORDS.notSent);
+        const option = pointed;
+        const player = mine()?.player ?? null;
+        pending = handlers.act({ type: "choose", option });
+        if (!pending) return say(WORDS.notSent);
+        if (latest === null || player === null) return;
+        ahead = (view) => (view.choosing === null || view.choosing.mine !== null ? view : { ...view, choosing: { ...view.choosing, mine: option, chosen: [...view.choosing.chosen.filter((each) => each !== player), player] } });
+        latest = { ...latest, view: ahead(latest.view) };
       };
       // an option is pointed at first and confirmed second: a choice cannot be taken back. The keys
       // are taken in the order pressed, so that Enter confirms what was pointed at when it came.
@@ -1112,6 +1133,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     refused(reason: string): void {
       starting = false;
       pending = false;
+      if (ahead !== null && truth !== null) latest = truth;
+      ahead = null;
       buzzed = false;
       queued = false;
       if (!answering()) typed = "";
@@ -1125,6 +1148,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       // A buzz or an answer that was on its way when the connection went is not coming back as anything:
       // the buzzer is free again. If the room did take the buzz, the game sent on rejoining says so.
       pending = false;
+      if (ahead !== null && truth !== null) latest = truth;
+      ahead = null;
       buzzed = false;
       queued = false;
       offline = true;

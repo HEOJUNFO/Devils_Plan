@@ -82,15 +82,17 @@ export type ServerMessage =
    * where everyone plays a hand of their own, most of what one player does
    * shows on no other screen. Whoever made a move is always answered. Never
    * another player's secrets. `game` says which game it is, and so what else
-   * is in the message.
+   * is in the message. `answer` is on the one sent to whoever made a move, in
+   * answer to it: their page waits for that one, and is not to take what the
+   * room sends meanwhile for another player's move as the answer to its own.
    */
-  | ({ type: "game"; room: string; game: "russian-roulette" } & GameSnapshot)
-  | ({ type: "game"; room: string; game: "count-rectangles" } & RectSnapshot)
-  | ({ type: "game"; room: string; game: "lay-the-grass" } & GrassSnapshot)
-  | ({ type: "game"; room: string; game: "count-cubes" } & CubesSnapshot)
-  | ({ type: "game"; room: string; game: "memory-poker" } & PokerSnapshot)
-  | ({ type: "game"; room: string; game: "under-thirteen" } & UnderSnapshot)
-  | ({ type: "game"; room: string; game: "mystery-stock-market" } & MarketSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "russian-roulette" } & GameSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "count-rectangles" } & RectSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "lay-the-grass" } & GrassSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "count-cubes" } & CubesSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "memory-poker" } & PokerSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "under-thirteen" } & UnderSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "mystery-stock-market" } & MarketSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**

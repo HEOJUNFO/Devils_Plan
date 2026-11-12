@@ -270,9 +270,12 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       if (latest !== null) sfx.turn();
     }
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
+    // The room marks the game it sends in answer to this page's move. What it sends meanwhile, for another
+    // player's move, leaves this one on its way; a game that has gone on to another phase waits for nothing.
+    const answered = message.answer === true || latest === null || latest.startedAt !== message.startedAt || latest.view.phase !== message.view.phase;
     latest = message;
     receivedAt = performance.now();
-    pending = false;
+    if (answered) pending = false;
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
   }
