@@ -18,6 +18,7 @@ import { louder, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
+import { playedAny, TOP_KIND } from "../shared/record";
 import {
   gameHolds,
   generateRoomCode,
@@ -59,6 +60,7 @@ import { isMuted, sfx, soundLevel, startAudio, stepSound } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
+import { clearRecord, myRecord, noteFinish } from "./record";
 import { storageKey } from "./storage";
 import { TOUCH } from "./touch";
 import { createVoice } from "./voice";
@@ -187,6 +189,10 @@ const inboxList = el<HTMLOListElement>("inbox-list");
 const feedbackText = el<HTMLTextAreaElement>("feedback-text");
 const feedbackNote = el<HTMLElement>("feedback-note");
 const feedbackSend = el<HTMLButtonElement>("feedback-send");
+const recordOpen = el<HTMLButtonElement>("record-open");
+const recordSheet = el<HTMLElement>("record-sheet");
+const recordList = el<HTMLUListElement>("record-list");
+const recordClear = el<HTMLButtonElement>("record-clear");
 
 /** What the page is called while no room is open. */
 const SITE_TITLE = WORDS.site.tab;
@@ -251,6 +257,10 @@ function writeWords(): void {
     ["feedback-hint", WORDS.feedback.hint],
     ["feedback-close", WORDS.feedback.close],
     ["feedback-send", WORDS.feedback.send],
+    ["record-open", WORDS.record.open],
+    ["record-title", WORDS.record.title],
+    ["record-hint", WORDS.record.hint],
+    ["record-close", WORDS.record.close],
     ["inbox-title", WORDS.inbox.title],
     ["inbox-open", WORDS.inbox.open],
     ["inbox-close", WORDS.inbox.close],
@@ -473,6 +483,8 @@ let pingSentAt: number | null = null;
 let pingTimes: number[] = [];
 /** Whether the game on show is still being played. */
 let gameOn = false;
+/** Whether a press of the button that forgets the player's record does so: the press before it only asked. */
+let clearArmed = false;
 /** During a game: whether the right-hand column shows the chat rather than the moves. */
 let chatOpen = false;
 /** During a game of many players: the tabs sit at the top of the column, and the first shows the players with the moves. */
@@ -726,6 +738,7 @@ function showLobbyLinks(shown: boolean): void {
   about.hidden = !shown;
   // the sheet for a word about the game belongs to the lobby, and goes with it; so does the inbox
   if (!shown) showFeedback(false);
+  if (!shown) showRecord(false);
   if (!shown) showInbox(false);
   else if (wantInbox && !inboxShown) {
     inboxShown = true;
@@ -1090,6 +1103,51 @@ function watchRooms(): void {
     if (feedbackWait !== null) feedbackAnswered(false);
   });
 }
+
+// ---- The player's own record --------------------------------------------------------------------
+
+/** Offers the record in the lobby once there is a game in it: someone who has played nothing is not shown an empty sheet. */
+function syncRecord(): void {
+  recordOpen.hidden = !playedAny(myRecord());
+}
+
+/** Opens the sheet with the player's own record on it, as it is kept now, or puts it away. */
+function showRecord(open: boolean): void {
+  recordSheet.hidden = !open;
+  clearArmed = false;
+  recordClear.textContent = WORDS.record.clear;
+  if (!open) return;
+  const { games } = myRecord();
+  recordList.replaceChildren(
+    ...GAME_IDS.flatMap((game) => {
+      const tally = games[game];
+      if (tally === undefined) return [];
+      const row = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = GAMES[game].title[lang];
+      const count = document.createElement("span");
+      count.textContent = WORDS.record.row(tally.played, tally.top, WORDS.record.kinds[TOP_KIND[game]]);
+      row.append(name, count);
+      return [row];
+    }),
+  );
+  el<HTMLButtonElement>("record-close").focus({ preventScroll: true });
+}
+
+recordOpen.addEventListener("click", () => showRecord(true));
+el<HTMLButtonElement>("record-close").addEventListener("click", () => showRecord(false));
+recordClear.addEventListener("click", () => {
+  // forgetting cannot be taken back: the first press asks, the second does it
+  if (!clearArmed) {
+    clearArmed = true;
+    recordClear.textContent = WORDS.record.clearSure;
+    return;
+  }
+  clearRecord();
+  showRecord(false);
+  syncRecord();
+});
+syncRecord();
 
 // ---- A word about the game ----------------------------------------------------------------------
 
@@ -1907,6 +1965,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // a game has begun that was not on a moment ago
       if (!over && !gameOn) call("started");
       gameOn = !over;
+      // a game played to its end goes into the player's own record, once
+      if (over && noteFinish(message)) syncRecord();
       if (over && (table === null || dismissedGame === message.startedAt)) {
         keepAwake();
         return;
@@ -2416,6 +2476,7 @@ addEventListener("keydown", (event) => {
   else if (!swapSheet.hidden) showSwap(false);
   else if (!quickSheet.hidden) showQuick(false);
   else if (!feedbackSheet.hidden) showFeedback(false);
+  else if (!recordSheet.hidden) showRecord(false);
   else if (!inboxSheet.hidden) showInbox(false);
   else if (!rules.hidden) rules.hidden = true;
   else if (!newRoom.hidden) closeNewRoom();

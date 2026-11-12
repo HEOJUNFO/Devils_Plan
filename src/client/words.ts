@@ -37,6 +37,18 @@ const ko = {
     sent: "보냈습니다. 고맙습니다.",
     failed: "지금은 보내지 못했습니다. 잠시 뒤에 다시 보내 주세요.",
   },
+  /** The player's own record, kept in this browser: the games played to the end, and how many of them at the top. */
+  record: {
+    open: "내 기록",
+    title: "내 기록",
+    hint: "이 브라우저에만 남습니다. 끝까지 한 판만 세고, 중간에 끝난 판은 세지 않습니다.",
+    /** One game's line: how many were played, and how many at the top, by what that game calls its top. */
+    row: (played: number, top: number, kind: string) => `${played}판 · ${kind} ${top}번`,
+    kinds: { alive: "생존", won: "승리", first: "1위" },
+    clear: "기록 지우기",
+    clearSure: "정말 지우기",
+    close: "닫기",
+  },
   /** What players have written about the game, for whoever makes it: opened with `?inbox` and the key. */
   inbox: {
     title: "의견함",
@@ -333,6 +345,16 @@ const en: typeof ko = {
     empty: "Write something first.",
     sent: "Sent. Thank you.",
     failed: "It could not be sent now. Try again in a while.",
+  },
+  record: {
+    open: "My record",
+    title: "My record",
+    hint: "Kept in this browser only. Games played to the end are counted; games cut short are not.",
+    row: (played, top, kind) => `${played} played · ${kind} ${top}`,
+    kinds: { alive: "Alive", won: "Won", first: "1st" },
+    clear: "Clear record",
+    clearSure: "Really clear",
+    close: "Close",
   },
   inbox: {
     title: "Inbox",

@@ -116,8 +116,8 @@
         <button id="rules-open" type="button" hidden></button>
         <!-- The other language the page can be read in, named in that language; offered in the lobby. -->
         <button id="lang" type="button" hidden></button>
-        <!-- In the lobby: the button for a word about the game, where one can be sent on, and which build the page is. -->
-        <p id="about" class="dim" hidden><button id="feedback" type="button" hidden></button><span id="version"></span></p>
+        <!-- In the lobby: the player's own record, once there is a game in it; the button for a word about the game, where one can be sent on; and which build the page is. -->
+        <p id="about" class="dim" hidden><button id="record-open" type="button" hidden></button><button id="feedback" type="button" hidden></button><span id="version"></span></p>
       </footer>
 
       <canvas id="table" hidden></canvas>
@@ -201,6 +201,17 @@
         <p id="swap-note" class="dim"></p>
         <div class="row">
           <button id="swap-close" type="button"></button>
+        </div>
+      </section>
+
+      <!-- The player's own record: the games this browser has played to the end. Kept in the browser and read from there. -->
+      <section id="record-sheet" role="dialog" aria-modal="true" aria-labelledby="record-title" hidden>
+        <h2 id="record-title"></h2>
+        <p id="record-hint" class="dim"></p>
+        <ul id="record-list"></ul>
+        <div class="row">
+          <button id="record-clear" type="button"></button>
+          <button id="record-close" type="button" class="primary"></button>
         </div>
       </section>
 
