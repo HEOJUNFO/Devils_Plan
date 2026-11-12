@@ -34,6 +34,8 @@ export const ORIGIN = "https://play.brain-survival.workers.dev";
 export const OWNER_CODES: Record<string, string> = {
   // Google Search Console, the property https://play.brain-survival.workers.dev/ (2026-11-12)
   "google-site-verification": "A4D90_3K7yDn9kPfwZ0tzKkjr3vZOLbisC7sF6md03w",
+  // Naver Search Advisor, the site https://play.brain-survival.workers.dev (2026-11-12)
+  "naver-site-verification": "6db87d7979b5f15363e64e91227ba2f218459556",
 };
 
 /** Each language's name for itself, on the link to a page in it. */
