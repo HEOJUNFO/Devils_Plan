@@ -25,11 +25,13 @@ export type ChatNote =
   /** The host made the room one for another game: which, by its id (its name is put in when the note is shown). */
   | { kind: "game"; game: string }
   /** A line could not be sent, or was sent too soon after the last; the voice chat was joined, joined without a microphone, or is not to be had here. */
-  | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" };
+  | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" }
+  /** The room is for a game this player has not played here: where its rules are. */
+  | { kind: "first-time" };
 
 /** The kinds of note that name a player, and those that do not. */
 const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked"];
-const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here"];
+const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time"];
 
 /** One line as shown: something a player said, or a note from the page itself. */
 interface Line {
@@ -70,6 +72,8 @@ export interface Chat {
   saidQuick(who: string, word: QuickWord, mine: boolean): void;
   /** Something worth a line happened: someone came or went, a line was refused. */
   note(note: ChatNote): void;
+  /** Whether a note of `kind` is among the lines on show. */
+  noted(kind: ChatNote["kind"]): boolean;
   /** The connection to the room went: the lines on their way are not coming back. */
   lost(): void;
   /** Puts the cursor in the box. */
@@ -248,6 +252,9 @@ export function createChat(
         if (text !== null && input.value === "") fill(text);
       }
       add({ note });
+    },
+    noted(kind: ChatNote["kind"]): boolean {
+      return lines.some((line) => line.note?.kind === kind);
     },
     lost(): void {
       if (waiting.length === 0) return;

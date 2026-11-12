@@ -168,6 +168,8 @@ const ko = {
     came: (nick: string) => `${nick} 님이 들어왔습니다`,
     went: (nick: string) => `${nick} 님이 나갔습니다`,
     sentOut: (nick: string) => `방장이 ${nick} 님을 내보냈습니다`,
+    /** In the chat of a room for a game this player has not played here; "규칙 보기" is the button's own name (`bar.rules`). */
+    firstTime: "이 게임이 처음이면 시작 전에 아래 「규칙 보기」를 눌러 보세요.",
     /** Over the list of who is here, which a keyboard reaches: the host picks a player from it. */
     seatsHelp: "사람을 고르면 방장을 넘기거나 내보낼 수 있습니다",
     becameHost: (nick: string) => `${nick} 님이 방장이 됐습니다`,
@@ -456,6 +458,7 @@ const en: typeof ko = {
     came: (nick) => `${nick} came in`,
     went: (nick) => `${nick} left`,
     sentOut: (nick) => `The host removed ${nick}`,
+    firstTime: "New to this game? Press Rules below before it starts.",
     seatsHelp: "Pick a player to pass the host on or remove them",
     becameHost: (nick) => `${nick} is the host now`,
     needPlayers: (min, here) => `The host can start once ${min} are here. ${here} now.`,

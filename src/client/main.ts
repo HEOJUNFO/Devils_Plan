@@ -60,6 +60,7 @@ import { isMuted, sfx, soundLevel, startAudio, stepSound } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
+import { knows, learn } from "./known";
 import { clearRecord, myRecord, noteFinish } from "./record";
 import { storageKey } from "./storage";
 import { TOUCH } from "./touch";
@@ -613,6 +614,7 @@ const chat = createChat(
       if (note.kind === "came") return WORDS.room.came(note.nick);
       if (note.kind === "went") return WORDS.room.went(note.nick);
       if (note.kind === "kicked") return WORDS.room.sentOut(note.nick);
+      if (note.kind === "first-time") return WORDS.room.firstTime;
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
       if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
@@ -746,12 +748,32 @@ function showLobbyLinks(shown: boolean): void {
   }
 }
 
+/** The game whose rules the bar's button opens: the one being waited for, or the one chosen for a new room. */
+function rulesGame(): GameId {
+  return currentView !== null && isGameId(currentView.game) ? currentView.game : chosenGame;
+}
+
+/** Lights the button for the rules while they are those of a game this player has not played here, nor read the rules of. */
+function lightRules(): void {
+  rulesOpen.classList.toggle("primary", !knows(rulesGame()));
+}
+
+/**
+ * Says in the room's chat where the rules are, to a player who has not
+ * played the room's game in this browser: a room is where there is time to
+ * read them.
+ */
+function tipRules(game: string): void {
+  if (isGameId(game) && !knows(game)) chat.note({ kind: "first-time" });
+}
+
 /** The words under the scene, and whether the rules can be opened from there. */
 function setBar(first: string, second: string, withRules: boolean): void {
   lobbyBarShown = false;
   bar1.textContent = first;
   bar2.textContent = second;
   rulesOpen.hidden = !withRules;
+  lightRules();
 }
 
 /**
@@ -1508,7 +1530,10 @@ function noteComings(before: LobbyView, after: LobbyView): void {
   // someone the host sent out is said to have been sent out, not to have gone
   for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: sentOut.has(slot) ? "kicked" : "went", nick });
   sentOut.clear();
-  if (after.game !== before.game) chat.note({ kind: "game", game: after.game });
+  if (after.game !== before.game) {
+    chat.note({ kind: "game", game: after.game });
+    tipRules(after.game);
+  }
   // The room has another host with both of them here before and after: it was passed on, by the host or by the
   // room for a host who did not answer. Not said when a host's connection drops and comes back: the room goes
   // to the next player and returns by itself, and a line for each way would fill the chat of a room on a bad line.
@@ -1684,8 +1709,11 @@ function noteInput(): void {
 
 /** The room before a game: who is here, the code to share, the chat, and the start. */
 function renderRoom(code: string, view: LobbyView): void {
-  if (currentCode !== code) chat.open(code);
-  else if (currentView !== null) noteComings(currentView, view);
+  if (currentCode !== code) {
+    chat.open(code);
+    // once for a room: a page loaded again has the line among those it kept
+    if (!chat.noted("first-time")) tipRules(view.game);
+  } else if (currentView !== null) noteComings(currentView, view);
   currentCode = code;
   currentView = view;
   setEntering(null);
@@ -1975,6 +2003,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       if (typeof event.data === "string") lastGame = event.data;
       const shown = showTable(message.game);
       shown.update(message);
+      // someone who has played a game to its end knows it
+      if (over && shown.verdict() !== null) learn(message.game);
       // a turn that has just become this player's
       const waits = shown.waits?.() === true;
       if (waits && !waited) call("turn");
@@ -2379,6 +2409,7 @@ menuRules.addEventListener("click", () => {
   openMenu(false);
   // the game's own sheet, as its H key opens it
   table?.press("KeyH");
+  if (tableGame !== null) learn(tableGame);
 });
 // One press, one level louder, and after the loudest, silence: the sound of the press says how loud it now is.
 for (const button of [menuSound, soundButton]) {
@@ -2447,7 +2478,10 @@ addEventListener("keydown", (event) => {
 // The rules sheet of the game chosen or being waited for. During a game the table has its own (H).
 rulesOpen.addEventListener("click", () => {
   // the sheet of the game being waited for, or of the one chosen for a new room
-  const game = currentView !== null && isGameId(currentView.game) ? currentView.game : chosenGame;
+  const game = rulesGame();
+  // someone who has opened a game's rules is not pointed to them again
+  learn(game);
+  lightRules();
   const sheet = CLIENTS[game].sheet;
   const title = document.createElement("h2");
   title.textContent = sheet.title;
@@ -2468,6 +2502,10 @@ rulesOpen.addEventListener("click", () => {
 });
 el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
   rules.hidden = true;
+});
+// H during a game opens the game's own rules (each game's screen takes the key): whoever pressed it has seen where they are.
+addEventListener("keydown", (event) => {
+  if (event.code === "KeyH" && table !== null && tableGame !== null && !isBox(event.target)) learn(tableGame);
 });
 addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
