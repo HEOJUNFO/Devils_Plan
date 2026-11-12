@@ -6,9 +6,11 @@ import {
   listRooms,
   listingOf,
   mayMakeAnother,
+  newlyOpen,
   parseReport,
   quickPicks,
   roomsShown,
+  watchingOf,
   type DirectoryConfig,
   type DirectoryEntry,
   type RoomListing,
@@ -71,6 +73,7 @@ function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryCon
     showLimit: { burst: 3, windowSeconds: 10 },
     feedback: { maxLength: 40, viewerLimit: { burst: 2, windowSeconds: 60 }, dayLimit: 5, keep: 5, readLimit: { burst: 2, windowSeconds: 60 } },
     makeLimits: MAKE_LIMITS,
+    watchingMost: 3,
     ...overrides,
   };
 }
@@ -602,5 +605,52 @@ describe("mayMakeAnother", () => {
 
   it("keeps no limit where none is set", () => {
     expect(mayMakeAnother(madeAgo(3, 2, 1), MAKING_AT, [])).toBe(true);
+  });
+});
+
+describe("watchingOf", () => {
+  it("is the number of people there, up to the most that is counted out", () => {
+    const config = directoryConfig();
+
+    expect(watchingOf(0, config)).toEqual({ count: 0, more: false });
+    expect(watchingOf(1, config)).toEqual({ count: 1, more: false });
+    expect(watchingOf(config.watchingMost, config)).toEqual({ count: config.watchingMost, more: false });
+  });
+
+  it("says only that there are more, past the most that is counted out", () => {
+    const config = directoryConfig();
+
+    expect(watchingOf(config.watchingMost + 1, config)).toEqual({ count: config.watchingMost, more: true });
+    expect(watchingOf(config.watchingMost + 50, config)).toEqual({ count: config.watchingMost, more: true });
+  });
+});
+
+describe("newlyOpen", () => {
+  it("is nothing for a list seen for the first time", () => {
+    expect(newlyOpen(null, [listing("AAAAA")])).toEqual([]);
+  });
+
+  it("is the room that was not on the list before", () => {
+    const before = [listing("AAAAA")];
+    const added = listing("BBBBB");
+
+    expect(newlyOpen(before, [added, ...before])).toEqual([added]);
+  });
+
+  it("is nothing when the same rooms are listed again, however they have changed", () => {
+    const before = [listing("AAAAA"), listing("BBBBB")];
+
+    expect(newlyOpen(before, [listing("BBBBB", { players: 2 }), listing("AAAAA", { host: "bob" })])).toEqual([]);
+  });
+
+  it("leaves out a new room nobody can come into and play: one that is full, one whose game is on", () => {
+    const full = listing("CCCCC", { players: 4, maxPlayers: 4 });
+    const playing = listing("DDDDD", { playing: true });
+
+    expect(newlyOpen([], [full, playing])).toEqual([]);
+  });
+
+  it("is nothing when a room has gone from the list", () => {
+    expect(newlyOpen([listing("AAAAA"), listing("BBBBB")], [listing("AAAAA")])).toEqual([]);
   });
 });

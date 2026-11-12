@@ -11,6 +11,7 @@ describe("louder", () => {
   });
 
   it("gives way to a call that asks more of the player", () => {
+    expect(louder("room", "said")).toBe("said");
     expect(louder("said", "came")).toBe("came");
     expect(louder("came", "started")).toBe("started");
     expect(louder("started", "host")).toBe("host");

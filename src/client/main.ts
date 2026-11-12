@@ -13,7 +13,7 @@
  */
 import { PartySocket } from "partysocket";
 import { BUILD, outOfDate } from "../shared/build";
-import { quickPicks, roomsShown, type RoomListing } from "../shared/directory";
+import { newlyOpen, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
 import { louder, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
@@ -39,6 +39,7 @@ import {
   parseFeedbackAnswer,
   parseInboxAnswer,
   parseServerMessage,
+  parseWatchingNote,
   type ClientMessage,
   type DirectoryMessage,
   type DirectoryRequest,
@@ -728,9 +729,21 @@ function showLobbyLinks(shown: boolean): void {
 
 /** The words under the scene, and whether the rules can be opened from there. */
 function setBar(first: string, second: string, withRules: boolean): void {
+  lobbyBarShown = false;
   bar1.textContent = first;
   bar2.textContent = second;
   rulesOpen.hidden = !withRules;
+}
+
+/**
+ * The lobby's two lines under the frame. While others are looking at the
+ * list too, the second says how many: two people each waiting for a room to
+ * appear do not know of each other otherwise, and neither makes one.
+ */
+function lobbyBar(): void {
+  const others = watching === null ? 0 : watching.count - 1;
+  setBar(WORDS.bar.lobby[0], others >= 1 && watching !== null ? WORDS.bar.others(others, watching.more) : WORDS.bar.lobby[1], false);
+  lobbyBarShown = true;
 }
 
 /** The picture of the room runs only while it can be seen: in a room, with no game over it. */
@@ -901,6 +914,10 @@ function standing(listing: RoomListing, game: GameId): string {
 let listedGame: GameId | null = null;
 /** The list of rooms as the directory last sent it; `null` while it is not known (connecting, or the connection dropped). */
 let roomsSent: DirectoryMessage | null = null;
+/** How many are looking at the list of rooms, this page among them, as the directory last said; `null` before it has, and while the list is not connected. */
+let watching: Watching | null = null;
+/** Whether the bar under the frame shows the lobby's own two lines (`lobbyBar`), and not a game's or a room's. */
+let lobbyBarShown = false;
 
 /**
  * The games to pick from over the list, every game first, each with how many
@@ -1031,8 +1048,18 @@ function watchRooms(): void {
     if (answer !== null) return feedbackAnswered(answer.sent);
     const inbox = parseInboxAnswer(event.data);
     if (inbox !== null) return inboxAnswered(inbox.words);
+    const note = parseWatchingNote(event.data);
+    if (note !== null) {
+      watching = note;
+      if (lobbyBarShown) lobbyBar();
+      return;
+    }
     const message = parseDirectoryMessage(event.data);
     if (message === null) return;
+    // A room that was not on the list before and can be joined is what someone left waiting in the lobby is
+    // waiting for: a tab behind others says so in its title. (A list of another game, asked for by a press,
+    // comes while the tab is in front, where nothing is called.)
+    if (newlyOpen(roomsSent?.rooms ?? null, message.rooms).length > 0) call("room");
     roomsSent = message;
     renderRooms();
     // a word about the game is offered only where the server keeps them for someone to read
@@ -1043,6 +1070,8 @@ function watchRooms(): void {
     // PartySocket reconnects by itself; until then the list on show may be out of date
     if (listSocket !== current) return;
     roomsSent = null;
+    watching = null;
+    if (lobbyBarShown) lobbyBar();
     renderRooms();
     // a word sent on the connection that dropped is not going to be answered
     if (feedbackWait !== null) feedbackAnswered(false);
@@ -1188,6 +1217,7 @@ feedbackSend.addEventListener("click", sendFeedback);
 function unwatchRooms(): void {
   listSocket?.close();
   listSocket = null;
+  watching = null;
   coolDown();
 }
 
@@ -1293,7 +1323,7 @@ function showLobby(message = ""): void {
   notice.textContent = message;
   showScene(null);
   syncScene();
-  setBar(WORDS.bar.lobby[0], WORDS.bar.lobby[1], false);
+  lobbyBar();
   showLobbyLinks(true);
   // out of the room, nothing in it calls any more
   calling = null;
@@ -1353,7 +1383,7 @@ function closeNewRoom(): void {
   newRoom.hidden = true;
   entry.hidden = false;
   rules.hidden = true;
-  setBar(WORDS.bar.lobby[0], WORDS.bar.lobby[1], false);
+  lobbyBar();
   showLobbyLinks(true);
 }
 

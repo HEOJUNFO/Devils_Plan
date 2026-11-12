@@ -5,7 +5,7 @@
  * side that was not updated.
  */
 import { isQuickWord, type QuickWord } from "./chat";
-import type { RoomCounts, RoomListing } from "./directory";
+import type { RoomCounts, RoomListing, Watching } from "./directory";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
@@ -400,6 +400,22 @@ export function parseDirectoryMessage(raw: unknown): DirectoryMessage | null {
   if (typeof data.build === "string") message.build = data.build;
   if (typeof data.feedback === "boolean") message.feedback = data.feedback;
   return message;
+}
+
+/**
+ * How many people are looking at the list of rooms, sent to each of them when
+ * they come and whenever the number told changes (`watchingOf`): the one
+ * reading it is among them.
+ */
+export interface WatchingNote extends Watching {
+  type: "watching";
+}
+
+/** Parses the directory's word on how many are looking at the list, returning `null` for anything else. */
+export function parseWatchingNote(raw: unknown): WatchingNote | null {
+  const data = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (data === null || data.type !== "watching" || typeof data.count !== "number" || !Number.isInteger(data.count) || data.count < 0) return null;
+  return { type: "watching", count: data.count, more: data.more === true };
 }
 
 /** Parses the directory's answer to a word about the game, returning `null` for anything else. */

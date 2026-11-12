@@ -11,6 +11,7 @@ import {
   PARTY_NAME,
   type DirectoryMessage,
   type DirectoryRequest,
+  type WatchingNote,
 } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
 import { MAKE_PATH } from "../../../src/server/directory";
@@ -24,6 +25,24 @@ const OTHER_GAME: GameId = "count-rectangles";
 
 /** Someone looking at the list of rooms. */
 class Viewer extends Inbox<DirectoryMessage> {
+  /** The next list. What the directory says of how many are looking is read past: `watching` reads that. */
+  override async next(): Promise<DirectoryMessage> {
+    for (;;) {
+      const message = await super.next();
+      if (message.type === "rooms") return message;
+    }
+  }
+
+  /** How many the directory has said are looking at the list, each time it said so, oldest first. */
+  watching(): WatchingNote[] {
+    return this.raw.map((text) => JSON.parse(text) as { type: string }).filter((message): message is WatchingNote => message.type === "watching");
+  }
+
+  /** Waits until the directory has said that `count` are looking. */
+  async toldOf(count: number): Promise<void> {
+    await vi.waitFor(() => expect(this.watching().at(-1)?.count).toBe(count));
+  }
+
   /**
    * Reads forward to the first list in which the room `code` is as `match`
    * wants it; `match` is given `undefined` when the room is not on the list.
@@ -565,6 +584,66 @@ async function writeAsNew(text: string): Promise<boolean | undefined> {
   inbox.close();
   return answer.sent;
 }
+
+describe("RoomDirectory: how many are looking", () => {
+  /** Waits for what the directory first says to `viewer` of how many are looking, and gives the number. */
+  async function firstTold(viewer: Viewer): Promise<number> {
+    await vi.waitFor(() => expect(viewer.watching().length).toBeGreaterThan(0));
+    return viewer.watching()[0].count;
+  }
+
+  it("tells a viewer who comes how many are looking, themselves among them", async () => {
+    const viewer = await watch();
+
+    expect(await firstTold(viewer)).toBeGreaterThanOrEqual(1);
+    viewer.close();
+  });
+
+  it("tells those already looking when another comes, and when that one goes", async () => {
+    const first = await watch();
+    const alone = await firstTold(first);
+
+    const second = await watch();
+    await first.toldOf(alone + 1);
+    expect(await firstTold(second)).toBe(alone + 1);
+    second.close();
+
+    await first.toldOf(alone);
+    first.close();
+  });
+
+  it("says only that there are more past the most it counts out, and then tells nobody of each coming", async () => {
+    const first = await watch();
+    const crowd: Viewer[] = [];
+    // as many more as it takes for the number told to stop growing
+    while (first.watching().at(-1)?.more !== true) {
+      expect(crowd.length).toBeLessThanOrEqual(directoryConfig.watchingMost);
+      const next = await watch();
+      await firstTold(next);
+      crowd.push(next);
+    }
+    expect(first.watching().at(-1)).toMatchObject({ count: directoryConfig.watchingMost, more: true });
+    const toldSoFar = first.watching().length;
+
+    const late = await watch();
+
+    // the one who came is told, as everyone who comes is
+    await vi.waitFor(() => expect(late.watching().at(-1)).toMatchObject({ count: directoryConfig.watchingMost, more: true }));
+    // whatever the first was sent before this answer has arrived by now
+    first.show(null);
+    await first.next();
+    expect(first.watching().length).toBe(toldSoFar);
+    for (const viewer of [first, late, ...crowd]) viewer.close();
+  });
+
+  it("says nothing of who is looking: a number and whether there are more", async () => {
+    const viewer = await watch();
+    await firstTold(viewer);
+
+    expect(Object.keys(viewer.watching()[0]).sort()).toEqual(["count", "more", "type"]);
+    viewer.close();
+  });
+});
 
 describe("RoomDirectory: a word about the game", () => {
   afterEach(async () => {

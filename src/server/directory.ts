@@ -9,6 +9,7 @@ import {
   makeMemoryMs,
   mayMakeAnother,
   parseReport,
+  watchingOf,
   type DirectoryConfig,
   type DirectoryEntry,
 } from "../shared/directory";
@@ -17,7 +18,7 @@ import { isLang } from "../shared/lang";
 import { isGameId, type GameId } from "../shared/games";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
-import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer } from "../shared/protocol";
+import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer, type WatchingNote } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
 import { countedAs } from "./address";
 import { inboxKey, sameKey, type InboxEnv } from "./inbox";
@@ -83,6 +84,8 @@ export class RoomDirectory extends Server<Env> {
   private entries = new Map<string, DirectoryEntry>();
   /** How fast each viewer has been asking for another game, by connection id. Forgotten in sleep, when nobody is asking. */
   private readonly showPace = new Map<string, Pace>();
+  /** What the viewers were last told of how many they are, as it was sent; nothing after the directory has slept, when the next change is told to all. */
+  private watchingTold: string | null = null;
   /** How many words about the game each viewer has sent lately, by connection id. Forgotten in sleep: the day's limit is kept. */
   private readonly feedbackPace = new Map<string, Pace>();
 
@@ -112,10 +115,11 @@ export class RoomDirectory extends Server<Env> {
     }
   }
 
-  /** Someone is looking at the list: send it, the rooms of every game. */
+  /** Someone is looking at the list: send it, the rooms of every game, and how many are looking now. */
   onConnect(connection: Connection<ViewerState>): void {
     const now = Date.now();
     connection.send(this.message(now, null, this.counts(now)));
+    this.tellWatching(connection, null);
   }
 
   /**
@@ -140,6 +144,25 @@ export class RoomDirectory extends Server<Env> {
   onClose(connection: Connection<ViewerState>): void {
     this.showPace.delete(connection.id);
     this.feedbackPace.delete(connection.id);
+    this.tellWatching(null, connection);
+  }
+
+  /**
+   * Tells the viewers how many of them there are, so that two people each
+   * waiting in the lobby for a room to appear know of each other. `came`
+   * has just come and is told whatever the number; the others are told only
+   * when what is said changes, which past `watchingMost` it does not: a
+   * crowd is not told of each coming and going. `gone` has just left and is
+   * not counted. A number and nothing else: who they are is not said.
+   */
+  private tellWatching(came: Connection<ViewerState> | null, gone: Connection<ViewerState> | null): void {
+    const viewers = [...this.getConnections<ViewerState>()].filter((viewer) => viewer.id !== gone?.id);
+    const watching = watchingOf(viewers.length, config);
+    const note: WatchingNote = { type: "watching", ...watching };
+    const data = JSON.stringify(note);
+    const changed = data !== this.watchingTold;
+    this.watchingTold = data;
+    for (const viewer of viewers) if (changed || viewer.id === came?.id) viewer.send(data);
   }
 
   /**

@@ -12,6 +12,7 @@ import {
   parseFeedbackAnswer,
   parseInboxAnswer,
   parseServerMessage,
+  parseWatchingNote,
 } from "../../../src/shared/protocol";
 
 /** A well-formed join request as the browser sends it. */
@@ -251,6 +252,21 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "team", team: -1 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "team", team: 1.5 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "team", team: "1" }))).toBeNull();
+  });
+});
+
+describe("parseWatchingNote", () => {
+  it("reads how many are looking at the list, and whether there are more than it says", () => {
+    expect(parseWatchingNote(JSON.stringify({ type: "watching", count: 3, more: false }))).toEqual({ type: "watching", count: 3, more: false });
+    expect(parseWatchingNote(JSON.stringify({ type: "watching", count: 20, more: true }))).toEqual({ type: "watching", count: 20, more: true });
+  });
+
+  it("reads nothing else as that: a list of rooms, a number that is no count", () => {
+    expect(parseWatchingNote(JSON.stringify({ type: "rooms", rooms: [] }))).toBeNull();
+    expect(parseWatchingNote(JSON.stringify({ type: "watching" }))).toBeNull();
+    expect(parseWatchingNote(JSON.stringify({ type: "watching", count: -1 }))).toBeNull();
+    expect(parseWatchingNote(JSON.stringify({ type: "watching", count: 1.5 }))).toBeNull();
+    expect(parseWatchingNote(JSON.stringify({ type: "watching", count: "3" }))).toBeNull();
   });
 });
 

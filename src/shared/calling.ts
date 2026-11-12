@@ -1,16 +1,17 @@
 /**
  * What calls a player back to a tab that is not in front: something happened
- * in their room that is theirs to see, and the page says so where a tab
+ * in their room, or in the lobby they wait in, that is theirs to see, and the page says so where a tab
  * behind others can say anything, in its title. Pure functions over plain
  * data; the page plays a sound with it (`src/client/main.ts`).
  */
 
 /**
- * What a player is called back for, the quietest first: a line of chat,
- * someone coming into the room, a game starting, the room asking its host
- * whether they are there, and a turn that is the player's own.
+ * What a player is called back for, the quietest first: in the lobby, a room
+ * opening that can be joined; in a room, a line of chat, someone coming in,
+ * a game starting, the room asking its host whether they are there, and a
+ * turn that is the player's own.
  */
-export const CALLS = ["said", "came", "started", "host", "turn"] as const;
+export const CALLS = ["room", "said", "came", "started", "host", "turn"] as const;
 
 /** One of the things a player is called back for. */
 export type Call = (typeof CALLS)[number];

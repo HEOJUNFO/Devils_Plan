@@ -180,6 +180,8 @@ const ko = {
   },
   /** At the head of the tab's title while the tab is behind others: what there is to come back for. Short: a title is cut. */
   call: {
+    /** In the lobby: a room opened that can be joined. */
+    room: "새 방",
     said: "새 채팅",
     came: "누가 들어옴",
     started: "게임 시작",
@@ -201,6 +203,8 @@ const ko = {
   },
   bar: {
     lobby: ["열린 방에 들어가거나, 방을 만들어 사람들을 모으세요.", "친구끼리만 하려면 비공개 방을 만들고 초대 링크를 보내세요."],
+    /** In place of the lobby's second line while others are in the lobby too: how many besides the reader, and "or more" past the most that is counted. */
+    others: (count: number, more: boolean) => `지금 로비에 다른 사람 ${count}명${more ? " 이상" : ""}. 공개 방을 만들어 보세요.`,
     rules: "규칙 보기",
     close: "닫기",
   },
@@ -447,6 +451,7 @@ const en: typeof ko = {
     left: "You are out of the room: you left in another window, or were away too long.",
   },
   call: {
+    room: "New room",
     said: "New chat",
     came: "Someone came",
     started: "Game started",
@@ -466,6 +471,8 @@ const en: typeof ko = {
   },
   bar: {
     lobby: ["Join an open room, or make one and gather people.", "For friends only: make a private room and send the invite link."],
+    others: (count, more) =>
+      `${more ? `${count}+ others are` : count === 1 ? "1 other is" : `${count} others are`} here now. A public room lets them join.`,
     rules: "Rules",
     close: "Close",
   },

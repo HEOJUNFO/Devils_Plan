@@ -47,6 +47,36 @@ export interface DirectoryConfig {
    * people behind one address do; the smoke check makes nine in a run.
    */
   makeLimits: readonly MessageLimit[];
+  /**
+   * The most people in the lobby that are counted out to those in it: with
+   * more than that there, "so many or more" is all that is said, and nobody
+   * is told of each coming and going.
+   */
+  watchingMost: number;
+}
+
+/** How many people are looking at the list, as it is told to them: the number, and whether there are more than it says. */
+export interface Watching {
+  count: number;
+  more: boolean;
+}
+
+/** What is told of `viewers` people looking at the list (`DirectoryConfig.watchingMost`). */
+export function watchingOf(viewers: number, config: DirectoryConfig): Watching {
+  const count = Math.max(0, Math.min(viewers, config.watchingMost));
+  return { count, more: viewers > config.watchingMost };
+}
+
+/**
+ * The rooms on the list `now` that were not on the one `before` and that
+ * someone can still come into and play: what a person waiting in the lobby
+ * is waiting for. None when there was no list before: a list seen for the
+ * first time has nothing new on it.
+ */
+export function newlyOpen(before: readonly RoomListing[] | null, now: readonly RoomListing[]): RoomListing[] {
+  if (before === null) return [];
+  const known = new Set(before.map((room) => room.code));
+  return now.filter((room) => !known.has(room.code) && !room.playing && room.players < room.maxPlayers);
 }
 
 /** How many rooms of each game there are to join. A game with none is left out. */
