@@ -7,6 +7,8 @@
  * reload does not empty the chat.
  */
 
+import { isQuickWord, type QuickWord } from "../shared/chat";
+
 /**
  * Something the page itself says in the chat. It is kept as what happened and
  * put into words when it is shown: a tab that comes back to a room in the
@@ -37,14 +39,17 @@ interface Line {
   mine?: boolean;
   /** What was said. A note has none: it has `note`. (A note kept by an earlier build of the page has its words here.) */
   text?: string;
+  /** Said with one press: which of the words, put in the page's language when the line is shown. Such a line has no `text`. */
+  quick?: QuickWord;
   note?: ChatNote;
 }
 
 /** Whether `value` is a line as this module keeps them: read back from the tab's store, where anything may be. */
 function isLine(value: unknown): value is Line {
   if (typeof value !== "object" || value === null) return false;
-  const line = value as { text?: unknown; note?: unknown };
+  const line = value as { text?: unknown; note?: unknown; quick?: unknown; who?: unknown };
   if (typeof line.text === "string") return true;
+  if (line.quick !== undefined) return isQuickWord(line.quick) && typeof line.who === "string";
   if (typeof line.note !== "object" || line.note === null) return false;
   const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown };
   if (note.kind === "game") return typeof note.game === "string";
@@ -59,6 +64,10 @@ export interface Chat {
   close(): void;
   /** A player said a line. */
   said(who: string, text: string, mine: boolean): void;
+  /** This player says one of the words that take one press. */
+  sayQuick(word: QuickWord): void;
+  /** A player said one of them. */
+  saidQuick(who: string, word: QuickWord, mine: boolean): void;
   /** Something worth a line happened: someone came or went, a line was refused. */
   note(note: ChatNote): void;
   /** The connection to the room went: the lines on their way are not coming back. */
@@ -81,25 +90,60 @@ const KEEP = 60;
  * lost.
  */
 export function createChat(
-  elements: { log: HTMLOListElement; form: HTMLFormElement; input: HTMLInputElement },
+  elements: { log: HTMLOListElement; form: HTMLFormElement; input: HTMLInputElement; button: HTMLButtonElement },
   options: {
     maxLength: number;
     storagePrefix: string;
+    /**
+     * What the box's button says: `send` with something typed, which it
+     * sends, and `quick` with the box empty, when a press of it asks for the
+     * words that take one press instead.
+     */
+    labels: { send: string; quick: string };
+    /** The button was pressed with the box empty. */
+    quickAsked(): void;
     /** Sends a line; says whether it went. */
     send(text: string): boolean;
+    /** Sends one of the words that take one press; says whether it went. */
+    sendQuick(word: QuickWord): boolean;
+    /** Such a word, in the language the page is read in. */
+    quickOf(word: QuickWord): string;
     /** The player's own name, as the room shows it beside their lines. */
     me(): string;
     /** A note in words, in the language the page is read in. */
     wordsOf(note: ChatNote): string;
   },
 ): Chat {
-  const { log, form, input } = elements;
+  const { log, form, input, button } = elements;
   let lines: Line[] = [];
   let key: string | null = null;
-  /** The player's own lines sent and not yet back from the room, oldest first: shown, not kept. */
-  let waiting: { text: string; item: HTMLLIElement }[] = [];
+  /** The player's own lines sent and not yet back from the room, oldest first: shown, not kept. One said with a press has no text to give back. */
+  let waiting: { text: string | null; item: HTMLLIElement }[] = [];
 
   input.maxLength = options.maxLength;
+
+  /** Whether there is anything in the box to send. */
+  const typed = (): boolean => input.value.trim() !== "";
+
+  /** Puts `text` in the box, and on its button what a press of it now does. */
+  function fill(text: string): void {
+    input.value = text;
+    label();
+  }
+
+  function label(): void {
+    button.textContent = typed() ? options.labels.send : options.labels.quick;
+  }
+
+  label();
+  input.addEventListener("input", label);
+  // A press of the button with nothing typed. Enter in the empty box presses it too, as far as the browser
+  // is concerned: that one comes from no pointer and with the keys still in the box, and does nothing, as it did.
+  button.addEventListener("click", (event) => {
+    if (typed()) return;
+    event.preventDefault();
+    if (event.detail > 0 || document.activeElement === button) options.quickAsked();
+  });
 
   function row(line: Line): HTMLLIElement {
     const item = document.createElement("li");
@@ -111,7 +155,7 @@ export function createChat(
     const who = document.createElement("span");
     who.className = line.mine === true ? "who mine" : "who";
     who.textContent = line.who;
-    item.append(who, ` ${line.text ?? ""}`);
+    item.append(who, ` ${line.quick === undefined ? (line.text ?? "") : options.quickOf(line.quick)}`);
     return item;
   }
 
@@ -139,19 +183,23 @@ export function createChat(
     // The line is read when the form is sent, not on a key: by then a Korean
     // syllable still being composed has been finished, so it is sent whole and once.
     event.preventDefault();
-    if (input.value.trim() === "") return;
+    if (!typed()) return;
     // a line that did not go stays in the box, to be sent when it can
     const text = input.value.trim();
     if (!options.send(input.value)) return add({ note: { kind: "not-sent" } });
-    input.value = "";
-    const item = row({ who: options.me(), text, mine: true });
+    fill("");
+    onItsWay(text, row({ who: options.me(), text, mine: true }));
+  });
+
+  /** Shows the player's own line faint under the others, as one on its way to the room. */
+  function onItsWay(text: string | null, item: HTMLLIElement): void {
     item.classList.add("waiting");
     waiting.push({ text, item });
     log.append(item);
     log.scrollTop = log.scrollHeight;
-  });
+  }
 
-  /** Takes the oldest line on its way off the screen: the room answers them in the order they were sent. */
+  /** Takes the oldest line on its way off the screen: the room answers them in the order they were sent. Its text, if it was typed. */
   function settle(): string | null {
     const first = waiting.shift();
     first?.item.remove();
@@ -171,25 +219,33 @@ export function createChat(
       waiting = [];
       log.replaceChildren(...lines.map(row));
       log.scrollTop = log.scrollHeight;
-      input.value = "";
+      fill("");
     },
     close(): void {
       key = null;
       lines = [];
       waiting = [];
       log.replaceChildren();
-      input.value = "";
+      fill("");
     },
     said(who: string, text: string, mine: boolean): void {
       // the player's own line is back: it takes its place among the others as the room has it
       if (mine) settle();
       add({ who, text, mine });
     },
+    sayQuick(word: QuickWord): void {
+      if (!options.sendQuick(word)) return add({ note: { kind: "not-sent" } });
+      onItsWay(null, row({ who: options.me(), quick: word, mine: true }));
+    },
+    saidQuick(who: string, word: QuickWord, mine: boolean): void {
+      if (mine) settle();
+      add({ who, quick: word, mine });
+    },
     note(note: ChatNote): void {
       if (note.kind === "too-fast") {
         // the room did not take the line: it goes back in the box, unless another is being typed there
         const text = settle();
-        if (text !== null && input.value === "") input.value = text;
+        if (text !== null && input.value === "") fill(text);
       }
       add({ note });
     },

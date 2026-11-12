@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../../../src/shared/chat";
+import { QUICK_WORDS, isQuickWord, normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../../../src/shared/chat";
 
 /** Short lines and a small allowance, so both limits are reached in a few steps. */
 function chatConfig(overrides: Partial<ChatConfig> = {}): ChatConfig {
@@ -92,5 +92,23 @@ describe("paceChat", () => {
     const result = paceChat(full, NOW - 1000, config);
 
     expect(result).toEqual({ ok: true, pace: { count: 1, since: NOW - 1000 } });
+  });
+});
+
+describe("isQuickWord", () => {
+  it("knows each of the words that take one press", () => {
+    for (const word of QUICK_WORDS) expect(isQuickWord(word), word).toBe(true);
+  });
+
+  it("knows nothing else: another word, one in other letters, what is not a word", () => {
+    const [first] = QUICK_WORDS;
+
+    for (const other of ["", "hi there", first.toUpperCase(), ` ${first}`, 0, null, undefined, [first], { word: first }]) {
+      expect(isQuickWord(other), JSON.stringify(other)).toBe(false);
+    }
+  });
+
+  it("has no word twice", () => {
+    expect(new Set(QUICK_WORDS).size).toBe(QUICK_WORDS.length);
   });
 });

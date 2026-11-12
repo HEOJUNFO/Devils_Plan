@@ -4,6 +4,7 @@
  * Shared by both sides so a change to the wire format is a type error on the
  * side that was not updated.
  */
+import { isQuickWord, type QuickWord } from "./chat";
 import type { RoomCounts, RoomListing } from "./directory";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
@@ -107,6 +108,8 @@ export type ServerMessage =
    * get what was said before.
    */
   | { type: "chat"; room: string; from: number; nick: string; text: string; at: number }
+  /** One of the words said with one press (`QUICK_WORDS`), passed on as a line is: which word, for each page to put in its own language. */
+  | { type: "quick"; room: string; from: number; nick: string; word: QuickWord; at: number }
   /** Who is in the room's voice chat, sent to everyone in the room on joining and whenever it changes. */
   | { type: "voice"; room: string; members: VoiceMember[] }
   /** A signal from another player in voice, passed on by the room so the two can connect directly. */
@@ -266,6 +269,8 @@ export type ClientMessage =
   | { type: "here" }
   /** Say a line to everyone in the room. */
   | { type: "chat"; text: string }
+  /** Say one of the words that take one press (`QUICK_WORDS`) to everyone in the room. It counts as a line does. */
+  | { type: "quick"; word: QuickWord }
   /**
    * Set how long a player has for a move in the games started in this room,
    * in seconds (0 for no limit); only the host may, and only one of the
@@ -330,6 +335,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "chat") {
     return typeof data.text === "string" ? { type: "chat", text: data.text } : null;
   }
+  if (data.type === "quick") {
+    return isQuickWord(data.word) ? { type: "quick", word: data.word } : null;
+  }
   if (data.type === "clock") {
     return typeof data.seconds === "number" && Number.isFinite(data.seconds) ? { type: "clock", seconds: data.seconds } : null;
   }
@@ -365,6 +373,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     data.type === "game" ||
     data.type === "refused" ||
     data.type === "chat" ||
+    (data.type === "quick" && isQuickWord(data.word)) ||
     data.type === "voice" ||
     data.type === "rtc" ||
     data.type === "host-check" ||

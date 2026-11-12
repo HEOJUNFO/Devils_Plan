@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { QUICK_WORDS } from "../../../src/shared/chat";
 import { DEFAULT_GAME } from "../../../src/shared/games";
 import {
   MAX_CLIENT_MESSAGE_LENGTH,
@@ -72,6 +73,18 @@ describe("parseClientMessage", () => {
 
   it("reads a chat line as it was typed", () => {
     expect(parseClientMessage(JSON.stringify({ type: "chat", text: "  hi  " }))).toEqual({ type: "chat", text: "  hi  " });
+  });
+
+  it("reads a word said with one press", () => {
+    const [word] = QUICK_WORDS;
+
+    expect(parseClientMessage(JSON.stringify({ type: "quick", word }))).toEqual({ type: "quick", word });
+  });
+
+  it("rejects a word said with one press that is not one of them", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "quick" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "quick", word: "a sentence of my own" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "quick", word: 3 }))).toBeNull();
   });
 
   it("rejects a chat line that is not text", () => {
@@ -242,6 +255,13 @@ describe("parseClientMessage", () => {
 });
 
 describe("parseServerMessage", () => {
+  it("reads a word said with one press, and nothing said so that is not one of them", () => {
+    const said = { type: "quick", room: "ABCDE", from: 1, nick: "ann", word: QUICK_WORDS[0], at: 5 };
+
+    expect(parseServerMessage(JSON.stringify(said))).toEqual(said);
+    expect(parseServerMessage(JSON.stringify({ ...said, word: "a sentence" }))).toBeNull();
+  });
+
   it("accepts the room's question to its host", () => {
     expect(parseServerMessage(JSON.stringify({ type: "host-check" }))).toEqual({ type: "host-check" });
   });

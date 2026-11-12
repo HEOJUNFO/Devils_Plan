@@ -47,6 +47,7 @@ import {
 import { liftFor, placeFrame } from "../shared/frame";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptRoom } from "../shared/resume";
+import { QUICK_WORDS } from "../shared/chat";
 import chatConfig from "../shared/chat-config.json";
 import directoryConfig from "../shared/directory-config.json";
 import roomConfig from "../shared/room-config.json";
@@ -132,6 +133,9 @@ const menuPing = el<HTMLElement>("menu-ping");
 const soundButton = el<HTMLButtonElement>("sound");
 const swapButton = el<HTMLButtonElement>("swap");
 const swapSheet = el<HTMLElement>("swap-sheet");
+const quickSheet = el<HTMLElement>("quick-sheet");
+const quickWords = el<HTMLElement>("quick-words");
+const chatSend = el<HTMLButtonElement>("chat-send");
 const swapChoices = el<HTMLElement>("swap-choices");
 const swapNote = el<HTMLElement>("swap-note");
 const seatMenu = el<HTMLElement>("seat-menu");
@@ -269,7 +273,9 @@ function writeWords(): void {
     ["rules-close", WORDS.bar.close],
     ["leave-game", WORDS.game.leave],
     ["tab-chat", WORDS.game.chat(0)],
-    ["chat-send", WORDS.chat.send],
+    ["quick-title", WORDS.chat.quickTitle],
+    ["quick-help", WORDS.chat.quickHelp],
+    ["quick-close", WORDS.chat.quickClose],
     ["turn-words", WORDS.site.turnDevice],
     ["turn-full", WORDS.site.turnFull],
     ["menu-open", WORDS.menu.open],
@@ -576,11 +582,15 @@ function renderVoice(): void {
 }
 
 const chat = createChat(
-  { log: el<HTMLOListElement>("chat-log"), form: el<HTMLFormElement>("chat-form"), input: chatInput },
+  { log: el<HTMLOListElement>("chat-log"), form: el<HTMLFormElement>("chat-form"), input: chatInput, button: chatSend },
   {
     maxLength: chatConfig.maxLength,
     storagePrefix: storageKey("chat"),
+    labels: { send: WORDS.chat.send, quick: WORDS.chat.quickOpen },
+    quickAsked: () => showQuick(quickSheet.hidden === true),
     send: (text) => send({ type: "chat", text }),
+    sendQuick: (word) => send({ type: "quick", word }),
+    quickOf: (word) => WORDS.chat.quick[word],
     me: () => currentView?.players.find((p) => p.slot === currentView?.you)?.nick ?? "",
     wordsOf(note) {
       if (note.kind === "came") return WORDS.room.came(note.nick);
@@ -772,6 +782,8 @@ function showTable(game: GameId): GameScreen {
   }
   if (table === null) {
     tableGame = game;
+    // a game has come over the room: what was open over the room is put away
+    showQuick(false);
     // the game covers the room's picture, and the time in its corner with it
     pingMark.hidden = true;
     table = CLIENTS[game].screen(tableCanvas, {
@@ -1267,6 +1279,7 @@ function showLobby(message = ""): void {
   hostAsked = false;
   showSeatMenu(null);
   swapSheet.hidden = true;
+  quickSheet.hidden = true;
   pingSentAt = null;
   pingTimes = [];
   hideTable();
@@ -1433,6 +1446,37 @@ function renderPing(): void {
     mark.classList.toggle("poor", grade === "poor");
   }
 }
+
+/**
+ * Shows the words that are said with one press, or puts them away. The keys
+ * go to the first of them, and back where they were: to the chat's button in
+ * a room, to the game during one.
+ */
+function showQuick(shown: boolean): void {
+  if (!shown || currentCode === "") {
+    if (quickSheet.hidden) return;
+    const within = quickSheet.contains(document.activeElement);
+    quickSheet.hidden = true;
+    if (!within) return;
+    if (table !== null || chatBox.hidden) (document.activeElement as HTMLElement | null)?.blur();
+    else chatSend.focus({ preventScroll: true });
+    return;
+  }
+  quickSheet.hidden = false;
+  quickWords.querySelector("button")?.focus({ preventScroll: true });
+}
+
+for (const word of QUICK_WORDS) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = WORDS.chat.quick[word];
+  button.addEventListener("click", () => {
+    chat.sayQuick(word);
+    showQuick(false);
+  });
+  quickWords.append(button);
+}
+el<HTMLButtonElement>("quick-close").addEventListener("click", () => showQuick(false));
 
 /**
  * Shows the host's choice of another game for the room, or puts it away.
@@ -1871,14 +1915,17 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       sentOut.add(message.slot);
       return;
     }
-    if (message.type === "chat") {
+    if (message.type === "chat" || message.type === "quick") {
       const mine = currentView !== null && message.from === currentView.you;
-      chat.said(message.nick, message.text, mine);
+      // one said with a press is put in this page's language here: the room said only which
+      const text = message.type === "chat" ? message.text : WORDS.chat.quick[message.word];
+      if (message.type === "chat") chat.said(message.nick, text, mine);
+      else chat.saidQuick(message.nick, message.word, mine);
       if (!mine) {
         call("said");
         // over the speaker's seat too, so a line is seen without the chat on show
-        if (table !== null) table.say(message.from, message.text);
-        else scene?.say(message.from, message.text);
+        if (table !== null) table.say(message.from, text);
+        else scene?.say(message.from, text);
         if (table !== null && !chatOpen) {
           unread++;
           syncChat();
@@ -2299,6 +2346,7 @@ addEventListener("keydown", (event) => {
   if (!gameMenu.hidden) openMenu(false);
   else if (!seatMenu.hidden) showSeatMenu(null);
   else if (!swapSheet.hidden) showSwap(false);
+  else if (!quickSheet.hidden) showQuick(false);
   else if (!feedbackSheet.hidden) showFeedback(false);
   else if (!inboxSheet.hidden) showInbox(false);
   else if (!rules.hidden) rules.hidden = true;

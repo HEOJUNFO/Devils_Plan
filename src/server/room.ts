@@ -1,6 +1,6 @@
 import { Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import { BUILD } from "../shared/build";
-import { normalizeChat, paceChat, type ChatConfig, type ChatPace } from "../shared/chat";
+import { normalizeChat, paceChat, type ChatConfig, type ChatPace, type QuickWord } from "../shared/chat";
 import chatConfigJson from "../shared/chat-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
 import type { GameId } from "../shared/games";
@@ -347,7 +347,7 @@ export class GameRoom extends Server<Env> {
           : parsed.type === "team" || parsed.type === "ready"
             ? "choice"
             : "other";
-    if (parsed.type !== "chat" && parsed.type !== "leave" && !this.withinPace(seat.slot, sort)) {
+    if (parsed.type !== "chat" && parsed.type !== "quick" && parsed.type !== "leave" && !this.withinPace(seat.slot, sort)) {
       // a flood of signals is dropped without a word: answering each would be a flood of its own
       if (sort !== "signal") this.refuse(connection, "too-fast");
       return;
@@ -359,6 +359,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "action") await this.handleAction(connection, seat.slot, parsed.action);
     else if (parsed.type === "listing") await this.handleListing(connection, seat.slot, parsed.listed);
     else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text);
+    else if (parsed.type === "quick") this.handleQuick(connection, seat.slot, parsed.word);
     else if (parsed.type === "clock") this.handleClock(connection, seat.slot, parsed.seconds);
     else if (parsed.type === "variant") this.handleVariant(connection, seat.slot, parsed.variant);
     else if (parsed.type === "voice") this.handleVoice(connection, seat, parsed.on, parsed.muted);
@@ -629,6 +630,23 @@ export class GameRoom extends Server<Env> {
     this.chatPace.set(slot, paced.pace);
     if (!paced.ok) return this.refuse(connection, "chat-too-fast");
     const message: ServerMessage = { type: "chat", room: this.name, from: slot, nick: player.nick, text, at: now };
+    const data = JSON.stringify(message);
+    for (const [member] of this.members()) member.send(data);
+  }
+
+  /**
+   * Passes on one of the words a player says with one press, to everyone in
+   * the room: which word, never a sentence. It is counted with the lines the
+   * player types, so the two together are no faster than lines alone.
+   */
+  private handleQuick(connection: Connection<ConnectionState>, slot: number, word: QuickWord): void {
+    const player = this.lobby?.players.find((p) => p.slot === slot);
+    if (!player) return;
+    const now = Date.now();
+    const paced = paceChat(this.chatPace.get(slot), now, chatConfig);
+    this.chatPace.set(slot, paced.pace);
+    if (!paced.ok) return this.refuse(connection, "chat-too-fast");
+    const message: ServerMessage = { type: "quick", room: this.name, from: slot, nick: player.nick, word, at: now };
     const data = JSON.stringify(message);
     for (const [member] of this.members()) member.send(data);
   }

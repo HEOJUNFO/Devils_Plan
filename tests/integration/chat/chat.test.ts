@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { QUICK_WORDS } from "../../../src/shared/chat";
 import chatConfig from "../../../src/shared/chat-config.json";
 import type { ClientMessage } from "../../../src/shared/protocol";
 import { advanceClock, closeAll, connect, join, roomOf, type TestClient } from "../support";
@@ -139,6 +140,41 @@ describe("GameRoom: chat", () => {
         break;
       }
     }
+    closeAll(clients);
+  });
+
+  it("passes a word said with one press on to everyone, as which word it was", async () => {
+    const clients = await roomOf("CAAAT", 3);
+    const [word] = QUICK_WORDS;
+
+    clients[1].send({ type: "quick", word });
+
+    const seen = await Promise.all(clients.map((client) => client.nextOf("quick")));
+    for (const said of seen) expect(said).toMatchObject({ type: "quick", room: "CAAAT", from: 1, nick: "p1", word });
+    closeAll(clients);
+  });
+
+  it("passes on nothing for a word that is not one of them", async () => {
+    const clients = await roomOf("CAAAU", 2);
+    const [, word] = QUICK_WORDS;
+
+    clients[0].send({ type: "quick", word: "a sentence of my own" } as unknown as ClientMessage);
+    clients[0].send({ type: "quick", word });
+
+    expect((await clients[1].nextOf("quick")).word).toBe(word);
+    expect(clients[1].raw.join("\n")).not.toContain("a sentence of my own");
+    closeAll(clients);
+  });
+
+  it("counts a word said with one press with the lines typed: the two together are no faster than lines alone", async () => {
+    const clients = await roomOf("CAAAV", 2);
+    const [word] = QUICK_WORDS;
+
+    for (let n = 0; n < chatConfig.burst; n++) clients[0].say(`line ${n}`);
+    clients[0].send({ type: "quick", word });
+
+    expect(await clients[0].nextOf("refused")).toEqual({ type: "refused", reason: "chat-too-fast" });
+    expect(clients[1].raw.join("\n")).not.toContain('"quick"');
     closeAll(clients);
   });
 

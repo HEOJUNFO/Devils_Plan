@@ -17,6 +17,22 @@ export interface ChatConfig {
   windowSeconds: number;
 }
 
+/**
+ * What a player can say with one press, without typing: by name. The room
+ * passes on which was said, never a sentence, and each page puts it in the
+ * language it is read in (`src/client/words.ts`), so two players who share no
+ * language read each other.
+ */
+export const QUICK_WORDS = ["hello", "nice", "thanks", "sorry", "wait", "go", "oops", "gg"] as const;
+
+/** One of {@link QUICK_WORDS}. */
+export type QuickWord = (typeof QUICK_WORDS)[number];
+
+/** Whether `value` names one of the words that can be said with one press. */
+export function isQuickWord(value: unknown): value is QuickWord {
+  return typeof value === "string" && (QUICK_WORDS as readonly string[]).includes(value);
+}
+
 /** How much one player has said lately: `count` lines in the window that began at `since`. */
 export type ChatPace = Pace;
 

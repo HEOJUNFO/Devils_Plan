@@ -1192,6 +1192,61 @@ button.choice[aria-pressed="true"] {
   top: 8px;
 }
 
+/* The words said with one press: over the middle of the frame, in a room and in a game alike. */
+#quick-sheet {
+  position: absolute;
+  left: 60px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 360px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#quick-sheet[hidden] {
+  display: none;
+}
+
+#quick-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#quick-words {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+#quick-words button {
+  overflow: hidden;
+  padding: 0 2px;
+  white-space: nowrap;
+}
+
+#quick-sheet .row {
+  justify-content: flex-end;
+}
+
+:root.touch #quick-sheet button {
+  height: 24px;
+}
+
+:root.touch #quick-sheet {
+  top: 40px;
+}
+
+/* The chat's button says one of two things, by whether its box is empty: it is as wide for either. */
+#chat-send {
+  flex: none;
+  width: 40px;
+  padding: 0;
+}
+
 /* What the host can do with a player, beside the figure that was pressed (main.ts puts it there). */
 #seat-menu {
   position: absolute;
