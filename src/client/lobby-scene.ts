@@ -215,6 +215,7 @@ export function createLobbyScene(
         drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
         const beside = place.at.y - 6;
         if (!player.connected) pen.txt(WORDS.scene.offline, place.at.x + 15, beside, C.dim);
+        else if (player.out) pen.txt(WORDS.scene.out, place.at.x + 15, beside, C.crim);
         else if (player.team > 0) drawTeamTag(place.at.x + 15, beside, player.team, player.leads);
         continue;
       }
@@ -229,6 +230,7 @@ export function createLobbyScene(
       if (pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
       drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
       if (!player.connected) pen.txt(WORDS.scene.offline, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
+      else if (player.out) pen.txt(WORDS.scene.out, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.crim);
       else if (player.team > 0) {
         // the team chosen for the next game, each team in its own colour
         const tx = place.slot === me ? x + width + 5 : x;

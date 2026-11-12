@@ -9,6 +9,7 @@
  */
 import { randomInt, randomSource, seedFrom } from "../../game/rng";
 import type { Candidate, GameHost, HostResult, Presence, StartRequest } from "../../hosting";
+import { placesByMost } from "../../knockout";
 import { stand } from "../../standing";
 import botJson from "./bot-config.json";
 import { DECKS, isDeck, type Deck } from "./cards";
@@ -358,6 +359,16 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
     },
 
     running: (session) => session.state.phase !== "ended",
+
+    /** By the points of a game that laid all its parks: the most first. */
+    places(session) {
+      const state = session.state;
+      const end = state.history.at(-1);
+      if (state.phase !== "ended" || end?.type !== "ended" || end.reason !== "rounds") return null;
+      const score = new Map(state.players.map((each) => [each.id, each.score]));
+      const places = placesByMost(session.players, (seat) => score.get(seat.id) ?? 0);
+      return session.players.map((seat, at) => ({ token: seat.token, place: places[at] }));
+    },
 
     holdsPlace: (session, token) => session.players.some((seat) => seat.token === token),
 

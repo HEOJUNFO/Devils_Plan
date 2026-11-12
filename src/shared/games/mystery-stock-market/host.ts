@@ -333,6 +333,15 @@ export const marketHost: GameHost<MarketSession, MarketHostRefusal> = {
     return session.players.map((seat) => ({ token: seat.token, pieces: config.awards.filter((from) => (assets.get(seat.id) ?? 0) >= from).length }));
   },
 
+  /** The standings of a game that played its rounds out: the most assets first. */
+  places(session) {
+    const state = session.state;
+    const end = state.history.at(-1);
+    if (state.phase !== "ended" || end?.type !== "ended" || end.reason !== "rounds") return null;
+    const rank = new Map(standingsOf(state).map((each) => [each.player, each.rank]));
+    return session.players.map((seat) => ({ token: seat.token, place: rank.get(seat.id) ?? 1 }));
+  },
+
   holdsPlace: (session, token) => session.players.some((seat) => seat.token === token),
 
   deadline(session) {

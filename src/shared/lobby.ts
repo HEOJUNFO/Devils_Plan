@@ -182,6 +182,12 @@ export interface LobbyPlayer {
    * (`ledger.ts`); absent for none. They go with the player who leaves.
    */
   pieces?: number;
+  /**
+   * There while the player sits the room's games out and watches them: a
+   * game of 탈락전 put them out (`knockout.ts`). Taken back when the room has
+   * its winner, and when the host turns 탈락전 off.
+   */
+  out?: true;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -209,6 +215,16 @@ export interface LobbyState {
    * a new one, and no more than that.
    */
   barred?: string[];
+  /** There while the room plays 탈락전: whoever is last in a game sits the next ones out (`knockout.ts`). */
+  knockout?: true;
+  /**
+   * The tokens of those who went from the room while sitting out of its
+   * 탈락전: one of them who comes back sits out still, so that going and
+   * coming is no way back in. Emptied when everyone is in again. Only a
+   * player a game has put out gets onto it, so it is no longer than the
+   * games played.
+   */
+  outGone?: string[];
 }
 
 /** A player as everyone may see them. Carries no token. */
@@ -225,6 +241,8 @@ export interface PublicPlayer {
   ready: boolean;
   /** The pieces they have won in the games played in this room. */
   pieces: number;
+  /** Whether they sit the room's games out: put out by a game of 탈락전. */
+  out: boolean;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -241,6 +259,8 @@ export interface LobbyView {
   turnSeconds: number;
   /** Which of the game's variants the next game started here is played by; `null` where the game has none. */
   variant: string | null;
+  /** Whether the room plays 탈락전: whoever is last in a game sits the next ones out. */
+  knockout: boolean;
   /** Whether the room offers voice chat (see `voice.ts`). */
   voice: boolean;
   /** The slot of the host, who starts games and sets the room; `null` when nobody is connected. */
@@ -436,10 +456,12 @@ export function joinLobby(
 
   // later than everyone who is or has been here
   const seq = Math.max(state.nextSeq ?? 0, ...state.players.map((p) => seqOf(p) + 1));
-  const players = [...state.players, { slot, token: request.token, nick, seq }].sort(
-    (a, b) => a.slot - b.slot,
-  );
-  return { ok: true, state: { ...state, players, nextSeq: seq + 1 }, slot, rejoined: false };
+  // whoever went while sitting out of the room's 탈락전 sits out still
+  const wasOut = state.knockout === true && state.outGone?.includes(request.token) === true;
+  const comer: LobbyPlayer = { slot, token: request.token, nick, seq, ...(wasOut ? { out: true as const } : {}) };
+  const players = [...state.players, comer].sort((a, b) => a.slot - b.slot);
+  const next: LobbyState = { ...state, players, nextSeq: seq + 1 };
+  return { ok: true, state: wasOut ? withoutGone(next, request.token) : next, slot, rejoined: false };
 }
 
 /** The order in which `player` came into the room (see {@link LobbyPlayer.seq}). */
@@ -467,7 +489,79 @@ export function hostOf(state: LobbyState, connectedSlots: ReadonlySet<number>): 
  */
 export function leaveLobby(state: LobbyState, token: string): LobbyState {
   if (!findPlayer(state, token)) return state;
-  return { ...state, players: state.players.filter((p) => p.token !== token) };
+  return seriesSettled(withGone(state, new Set([token])));
+}
+
+/** `state` without the players holding `tokens`; those of them who sat out are remembered as having ({@link LobbyState.outGone}). */
+function withGone(state: LobbyState, tokens: ReadonlySet<string>): LobbyState {
+  const out = state.players.filter((p) => tokens.has(p.token) && p.out === true).map((p) => p.token);
+  const players = state.players.filter((p) => !tokens.has(p.token));
+  return out.length === 0 ? { ...state, players } : { ...state, players, outGone: [...(state.outGone ?? []), ...out] };
+}
+
+/** `state` no longer remembering `token` as one who went while sitting out. */
+function withoutGone(state: LobbyState, token: string): LobbyState {
+  const { outGone, ...rest } = state;
+  const kept = (outGone ?? []).filter((t) => t !== token);
+  return kept.length === 0 ? rest : { ...rest, outGone: kept };
+}
+
+/** `state` with nobody sitting out, here or gone. */
+function everyoneIn(state: LobbyState): LobbyState {
+  if (!state.players.some((p) => p.out === true) && state.outGone === undefined) return state;
+  const { outGone: _gone, ...rest } = state;
+  return { ...rest, players: state.players.map(({ out: _out, ...p }) => p) };
+}
+
+/**
+ * A room playing 탈락전 in which someone sits out and at most one player does
+ * not has nobody left to play each other: everyone is in again. This is how
+ * a round of it ends when players go, and after its last game (`withOuts`).
+ */
+function seriesSettled(state: LobbyState): LobbyState {
+  if (state.knockout !== true) return state;
+  return state.players.filter((p) => p.out !== true).length <= 1 ? everyoneIn(state) : state;
+}
+
+/**
+ * Turns 탈락전 on or off for the room. Turned off, nobody sits out any more.
+ * Returns the state unchanged when it is already so. The input state is not
+ * modified.
+ */
+export function setKnockout(state: LobbyState, on: boolean): LobbyState {
+  if ((state.knockout === true) === on) return state;
+  if (on) return { ...state, knockout: true };
+  const { knockout: _knockout, ...rest } = everyoneIn(state);
+  return rest;
+}
+
+/** The players a game started in the room is for: everyone, but for those sitting out in a room playing 탈락전. */
+export function playersIn(state: LobbyState): LobbyPlayer[] {
+  return state.knockout === true ? state.players.filter((p) => p.out !== true) : state.players;
+}
+
+/** What a game of 탈락전 did to the room: who it put out, by slot, and who has won the room where that left one player. */
+export interface Knocked {
+  state: LobbyState;
+  out: number[];
+  /** The slot of the one player left in, with whom everyone is in again; `null` while more are left. */
+  champion: number | null;
+}
+
+/**
+ * Puts out the players holding `tokens`: the last place of a game just over
+ * (`outsOf` of `knockout.ts`). Where that leaves one player in, they have
+ * won and everyone is in again. Nothing happens in a room that is not
+ * playing 탈락전, or where none of the tokens is a player still in. The
+ * input state is not modified.
+ */
+export function withOuts(state: LobbyState, tokens: readonly string[]): Knocked {
+  const put = state.knockout === true ? state.players.filter((p) => p.out !== true && tokens.includes(p.token)) : [];
+  if (put.length === 0) return { state, out: [], champion: null };
+  const marked: LobbyState = { ...state, players: state.players.map((p) => (put.includes(p) ? { ...p, out: true as const } : p)) };
+  const left = marked.players.filter((p) => p.out !== true);
+  const settled = seriesSettled(marked);
+  return { state: settled, out: put.map((p) => p.slot), champion: settled !== marked && left.length === 1 ? left[0].slot : null };
 }
 
 /**
@@ -537,7 +631,7 @@ export function dropLapsed(
       .map((p) => p.token),
   );
   if (gone.size === 0) return state;
-  return { ...state, players: state.players.filter((p) => !gone.has(p.token)) };
+  return seriesSettled(withGone(state, gone));
 }
 
 /** How many teams a room of `game` can hold: as many as fit, each of the game's team size; 0 where there are none. */
@@ -627,7 +721,7 @@ export function kickPlayer(state: LobbyState, slot: number, config: RoomConfig):
   const player = state.players.find((p) => p.slot === slot);
   if (player === undefined) return null;
   const barred = [...(state.barred ?? []), player.token].slice(-config.maxBarred);
-  return { ...state, players: state.players.filter((p) => p !== player), barred };
+  return seriesSettled({ ...state, players: state.players.filter((p) => p !== player), barred });
 }
 
 /**
@@ -640,8 +734,9 @@ export function kickPlayer(state: LobbyState, slot: number, config: RoomConfig):
 export function waitingOnHost(state: LobbyState, connectedSlots: ReadonlySet<number>): boolean {
   const host = hostOf(state, connectedSlots);
   if (host === undefined) return false;
-  const others = state.players.filter((p) => p !== host && connectedSlots.has(p.slot));
-  if (others.length + 1 < GAMES[gameOf(state)].minPlayers) return false;
+  // those sitting out of a room's games have nothing to be ready for, and are not counted for one
+  const others = playersIn(state).filter((p) => p !== host && connectedSlots.has(p.slot));
+  if (others.length + (playersIn(state).includes(host) ? 1 : 0) < GAMES[gameOf(state)].minPlayers) return false;
   return others.length > 0 && others.every((p) => p.ready === true);
 }
 
@@ -685,6 +780,7 @@ export function viewLobby(
     listed: state.listed === true,
     turnSeconds: turnSecondsOf(state),
     variant: variantOf(state),
+    knockout: state.knockout === true,
     voice,
     host: host?.slot ?? null,
     players: state.players.map((p) => ({
@@ -695,6 +791,7 @@ export function viewLobby(
       leads: leaders.has(p.slot),
       ready: p.ready === true && p !== host && connectedSlots.has(p.slot),
       pieces: p.pieces ?? 0,
+      out: p.out === true,
     })),
   };
 }

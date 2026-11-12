@@ -23,6 +23,7 @@ import {
   parseAction,
   shiftClock,
   showIfChosen,
+  standingsOf,
   viewFor,
   type PokerConfig,
   type PokerRefusal,
@@ -324,6 +325,15 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
   },
 
   running: (session) => session.state.phase !== "ended",
+
+  /** The standings of a game that played its rounds out. */
+  places(session) {
+    const state = session.state;
+    const end = state.history.at(-1);
+    if (state.phase !== "ended" || end?.type !== "ended" || end.reason !== "rounds") return null;
+    const place = new Map(standingsOf(state).map((each) => [each.player, each.place]));
+    return session.players.map((seat) => ({ token: seat.token, place: place.get(seat.id) ?? 1 }));
+  },
 
   holdsPlace: (session, token) => session.players.some((seat) => seat.token === token),
 

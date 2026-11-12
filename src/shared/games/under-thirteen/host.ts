@@ -340,6 +340,15 @@ export const underHost: GameHost<UnderSession, UnderHostRefusal> = {
     return session.players.map((seat) => ({ token: seat.token, pieces: first.has(seat.id) ? each : 0 }));
   },
 
+  /** The standings of a game that played its rounds out: the fewest penalty points first. */
+  places(session) {
+    const state = session.state;
+    const end = state.history.at(-1);
+    if (state.phase !== "ended" || end?.type !== "ended" || end.reason !== "rounds") return null;
+    const place = new Map(standingsOf(state).map((each) => [each.player, each.place]));
+    return session.players.map((seat) => ({ token: seat.token, place: place.get(seat.id) ?? 1 }));
+  },
+
   holdsPlace: (session, token) => session.players.some((seat) => seat.token === token),
 
   deadline(session) {

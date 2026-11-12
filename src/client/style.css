@@ -1229,6 +1229,22 @@ button.choice[aria-pressed="true"] {
   line-height: 15px;
 }
 
+/* 탈락전: the host's button for it, and beside it what it does. */
+#swap-knockout-row {
+  align-items: center;
+  gap: 8px;
+}
+
+#swap-knockout {
+  flex: none;
+  padding: 0 6px;
+}
+
+#swap-knockout-help {
+  flex: 1;
+  line-height: 12px;
+}
+
 #swap-sheet[hidden] {
   display: none;
 }

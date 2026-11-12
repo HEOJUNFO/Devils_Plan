@@ -17,7 +17,7 @@ import {
 } from "../session";
 import botConfig from "./bot-config.json";
 import hostConfig from "./host-config.json";
-import { parseAction } from "./rules";
+import { parseAction, volley } from "./rules";
 import rulesConfig from "./rules-config.json";
 import tableSizes from "./table-sizes.json";
 
@@ -58,6 +58,12 @@ export const rouletteHost: GameHost<Session, StartRefusal | MoveRefusal> = {
   attend: (session, presence, now) => sessionPresence(session, presence, now, config),
   view: sessionSnapshot,
   running: (session) => session.state.phase !== "ended",
+  // the last volley is the game's own end for a seat: those it hit are last, the rest first
+  places: (session) => {
+    if (session.state.phase !== "ended") return null;
+    const hit = new Set(volley(session.state).hitSeats);
+    return session.tokens.map((token, seat) => ({ token, place: hit.has(seat) ? 2 : 1 }));
+  },
   holdsPlace: (session, token) => session.tokens.includes(token),
   // the awaited move's own clock, or the end of the pause before the room passes for a player with no credits
   deadline: (session) => {

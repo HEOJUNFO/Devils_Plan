@@ -161,9 +161,9 @@ const ko = {
     team: (team: number, leads: boolean) => (leads ? `팀 ${team} 대표` : `팀 ${team}`),
     teamHelp: (size: number) => `누르면 바뀝니다: 혼자, 또는 ${size}명이 한 팀. 팀을 먼저 고른 사람이 대표입니다`,
     /** The lines over the room's code: the game, who can come in and how many are here. */
-    status: (game: string, listed: boolean, here: number, max: number) => [`${game} · ${listed ? "공개" : "비공개"} · ${here}/${max}`],
+    status: (game: string, listed: boolean, here: number, max: number, knockout: boolean) => [`${game} · ${listed ? "공개" : "비공개"} · ${here}/${max}${knockout ? " · 탈락전" : ""}`],
     /** The same on two lines, for a game whose name leaves no room beside it. */
-    statusTall: (game: string, listed: boolean, here: number, max: number) => [game, `${listed ? "공개" : "비공개"} · ${here}/${max}`],
+    statusTall: (game: string, listed: boolean, here: number, max: number, knockout: boolean) => [game, `${listed ? "공개" : "비공개"} · ${here}/${max}${knockout ? " · 탈락전" : ""}`],
     statusSpoken: (here: number, max: number) => `${here}명 접속, 최대 ${max}명`,
     offline: "연결이 끊겼습니다. 다시 연결하는 중",
     /** Over the room's code when the page was loaded again and the room has not answered yet. */
@@ -180,8 +180,23 @@ const ko = {
     /** On the button of everyone but the host: said once, taken back with the same button. */
     ready: "준비",
     unready: "준비 취소",
-    seat: (seat: number, nick: string, me: boolean, connected: boolean, ready: boolean, pieces: number) =>
-      `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? (ready ? "준비" : "접속") : "끊김"}${pieces > 0 ? `, 피스 ${pieces}개` : ""}`,
+    seat: (seat: number, nick: string, me: boolean, connected: boolean, ready: boolean, pieces: number, out: boolean) =>
+      `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? (ready ? "준비" : "접속") : "끊김"}${pieces > 0 ? `, 피스 ${pieces}개` : ""}${out ? ", 탈락" : ""}`,
+    /**
+     * 탈락전, the room's own way of playing game after game: the host's button for it in the sheet of games and
+     * what it does, and the lines in the chat when it is turned on or off, puts someone out, has its winner, or
+     * starts over because too few were left.
+     */
+    knockoutOff: "탈락전: 끔",
+    knockoutOn: "탈락전: 켬",
+    knockoutHelp: "켜면 판마다 꼴찌는 다음 판부터 구경, 한 명이 남으면 우승. 방송이 아닌 이 방의 규칙.",
+    knockoutTurnedOn: "방장이 탈락전을 켰습니다: 판마다 꼴찌는 다음 판부터 구경합니다",
+    knockoutTurnedOff: "방장이 탈락전을 껐습니다: 모두 참가합니다",
+    knockedOut: (nick: string) => `${nick} 탈락: 다음 판부터 구경합니다`,
+    champion: (nick: string) => `${nick} 우승! 모두 다시 참가합니다`,
+    knockoutAgain: "남은 사람이 모자라 탈락전을 처음부터 다시 합니다",
+    knockoutShort: (min: number, here: number) => `이 게임은 ${min}명부터인데 ${here}명 남았습니다. 방장이 게임을 바꾸세요.`,
+    knockoutWatching: "탈락해 구경 중입니다. 우승자가 나오면 모두 다시 참가합니다.",
     /** In the chat when a game played in the room paid someone pieces: how many, and how many they have in this room now. */
     wonPieces: (nick: string, won: number, all: number) => `${nick} 피스 +${won} (이 방에서 ${all}개)`,
     emptySeat: (seat: number) => `${seat}번 빈 자리`,
@@ -236,6 +251,8 @@ const ko = {
   scene: {
     host: "방장",
     offline: "끊김",
+    /** Beside a figure sitting the room's games out: put out by a game of 탈락전. */
+    out: "탈락",
     team: (team: number) => `팀 ${team}`,
   },
   bar: {
@@ -486,8 +503,8 @@ const en: typeof ko = {
     team: (team, leads) => (leads ? `Team ${team} lead` : `Team ${team}`),
     teamHelp: (size) => `Press to change: alone, or a team of ${size}. Whoever picks a team first leads it`,
     // a game's name in English is as wide as the column: the rest goes on a line of its own
-    status: (game, listed, here, max) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}`],
-    statusTall: (game, listed, here, max) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}`],
+    status: (game, listed, here, max, knockout) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}${knockout ? " · Knockout" : ""}`],
+    statusTall: (game, listed, here, max, knockout) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}${knockout ? " · Knockout" : ""}`],
     statusSpoken: (here, max) => `${here} connected, ${max} at most`,
     offline: "Connection lost. Reconnecting",
     returning: "Returning to the room",
@@ -499,8 +516,18 @@ const en: typeof ko = {
     gameChanged: (game) => `This room now plays ${game}`,
     ready: "Ready",
     unready: "Not ready",
-    seat: (seat, nick, me, connected, ready, pieces) =>
-      `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}${pieces > 0 ? `, ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}`,
+    seat: (seat, nick, me, connected, ready, pieces, out) =>
+      `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}${pieces > 0 ? `, ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}${out ? ", out" : ""}`,
+    knockoutOff: "Knockout: off",
+    knockoutOn: "Knockout: on",
+    knockoutHelp: "Last place sits out; the last one in wins. A room rule, not the show's.",
+    knockoutTurnedOn: "The host turned Knockout on: last place in a game watches the next ones",
+    knockoutTurnedOff: "The host turned Knockout off: everyone plays",
+    knockedOut: (nick) => `${nick} is out: watching from the next game`,
+    champion: (nick) => `${nick} wins! Everyone is back in`,
+    knockoutAgain: "Too few are left: Knockout starts over",
+    knockoutShort: (min, here) => `${here} left in, but this game takes ${min}. The host can change it.`,
+    knockoutWatching: "You are out, watching until someone wins.",
     wonPieces: (nick, won, all) => `${nick}: +${won} ${won === 1 ? "Piece" : "Pieces"} (${all} in this room)`,
     emptySeat: (seat) => `Seat ${seat}, empty`,
     came: (nick) => `${nick} came in`,
@@ -544,6 +571,7 @@ const en: typeof ko = {
   scene: {
     host: "Host",
     offline: "Offline",
+    out: "Out",
     team: (team) => `Team ${team}`,
   },
   bar: {

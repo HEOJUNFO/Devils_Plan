@@ -9,6 +9,7 @@
  */
 import { nextRandom, seedFrom } from "../../game/rng";
 import type { Candidate, GameHost, HostResult, Presence, StartRequest } from "../../hosting";
+import { placesByMost } from "../../knockout";
 import { stand } from "../../standing";
 import botJson from "./bot-config.json";
 import configJson from "./config.json";
@@ -466,6 +467,22 @@ export function rectanglesHostFor(config: RectConfig): GameHost<RectSession, Rec
       if (state.phase !== "ended" || end?.type !== "ended" || end.reason === "abandoned" || state.scores === null) return null;
       const won = new Map(state.scores.map((line) => [line.player, line.pieces]));
       return session.players.map((seat) => ({ token: seat.token, pieces: won.get(seat.id) ?? 0 }));
+    },
+
+    /**
+     * By the points of a game that came to its score: the most first. A team has one place, by its points a
+     * member (how a team shares them out among its own is its business, and puts none of them behind the
+     * others), so a game one team played alone has nobody last. A game given up, or one with no score, has none.
+     */
+    places(session) {
+      const state = session.state;
+      const end = state.history.at(-1);
+      if (state.phase !== "ended" || end?.type !== "ended" || end.reason === "abandoned" || state.scores === null) return null;
+      const total = new Map(state.scores.map((line) => [line.player, line.total]));
+      const least = Math.min(0, ...total.values());
+      const each = (unit: { members: number[] }): number => unit.members.reduce((sum, id) => sum + (total.get(id) ?? least), 0) / unit.members.length;
+      const places = placesByMost(state.units, each);
+      return session.players.map((seat) => ({ token: seat.token, place: places[unitOf(state, seat.id)] ?? state.units.length }));
     },
 
     holdsPlace: (session, token) => {

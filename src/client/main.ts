@@ -141,6 +141,7 @@ const menuPing = el<HTMLElement>("menu-ping");
 const soundButton = el<HTMLButtonElement>("sound");
 const swapButton = el<HTMLButtonElement>("swap");
 const swapSheet = el<HTMLElement>("swap-sheet");
+const swapKnockout = el<HTMLButtonElement>("swap-knockout");
 const quickSheet = el<HTMLElement>("quick-sheet");
 const quickWords = el<HTMLElement>("quick-words");
 const chatToButton = el<HTMLButtonElement>("chat-to");
@@ -291,6 +292,7 @@ function writeWords(): void {
     ["swap-title", WORDS.swap.title],
     ["swap-hint", WORDS.swap.hint],
     ["swap-close", WORDS.swap.close],
+    ["swap-knockout-help", WORDS.room.knockoutHelp],
     ["seat-host", WORDS.room.seatMenu.host],
     ["seat-kick", WORDS.room.seatMenu.kick],
     ["seat-close", WORDS.room.seatMenu.close],
@@ -451,6 +453,8 @@ let kickArmed = false;
 let seatFromRow: number | null = null;
 /** The slots of players the room said the host sent out, until the room is next sent without them. */
 const sentOut = new Set<number>();
+/** Whether the room has just said who won its 탈락전: the lobby after it, with everyone in again, needs no line of its own. */
+let wonJust = false;
 /** Whether the host has pressed start and the game is not on the screen yet. */
 let startAsked = false;
 /** Whether a room is being made: asked for, and not there yet. */
@@ -635,6 +639,11 @@ const chat = createChat(
       if (note.kind === "kicked") return WORDS.room.sentOut(note.nick);
       if (note.kind === "first-time") return WORDS.room.firstTime;
       if (note.kind === "pieces") return WORDS.room.wonPieces(note.nick, note.won, note.all);
+      if (note.kind === "out") return WORDS.room.knockedOut(note.nick);
+      if (note.kind === "champion") return WORDS.room.champion(note.nick);
+      if (note.kind === "knockout-on") return WORDS.room.knockoutTurnedOn;
+      if (note.kind === "knockout-off") return WORDS.room.knockoutTurnedOff;
+      if (note.kind === "knockout-again") return WORDS.room.knockoutAgain;
       if (note.kind === "to-gone") return WORDS.chat.toGone;
       if (note.kind === "to-left") return WORDS.chat.toLeft;
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
@@ -1583,8 +1592,10 @@ function renderStatus(): void {
   // a room put back from what was kept says so until the room itself has spoken: who is here may have changed
   const away = returning ? WORDS.room.returning : online ? null : WORDS.room.offline;
   const listed = asked.listed ?? view.listed;
-  write(away === null ? WORDS.room.status(game, listed, here, view.maxPlayers) : [away]);
-  if (away === null && roomGame.childElementCount === 1 && roomGame.scrollWidth > roomGame.clientWidth) write(WORDS.room.statusTall(game, listed, here, view.maxPlayers));
+  // (a room playing 탈락전 says so here, where everyone in it reads it: the button for it is the host's alone)
+  const knockout = view.knockout === true;
+  write(away === null ? WORDS.room.status(game, listed, here, view.maxPlayers, knockout) : [away]);
+  if (away === null && roomGame.childElementCount === 1 && roomGame.scrollWidth > roomGame.clientWidth) write(WORDS.room.statusTall(game, listed, here, view.maxPlayers, knockout));
   // said aloud to a screen reader when it changes
   status.textContent = away ?? WORDS.room.statusSpoken(here, view.maxPlayers);
 }
@@ -1605,6 +1616,11 @@ function noteComings(before: LobbyView, after: LobbyView): void {
     chat.note({ kind: "game", game: after.game });
     tipRules(after.game);
   }
+  // 탈락전: turned on or off by the host; or everyone is in again with no winner said, because too few were left
+  if (after.knockout === true && before.knockout !== true) chat.note({ kind: "knockout-on" });
+  else if (before.knockout === true && after.knockout !== true) chat.note({ kind: "knockout-off" });
+  else if (after.knockout === true && before.players.some((p) => p.out) && !after.players.some((p) => p.out) && !wonJust) chat.note({ kind: "knockout-again" });
+  wonJust = false;
   // what a game just over paid: said of each player whose pieces in the room have grown (a room from before the ledger tells of none)
   const had = new Map(before.players.map((p) => [p.slot, p.pieces ?? 0]));
   for (const p of after.players) {
@@ -1801,6 +1817,10 @@ function showSwap(shown: boolean): void {
   swapChoices.replaceChildren(...choices);
   swapNote.textContent = choices.some((button) => button.disabled) ? WORDS.swap.tooMany : "";
   swapNote.hidden = swapNote.textContent === "";
+  const knockout = view.knockout === true;
+  swapKnockout.textContent = knockout ? WORDS.room.knockoutOn : WORDS.room.knockoutOff;
+  swapKnockout.setAttribute("aria-pressed", String(knockout));
+  swapKnockout.classList.toggle("primary", knockout);
   const opening = swapSheet.hidden;
   swapSheet.hidden = false;
   if (opening) (choices[GAME_IDS.indexOf(view.game as GameId)] ?? choices[0])?.focus({ preventScroll: true });
@@ -1919,7 +1939,7 @@ function renderRoom(code: string, view: LobbyView): void {
     const player = bySlot.get(slot);
     const row = document.createElement("li");
     const words = player
-      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready, player.pieces ?? 0)
+      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready, player.pieces ?? 0, player.out === true)
       : WORDS.room.emptySeat(slot + 1);
     if (player !== undefined && hosting && slot !== view.you) {
       const pick = document.createElement("button");
@@ -2026,19 +2046,29 @@ function renderRoom(code: string, view: LobbyView): void {
   const broken = [...sizes].find(([, size]) => size !== game.teamSize);
   // A game starts with as many as it takes at least: one, in a game that can be played alone. Teams
   // change nothing in that: one team, or one player, is enough where one player is.
-  const enough = wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
+  // in a room playing 탈락전 the game is for those still in
+  const playing = view.knockout === true ? connected.filter((p) => !p.out) : connected;
+  const enough = wantBots || (playing.length >= game.minPlayers && playing.length <= game.maxPlayers);
   startButton.disabled = !isHost || !enough || startAsked;
   startButton.textContent = startAsked ? WORDS.room.starting : WORDS.room.start;
   startButton.setAttribute("aria-busy", String(startAsked));
-  readyButton.disabled = false;
+  // whoever sits out of the room's 탈락전 has nothing to be ready for (the room does not count them either)
+  const sittingOut = view.knockout === true && mine?.out === true;
+  readyButton.disabled = sittingOut;
   const alone = connected.length === 1 && game.minPlayers === 1;
-  // everyone but the host has said they are ready: the room now waits on its host alone
-  const others = connected.filter((p) => p.slot !== view.host);
+  // everyone but the host who is to play has said they are ready: the room now waits on its host alone
+  const others = playing.filter((p) => p.slot !== view.host);
   const allReady = others.length > 0 && others.every((p) => (p.slot === view.you ? amReady : p.ready));
+  // 탈락전 has put out so many that those left are too few for this game: it goes on with another game
+  const short = playing.length < connected.length && playing.length < game.minPlayers;
   hint = hostAsked
     ? WORDS.room.hostAsked
     : !enough
-      ? WORDS.room.needPlayers(game.minPlayers, connected.length)
+      ? short
+        ? WORDS.room.knockoutShort(game.minPlayers, playing.length)
+        : WORDS.room.needPlayers(game.minPlayers, playing.length)
+      : sittingOut && !isHost
+        ? WORDS.room.knockoutWatching
       : broken !== undefined
         ? WORDS.room.brokenTeam(broken[0], broken[1], game.teamSize)
         : isHost
@@ -2237,6 +2267,18 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     }
     if (message.type === "sent-out") {
       sentOut.add(message.slot);
+      return;
+    }
+    if (message.type === "knocked") {
+      // said of the room as it stands: the lobby that shows it comes after
+      const nickOf = (slot: number): string | undefined => currentView?.players.find((p) => p.slot === slot)?.nick;
+      for (const slot of message.out) {
+        const nick = nickOf(slot);
+        if (nick !== undefined) chat.note({ kind: "out", nick });
+      }
+      const champion = message.champion === null ? undefined : nickOf(message.champion);
+      if (champion !== undefined) chat.note({ kind: "champion", nick: champion });
+      wonJust = message.champion !== null;
       return;
     }
     if (message.type === "chat" || message.type === "quick") {
@@ -2472,6 +2514,8 @@ seatKick.addEventListener("click", () => {
 el<HTMLButtonElement>("seat-close").addEventListener("click", () => showSeatMenu(null));
 swapButton.addEventListener("click", () => showSwap(swapSheet.hidden === true));
 el<HTMLButtonElement>("swap-close").addEventListener("click", () => showSwap(false));
+// the room answers with the lobby, and the sheet, drawn again with it, says what it is now
+swapKnockout.addEventListener("click", () => send({ type: "knockout", on: currentView?.knockout !== true }));
 window.addEventListener("pointerdown", noteInput, true);
 window.addEventListener("keydown", noteInput, true);
 listingButton.addEventListener("click", () => {

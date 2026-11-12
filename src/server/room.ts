@@ -22,16 +22,19 @@ import {
   leaveLobby,
   markAway,
   nextHost,
+  playersIn,
   setGame,
   setListed,
   setReady,
   setTeam,
   setTurnSeconds,
+  setKnockout,
   setVariant,
   slotLapsesAt,
   turnSecondsOf,
   variantOf,
   viewLobby,
+  withOuts,
   withPieces,
   waitingOnHost,
   type LobbyState,
@@ -51,6 +54,8 @@ import {
   type RejectReason,
   type ServerMessage,
 } from "../shared/protocol";
+import knockoutConfig from "../shared/knockout-config.json";
+import { outsOf } from "../shared/knockout";
 import ledgerConfig from "../shared/ledger-config.json";
 import { gainsOf } from "../shared/ledger";
 import roomConfig from "../shared/room-config.json";
@@ -354,7 +359,7 @@ export class GameRoom extends Server<Env> {
     }
     // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
     const sort =
-      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant" || parsed.type === "host" || parsed.type === "kick" || parsed.type === "pick"
+      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant" || parsed.type === "knockout" || parsed.type === "host" || parsed.type === "kick" || parsed.type === "pick"
         ? "setting"
         : parsed.type === "rtc"
           ? "signal"
@@ -376,6 +381,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "quick") this.handleQuick(connection, seat.slot, parsed.word);
     else if (parsed.type === "clock") this.handleClock(connection, seat.slot, parsed.seconds);
     else if (parsed.type === "variant") this.handleVariant(connection, seat.slot, parsed.variant);
+    else if (parsed.type === "knockout") this.handleKnockout(connection, seat.slot, parsed.on);
     else if (parsed.type === "voice") this.handleVoice(connection, seat, parsed.on, parsed.muted);
     else if (parsed.type === "rtc") this.handleRtc(seat, parsed.to, parsed.signal);
     else if (parsed.type === "poke") this.handlePoke();
@@ -718,6 +724,21 @@ export class GameRoom extends Server<Env> {
   }
 
   /**
+   * Turns 탈락전 on or off, if the one asking is the host and no game is
+   * being played: a game is for those who were in when it started.
+   */
+  private handleKnockout(connection: Connection<ConnectionState>, slot: number, on: boolean): void {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
+    if (this.playing()) return this.refuse(connection, "already-playing");
+    const next = setKnockout(lobby, on);
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
+  }
+
+  /**
    * Makes the room one for another game, if the one asking is the host and
    * no game is being played. The end of the last game, kept for those still
    * looking at it, is let go: it is of the game the room had.
@@ -921,11 +942,18 @@ export class GameRoom extends Server<Env> {
     const starter = lobby?.players.find((p) => p.slot === slot);
     if (!lobby || !starter) return;
     const presence = this.presence();
+    // In a room playing 탈락전 the game is for those still in, and the room's host starts it, sitting out or
+    // not. A game takes its start from whoever of its own players came into the room first, who may not be
+    // the room's host here: the room checks the host itself and asks in that player's name.
+    const knockout = lobby.knockout === true;
+    if (knockout && this.hostSlot() !== slot) return this.refuse(connection, "not-host");
+    const seated = playersIn(lobby).filter((p) => presence.connected.has(p.token));
+    const first = [...seated].sort((a, b) => (a.seq ?? a.slot) - (b.seq ?? b.slot))[0];
     const result = this.host().start(
       this.session,
-      lobby.players.filter((p) => presence.connected.has(p.token)),
+      seated,
       {
-        by: starter.token,
+        by: knockout && first !== undefined ? first.token : starter.token,
         bots,
         allowBots: botsAllowed(this.env.ALLOW_BOTS),
         seed: crypto.getRandomValues(new Uint32Array(1))[0],
@@ -1027,6 +1055,18 @@ export class GameRoom extends Server<Env> {
       const paid = next === null ? this.lobby : withPieces(this.lobby, gainsOf(this.host().pieces?.(next), ledgerConfig));
       if (paid !== this.lobby) {
         this.saveLobby(paid);
+        this.broadcastLobby();
+      }
+      // In a room playing 탈락전 the game's last place sits the next games out; everyone is told who, and who
+      // has won the room where one player is left, ahead of the lobby that shows it.
+      // (only those still in the room and in its 탈락전 are ranked: `outsOf`)
+      const stillIn = new Set(playersIn(this.lobby).map((p) => p.token));
+      const knocked = next === null ? null : withOuts(this.lobby, outsOf(this.host().places?.(next), knockoutConfig, stillIn));
+      if (knocked !== null && knocked.out.length > 0) {
+        const told: ServerMessage = { type: "knocked", out: knocked.out, champion: knocked.champion };
+        const text = JSON.stringify(told);
+        for (const [member] of this.members()) member.send(text);
+        this.saveLobby(knocked.state);
         this.broadcastLobby();
       }
     }

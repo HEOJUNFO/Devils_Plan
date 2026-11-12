@@ -41,6 +41,13 @@ describe("parseClientMessage", () => {
     });
   });
 
+  it("reads the host turning 탈락전 on or off, and nothing of one that says neither", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "knockout", on: true }))).toEqual({ type: "knockout", on: true });
+    expect(parseClientMessage(JSON.stringify({ type: "knockout", on: false }))).toEqual({ type: "knockout", on: false });
+    expect(parseClientMessage(JSON.stringify({ type: "knockout", on: "yes" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "knockout" }))).toBeNull();
+  });
+
   it("reads whether the page says it reads a game sent as parts, and takes anything but yes as no", () => {
     expect(parseClientMessage(joinJson({ parts: true }))).toMatchObject({ parts: true });
     expect(parseClientMessage(joinJson({ parts: 1 }))).toMatchObject({ parts: false });
@@ -297,6 +304,15 @@ describe("parseServerMessage", () => {
 
     expect(whole).toEqual(game);
     expect(made).toEqual({ ...game, round: 2, answer: true });
+  });
+
+  it("reads who a game of 탈락전 put out and who has won, and nothing of one that does not say", () => {
+    const told = { type: "knocked", out: [2, 3], champion: null };
+
+    expect(parseServerMessage(JSON.stringify(told))).toEqual(told);
+    expect(parseServerMessage(JSON.stringify({ ...told, champion: 1 }))).toEqual({ ...told, champion: 1 });
+    expect(parseServerMessage(JSON.stringify({ type: "knocked", out: "2", champion: null }))).toBeNull();
+    expect(parseServerMessage(JSON.stringify({ type: "knocked", out: [2] }))).toBeNull();
   });
 
   it("makes nothing of a part of a game with no reader, or with no game before it", () => {

@@ -322,6 +322,18 @@ export const cubesHost: GameHost<CubesSession, CubesHostRefusal> = {
 
   running: (session) => session.state.phase !== "ended",
 
+  /**
+   * In the order the answer was had; those who never had it share the place
+   * after them. A game given up has no places.
+   */
+  places(session) {
+    const state = session.state;
+    const end = state.history.at(-1);
+    if (state.phase !== "ended" || end?.type !== "ended" || end.reason === "abandoned") return null;
+    const order = state.ranked.map((each) => each.player);
+    return session.players.map((seat) => ({ token: seat.token, place: (order.includes(seat.id) ? order.indexOf(seat.id) : order.length) + 1 }));
+  },
+
   holdsPlace: (session, token) => session.players.some((seat) => seat.token === token),
 
   deadline(session) {

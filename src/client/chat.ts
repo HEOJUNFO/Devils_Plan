@@ -31,11 +31,15 @@ export type ChatNote =
   /** The room is for a game this player has not played here: where its rules are. */
   | { kind: "first-time" }
   /** A game played in the room paid someone pieces: how many, and how many they have in the room now. */
-  | { kind: "pieces"; nick: string; won: number; all: number };
+  | { kind: "pieces"; nick: string; won: number; all: number }
+  /** 탈락전: a game put someone out of the room's next games, or left one player in, who has won. */
+  | { kind: "out" | "champion"; nick: string }
+  /** 탈락전: the host turned it on or off, or it starts over because too few were left in. */
+  | { kind: "knockout-on" | "knockout-off" | "knockout-again" };
 
 /** The kinds of note that name a player, and those that do not. */
-const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked"];
-const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time", "to-gone", "to-left"];
+const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked", "out", "champion"];
+const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time", "to-gone", "to-left", "knockout-on", "knockout-off", "knockout-again"];
 
 /** One line as shown: something a player said, or a note from the page itself. */
 interface Line {

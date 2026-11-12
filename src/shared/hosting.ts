@@ -119,6 +119,19 @@ export interface GameHost<S, R extends string = string> {
    * the game ends.
    */
   pieces?(session: S): PieceLine[] | null;
+  /**
+   * How the game ended for each of its players, a bot among them: 1 for
+   * whoever did best, those level sharing a place. `null` while it is being
+   * played, and for a game cut short. A room playing 탈락전 puts the last
+   * place out of its next games (`knockout.ts`).
+   */
+  places?(session: S): PlaceLine[] | null;
+}
+
+/** Where one player of a game ended in it. `token` is `null` for a bot. */
+export interface PlaceLine {
+  token: string | null;
+  place: number;
 }
 
 /** What a game paid one of its players in pieces. `token` is `null` for a bot. */

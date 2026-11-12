@@ -142,6 +142,13 @@ export type ServerMessage =
    */
   | { type: "sent-out"; slot: number }
   /**
+   * A game of 탈락전 just over put the players in the slots of `out` out of
+   * the room's next games; `champion` is the slot of the one player that
+   * left in, who has won, and with whom everyone is in again (`null` while
+   * more are left). Sent to everyone ahead of the lobby that shows it.
+   */
+  | { type: "knocked"; out: number[]; champion: number | null }
+  /**
    * The room is there and has nothing new to say: its answer to a `poke`,
    * sent to everyone, so that pages which have heard nothing for a while know
    * their silence is the game's and not a dead connection's.
@@ -302,6 +309,8 @@ export type ClientMessage =
   | { type: "clock"; seconds: number }
   /** Choose which of the game's variants the games started in this room are played by (`games.json`); only the host may. */
   | { type: "variant"; variant: string }
+  /** Turn 탈락전 on or off for the room (`knockout.ts`); only the host may, and not while a game is being played. */
+  | { type: "knockout"; on: boolean }
   /** Come into the room's voice chat or go out of it, and say whether the microphone is off. */
   | { type: "voice"; on: boolean; muted: boolean }
   /** A signal for the player in slot `to`, who is also in voice: see {@link RtcSignal}. */
@@ -371,6 +380,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "variant") {
     return typeof data.variant === "string" ? { type: "variant", variant: data.variant } : null;
   }
+  if (data.type === "knockout") return typeof data.on === "boolean" ? { type: "knockout", on: data.on } : null;
   if (data.type === "voice") {
     return { type: "voice", on: data.on === true, muted: data.muted === true };
   }
@@ -413,6 +423,7 @@ export function parseServerMessage(raw: unknown, read?: (data: unknown) => unkno
     data.type === "rtc" ||
     data.type === "host-check" ||
     (data.type === "sent-out" && typeof data.slot === "number") ||
+    (data.type === "knocked" && Array.isArray(data.out) && data.out.every((slot) => typeof slot === "number") && (data.champion === null || typeof data.champion === "number")) ||
     data.type === "alive"
   ) {
     return data as ServerMessage;
