@@ -12,6 +12,7 @@
   "hostIdleSeconds": 60,
   "hostAnswerSeconds": 10,
   "maxBarred": 32,
+  "latency": { "fairMs": 200, "poorMs": 500, "keep": 5 },
   "messageLimits": {
     "setting": { "burst": 4, "windowSeconds": 60 },
     "signal": { "burst": 400, "windowSeconds": 10 },

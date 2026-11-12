@@ -1092,6 +1092,37 @@ button.choice[aria-pressed="true"] {
   height: 24px;
 }
 
+/* How long the room takes to answer: small and quiet over the wall at the top left of the room's picture, louder as it gets worse. */
+#ping {
+  position: absolute;
+  left: 4px;
+  top: 3px;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+#ping.fair,
+#menu-ping.fair {
+  color: var(--amber);
+}
+
+#ping.poor,
+#menu-ping.poor {
+  color: var(--crimson);
+}
+
+#ping[hidden],
+#menu-ping[hidden] {
+  display: none;
+}
+
+/* The same in a game's menu, on a line of its own under the buttons. */
+#menu-ping {
+  grid-column: 1 / -1;
+  color: var(--bone-dim);
+  text-align: center;
+}
+
 /* The host's choice of another game for the room: over the middle of the frame, the games two to a row. */
 #swap-sheet {
   position: absolute;

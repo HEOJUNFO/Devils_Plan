@@ -136,6 +136,9 @@ const ko = {
     /** Over the room's code when the page was loaded again and the room has not answered yet. */
     returning: "방으로 돌아오는 중",
     newGame: "새 게임",
+    /** How long the room takes to answer this page, there and back: in a corner of the room's picture, and in a game's menu. */
+    ping: (ms: number) => `연결 ${ms}ms`,
+    pingGrade: { good: "연결 좋음", fair: "연결 보통", poor: "연결 느림" },
     /** On the host's button that opens the choice of another game for the room: short, beside two others. */
     swap: "게임",
     swapHelp: "누르면 이 방에서 할 게임을 바꿉니다",
@@ -393,6 +396,8 @@ const en: typeof ko = {
     offline: "Connection lost. Reconnecting",
     returning: "Returning to the room",
     newGame: "New game",
+    ping: (ms) => `Ping ${ms} ms`,
+    pingGrade: { good: "Good connection", fair: "Fair connection", poor: "Slow connection" },
     swap: "Game",
     swapHelp: "Press to change the game this room plays",
     gameChanged: (game) => `This room now plays ${game}`,

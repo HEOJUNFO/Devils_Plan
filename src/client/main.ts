@@ -15,6 +15,7 @@ import { PartySocket } from "partysocket";
 import { BUILD, outOfDate } from "../shared/build";
 import { quickPicks, roomsShown, type RoomListing } from "../shared/directory";
 import { louder, titleFor, type Call } from "../shared/calling";
+import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
 import {
@@ -126,6 +127,8 @@ const status = el<HTMLElement>("status");
 const players = el<HTMLOListElement>("players");
 const startButton = el<HTMLButtonElement>("start");
 const readyButton = el<HTMLButtonElement>("ready");
+const pingMark = el<HTMLElement>("ping");
+const menuPing = el<HTMLElement>("menu-ping");
 const swapButton = el<HTMLButtonElement>("swap");
 const swapSheet = el<HTMLElement>("swap-sheet");
 const swapChoices = el<HTMLElement>("swap-choices");
@@ -452,6 +455,10 @@ let hint = "";
 let heardAt = Date.now();
 /** What this page knows of whether its connection to the room still lives (`liveness.ts`). */
 let live: Liveness = opened(Date.now());
+/** When the ping not yet answered went, by the page's own clock, or `null` with none on its way. */
+let pingSentAt: number | null = null;
+/** The latest times the room took to answer a ping, there and back, in ms (`latency.ts`). */
+let pingTimes: number[] = [];
 /** Whether the game on show is still being played. */
 let gameOn = false;
 /** During a game: whether the right-hand column shows the chat rather than the moves. */
@@ -520,6 +527,8 @@ function reconnecting(): { minReconnectionDelay: number; reconnectionDelayGrowFa
 function revive(): void {
   if (socket === null) return;
   online = false;
+  pingSentAt = null;
+  renderPing();
   // whatever the game screen had asked for and not heard back about is not coming
   table?.lost();
   chat.lost();
@@ -630,6 +639,7 @@ function openChat(open: boolean): void {
 function openMenu(open: boolean): void {
   const show = open && TOUCH && table !== null;
   gameMenu.hidden = !show;
+  renderPing();
   menuOpen.setAttribute("aria-expanded", String(show));
   if (!show) {
     disarmLeave();
@@ -745,6 +755,8 @@ function showTable(game: GameId): GameScreen {
   }
   if (table === null) {
     tableGame = game;
+    // the game covers the room's picture, and the time in its corner with it
+    pingMark.hidden = true;
     table = CLIENTS[game].screen(tableCanvas, {
       act: (action) => send({ type: "action", action }),
       again: () => send({ type: "start", bots: wantBots }),
@@ -784,6 +796,7 @@ function hideTable(): void {
   table?.destroy();
   table = null;
   waited = false;
+  renderPing();
   tableGame = null;
   crowded = false;
   frame.classList.remove("covered");
@@ -1237,6 +1250,8 @@ function showLobby(message = ""): void {
   hostAsked = false;
   showSeatMenu(null);
   swapSheet.hidden = true;
+  pingSentAt = null;
+  pingTimes = [];
   hideTable();
   chat.close();
   room.hidden = true;
@@ -1370,6 +1385,35 @@ function noteComings(before: LobbyView, after: LobbyView): void {
   if (after.host !== before.host && here(after, before.host) && here(before, after.host)) {
     const host = after.host === null ? undefined : is.get(after.host);
     if (host !== undefined) chat.note({ kind: "host", nick: host });
+  }
+}
+
+/** Pings the room, and notes when: the answer says how long the way there and back is. */
+function pingRoom(): void {
+  if (socket === null || !online) return;
+  socket.send(PING);
+  pingSentAt = performance.now();
+}
+
+/**
+ * Says how long the room takes to answer: in a corner of the room's picture
+ * while it is on show, and in a game's menu. Nothing before the first answer,
+ * and nothing while the connection is down, which is said elsewhere.
+ */
+function renderPing(): void {
+  const ms = online ? shownMs(pingTimes) : null;
+  const latency: LatencyConfig = roomConfig.latency;
+  for (const [mark, seen] of [
+    [pingMark, currentCode !== "" && table === null],
+    [menuPing, !gameMenu.hidden],
+  ] as const) {
+    mark.hidden = ms === null || !seen;
+    if (ms === null) continue;
+    const grade = gradeOf(ms, latency);
+    mark.textContent = WORDS.room.ping(ms);
+    mark.title = WORDS.room.pingGrade[grade];
+    mark.classList.toggle("fair", grade === "fair");
+    mark.classList.toggle("poor", grade === "poor");
   }
 }
 
@@ -1684,6 +1728,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // PartySocket reconnects by itself unless we closed it.
     if (socket !== current) return;
     online = false;
+    // a ping on its way is not coming back, and the next connection is measured anew
+    pingSentAt = null;
+    pingTimes = [];
+    renderPing();
     staleSince ??= Date.now();
     // whatever the game screen had asked for and not heard back about is not coming
     table?.lost();
@@ -1703,7 +1751,15 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     if (socket !== current) return;
     // anything at all from the room says the connection lives, the answer to a ping included
     live = heard(live);
-    if (event.data === PONG) return;
+    if (event.data === PONG) {
+      // A tab behind others is handed its messages late: what it would measure is its own wait, not the line's.
+      if (pingSentAt !== null && document.visibilityState === "visible") {
+        pingTimes = withSample(pingTimes, performance.now() - pingSentAt, roomConfig.latency);
+        renderPing();
+      }
+      pingSentAt = null;
+      return;
+    }
     const message = parseServerMessage(event.data);
     if (message === null) return;
     heardAt = Date.now();
@@ -1720,6 +1776,9 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       returning = false;
       quickRest = null;
       renderRoom(code, message);
+      // the first time is measured as soon as the room is there, not a whole wait for a ping later
+      if (pingTimes.length === 0 && pingSentAt === null) pingRoom();
+      renderPing();
       heardBuild(message.build);
       if (keptTable) {
         // The room's word on its game comes right behind this one. A game put back from what was kept
@@ -2268,7 +2327,7 @@ setInterval(() => {
   if (socket === null || !online) return;
   const looked = look(live, Date.now(), config);
   live = looked.state;
-  if (looked.ping) socket.send(PING);
+  if (looked.ping) pingRoom();
   if (looked.dead) revive();
 }, LOOK_MS);
 
