@@ -11,7 +11,7 @@
  * it before asking. What a choice's two options are is its card, which the
  * room sends when the player may see it: nothing here knows a card before.
  */
-import { effectIn, type Card, type Effect, type EffectKind, type EffectOf } from "../../../shared/games/lay-the-grass/cards";
+import { effectIn, tileWorth, type Card, type Effect, type EffectKind, type EffectOf } from "../../../shared/games/lay-the-grass/cards";
 import {
   CHOICES,
   TILES,
@@ -284,10 +284,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   /** The most cells the player may cut off their tile: what 방어 allows them, or none. */
   const cutMost = (): number => held(me(), "defend")?.cells ?? 0;
   /** What a tile with nowhere to go brings `player`: what their 보험 gives, what their 공격 takes when it fails, or nothing. */
-  const missedBy = (player: number | null): number => {
-    const attack = held(player, "attack");
-    return attack !== null ? -attack.loss : (held(player, "insure")?.points ?? 0);
-  };
+  const missedBy = (player: number | null): number => tileWorth(0, false, held(player, "attack"), held(player, "insure"));
+  /** What a tile of `number` brings `player` once it is laid: its number, several times over for who holds 공격. */
+  const laidWorth = (player: number | null, number: number): number => tileWorth(number, true, held(player, "attack"), held(player, "insure"));
   /** Whether the player may cut cells off their tile: they hold 방어. */
   const defending = (): boolean => cutMost() > 0;
   /**
@@ -1363,12 +1362,13 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const ok = hand !== null && number !== null && fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees });
       // pressed and on its way, the button stays lit and takes no second press
       button(LAY_RECT, WORDS.button.lay, "", pending || (ok && Math.sin(time * 5) > 0), ok && !pending);
-    } else if (view.phase === "place") {
-      pen.txt(WORDS.hand.order(signed(missedBy(mine))), 40, 253, C.boneD);
     } else if (mine !== null && view.failed.includes(mine)) {
       pen.txt(WORDS.hand.failed(signed(missedBy(mine))), 40, 253, C.crim);
     } else if (mine !== null && tile !== undefined && view.placed.some((placement) => placement.player === mine)) {
-      pen.txt(WORDS.hand.scored(tile.number), 40, 253, C.teal);
+      // said as soon as the tile is down, also while the others are still laying theirs
+      pen.txt(WORDS.hand.scored(laidWorth(mine, tile.number)), 40, 253, C.teal);
+    } else if (view.phase === "place") {
+      pen.txt(WORDS.hand.order(signed(missedBy(mine))), 40, 253, C.boneD);
     } else {
       pen.txt(WORDS.hand.worth, 40, 253, C.boneD);
     }

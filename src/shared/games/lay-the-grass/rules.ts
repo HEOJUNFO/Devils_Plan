@@ -28,6 +28,7 @@ import {
   effectIn,
   forAbsent,
   isValidCards,
+  tileWorth,
   type Card,
   type CardsConfig,
   type ChoiceNo,
@@ -1062,7 +1063,7 @@ export function scoreLines(state: GrassState): ScoreLine[] {
     return {
       player: player.id,
       laid: own !== undefined,
-      tile: own !== undefined ? number * (attack?.times ?? 1) : attack !== null ? -attack.loss : (effectOf(state, player.id, "insure")?.points ?? 0),
+      tile: tileWorth(number, own !== undefined, attack, effectOf(state, player.id, "insure")),
       manholes: worth(false),
       flowers: worth(true),
       pair: 0,

@@ -169,6 +169,12 @@ interface LogLine {
   colour: string;
   /** Came after this player's own last move. */
   fresh: boolean;
+  /**
+   * What the bar under the table says while this line is the newest, where
+   * the line alone would not say it: the last line of a sentence that the
+   * log's narrow column breaks in two is half a sentence.
+   */
+  said?: string;
 }
 
 interface Speech {
@@ -904,7 +910,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         // what the player's own credits came to: the swap, or one more step towards it
         add(WORDS.log.putIn(who, event.amount));
         if (event.earned) add(WORDS.log.earnedSwap, C.amber);
-        else for (const line of WORDS.log.stored) add(line, C.boneD);
+        else for (const line of WORDS.log.stored) lines.push({ text: line, colour: C.boneD, fresh, said: WORDS.log.stored.join(" ") });
       } else if (event.type === "swap") {
         add(WORDS.log.swapped(who, LETTERS[event.pair], LETTERS[mod(event.pair + 1, seats())]), C.amber);
       } else if (event.type === "swap-forfeit") {
@@ -1217,8 +1223,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (deal > 0) return [WORDS.prompt.dealing, C.boneD];
     if (fire !== null) return [WORDS.prompt.firing, C.crim];
     if (anim !== null || !settled()) {
-      const lines = logLines();
-      return [lines.length > 0 ? lines[lines.length - 1].text : "", C.boneD];
+      const last = logLines().at(-1);
+      return [last === undefined ? "" : (last.said ?? last.text), C.boneD];
     }
     const waiting = awaited();
     if (waiting === null) return ["", C.boneD];

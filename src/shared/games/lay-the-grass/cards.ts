@@ -339,3 +339,14 @@ export function effectIn<K extends EffectKind>(
   }
   return null;
 }
+
+/**
+ * What a player's tile itself brings them in a park: its `number` when it
+ * was `laid`, as many times over as their 공격 says; when it had nowhere to
+ * go, what their 공격 takes, else what their 보험 gives, else nothing. The
+ * manholes under a tile and the bonuses of other cards are counted apart.
+ */
+export function tileWorth(number: number, laid: boolean, attack: EffectOf<"attack"> | null, insure: EffectOf<"insure"> | null): number {
+  if (laid) return number * (attack?.times ?? 1);
+  return attack !== null ? -attack.loss : (insure?.points ?? 0);
+}

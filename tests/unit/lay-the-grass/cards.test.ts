@@ -14,6 +14,7 @@ import {
   isDeck,
   isValidCards,
   showCards,
+  tileWorth,
   type Card,
   type CardsConfig,
   type Deck,
@@ -823,5 +824,34 @@ describe("잔디 깔기: the room choosing from a card for a player who does not
       { player: state.players[0].id, option: 1, forced: true },
       { player: state.players[1].id, option: 1, forced: true },
     ]);
+  });
+});
+
+describe("잔디 깔기: what a tile itself brings", () => {
+  const attack = { kind: "attack", times: 3, loss: 4 } as const;
+  const insure = { kind: "insure", points: 2 } as const;
+
+  it("is the tile's number for a tile laid", () => {
+    expect(tileWorth(7, true, null, null)).toBe(7);
+  });
+
+  it("is the number as many times over as 공격 says, for who laid holding it", () => {
+    expect(tileWorth(7, true, attack, null)).toBe(21);
+    expect(tileWorth(13, true, { kind: "attack", times: 2, loss: 0 }, null)).toBe(26);
+  });
+
+  it("is nothing for a tile not laid, what 보험 gives for who holds it, and what 공격 takes for who holds that", () => {
+    expect(tileWorth(7, false, null, null)).toBe(0);
+    expect(tileWorth(7, false, null, insure)).toBe(2);
+    expect(tileWorth(7, false, attack, null)).toBe(-4);
+  });
+
+  it("gives nothing of 보험 for a tile that was laid, and takes nothing of 공격's loss", () => {
+    expect(tileWorth(7, true, null, insure)).toBe(7);
+    expect(tileWorth(7, true, attack, insure)).toBe(21);
+  });
+
+  it("takes 공격's loss from who holds 보험 as well: the two are options of one card, and the loss comes first", () => {
+    expect(tileWorth(7, false, attack, insure)).toBe(-4);
   });
 });
