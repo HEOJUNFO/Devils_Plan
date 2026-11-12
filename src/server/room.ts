@@ -52,6 +52,8 @@ const chatConfig: ChatConfig = chatConfigJson;
 const voiceConfig: VoiceConfig = voiceConfigJson;
 /** What the log calls the directory's count of rooms made by each address. */
 const ROOM_COUNT = "ROOM_COUNT";
+/** `readyState` of a WebSocket that is open. */
+const SOCKET_OPEN = 1;
 
 /**
  * What a connection remembers about itself. Stored in the WebSocket
@@ -64,8 +66,10 @@ type ConnectionState =
    * how many messages it has sent that were not a `join`, and `from` the
    * network address it connected from, where the platform says one: kept
    * only until it joins, for the limit on making rooms, and never sent.
+   * `joining` is set once its `join` is being dealt with: that can wait on
+   * the directory, and a second `join` sent in the wait is not read.
    */
-  | { kind: "pending"; since: number; strays: number; from: string | null }
+  | { kind: "pending"; since: number; strays: number; from: string | null; joining?: true }
   | Seat
   /**
    * Ended by the room: it left, was refused, or stopped answering. The socket
@@ -133,6 +137,8 @@ export class GameRoom extends Server<Env> {
 
   /** The lobby, or `null` when no room with this code has been created. */
   private lobby: LobbyState | null = null;
+  /** How many requests to make this room are waiting on the directory's count at this moment. Never kept: nothing sleeps through a wait. */
+  private making = 0;
 
   /**
    * The game being played or just finished, as its host gave it to keep, or
@@ -254,8 +260,8 @@ export class GameRoom extends Server<Env> {
     if (connection.state?.kind === "gone") return;
     const parsed = parseClientMessage(message);
     const pending = connection.state?.kind === "pending" ? connection.state : null;
-    if (pending !== null && parsed?.type !== "join") {
-      // It is nobody yet and may only join. What else it sends makes the room do no work, and
+    if (pending !== null && (parsed?.type !== "join" || pending.joining === true)) {
+      // It is nobody yet and may only join, once. What else it sends makes the room do no work, and
       // a connection that goes on sending is not a page of ours: it is closed.
       if (pending.strays >= config.maxStrayMessages) this.end(connection, CLOSE_REJECTED, "join-first");
       else connection.setState({ ...pending, strays: pending.strays + 1 });
@@ -266,6 +272,8 @@ export class GameRoom extends Server<Env> {
     // Whatever was asked is answered as things really stand: without those who have gone silent.
     await this.sweep(Date.now());
     if (pending !== null && parsed.type === "join") {
+      // noted before anything is waited for: the connection is one player's or nobody's, never two
+      connection.setState({ ...pending, joining: true });
       await this.handleJoin(connection, parsed, pending.from);
       return;
     }
@@ -431,18 +439,31 @@ export class GameRoom extends Server<Env> {
     let made = false;
     if (lobby === null && !request.create) {
       this.reject(connection, "not-found");
-      // Asking after a room that does not exist leaves nothing behind.
-      if (this.connectedSlots().size === 0) await this.forget();
+      // Asking after a room that does not exist leaves nothing behind, unless the room is being made at this moment.
+      if (this.connectedSlots().size === 0 && this.making === 0) await this.forget();
       return;
     }
     if (request.create && free(lobby)) {
-      const may = await this.mayMake(from);
-      // The count was waited for, and someone else may have made the room in that wait: it is read again.
+      let may: boolean;
+      this.making++;
+      try {
+        may = await this.mayMake(from);
+      } finally {
+        this.making--;
+      }
+      // The count was waited for, and in that wait other things came to the room. The connection
+      // may have closed, and nobody is seated on one that has.
+      if (connection.state?.kind !== "pending" || connection.readyState !== SOCKET_OPEN) {
+        if (this.lobby === null && this.connectedSlots().size === 0 && this.making === 0) await this.forget();
+        return;
+      }
+      // Someone else may have made the room, or asked after it and left nothing behind: both are read again.
+      this.openStorage();
       lobby = this.lobby;
       if (free(lobby)) {
         if (!may) {
           this.reject(connection, "code-taken");
-          if (lobby === null && this.connectedSlots().size === 0) await this.forget();
+          if (lobby === null && this.connectedSlots().size === 0 && this.making === 0) await this.forget();
           return;
         }
         const kept = lobby !== null;

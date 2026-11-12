@@ -540,6 +540,42 @@ describe("GameRoom", () => {
     other.close();
   });
 
+  it("takes one request to join from a connection, and reads no second one sent while the first waits", async () => {
+    const client = await connect("LMTAL", "", "203.0.113.60");
+    client.send({ type: "join", token: tokenFor(0), nick: "first", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+    client.send({ type: "join", token: tokenFor(1), nick: "second", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+
+    const answer = await client.next();
+    const guest = await open("LMTAL", { player: 2 });
+    const seen = await guest.next();
+
+    // the connection is the first player's, and still is: the room has one maker, here, and no player without a connection
+    expect(answer).toMatchObject({ type: "lobby", you: 0, players: [{ slot: 0, nick: "first", connected: true }] });
+    expect(seen).toMatchObject({ type: "lobby", you: 1, players: [{ nick: "first", connected: true }, { nick: "p2", connected: true }] });
+    client.close();
+    guest.close();
+  });
+
+  it("makes the room for its maker though someone asks after the same code, not yet there, while it is being made", async () => {
+    const [maker, asking] = await Promise.all([connect("LMTAM", "", "203.0.113.61"), connect("LMTAM", "", "203.0.113.62")]);
+    maker.send({ type: "join", token: tokenFor(0), nick: "maker", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+    asking.send({ type: "join", token: tokenFor(1), nick: "asking", create: false, game: DEFAULT_GAME, listed: false, pings: false });
+
+    const made = await maker.next();
+    const guest = await open("LMTAM", { player: 2 });
+    const seen = await guest.next();
+    const kept = await runInDurableObject(env.GameRoom.get(env.GameRoom.idFromName("LMTAM")), (_object, state) =>
+      state.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM room_state").one().n,
+    );
+
+    // the one who asked too soon wiped nothing: the room is its maker's, and it is kept
+    expect(made).toMatchObject({ type: "lobby", you: 0 });
+    expect(seen).toMatchObject({ type: "lobby", you: 1 });
+    expect(kept).toBeGreaterThan(0);
+    maker.close();
+    guest.close();
+  });
+
   it("makes a room for a connection with no address: the limit is a guard, and a test or the Worker itself has none", async () => {
     expect(await roomsMadeFrom(undefined, "LY", MAKE_SOON.burst + 2)).toBe(MAKE_SOON.burst + 2);
   });
