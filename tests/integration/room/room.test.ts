@@ -383,6 +383,22 @@ describe("GameRoom", () => {
     watcher.close();
   });
 
+  it("writes to the log that a room was made, with its game and nothing that names the room or its maker", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    const a = await open("LMTAJ", { player: 0, nick: "maker", create: true, listed: true });
+    await a.next();
+    const b = await open("LMTAJ", { player: 1 });
+    await b.next();
+
+    const lines = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("room made"));
+    said.mockRestore();
+    // made once: the second player came into a room that was there
+    expect(lines).toEqual([`room made: ${DEFAULT_GAME} listed`]);
+    a.close();
+    b.close();
+  });
+
   it("takes a join from a connection that sent a thing or two first", async () => {
     const a = await connect("LMTAA");
     for (let n = 0; n < roomConfig.maxStrayMessages; n++) a.send({ type: "poke" });

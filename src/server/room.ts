@@ -423,6 +423,7 @@ export class GameRoom extends Server<Env> {
     if (!isValidRoomCode(this.name, config)) return this.reject(connection, "bad-room");
 
     let lobby = this.lobby;
+    let made = false;
     if (lobby === null) {
       if (!request.create || !(await this.mayMake(from))) {
         this.reject(connection, request.create ? "code-taken" : "not-found");
@@ -431,11 +432,13 @@ export class GameRoom extends Server<Env> {
         return;
       }
       lobby = createLobby(request.game, request.listed, config);
+      made = true;
     } else if (request.create && lobby.players.length === 0) {
       if (!(await this.mayMake(from))) return this.reject(connection, "code-taken");
       // Everybody who was here has gone and the room was only being kept for
       // them: it is made again, as its new maker asks.
       lobby = createLobby(request.game, request.listed, config);
+      made = true;
       await this.commitSession(null);
     } else if (request.create && !findPlayer(lobby, request.token)) {
       // A reconnect repeats the original request, so the room's own members
@@ -458,6 +461,8 @@ export class GameRoom extends Server<Env> {
 
     // The lobby first: a connection is a player's only while the lobby says the slot is that player's.
     this.saveLobby(result.state);
+    // For the log, which is all that counts rooms: which game, and whether on the list. Never the code or a name.
+    if (made) console.log(`room made: ${result.state.game} ${result.state.listed ? "listed" : "unlisted"}`);
     connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings });
     // Also notes anyone whose connection ended without the room being told.
     this.saveLobby(markAway(result.state, this.connectedSlots(), now));
