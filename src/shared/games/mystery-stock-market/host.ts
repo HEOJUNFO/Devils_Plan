@@ -26,6 +26,7 @@ import {
   parseAction,
   priceOf,
   shiftClock,
+  standingsOf,
   viewFor,
   type MarketConfig,
   type MarketMove,
@@ -317,6 +318,20 @@ export const marketHost: GameHost<MarketSession, MarketHostRefusal> = {
   },
 
   running: (session) => session.state.phase !== "ended",
+
+  /**
+   * The show pays by what a player ends with: a piece from each of the
+   * amounts of `awards` their assets reach (`design/games/mystery-stock-market.md`,
+   * rule 11). The mark of the prize above them is not a piece. A game that
+   * did not play its rounds out pays nothing.
+   */
+  pieces(session) {
+    const state = session.state;
+    const end = state.history.at(-1);
+    if (state.phase !== "ended" || end?.type !== "ended" || end.reason !== "rounds") return null;
+    const assets = new Map(standingsOf(state).map((each) => [each.player, each.assets]));
+    return session.players.map((seat) => ({ token: seat.token, pieces: config.awards.filter((from) => (assets.get(seat.id) ?? 0) >= from).length }));
+  },
 
   holdsPlace: (session, token) => session.players.some((seat) => seat.token === token),
 

@@ -455,6 +455,19 @@ export function rectanglesHostFor(config: RectConfig): GameHost<RectSession, Rec
 
     running: (session) => session.state.phase !== "ended",
 
+    /**
+     * The show's card of the third choice pays the winner of the added
+     * contest three pieces (`design/games/count-rectangles.md`): they are on
+     * the lines of the score. A game given up, or one with no score, pays nothing.
+     */
+    pieces(session) {
+      const state = session.state;
+      const end = state.history.at(-1);
+      if (state.phase !== "ended" || end?.type !== "ended" || end.reason === "abandoned" || state.scores === null) return null;
+      const won = new Map(state.scores.map((line) => [line.player, line.pieces]));
+      return session.players.map((seat) => ({ token: seat.token, pieces: won.get(seat.id) ?? 0 }));
+    },
+
     holdsPlace: (session, token) => {
       const player = session.players.find((seat) => seat.token === token);
       return player !== undefined && unitOf(session.state, player.id) >= 0;

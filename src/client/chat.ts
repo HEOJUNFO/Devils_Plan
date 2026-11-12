@@ -29,7 +29,9 @@ export type ChatNote =
   /** The one player a line was said to is not in the room: the line was not passed on (`to-gone`), or they left while they were the one being spoken to (`to-left`). */
   | { kind: "to-gone" | "to-left" }
   /** The room is for a game this player has not played here: where its rules are. */
-  | { kind: "first-time" };
+  | { kind: "first-time" }
+  /** A game played in the room paid someone pieces: how many, and how many they have in the room now. */
+  | { kind: "pieces"; nick: string; won: number; all: number };
 
 /** The kinds of note that name a player, and those that do not. */
 const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked"];
@@ -57,8 +59,9 @@ function isLine(value: unknown): value is Line {
   if (typeof line.text === "string") return true;
   if (line.quick !== undefined) return isQuickWord(line.quick) && typeof line.who === "string";
   if (typeof line.note !== "object" || line.note === null) return false;
-  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown };
+  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown; won?: unknown; all?: unknown };
   if (note.kind === "game") return typeof note.game === "string";
+  if (note.kind === "pieces") return typeof note.nick === "string" && typeof note.won === "number" && typeof note.all === "number";
   return typeof note.kind === "string" && (PLAIN_NOTES.includes(note.kind) || (NAMED_NOTES.includes(note.kind) && typeof note.nick === "string"));
 }
 

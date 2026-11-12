@@ -111,4 +111,18 @@ export interface GameHost<S, R extends string = string> {
   same(current: S, next: S): boolean;
   /** Whether something read back from storage is a game this code can carry on with. */
   usable(stored: unknown): boolean;
+  /**
+   * What the game paid its players in pieces (피스), one line for each
+   * player of it, a bot among them: `null` while it is being played, and for
+   * a game cut short. Only a game the show's documents give a payout for has
+   * this; the room adds what it says to its ledger (`ledger.ts`) once, when
+   * the game ends.
+   */
+  pieces?(session: S): PieceLine[] | null;
+}
+
+/** What a game paid one of its players in pieces. `token` is `null` for a bot. */
+export interface PieceLine {
+  token: string | null;
+  pieces: number;
 }

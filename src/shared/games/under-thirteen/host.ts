@@ -27,6 +27,7 @@ import {
   moveOn,
   parseAction,
   shiftClock,
+  standingsOf,
   turnOf,
   viewFor,
   type UnderAction,
@@ -41,6 +42,8 @@ import {
 export interface UnderHostConfig {
   /** Seconds a game stands still, with none of its players connected, before it is ended. */
   standSeconds: number;
+  /** The pieces whoever is first is paid: the show's four, shared out among those level in first place. */
+  firstPieces: number;
 }
 
 /**
@@ -322,6 +325,20 @@ export const underHost: GameHost<UnderSession, UnderHostRefusal> = {
   },
 
   running: (session) => session.state.phase !== "ended",
+
+  /**
+   * The show pays first place four pieces, shared out evenly where several
+   * are first, and what is left over goes to nobody (`design/games/under-thirteen.md`,
+   * "Rules as shown"). A game that did not play its rounds out pays nothing.
+   */
+  pieces(session) {
+    const state = session.state;
+    const end = state.history.at(-1);
+    if (state.phase !== "ended" || end?.type !== "ended" || end.reason !== "rounds") return null;
+    const first = new Set(standingsOf(state).filter((each) => each.place === 1).map((each) => each.player));
+    const each = first.size === 0 ? 0 : Math.floor(hosting.firstPieces / first.size);
+    return session.players.map((seat) => ({ token: seat.token, pieces: first.has(seat.id) ? each : 0 }));
+  },
 
   holdsPlace: (session, token) => session.players.some((seat) => seat.token === token),
 

@@ -177,6 +177,11 @@ export interface LobbyPlayer {
    * the host does not say so, the host starts.
    */
   ready?: true;
+  /**
+   * The pieces (피스) the player has won in the games played in this room
+   * (`ledger.ts`); absent for none. They go with the player who leaves.
+   */
+  pieces?: number;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -218,6 +223,8 @@ export interface PublicPlayer {
   leads: boolean;
   /** Whether they have said they are ready for the next game. Never so for the host, nor for a player who is away. */
   ready: boolean;
+  /** The pieces they have won in the games played in this room. */
+  pieces: number;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -464,6 +471,17 @@ export function leaveLobby(state: LobbyState, token: string): LobbyState {
 }
 
 /**
+ * Adds to each player's pieces what `gains` has for their token: what a game
+ * just over paid them (`gainsOf` of `ledger.ts`). A token that is no longer
+ * in the room gains nothing. Returns the state unchanged when nobody gains.
+ * The input state is not modified.
+ */
+export function withPieces(state: LobbyState, gains: ReadonlyMap<string, number>): LobbyState {
+  if (!state.players.some((p) => (gains.get(p.token) ?? 0) > 0)) return state;
+  return { ...state, players: state.players.map((p) => ((gains.get(p.token) ?? 0) > 0 ? { ...p, pieces: (p.pieces ?? 0) + (gains.get(p.token) ?? 0) } : p)) };
+}
+
+/**
  * Notes when each player without a connection went away: `now` for one not
  * noted yet, and nothing for a player who is connected. Returns the state
  * unchanged when there is nothing to note. The input state is not modified.
@@ -676,6 +694,7 @@ export function viewLobby(
       team: p.team ?? 0,
       leads: leaders.has(p.slot),
       ready: p.ready === true && p !== host && connectedSlots.has(p.slot),
+      pieces: p.pieces ?? 0,
     })),
   };
 }

@@ -32,6 +32,7 @@ import {
   turnSecondsOf,
   variantOf,
   viewLobby,
+  withPieces,
   waitingOnHost,
   type LobbyState,
   type RoomConfig,
@@ -50,6 +51,8 @@ import {
   type RejectReason,
   type ServerMessage,
 } from "../shared/protocol";
+import ledgerConfig from "../shared/ledger-config.json";
+import { gainsOf } from "../shared/ledger";
 import roomConfig from "../shared/room-config.json";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
 import voiceConfigJson from "../shared/voice-config.json";
@@ -1020,6 +1023,12 @@ export class GameRoom extends Server<Env> {
       const minutes = tally.began === null ? null : Math.max(0, Math.round((Date.now() - tally.began) / 60_000));
       console.log(`game ended: ${gameOf(this.lobby)}${minutes === null ? "" : ` ${minutes} min`}`);
       if (tally.began !== null) this.save(TALLY_KEY, { ...tally, began: null } satisfies Tally);
+      // What the game paid in pieces goes on the room's ledger: here, the one place a game ends, so once.
+      const paid = next === null ? this.lobby : withPieces(this.lobby, gainsOf(this.host().pieces?.(next), ledgerConfig));
+      if (paid !== this.lobby) {
+        this.saveLobby(paid);
+        this.broadcastLobby();
+      }
     }
     if (wasPlaying !== this.playing()) {
       // A game starting or ending changes how the room is listed, and whose

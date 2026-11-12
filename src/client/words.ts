@@ -174,8 +174,10 @@ const ko = {
     /** On the button of everyone but the host: said once, taken back with the same button. */
     ready: "준비",
     unready: "준비 취소",
-    seat: (seat: number, nick: string, me: boolean, connected: boolean, ready: boolean) =>
-      `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? (ready ? "준비" : "접속") : "끊김"}`,
+    seat: (seat: number, nick: string, me: boolean, connected: boolean, ready: boolean, pieces: number) =>
+      `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? (ready ? "준비" : "접속") : "끊김"}${pieces > 0 ? `, 피스 ${pieces}개` : ""}`,
+    /** In the chat when a game played in the room paid someone pieces: how many, and how many they have in this room now. */
+    wonPieces: (nick: string, won: number, all: number) => `${nick} 피스 +${won} (이 방에서 ${all}개)`,
     emptySeat: (seat: number) => `${seat}번 빈 자리`,
     came: (nick: string) => `${nick} 님이 들어왔습니다`,
     went: (nick: string) => `${nick} 님이 나갔습니다`,
@@ -486,7 +488,9 @@ const en: typeof ko = {
     gameChanged: (game) => `This room now plays ${game}`,
     ready: "Ready",
     unready: "Not ready",
-    seat: (seat, nick, me, connected, ready) => `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}`,
+    seat: (seat, nick, me, connected, ready, pieces) =>
+      `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}${pieces > 0 ? `, ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}`,
+    wonPieces: (nick, won, all) => `${nick}: +${won} ${won === 1 ? "Piece" : "Pieces"} (${all} in this room)`,
     emptySeat: (seat) => `Seat ${seat}, empty`,
     came: (nick) => `${nick} came in`,
     went: (nick) => `${nick} left`,

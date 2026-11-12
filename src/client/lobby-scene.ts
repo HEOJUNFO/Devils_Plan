@@ -72,6 +72,9 @@ const HOST_MARK_EDGE = 2;
 const HOST_MARK_GAP = 3;
 /** The mark of a player who is ready, a tick: how wide it is with the gap before it. */
 const READY_MARK_W = 10;
+/** The room before the mark of a player's pieces, and the mark with that room and the one before its number. */
+const PIECE_MARK_GAP = 3;
+const PIECE_MARK_W = PIECE_MARK_GAP + 6;
 /** A figure as a press finds it: how far to each side of its middle, and how far over and under its shoulders. */
 const FIGURE_REACH = { side: 14, over: 22, under: 14 };
 /** How far the lamp's light reaches over the rows of chairs, against 1 over a table: nobody sits in the dark. */
@@ -185,7 +188,9 @@ export function createLobbyScene(
       if (!player) continue;
       const lead = place.slot === host;
       // after the name: the host's mark, or the tick of someone ready (the host is never that: the host starts)
-      const after = lead ? HOST_MARK_W : player.ready ? READY_MARK_W : 0;
+      // last of all: the pieces they have won in this room, where they have any
+      const pieces = player.pieces > 0 ? PIECE_MARK_W + pen.width(String(player.pieces)) : 0;
+      const after = (lead ? HOST_MARK_W : player.ready ? READY_MARK_W : 0) + pieces;
       const y = place.at.label.y;
       drawn.push({
         slot: place.slot,
@@ -204,8 +209,9 @@ export function createLobbyScene(
         const x = place.at.label.x - Math.round((width - (mark !== "out" ? VOICE_MARK_W : 0)) / 2);
         pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
         if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
-        if (lead) drawHostMark(x + width - (HOST_MARK_W - HOST_MARK_GAP), y);
-        else if (player.ready) drawReadyMark(x + width - (READY_MARK_W - HOST_MARK_GAP), y);
+        if (lead) drawHostMark(x + width - pieces - (HOST_MARK_W - HOST_MARK_GAP), y);
+        else if (player.ready) drawReadyMark(x + width - pieces - (READY_MARK_W - HOST_MARK_GAP), y);
+        if (pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
         drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
         const beside = place.at.y - 6;
         if (!player.connected) pen.txt(WORDS.scene.offline, place.at.x + 15, beside, C.dim);
@@ -218,8 +224,9 @@ export function createLobbyScene(
       pen.txt(name, x, y, !player.connected ? C.dim : place.slot === me ? C.amber : C.bone);
       const mark = voice(place.slot);
       if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
-      if (lead) drawHostMark(x + width - (HOST_MARK_W - HOST_MARK_GAP), y);
-      else if (player.ready) drawReadyMark(x + width - (READY_MARK_W - HOST_MARK_GAP), y);
+      if (lead) drawHostMark(x + width - pieces - (HOST_MARK_W - HOST_MARK_GAP), y);
+      else if (player.ready) drawReadyMark(x + width - pieces - (READY_MARK_W - HOST_MARK_GAP), y);
+      if (pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
       drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
       if (!player.connected) pen.txt(WORDS.scene.offline, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
       else if (player.team > 0) {
@@ -262,6 +269,14 @@ export function createLobbyScene(
   }
 
   /** The mark of a player who is ready for the next game, a tick: its top left at `x`, `y` of the name's line. */
+  /** The pieces a player has won in this room: a small piece of the show's kind, a lozenge, and how many. */
+  function drawPieces(x: number, y: number, pieces: number): void {
+    const left = x + PIECE_MARK_GAP;
+    // five rows, widest in the middle
+    [1, 3, 5, 3, 1].forEach((w, row) => pen.px(left + (5 - w) / 2, y + 4 + row, w, 1, C.amber));
+    pen.txt(String(pieces), left + 6, y, C.amber);
+  }
+
   function drawReadyMark(x: number, y: number): void {
     // two strokes, each two pixels tall: down to the right, then up
     const strokes = [

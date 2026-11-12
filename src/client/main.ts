@@ -628,6 +628,7 @@ const chat = createChat(
       if (note.kind === "went") return WORDS.room.went(note.nick);
       if (note.kind === "kicked") return WORDS.room.sentOut(note.nick);
       if (note.kind === "first-time") return WORDS.room.firstTime;
+      if (note.kind === "pieces") return WORDS.room.wonPieces(note.nick, note.won, note.all);
       if (note.kind === "to-gone") return WORDS.chat.toGone;
       if (note.kind === "to-left") return WORDS.chat.toLeft;
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
@@ -1597,6 +1598,12 @@ function noteComings(before: LobbyView, after: LobbyView): void {
     chat.note({ kind: "game", game: after.game });
     tipRules(after.game);
   }
+  // what a game just over paid: said of each player whose pieces in the room have grown (a room from before the ledger tells of none)
+  const had = new Map(before.players.map((p) => [p.slot, p.pieces ?? 0]));
+  for (const p of after.players) {
+    const won = (p.pieces ?? 0) - (had.get(p.slot) ?? p.pieces ?? 0);
+    if (won > 0) chat.note({ kind: "pieces", nick: p.nick, won, all: p.pieces });
+  }
   // The room has another host with both of them here before and after: it was passed on, by the host or by the
   // room for a host who did not answer. Not said when a host's connection drops and comes back: the room goes
   // to the next player and returns by itself, and a line for each way would fill the chat of a room on a bad line.
@@ -1885,7 +1892,7 @@ function renderRoom(code: string, view: LobbyView): void {
     const player = bySlot.get(slot);
     const row = document.createElement("li");
     const words = player
-      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready)
+      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready, player.pieces ?? 0)
       : WORDS.room.emptySeat(slot + 1);
     if (player !== undefined && hosting && slot !== view.you) {
       const pick = document.createElement("button");
