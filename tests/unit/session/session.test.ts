@@ -34,8 +34,10 @@ const WATCHER = "token-of-a-watcher";
 /** The smallest and the largest table offered. */
 const SMALLEST = Math.min(...Object.keys(SIZES).map(Number));
 const LARGEST = Math.max(...Object.keys(SIZES).map(Number));
-/** The cheapest move there is: one credit towards the swap. */
-const WAIT: Action = { type: "tamper", amount: 1 };
+/** A move that costs one credit and leaves everything else as it was: a look the whole table sees. */
+const WAIT: Action = { type: "public", pair: 0 };
+/** One credit towards the swap. */
+const ONE: Action = { type: "tamper", amount: 1 };
 
 /** The token of fixture player `n`. */
 function tokenOf(n: number): string {
@@ -291,7 +293,7 @@ describe("the away clock", () => {
     expect(back.deadline).toBeNull();
   });
 
-  it("makes the move itself once the time has run out, and tells the table it was forced", () => {
+  it("lets the turn go by once the time has run out, at the price of such a turn, and shows the table whose time it was", () => {
     const players = candidates(SMALLEST);
     const session = started();
     const seat = awaited(session);
@@ -301,8 +303,9 @@ describe("the away clock", () => {
 
     const next = sessionTimeout(away, presence, T0 + AWAY_MS, CONFIG);
 
-    expect(next.state.history.at(-1)).toMatchObject({ type: "tamper", seat, amount: 1, forced: true });
+    expect(next.state.history.at(-1)).toMatchObject({ type: "timeout", seat, cost: RULES.costTimeout });
     expect(awaited(next)).not.toBe(seat);
+    expect(sessionSnapshot(next, tokenOf((mover + 1) % SMALLEST), presence, T0 + AWAY_MS).view.history.at(-1)).toEqual({ type: "timeout", seat, cost: null, ended: false });
   });
 
   it("does nothing before the time is up, however often it is asked", () => {
@@ -335,7 +338,7 @@ describe("the away clock", () => {
 
     expect(firstForced).toBe(1);
     expect(session.tokens[awaited(next)]).not.toBe(tokenOf(leaver));
-    expect(next.state.history.filter((event) => event.seat === seat && event.type === "tamper" && event.forced)).toHaveLength(2);
+    expect(next.state.history.filter((event) => event.seat === seat && event.type === "timeout")).toHaveLength(2);
   });
 
   it("stops every clock while nobody at all is connected", () => {
@@ -511,6 +514,77 @@ describe("a limit on a turn", () => {
   });
 });
 
+describe("a swap being made", () => {
+  const TURN_SECONDS = 60;
+  const TIMED: SessionConfig = { ...CONFIG, rules: { ...RULES, turnSeconds: TURN_SECONDS } };
+  const TURN_MS = TURN_SECONDS * 1000;
+  const players = candidates(SMALLEST);
+
+  /** A game just started in which the table is one credit short of a swap. */
+  function oneShort(): Session {
+    const session = started(SMALLEST, TIMED);
+    return { ...session, state: { ...session.state, pot: session.rules.tamperNeed - 1 } };
+  }
+
+  it("goes on within the time of the turn that earned it: the clock does not start again", () => {
+    const session = oneShort();
+    const mover = playerIn(session, awaited(session));
+
+    const result = sessionAction(session, tokenOf(mover), ONE, presenceOf(players), T0 + 5000, TIMED);
+
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.session.state.phase).toBe("swap");
+    expect(result.session.turnStartedAt).toBe(T0);
+    expect(result.session.deadline).toBe(T0 + TURN_MS);
+  });
+
+  it("shows on nobody else's screen until it is made: not a move, not a clock, not a seat's credits", () => {
+    const session = oneShort();
+    const seat = awaited(session);
+    const mover = playerIn(session, seat);
+    const presence = presenceOf(players);
+
+    const result = sessionAction(session, tokenOf(mover), ONE, presence, T0 + 5000, TIMED);
+
+    if (!result.ok) throw new Error(result.reason);
+    // as the room compares what it has sent with what it would send: at one fixed moment
+    for (const viewer of [...players.map((p) => p.token).filter((token) => token !== tokenOf(mover)), WATCHER]) {
+      expect(sessionSnapshot(result.session, viewer, presence, T0)).toEqual(sessionSnapshot(session, viewer, presence, T0));
+    }
+    expect(sessionSnapshot(result.session, tokenOf(mover), presence, T0).view.phase).toBe("swap");
+  });
+
+  it("is told to the table as one hidden action when it is made, and the next turn's time starts then", () => {
+    const session = oneShort();
+    const seat = awaited(session);
+    const mover = playerIn(session, seat);
+    const presence = presenceOf(players);
+    const earned = sessionAction(session, tokenOf(mover), ONE, presence, T0 + 5000, TIMED);
+    if (!earned.ok) throw new Error(earned.reason);
+
+    const result = sessionAction(earned.session, tokenOf(mover), { type: "swap", pair: 0 }, presence, T0 + 9000, TIMED);
+
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.session.deadline).toBe(T0 + 9000 + TURN_MS);
+    expect(sessionSnapshot(result.session, WATCHER, presence, T0).view.history).toEqual([{ type: "hidden", seat, ended: false }]);
+  });
+
+  it("is forfeited when the time of the turn runs out, and the table hears of a hidden action all the same", () => {
+    const session = oneShort();
+    const seat = awaited(session);
+    const mover = playerIn(session, seat);
+    const presence = presenceOf(players);
+    const earned = sessionAction(session, tokenOf(mover), ONE, presence, T0 + 5000, TIMED);
+    if (!earned.ok) throw new Error(earned.reason);
+
+    const next = sessionTimeout(earned.session, presence, T0 + TURN_MS, TIMED);
+
+    expect(next.state.history.at(-1)).toMatchObject({ type: "swap-forfeit", seat });
+    expect(next.state.chambers).toEqual(session.state.chambers);
+    expect(sessionSnapshot(next, WATCHER, presence, T0).view.history).toEqual([{ type: "hidden", seat, ended: false }]);
+  });
+});
+
 describe("sessionSnapshot", () => {
   it("sends a player at the table the view of their own seat", () => {
     const players = candidates(SMALLEST);
@@ -527,7 +601,7 @@ describe("sessionSnapshot", () => {
 
     const snapshot = sessionSnapshot(started(), "token-of-a-watcher", presenceOf(players), T0);
 
-    expect(snapshot.view).toMatchObject({ seat: null, credits: null, pot: null });
+    expect(snapshot.view).toMatchObject({ seat: null, credits: null });
   });
 
   it("says who at the table is connected and who has left", () => {

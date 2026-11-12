@@ -100,7 +100,7 @@ const TAU = Math.PI * 2;
 /** Seconds the seats take to fill when a game starts. */
 const DEAL_SECONDS = 1.2;
 /** Seconds each kind of move stays on show. */
-const SHOW = { look: 0.7, rotate1: 0.8, rotate2: 1.05, tamper: 0.56, swap: 1.0, forfeit: 0.5, out: 0.3 };
+const SHOW = { look: 0.7, rotate1: 0.8, rotate2: 1.05, tamper: 0.56, swap: 1.0, forfeit: 0.5, hidden: 0.56, pass: 0.4, out: 0.3 };
 /** With more moves than this waiting, they are shown faster. */
 const HURRY_AFTER = 3;
 const HURRY = 0.4;
@@ -195,7 +195,13 @@ const NO_RECT: [number, number, number, number] = [412, 223, 64, 15];
 const OK_REACH: Reach = [6, 10, 2, 1];
 const NO_REACH: Reach = [2, 10, 4, 1];
 /**
- * While credits are counted out for the pot, the fifth button is three: one
+ * A player with no credits has one thing to do on their turn, and nothing to
+ * take back: the pass has the room of both of those, and their reach.
+ */
+const PASS_RECT: Box = [342, 223, 134, 15];
+const PASS_REACH: Reach = [6, 10, 4, 1];
+/**
+ * While credits are counted out for the swap, the fifth button is three: one
  * fewer, the count itself, which puts them in, and one more. Without them
  * the count could be changed with the arrow keys alone.
  */
@@ -260,7 +266,6 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let speech: Speech[] = [];
   let shake = 0;
   let flick = 0;
-  let beat = 0;
   const lean: [number, number] = [0, 0];
   /** Whether the player could act at the last step; a change to yes is announced. */
   let couldAct = false;
@@ -320,9 +325,13 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   }
 
   function awaited(): number | null {
-    if (latest === null || latest.view.phase === "ended") return null;
-    const view = latest.view;
-    return view.phase === "swap" && view.swapSeat !== null ? view.swapSeat : view.current;
+    // a seat making the swap it has earned is still the seat to move, and only that seat is told it is making one
+    return latest === null || latest.view.phase === "ended" ? null : latest.view.current;
+  }
+
+  /** Whether it is the player's turn and they have no credits: there is nothing to do but pass. */
+  function mustPass(): boolean {
+    return latest !== null && latest.view.phase === "turn" && latest.view.credits === 0;
   }
 
   /** Whether everything the room has sent is on screen and nothing is still playing. */
@@ -339,10 +348,10 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   function hatchInfo(j: number): HatchInfo {
     if (latest === null) return [null, null];
     const view = latest.view;
-    if (view.phase !== "ended") return [view.chambers[j] ?? null, view.source[j] ?? null];
+    if (view.phase !== "ended") return [view.chambers[j] ?? null, view.source[j] ?? null, (view.doubt[j] ?? 0) > 0];
     // During the volley a chamber opens when it is fired; until then it shows what was known going in.
     if (fired || revealed[j] !== null) return [fired ? (view.chambers[j] ?? null) : revealed[j], "public"];
-    return before === null ? [null, null] : [before.chambers[j] ?? null, before.source[j] ?? null];
+    return before === null ? [null, null] : [before.chambers[j] ?? null, before.source[j] ?? null, (before.doubt[j] ?? 0) > 0];
   }
 
   // ---- Effects --------------------------------------------------------------------------
@@ -436,30 +445,33 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   // ---- Showing moves one at a time --------------------------------------------------------
   function beginEvent(event: SeatEvent): void {
     if (latest === null) return;
-    const mine = event.seat === latest.view.seat;
     const waiting = latest.view.history.length - seen;
     let dur = SHOW.look;
-    if (event.type === "public") {
+    // A private look, credits for the swap, a swap and a pass reach this screen only as the player's own:
+    // of anyone else's the room sends a hidden action, which looks and sounds the same whichever it was.
+    if (event.type === "public" || event.type === "private") {
       sfx.look();
       if (event.seen[0] === 1 || event.seen[1] === 1) sfx.live();
       else sfx.empty();
-    } else if (event.type === "private") {
-      sfx.look();
-      if (mine && event.seen !== null) {
-        if (event.seen[0] === 1 || event.seen[1] === 1) sfx.live();
-        else sfx.empty();
-      }
     } else if (event.type === "rotate") {
       dur = event.steps === 2 ? SHOW.rotate2 : SHOW.rotate1;
       sfx.ratchet(event.steps * 3);
     } else if (event.type === "tamper") {
       dur = SHOW.tamper;
       sfx.chip();
-      if (event.earned && mine) sfx.earn();
+      if (event.earned) sfx.earn();
+      else sfx.stored();
     } else if (event.type === "swap") {
       dur = SHOW.swap;
       sfx.swap();
+    } else if (event.type === "hidden") {
+      dur = SHOW.hidden;
+      sfx.hidden();
+    } else if (event.type === "pass") {
+      dur = SHOW.pass;
+      sfx.back();
     } else {
+      // a turn the clock ended, or a swap it took away
       dur = SHOW.forfeit;
       sfx.back();
     }
@@ -638,6 +650,10 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       sel = null;
       return;
     }
+    if (mustPass() && (pressed("Enter", "NumpadEnter", "Space") || clicked(PASS_RECT, PASS_REACH))) {
+      send({ type: "pass" });
+      return;
+    }
 
     let picked: number | null = null;
     for (let i = 0; i < 5; i++) {
@@ -766,15 +782,6 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         ticked = left;
         if (left > 0) sfx.move();
       }
-
-      // one seat from the end: a pulse
-      if (latest.view.phase !== "ended" && latest.view.outCount >= latest.rules.endWhenOut - 1) {
-        beat -= dt;
-        if (beat <= 0) {
-          beat = 1.15;
-          sfx.beat();
-        }
-      }
     }
     stepInput();
     keys.clear();
@@ -791,7 +798,6 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const lines: LogLine[] = [];
     let lastMine = -1;
     for (let i = 0; i < upTo; i++) if (view.history[i].seat === me) lastMine = i;
-    let out = 0;
     for (let i = 0; i < upTo; i++) {
       const event = view.history[i];
       const who = pen.fit(nickOf(event.seat), LOG_NAME_WIDTH);
@@ -804,23 +810,27 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         const a = LETTERS[event.pair];
         const b = LETTERS[mod(event.pair + 1, seats())];
         add(WORDS.log.privateCheck(who, a, b));
-        if (event.seen !== null) add(WORDS.log.onlyYou(a, b, word(event.seen[0]), word(event.seen[1])), C.amber);
+        add(WORDS.log.onlyYou(a, b, word(event.seen[0]), word(event.seen[1])), C.amber);
       } else if (event.type === "rotate") {
         add(WORDS.log.turned(who, event.steps));
       } else if (event.type === "tamper") {
-        if (event.forced) add(WORDS.log.timedOut(who), C.boneD);
-        else add(WORDS.log.putIn(who, event.amount));
-        if (event.earned) add(WORDS.log.earnedSwap(who), C.amber);
+        // what the player's own credits came to: the swap, or one more step towards it
+        add(WORDS.log.putIn(who, event.amount));
+        if (event.earned) add(WORDS.log.earnedSwap, C.amber);
+        else for (const line of WORDS.log.stored) add(line, C.boneD);
       } else if (event.type === "swap") {
         add(WORDS.log.swapped(who, LETTERS[event.pair], LETTERS[mod(event.pair + 1, seats())]), C.amber);
+      } else if (event.type === "swap-forfeit") {
+        add(WORDS.log.lostSwap, C.boneD);
+      } else if (event.type === "pass") {
+        add(WORDS.log.passed(who), C.boneD);
+      } else if (event.type === "timeout") {
+        add(WORDS.log.timedOut(who), C.boneD);
       } else {
-        add(WORDS.log.lostSwap(who), C.boneD);
+        add(WORDS.log.hidden(who));
       }
-      if (event.out) {
-        out++;
-        add(WORDS.log.outOfCredits(who), C.crim);
-        if (out === latest.rules.endWhenOut - 1) add(WORDS.log.oneMore, C.amber);
-      }
+      // only the player's own running dry is told to them
+      if (event.out) add(WORDS.log.outOfCredits(who), C.crim);
       if (event.ended) add(WORDS.log.fire, C.crim);
     }
     if (fire !== null || fired) {
@@ -839,13 +849,15 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const acts = new Array<IconName | null>(seats()).fill(null);
     if (latest === null) return acts;
     const view = latest.view;
-    const upTo = Math.min(view.history.length, seen);
+    // the move being shown has its mark from the start: of a hidden action it is all there is to see
+    const upTo = Math.min(view.history.length, seen + (anim !== null ? 1 : 0));
     let from = 0;
     for (let i = 0; i < upTo; i++) if (view.history[i].seat === view.seat) from = i;
     for (let i = from; i < upTo; i++) {
       const event = view.history[i];
-      if (event.type === "public" || event.type === "private" || event.type === "tamper" || event.type === "swap") acts[event.seat] = event.type;
+      if (event.type === "public" || event.type === "private" || event.type === "tamper" || event.type === "swap" || event.type === "hidden") acts[event.seat] = event.type;
       else if (event.type === "rotate") acts[event.seat] = event.steps === 2 ? "rotate2" : "rotate1";
+      else acts[event.seat] = null;
     }
     return acts;
   }
@@ -904,7 +916,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       if (fallen[seat]) second(WORDS.seat.shot, C.crim);
       else if (deal > 0) {
         // nothing yet
-      } else if (info.out) second(WORDS.seat.spent, C.crim);
+      } else if (info.out === true) second(WORDS.seat.spent, C.crim);
       else if (player.left) second(WORDS.seat.left, C.dim);
       else if (!player.connected) second(WORDS.seat.offline, C.dim);
       else if (!mine) {
@@ -1050,32 +1062,39 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    if (view.credits === null || view.pot === null) {
+    const playing = deal <= 0 && view.phase !== "ended";
+    const mine = myChamber();
+    if (view.credits === null) {
       pen.txt(WORDS.panel.watching, x, 3, C.amber);
       pen.txt(WORDS.panel.noSeat, x, 26, C.boneD);
     } else {
-      // my credits, which only I can see, and my hidden deposit towards the swap
+      // My credits, which only I can see. What the table has gathered for the swap is on nobody's screen.
       pen.txt(WORDS.panel.credits, x, 3, C.boneD);
       pen.txt(`${view.credits}`, x + pen.width(WORDS.panel.credits) + 6, 3, C.amber);
       const pitch = 168 / rules.startCredits;
       const pipWidth = Math.max(1, Math.floor(pitch) - 2);
       for (let i = 0; i < rules.startCredits; i++) pen.px(x + Math.floor(i * pitch), 17, pipWidth, 5, i < view.credits ? C.brass : C.steelDD);
-      pen.txt(WORDS.panel.pot, x, 26, C.boneD);
-      for (let i = 0; i < rules.tamperNeed; i++) pen.px(x + 44 + i * 10, 30, 8, 5, i < view.pot ? C.crim : C.steelDD);
-      pen.txt(`${view.pot}/${rules.tamperNeed}`, W - 5, 26, C.boneD, "right");
-      const mine = myChamber();
-      if (mine !== null && deal <= 0 && view.phase !== "ended") {
+      if (mine !== null && playing) {
         const known = view.chambers[mine];
+        // the chance of a round in a chamber I cannot be sure of, counted from those I can
         let live = rules.bullets;
-        let blank = 0;
-        for (const q of view.chambers) {
-          if (q === 1) live--;
-          else if (q === null) blank++;
-        }
-        const letter = LETTERS[mine];
-        const line = WORDS.panel.mine(letter, known, Math.round((100 * live) / Math.max(1, blank)));
-        pen.txt(line, x, 40, known === 1 ? C.crim : known === 0 ? C.teal : C.bone);
+        let unsure = 0;
+        view.chambers.forEach((q, j) => {
+          if (q === null || view.doubt[j] > 0) unsure++;
+          else if (q === 1) live--;
+        });
+        const line = WORDS.panel.mine(LETTERS[mine], known, Math.round((100 * Math.max(0, live)) / Math.max(1, unsure)), view.doubt[mine] > 0);
+        pen.txt(line, x, 26, known === 1 ? C.crim : known === 0 ? C.teal : C.bone);
       }
+    }
+    if (playing && view.doubt.some((count) => count > 0)) {
+      // A chamber known only as it was: its mark, shut with the colours of what was seen in it, and for
+      // the one in front of me how many hidden actions there have been since.
+      pen.ell(x + 5, 46, 4, 3, C.steelDD);
+      pen.ell(x + 5, 46, 3, 2, C.hatch);
+      pen.px(x + 3, 45, 2, 2, C.crim);
+      pen.px(x + 6, 45, 2, 2, C.teal);
+      pen.txt(WORDS.panel.since(mine !== null && view.credits !== null && view.doubt[mine] > 0 ? view.doubt[mine] : null), x + 13, 40, C.boneD);
     }
     pen.px(x, 55, 168, 1, C.steelDD);
     pen.ell(x + 5, 64, 4, 3, C.bone);
@@ -1088,8 +1107,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.px(x + 93, 63, 1, 3, C.amber);
     pen.txt(WORDS.panel.onlyIKnow, x + 98, 58, C.boneD);
     pen.px(x, 73, 168, 1, C.steelDD);
-    const close = view.phase !== "ended" && view.outCount >= rules.endWhenOut - 1;
-    pen.txt(WORDS.panel.status(view.round + 1, view.outCount, rules.endWhenOut), x, 76, close ? C.crim : C.boneD);
+    // nobody is told how many seats are out of credits: the round is all there is to count
+    pen.txt(WORDS.panel.status(view.round + 1), x, 76, C.boneD);
     // what happened, newest at the bottom; a mark on what came since my last move
     const lines = logLines();
     const from = Math.max(0, lines.length - LOG_ROWS);
@@ -1128,8 +1147,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (pending) return [WORDS.prompt.sending, C.boneD];
     const mine = myChamber() ?? 0;
     if (sel === null) {
-      const known = view.chambers[mine];
-      if (view.outCount >= rules.endWhenOut - 1) return [WORDS.prompt.lastCredits, C.amber];
+      if (mustPass()) return [WORDS.prompt.pass, C.amber];
+      // what a hidden action may have changed since is as good as not known
+      const known = view.doubt[mine] > 0 ? null : view.chambers[mine];
       const myMoves = view.history.filter((event) => event.seat === view.seat).length;
       if (myMoves < 2) {
         // the first turns teach by the next thing to do
@@ -1143,11 +1163,11 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     const pair = `${LETTERS[sel.pair]}·${LETTERS[mod(sel.pair + 1, n)]}`;
     if (sel.mode === "pick") return [WORDS.prompt.pick(sel.act === 0, pair), C.amber];
     if (sel.mode === "swap") return [WORDS.prompt.swap(pair), C.amber];
-    if (sel.mode === "amount") return [WORDS.prompt.amount(sel.amount, view.pot ?? 0, rules.tamperNeed), C.amber];
+    if (sel.mode === "amount") return [WORDS.prompt.amount(sel.amount, rules.tamperNeed), C.amber];
     const steps = sel.act === 2 ? 1 : 2;
     const j = mod(mine - steps, n);
     const known = view.chambers[j];
-    return [WORDS.prompt.turn(steps, LETTERS[j], known), known === 1 ? C.crim : C.amber];
+    return [WORDS.prompt.turn(steps, LETTERS[j], known, view.doubt[j] > 0), known === 1 ? C.crim : C.amber];
   }
 
   function smallButton(rect: readonly [number, number, number, number], label: string, strong: boolean): void {
@@ -1187,6 +1207,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (live && sel !== null) {
       smallButton(OK_RECT, WORDS.button.confirm, true);
       if (sel.mode !== "swap") smallButton(NO_RECT, WORDS.button.cancel, false);
+    } else if (live && mustPass()) {
+      smallButton(PASS_RECT, WORDS.button.pass, true);
     }
     if (view.credits === null) {
       pen.txt(WORDS.prompt.watching, 6, 248, C.boneD);
@@ -1200,7 +1222,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const can = live && view.credits >= prices[i] && !(sel !== null && sel.mode === "swap");
       const on = live && sel !== null && sel.act === i;
       if (on && sel !== null && sel.mode === "amount") {
-        // counting credits out for the pot: one fewer, the count, one more
+        // counting credits out for the swap: one fewer, the count, one more
         const most = Math.min(rules.tamperMaxPerTurn, view.credits);
         const step = (box: Box, sign: string, able: boolean): void => {
           pen.px(box[0], box[1], box[2], box[3], C.steelDD);
@@ -1217,7 +1239,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       pen.px(x, y, w, h, on ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, on ? "#3a2a12" : can && inRect(mouse, rect) ? C.btnH : C.btn);
       pen.txt(`${i + 1} ${names[i]}`, x + 5, y + 2, on ? C.amber : can ? C.bone : C.dim);
-      pen.txt(i < 4 ? WORDS.action.price(prices[i]) : WORDS.action.tamper(rules.tamperMaxPerTurn, view.pot ?? 0, rules.tamperNeed), x + 5, y + 14, can || on ? C.boneD : C.dim);
+      pen.txt(i < 4 ? WORDS.action.price(prices[i]) : WORDS.action.tamper(rules.tamperMaxPerTurn), x + 5, y + 14, can || on ? C.boneD : C.dim);
     }
   }
 

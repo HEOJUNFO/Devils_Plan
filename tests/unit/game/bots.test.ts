@@ -19,6 +19,7 @@ import {
   freshGame,
   gameWithRounds,
   throughJson,
+  withOut,
   withPot,
   withPublic,
 } from "./fixtures";
@@ -28,9 +29,15 @@ function botGame(config: RulesConfig, seed: number): GameState {
   return freshGame(config, seed, Array.from({ length: config.seats }, (_, i) => i));
 }
 
-/** The most moves a game can take: every credit spent one at a time, and a swap after each deposit. */
+/**
+ * More moves than a game can take. Every credit is spent one at a time at the
+ * most, with a swap after each; and in every round at least one seat spends a
+ * credit, so there are no more rounds than credits, each of them a turn for
+ * every seat, passes among them.
+ */
 function longestGame(config: RulesConfig): number {
-  return config.seats * config.startCredits * 2;
+  const credits = config.seats * config.startCredits;
+  return credits * 2 + credits * config.seats;
 }
 
 describe("chooseAction", () => {
@@ -77,8 +84,17 @@ describe("chooseAction", () => {
     expect(action).toEqual({ type: "rotate", steps: 2 });
   });
 
+  it("passes when it has no credits and its turn comes", () => {
+    const state = withOut(freshGame(), [0]);
+
+    const action = chooseAction(viewFor(state, 0, RULES), RULES, BOTS, randomSource(SEED).next);
+
+    expect(action).toEqual({ type: "pass" });
+    expect(applyAction(state, 0, { type: "pass" }, RULES).ok).toBe(true);
+  });
+
   it("hands a round it faces to a neighbour when it has earned the swap", () => {
-    const base = withPot(withPublic(gameWithRounds([0, 3]), [0]), 0, RULES.tamperNeed - 1);
+    const base = withPot(withPublic(gameWithRounds([0, 3]), [0]), RULES.tamperNeed - 1);
     const pending = accepted(applyAction(base, 0, { type: "tamper", amount: 1 }, RULES));
 
     const action = chooseAction(viewFor(pending, 0, RULES), RULES, BOTS, randomSource(SEED).next);

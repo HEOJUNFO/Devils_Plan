@@ -8,6 +8,7 @@ import {
   type Occupant,
   type Round,
   type RulesConfig,
+  type Sight,
   type TableSizes,
 } from "../../../src/shared/game";
 import botJson from "../../../src/shared/game/bot-config.json";
@@ -68,25 +69,30 @@ export function withCredits(state: GameState, seat: number, credits: number): Ga
   return { ...state, seats: state.seats.map((p, i) => (i === seat ? { ...p, credits } : p)) };
 }
 
-/** The same game with one seat's deposit towards the swap set. */
-export function withPot(state: GameState, seat: number, pot: number): GameState {
-  return { ...state, seats: state.seats.map((p, i) => (i === seat ? { ...p, pot } : p)) };
+/** The same game with this many credits gathered towards the swap, by whoever put them in. */
+export function withPot(state: GameState, pot: number): GameState {
+  return { ...state, pot };
 }
 
-/** The same game with these chambers shown to the whole table as they are. */
+/** The same game with these chambers shown to the whole table as they are, just now. */
 export function withPublic(state: GameState, chambers: number[]): GameState {
+  const sight = (j: number, after: number): Sight => ({ round: state.chambers[j], alone: false, after });
   return {
     ...state,
-    publicChambers: state.publicChambers.map((known, j) => (chambers.includes(j) ? state.chambers[j] : known)),
+    shown: state.shown.map((known, j) => (chambers.includes(j) ? sight(j, state.hiddenActs) : known)),
+    seen: state.seen.map((row, seat) =>
+      row.map((known, j) => (chambers.includes(j) ? sight(j, state.hiddenActs - state.seats[seat].hiddenActs) : known)),
+    ),
   };
 }
 
-/** The same game with these chambers seen by one seat alone, as they are. */
+/** The same game with these chambers seen by one seat alone, as they are, just now. */
 export function withPrivate(state: GameState, seat: number, chambers: number[]): GameState {
+  const after = state.hiddenActs - state.seats[seat].hiddenActs;
   return {
     ...state,
-    privateChambers: state.privateChambers.map((row, i) =>
-      i === seat ? row.map((known, j) => (chambers.includes(j) ? state.chambers[j] : known)) : row,
+    seen: state.seen.map((row, i) =>
+      i === seat ? row.map((known, j) => (chambers.includes(j) ? { round: state.chambers[j], alone: true, after } : known)) : row,
     ),
   };
 }

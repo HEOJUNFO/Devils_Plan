@@ -67,7 +67,11 @@ function forgetWhenFontsLoad(): void {
 }
 
 /** What is known of a chamber and how: content (1 live, 0 empty, null unknown) and source. */
-export type HatchInfo = [0 | 1 | null, "public" | "private" | "inferred" | null];
+/**
+ * What to show of a chamber: what the player last saw in it, how they came to
+ * know, and whether a hidden action since may have changed it.
+ */
+export type HatchInfo = [known: 0 | 1 | null, source: "public" | "private" | "inferred" | null, doubtful?: boolean];
 
 /** Draws on the canvas in whole pixels. */
 export class Pen {
@@ -383,12 +387,18 @@ export function drawChair(pen: Pen, x: number, y: number, back: boolean): void {
 
 /**
  * One chamber. A pale rim means the whole table has seen it; amber ticks mean
- * only this player knows it (seen alone, or worked out).
+ * only this player knows it (seen alone, or worked out). A chamber known only
+ * as it was, with a hidden action made since, is shut again: its letter alone
+ * keeps the colour of what was seen in it.
  */
 export function drawHatch(pen: Pen, x: number, y: number, info: HatchInfo, letter: string): void {
-  const [known, source] = info;
+  const [known, source, doubtful = false] = info;
   pen.ell(x, y, HATCH_RX + 1, HATCH_RY + 1, source === "public" ? C.bone : C.ink);
-  if (known === 1) {
+  if (known !== null && doubtful) {
+    pen.ell(x, y, HATCH_RX, HATCH_RY, C.steelDD);
+    pen.ell(x, y, HATCH_RX - 1, HATCH_RY - 1, C.hatch);
+    pen.txt(letter, x, y - 6, known === 1 ? C.crim : C.teal, "center");
+  } else if (known === 1) {
     pen.ell(x, y, HATCH_RX, HATCH_RY, C.crimD);
     pen.ell(x, y, HATCH_RX - 2, HATCH_RY - 2, C.brass);
     pen.txt(letter, x, y - 6, C.ink, "center");
@@ -469,6 +479,8 @@ export const ICONS = {
   rotate2: [".......", "#..#...", ".#..#..", "..#..#.", ".#..#..", "#..#...", "......."],
   tamper: [".......", "..###..", ".#####.", ".##.##.", ".#####.", "..###..", "......."],
   swap: [".#.....", "###....", ".#...#.", ".#...#.", ".#...#.", "....###", ".....#."],
+  /** A hidden action: all the table is told of it. */
+  hidden: ["..###..", ".#...#.", ".....#.", "...##..", "...#...", ".......", "...#..."],
 } as const;
 
 /** Which icon a seat shows. */
@@ -482,6 +494,7 @@ export const ICON_COLOUR: Record<IconName, string> = {
   rotate2: C.steelH,
   tamper: C.brass,
   swap: C.crim,
+  hidden: C.boneD,
 };
 
 /** The small dark box an icon sits in, beside a figure's head. */

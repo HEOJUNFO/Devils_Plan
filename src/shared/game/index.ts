@@ -17,6 +17,7 @@ export {
   rulesForPlayers,
   seatFacing,
   turnAllowance,
+  turnNumber,
   viewFor,
   volley,
 } from "./rules";
@@ -39,6 +40,7 @@ export type {
   SeatState,
   SeatView,
   Shot,
+  Sight,
   TableSizes,
   VolleyResult,
 } from "./rules";

@@ -30,7 +30,7 @@ const config: SessionConfig = {
 };
 
 /** The version of a stored game this code can carry on with. */
-const VERSION = 1;
+const VERSION = 2;
 
 /** Russian Roulette, for a room to host. */
 export const rouletteHost: GameHost<Session, StartRefusal | MoveRefusal> = {

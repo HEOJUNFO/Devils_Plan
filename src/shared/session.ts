@@ -14,6 +14,7 @@ import {
   botTurn,
   createGame,
   rulesForPlayers,
+  turnNumber,
   viewFor,
   type Action,
   type ApplyResult,
@@ -135,7 +136,7 @@ function awaitedSeat(state: GameState): number {
 /**
  * Brings a session up to date: makes the moves that are the room's to make (a
  * bot's seat, the seat of a player who has left) and sets the clock for the
- * move that is then awaited. `moved` says a move has just been made, so the
+ * move that is then awaited. `moved` says the turn has just passed on, so the
  * awaited move's time starts now.
  *
  * A table none of whose players is connected, with someone else in the room,
@@ -275,13 +276,16 @@ export function sessionAction(
   if (seat < 0) return { ok: false, reason: "not-seated" };
   const result = applyAction(session.state, seat, action, session.rules);
   if (!result.ok) return { ok: false, reason: result.reason };
-  return { ok: true, session: settle({ ...session, state: result.state }, presence, now, config, true) };
+  // Credits that earn the swap leave the same turn being played, and nobody else is told: the time
+  // of the turn runs on, or the table would see the clock start again and know what had happened.
+  const moved = result.state.phase === "ended" || turnNumber(result.state) !== turnNumber(session.state);
+  return { ok: true, session: settle({ ...session, state: result.state }, presence, now, config, moved) };
 }
 
 /**
- * The clock may have run out. When it has, the room makes the awaited move
- * (the cheapest one; see the rules' `applyTimeout`) and carries on; when it
- * has not, the session comes back unchanged, so calling this twice is safe.
+ * The clock may have run out. When it has, the awaited turn goes by (at a
+ * price; see the rules' `applyTimeout`) and the room carries on; when it has
+ * not, the session comes back unchanged, so calling this twice is safe.
  */
 export function sessionTimeout(session: Session, presence: Presence, now: number, config: SessionConfig): Session {
   if (session.deadline === null || now < session.deadline || session.state.phase === "ended") return session;

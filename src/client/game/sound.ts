@@ -96,6 +96,13 @@ export const sfx = {
     tone(1250, 0.04, "triangle", 0.18);
     tone(1650, 0.06, "triangle", 0.14, 0.05);
   },
+  /** Credits that did not reach the mark: they stay where they are. */
+  stored: () => tone(262, 0.12, "triangle", 0.12, 0.12),
+  /** Someone made a hidden action: nothing in the sound says which. */
+  hidden: () => {
+    tone(294, 0.05, "triangle", 0.13);
+    tone(294, 0.07, "triangle", 0.11, 0.1);
+  },
   earn: () => {
     tone(520, 0.08, "square", 0.16);
     tone(780, 0.08, "square", 0.16, 0.09);

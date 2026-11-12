@@ -7,7 +7,8 @@
  * chamber facing it, turns a round it knows of away, and otherwise waits.
  *
  * A bot decides from the view of its own seat and nothing else, so it knows
- * exactly what a person in that seat could know.
+ * exactly what a person in that seat could know. It takes what it last saw of
+ * a chamber as still there, whatever hidden actions have been made since.
  */
 import { randomInt, randomSource } from "./rng";
 import { applyAction, viewFor } from "./rules";
@@ -17,7 +18,7 @@ import type { Action, ApplyResult, GameState, RulesConfig, SeatView } from "./ru
 export interface BotConfig {
   /** Chance the bot looks at its own chamber privately rather than publicly. */
   privateLookChance: number;
-  /** Chance a bot with nothing to do looks at a pair instead of depositing a credit. */
+  /** Chance a bot with nothing to do looks at a pair instead of putting a credit towards the swap. */
   idleLookChance: number;
 }
 
@@ -79,11 +80,11 @@ export function chooseAction(
   random: () => number,
 ): Action | null {
   const seat = view.seat;
-  if (seat === null || view.phase === "ended") return null;
-  if (view.phase === "swap") {
-    return view.swapSeat === seat ? { type: "swap", pair: chooseSwap(view, seat, random) } : null;
-  }
-  if (view.current !== seat || view.credits === null || view.credits <= 0) return null;
+  if (seat === null || view.phase === "ended" || view.current !== seat || view.credits === null) return null;
+  // a seat is shown the swap only when it is the one that owes it
+  if (view.phase === "swap") return { type: "swap", pair: chooseSwap(view, seat, random) };
+  // with nothing left its turn still comes, and it passes
+  if (view.credits <= 0) return { type: "pass" };
   return chooseMove(view, seat, view.credits, config, bot, random);
 }
 

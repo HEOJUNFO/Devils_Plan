@@ -2,16 +2,25 @@
  * Russian Roulette: the rules of one game, as pure functions over plain JSON.
  *
  * Design: design/game-brief.md (Core loop). The nine rules of the source
- * document are kept as written. The gaps it leaves are filled as the brief
- * lists them; each is marked "(gap)" where this file decides it, so a later
- * correction has one place to go.
+ * document are kept as written, read together with what the dealer explains
+ * in the broadcast: what the table is told of a move, and how the credits for
+ * a swap gather. The gaps both leave are filled as the brief lists them; each
+ * is marked "(gap)" where this file decides it, so a later correction has one
+ * place to go.
  *
  * The table: `seats` players sit in a circle, seat 0 first and the rest
  * clockwise. A cylinder with one chamber for each seat sits in the middle.
  * Some chambers hold a live round and nobody knows which. The muzzle points at
  * a seat. Chamber `j` is the one `j` places clockwise from the muzzle, so it
  * faces seat `muzzle + j`; turning the muzzle turns the cylinder with it, and
- * every chamber moves on to the next seat clockwise (gap).
+ * every chamber moves on to the next seat clockwise.
+ *
+ * What the table is told. A public look and a turn of the muzzle are told in
+ * full. Of anything else the table hears only that the seat has made a hidden
+ * action: a private look, credits put towards the swap, the swap itself and
+ * the pass of a seat with no credits all sound the same. So nobody is told
+ * who has run out of credits, how many credits have gathered, or that two
+ * rounds have changed places.
  *
  * Nothing here reads the clock or `Math.random`: chance comes from the
  * generator state kept in the game. A state is plain JSON, is never modified
@@ -33,9 +42,9 @@ export interface RulesConfig {
   costRotate1: number;
   /** Credits it costs to turn the muzzle two seats. */
   costRotate2: number;
-  /** Credits a player must gather to earn the swap. */
+  /** Credits the table must gather, all seats together, for one swap. */
   tamperNeed: number;
-  /** Most credits one hidden deposit may hold. */
+  /** Most credits one seat may put towards the swap in a turn. */
   tamperMaxPerTurn: number;
   /** Live rounds in the cylinder. */
   bullets: number;
@@ -43,6 +52,8 @@ export interface RulesConfig {
   endWhenOut: number;
   /** Seconds a player has for one move; 0 for no limit (gap: the document gives none). */
   turnSeconds: number;
+  /** Credits a turn costs the seat that let its time run out (gap: the document has no clock). */
+  costTimeout: number;
 }
 
 /** What a chamber holds: 1 is a live round, 0 is empty. */
@@ -53,9 +64,10 @@ export type Known = Round | null;
 
 /**
  * Where a game stands. Transitions:
- * `turn` → `turn` (a look, a turn of the muzzle, a deposit short of the mark),
- * `turn` → `swap` (a deposit that reaches the mark), `swap` → `turn` (the swap
- * is made or forfeited), and `turn` → `ended` (enough seats are out of credits).
+ * `turn` → `turn` (a look, a turn of the muzzle, credits that leave the table
+ * short of the mark, a pass), `turn` → `swap` (credits that take the table to
+ * the mark), `swap` → `turn` (the swap is made or forfeited), and `turn` →
+ * `ended` (enough seats are out of credits).
  */
 export type Phase = "turn" | "swap" | "ended";
 
@@ -66,7 +78,7 @@ export interface Occupant {
   bot: boolean;
 }
 
-/** One seat, as the server stores it. `credits` and `pot` are secret to the seat. */
+/** One seat, as the server stores it. `credits` and `out` are secret to the seat. */
 export interface SeatState {
   /** The id `createGame` was given for whoever sits here. */
   occupant: number;
@@ -74,25 +86,39 @@ export interface SeatState {
   bot: boolean;
   /** Credits left. */
   credits: number;
-  /** Credits gathered towards the swap. */
-  pot: number;
   /** Out of credits: passes every turn from now on. */
   out: boolean;
   /** Credits the whole table saw this seat spend. */
   seenSpent: number;
-  /** Hidden deposits made, each worth 1 to `tamperMaxPerTurn` credits. */
-  hiddenDeposits: number;
+  /** Hidden actions the table has been told this seat made. */
+  hiddenActs: number;
+  /** Turns of this seat the clock ended. */
+  timeouts: number;
+}
+
+/** A chamber as someone last saw it. */
+export interface Sight {
+  /** What it held. */
+  round: Round;
+  /** Whether the seat is alone in knowing it: seen in a private look, or moved by a swap of its own. */
+  alone: boolean;
+  /**
+   * How many hidden actions of other seats the table had been told of when it
+   * was seen. Any hidden action since may have been a swap that took the round
+   * away, so the difference to the count now is how far the sight can be trusted.
+   */
+  after: number;
 }
 
 /** Everything a room remembers about a game. Holds secrets: send only `viewFor` of it. */
 export interface GameState {
   /** Bumped when this shape changes, so a room can tell a stored game from an older build. */
-  version: 1;
+  version: 2;
   /** Index is the seat: 0 leads round 1, the rest follow clockwise. */
   seats: SeatState[];
   /** SECRET. `chambers[j]` is the chamber `j` places clockwise from the muzzle. */
   chambers: Round[];
-  /** The seat the muzzle points at (gap: seat 0 at the start). */
+  /** The seat the muzzle points at (seat 0 at the start). */
   muzzle: number;
   /** Rounds played so far; seat `round % seats` leads the current one. */
   round: number;
@@ -100,15 +126,20 @@ export interface GameState {
   turn: number;
   /** The seat to move. */
   current: number;
+  /** SECRET while it is `swap`: nobody but the seat that owes the swap is told one is owed. */
   phase: Phase;
-  /** The seat that has earned a swap and must make it, or `null`. */
+  /** SECRET. The seat that has earned a swap and must make it, or `null`. */
   swapSeat: number | null;
-  /** Seats out of credits. */
+  /** SECRET. Seats out of credits. */
   outCount: number;
-  /** What the whole table has seen of each chamber. */
-  publicChambers: Known[];
-  /** SECRET per seat. `privateChambers[seat][j]`: what that seat alone has seen. */
-  privateChambers: Known[][];
+  /** SECRET from every seat. Credits the table has put towards the swap since the last one was earned. */
+  pot: number;
+  /** Hidden actions the table has been told of, of all seats together. */
+  hiddenActs: number;
+  /** What the whole table last saw of each chamber: all that someone watching knows. */
+  shown: (Sight | null)[];
+  /** SECRET per seat. `seen[seat][j]`: what that seat last saw of chamber `j`, with the table or alone. */
+  seen: (Sight | null)[][];
   /** Every move so far, in full. Holds secrets: views get `eventFor` of each. */
   history: GameEvent[];
   /** State of the random generator; see `rng.ts`. */
@@ -123,10 +154,12 @@ export type Action =
   | { type: "private"; pair: number }
   /** Turn the muzzle, and the cylinder with it, one or two seats clockwise. */
   | { type: "rotate"; steps: 1 | 2 }
-  /** Deposit `amount` credits towards the swap; nobody else learns how many. */
+  /** Put `amount` credits towards the swap; nobody else learns how many. */
   | { type: "tamper"; amount: number }
   /** Having earned the swap: exchange the contents of chambers `pair` and `pair + 1`. */
-  | { type: "swap"; pair: number };
+  | { type: "swap"; pair: number }
+  /** Having no credits: let the turn go by. */
+  | { type: "pass" };
 
 interface EventBase {
   /** The seat that moved. */
@@ -137,23 +170,47 @@ interface EventBase {
   ended: boolean;
 }
 
-/** What happened, in full. `seen` of a private look and `amount` of a deposit are secret. */
+/** What happened, in full. Only a public look and a turn of the muzzle are told to the table as they are. */
 export type GameEvent =
   | (EventBase & { type: "public"; pair: number; seen: [Round, Round] })
   | (EventBase & { type: "private"; pair: number; seen: [Round, Round] })
   | (EventBase & { type: "rotate"; steps: 1 | 2 })
-  | (EventBase & { type: "tamper"; amount: number; earned: boolean; forced: boolean })
+  /** `earned`: the credits took the table to the mark, and the seat now makes the swap. */
+  | (EventBase & { type: "tamper"; amount: number; earned: boolean })
   | (EventBase & { type: "swap"; pair: number })
-  | (EventBase & { type: "swap-forfeit" });
+  /** The seat had earned a swap and its time ran out before it made it. */
+  | (EventBase & { type: "swap-forfeit" })
+  | (EventBase & { type: "pass" })
+  /** The seat's time ran out; `cost` is what that took from it, nothing if it had nothing. */
+  | (EventBase & { type: "timeout"; cost: number });
 
-/** What happened, as one seat may be told: secrets it may not know are `null`. */
+interface ToldBase {
+  /** The seat that moved. */
+  seat: number;
+  /** The move ended the game. */
+  ended: boolean;
+  /** The move left the seat with no credits. Told to that seat alone: absent from everyone else's. */
+  out?: boolean;
+}
+
+/**
+ * What happened, as one seat is told of it. Its own moves are told in full.
+ * Of another seat's it is told a public look, a turn of the muzzle and a turn
+ * the clock ended; anything else is `hidden`, with nothing to tell one kind
+ * from another.
+ */
 export type SeatEvent =
-  | (EventBase & { type: "public"; pair: number; seen: [Round, Round] })
-  | (EventBase & { type: "private"; pair: number; seen: [Round, Round] | null })
-  | (EventBase & { type: "rotate"; steps: 1 | 2 })
-  | (EventBase & { type: "tamper"; amount: number | null; earned: boolean; forced: boolean })
-  | (EventBase & { type: "swap"; pair: number })
-  | (EventBase & { type: "swap-forfeit" });
+  | (ToldBase & { type: "public"; pair: number; seen: [Round, Round] })
+  | (ToldBase & { type: "private"; pair: number; seen: [Round, Round] })
+  | (ToldBase & { type: "rotate"; steps: 1 | 2 })
+  | (ToldBase & { type: "tamper"; amount: number; earned: boolean })
+  | (ToldBase & { type: "swap"; pair: number })
+  | (ToldBase & { type: "swap-forfeit" })
+  | (ToldBase & { type: "pass" })
+  /** `cost` is `null` to every seat but the one whose time ran out. */
+  | (ToldBase & { type: "timeout"; cost: number | null })
+  /** Another seat's hidden action: a private look, credits towards the swap, a swap, or a pass. */
+  | (ToldBase & { type: "hidden" });
 
 /** Why a move was refused. */
 export type Refusal =
@@ -165,13 +222,15 @@ export type Refusal =
   | "bad-action"
   /** It is another seat's move. */
   | "not-your-turn"
-  /** The seat has no credits left and passes. */
+  /** The seat has no credits left and can only pass. */
   | "out-of-credits"
+  /** The seat has credits left and must spend some. */
+  | "cannot-pass"
   /** The move costs more credits than the seat has. */
   | "not-enough-credits"
   /** No such pair of chambers. */
   | "bad-chamber"
-  /** A deposit outside 1 to `tamperMaxPerTurn`. */
+  /** Credits towards the swap outside 1 to `tamperMaxPerTurn`. */
   | "bad-amount"
   /** The seat has earned a swap and must make it before anything else. */
   | "swap-pending"
@@ -194,21 +253,24 @@ export interface LegalMoves {
   private: boolean;
   rotate1: boolean;
   rotate2: boolean;
-  /** The largest deposit allowed now; 0 when none is. */
+  /** The most credits it may put towards the swap now; 0 when none. */
   tamperMax: number;
   /** The seat has earned a swap and must make it. */
   swap: boolean;
+  /** The seat has no credits and passes. */
+  pass: boolean;
 }
 
 /** How a seat came to know a chamber. */
 export type KnowledgeSource = "public" | "private" | "inferred" | null;
 
-/** A seat as everyone may see it. Carries no credits and no deposit. */
+/** A seat as everyone may see it. Carries no credits. */
 export interface SeatPublic {
   occupant: number;
   bot: boolean;
-  out: boolean;
-  /** The fewest credits this seat can have left, counted from what the table saw. */
+  /** Whether the seat is out of credits: `null` while that is the seat's own to know (another seat, in a game still on). */
+  out: boolean | null;
+  /** The fewest credits this seat can have left, counted from what the table has been told. */
   minCredits: number;
   /** The most credits this seat can have left, counted the same way. */
   maxCredits: number;
@@ -232,23 +294,26 @@ export interface VolleyResult {
 export interface SeatView {
   /** The viewer's seat, or `null` for a spectator. */
   seat: number | null;
+  /** `swap` only to the seat that owes the swap; to everyone else that seat's turn is still on. */
   phase: Phase;
   round: number;
   turn: number;
   current: number;
   muzzle: number;
-  swapSeat: number | null;
-  outCount: number;
   /** The viewer's own credits; `null` for a spectator. */
   credits: number | null;
-  /** The viewer's own deposit towards the swap; `null` for a spectator. */
-  pot: number | null;
-  /** What the viewer knows of each chamber, including what follows from counting the rounds. */
+  /** What the viewer last saw of each chamber, or can work out from what it knows for certain. */
   chambers: Known[];
   /** How the viewer knows each chamber. */
   source: KnowledgeSource[];
+  /**
+   * By chamber: hidden actions of other seats since the viewer saw it. Any of
+   * them may have been a swap, so with one or more the chamber is known only
+   * as it was. 0 for a chamber the viewer knows as it is now, or not at all.
+   */
+  doubt: number[];
   seats: SeatPublic[];
-  /** Every move so far, with other seats' secrets removed. */
+  /** Every move so far, as the viewer is told of it. */
   history: SeatEvent[];
   /** The volley, once the game has ended; `null` before. */
   result: VolleyResult | null;
@@ -277,8 +342,8 @@ function cloneState(state: GameState): GameState {
     ...state,
     seats: state.seats.map((seat) => ({ ...seat })),
     chambers: [...state.chambers],
-    publicChambers: [...state.publicChambers],
-    privateChambers: state.privateChambers.map((row) => [...row]),
+    shown: [...state.shown],
+    seen: state.seen.map((row) => [...row]),
     history: [...state.history],
   };
 }
@@ -296,6 +361,8 @@ export function isValidConfig(config: RulesConfig): boolean {
     config.tamperMaxPerTurn,
     config.bullets,
     config.endWhenOut,
+    // a turn the clock ends has to cost something, or a table could sit out its turns for ever
+    config.costTimeout,
   ];
   if (!whole.every((value) => isWhole(value) && value >= 1)) return false;
   if (typeof config.turnSeconds !== "number" || !(config.turnSeconds >= 0)) return false;
@@ -360,15 +427,15 @@ export function createGame(
   return {
     ok: true,
     state: {
-      version: 1,
+      version: 2,
       seats: order.map((occupant) => ({
         occupant: occupant.id,
         bot: occupant.bot,
         credits: config.startCredits,
-        pot: 0,
         out: false,
         seenSpent: 0,
-        hiddenDeposits: 0,
+        hiddenActs: 0,
+        timeouts: 0,
       })),
       chambers,
       muzzle: 0,
@@ -378,8 +445,10 @@ export function createGame(
       phase: "turn",
       swapSeat: null,
       outCount: 0,
-      publicChambers: new Array<Known>(n).fill(null),
-      privateChambers: order.map(() => new Array<Known>(n).fill(null)),
+      pot: 0,
+      hiddenActs: 0,
+      shown: new Array<Sight | null>(n).fill(null),
+      seen: order.map(() => new Array<Sight | null>(n).fill(null)),
       history: [],
       rng: random.state,
     },
@@ -396,13 +465,23 @@ export function seatFacing(state: Pick<GameState, "muzzle" | "seats">, chamber: 
   return mod(state.muzzle + chamber, state.seats.length);
 }
 
+/**
+ * Which turn of the game is being played, counted from 0: it goes up by one
+ * each time the move passes to the next seat, and stays where it is while a
+ * seat that has earned a swap makes it.
+ */
+export function turnNumber(state: Pick<GameState, "round" | "turn" | "seats">): number {
+  return state.round * state.seats.length + state.turn;
+}
+
 /** What `seat` may do right now. Everything is `false` when it is not that seat's move. */
 export function legalMoves(state: GameState, seat: number, config: RulesConfig): LegalMoves {
-  const none: LegalMoves = { public: false, private: false, rotate1: false, rotate2: false, tamperMax: 0, swap: false };
+  const none: LegalMoves = { public: false, private: false, rotate1: false, rotate2: false, tamperMax: 0, swap: false, pass: false };
   if (state.phase === "ended" || !isWhole(seat) || seat < 0 || seat >= state.seats.length) return none;
   if (state.phase === "swap") return state.swapSeat === seat ? { ...none, swap: true } : none;
+  if (state.current !== seat) return none;
   const actor = state.seats[seat];
-  if (state.current !== seat || actor.out) return none;
+  if (actor.out) return { ...none, pass: true };
   return {
     public: actor.credits >= config.costPublic,
     private: actor.credits >= config.costPrivate,
@@ -410,12 +489,13 @@ export function legalMoves(state: GameState, seat: number, config: RulesConfig):
     rotate2: actor.credits >= config.costRotate2,
     tamperMax: Math.min(config.tamperMaxPerTurn, actor.credits),
     swap: false,
+    pass: false,
   };
 }
 
 /**
  * Reads a move from untrusted data. Returns `null` for anything that is not
- * one of the five moves with whole, non-negative numbers; whether the move is
+ * one of the six moves with whole, non-negative numbers; whether the move is
  * allowed is for {@link applyAction} to say.
  */
 export function parseAction(raw: unknown): Action | null {
@@ -430,23 +510,37 @@ export function parseAction(raw: unknown): Action | null {
       return data.steps === 1 || data.steps === 2 ? { type: "rotate", steps: data.steps } : null;
     case "tamper":
       return isWhole(data.amount) && data.amount >= 1 ? { type: "tamper", amount: data.amount } : null;
+    case "pass":
+      return { type: "pass" };
     default:
       return null;
   }
 }
 
-/** Seat 0 leads round 1 and the lead moves one seat clockwise each round (rule 4); a seat with no credits passes (rule 8). */
+/** The hidden actions the table has been told of that were not `seat`'s own. */
+function othersActs(state: GameState, seat: number): number {
+  return state.hiddenActs - state.seats[seat].hiddenActs;
+}
+
+/** The table is told that `seat` has made a hidden action, and nothing more. */
+function announce(state: GameState, seat: number): void {
+  state.hiddenActs++;
+  state.seats[seat].hiddenActs++;
+}
+
+/**
+ * Seat 0 leads round 1 and the lead moves one seat clockwise each round
+ * (rule 4). A seat with no credits is not passed over: its turn comes, it
+ * passes (rule 8), and the table hears of a hidden action like any other.
+ */
 function advance(state: GameState): void {
   const n = state.seats.length;
-  for (let i = 0; i < n * 2; i++) {
-    state.turn++;
-    if (state.turn >= n) {
-      state.turn = 0;
-      state.round++;
-    }
-    state.current = (state.round + state.turn) % n;
-    if (!state.seats[state.current].out) return;
+  state.turn++;
+  if (state.turn >= n) {
+    state.turn = 0;
+    state.round++;
   }
+  state.current = (state.round + state.turn) % n;
 }
 
 /** After a move: mark a seat that ran dry, end the game or pass the turn on, and record the move. */
@@ -458,7 +552,7 @@ function settle(state: GameState, seat: number, event: GameEvent, config: RulesC
     event.out = true;
   }
   if (state.phase === "turn") {
-    // (gap) The game ends the moment the last needed seat runs dry, and the move that did it stands.
+    // The game ends the moment the last needed seat runs dry, and the move that did it stands.
     if (state.outCount >= config.endWhenOut) {
       state.phase = "ended";
       event.ended = true;
@@ -469,13 +563,7 @@ function settle(state: GameState, seat: number, event: GameEvent, config: RulesC
   state.history.push(event);
 }
 
-function step(
-  state: GameState,
-  seat: number,
-  action: Action,
-  config: RulesConfig,
-  forced: boolean,
-): ApplyResult {
+function step(state: GameState, seat: number, action: Action, config: RulesConfig): ApplyResult {
   if (state.phase === "ended") return refuse("game-over");
   const n = state.seats.length;
   if (!isWhole(seat) || seat < 0 || seat >= n) return refuse("bad-seat");
@@ -483,6 +571,7 @@ function step(
   if (move === null) return refuse("bad-action");
 
   if (state.phase === "swap") {
+    // to every other seat this is the plain refusal of a move out of turn: that a swap is owed is not theirs to hear
     if (state.swapSeat !== seat) return refuse("not-your-turn");
     if (move.type !== "swap") return refuse("swap-pending");
     if (move.pair >= n) return refuse("bad-chamber");
@@ -490,34 +579,61 @@ function step(
     const a = move.pair;
     const b = (a + 1) % n;
     swapAt(next.chambers, a, b);
-    // What anyone knew of a round goes with the round.
-    swapAt(next.publicChambers, a, b);
-    for (const row of next.privateChambers) swapAt(row, a, b);
+    // Nobody is told that two rounds changed places, let alone which: what the seat that did it had
+    // seen of them goes with them, and what anyone else had seen stays where it was, right or not.
+    const own = next.seen[seat];
+    swapAt(own, a, b);
+    for (const j of [a, b]) {
+      const sight = own[j];
+      if (sight !== null) own[j] = { ...sight, alone: true };
+    }
     next.phase = "turn";
     next.swapSeat = null;
+    // the credits and the swap are one hidden action to the table, told when the turn is over
+    announce(next, seat);
     const event: GameEvent = { type: "swap", seat, pair: a, out: false, ended: false };
     settle(next, seat, event, config);
     return { ok: true, state: next, event };
   }
 
-  if (state.seats[seat].out) return refuse("out-of-credits");
   if (state.current !== seat) return refuse("not-your-turn");
   if (move.type === "swap") return refuse("no-swap-pending");
-  const credits = state.seats[seat].credits;
+  const actor = state.seats[seat];
+  if (move.type === "pass") {
+    // (gap) Only a seat with nothing left passes; one with credits has to spend at least one on its turn.
+    if (!actor.out) return refuse("cannot-pass");
+    const next = cloneState(state);
+    announce(next, seat);
+    const event: GameEvent = { type: "pass", seat, out: false, ended: false };
+    settle(next, seat, event, config);
+    return { ok: true, state: next, event };
+  }
+  if (actor.out) return refuse("out-of-credits");
+  const credits = actor.credits;
 
   if (move.type === "public" || move.type === "private") {
     if (move.pair >= n) return refuse("bad-chamber");
-    const cost = move.type === "public" ? config.costPublic : config.costPrivate;
+    const open = move.type === "public";
+    const cost = open ? config.costPublic : config.costPrivate;
     if (credits < cost) return refuse("not-enough-credits");
     const next = cloneState(state);
     const a = move.pair;
     const b = (a + 1) % n;
     const seen: [Round, Round] = [next.chambers[a], next.chambers[b]];
     next.seats[seat].credits -= cost;
-    next.seats[seat].seenSpent += cost;
-    const known = move.type === "public" ? next.publicChambers : next.privateChambers[seat];
-    known[a] = seen[0];
-    known[b] = seen[1];
+    if (open) {
+      next.seats[seat].seenSpent += cost;
+      for (const j of [a, b]) {
+        const round = next.chambers[j];
+        next.shown[j] = { round, alone: false, after: next.hiddenActs };
+        next.seen.forEach((row, viewer) => {
+          row[j] = { round, alone: false, after: othersActs(next, viewer) };
+        });
+      }
+    } else {
+      for (const j of [a, b]) next.seen[seat][j] = { round: next.chambers[j], alone: true, after: othersActs(next, seat) };
+      announce(next, seat);
+    }
     const event: GameEvent = { type: move.type, seat, pair: a, seen, out: false, ended: false };
     settle(next, seat, event, config);
     return { ok: true, state: next, event };
@@ -538,20 +654,19 @@ function step(
   if (move.amount > config.tamperMaxPerTurn) return refuse("bad-amount");
   if (move.amount > credits) return refuse("not-enough-credits");
   const next = cloneState(state);
-  const actor = next.seats[seat];
-  actor.credits -= move.amount;
-  // A deposit the clock forced is one credit and everyone knows it; any other hides its size.
-  if (forced) actor.seenSpent += move.amount;
-  else actor.hiddenDeposits++;
-  actor.pot += move.amount;
-  // (gap) Each seat gathers its own deposit; reaching the mark earns the swap at once and anything over it is lost.
-  const earned = actor.pot >= config.tamperNeed;
+  next.seats[seat].credits -= move.amount;
+  // The credits of the whole table gather in one place. The seat whose credits take them to the
+  // mark makes the swap, in the same turn; what is over the mark is lost and the count starts again.
+  next.pot += move.amount;
+  const earned = next.pot >= config.tamperNeed;
   if (earned) {
-    actor.pot = 0;
+    next.pot = 0;
     next.phase = "swap";
     next.swapSeat = seat;
+  } else {
+    announce(next, seat);
   }
-  const event: GameEvent = { type: "tamper", seat, amount: move.amount, earned, forced, out: false, ended: false };
+  const event: GameEvent = { type: "tamper", seat, amount: move.amount, earned, out: false, ended: false };
   settle(next, seat, event, config);
   return { ok: true, state: next, event };
 }
@@ -563,7 +678,7 @@ function step(
  * refused.
  */
 export function applyAction(state: GameState, seat: number, action: Action, config: RulesConfig): ApplyResult {
-  return step(state, seat, action, config, false);
+  return step(state, seat, action, config);
 }
 
 /**
@@ -578,45 +693,66 @@ export function turnAllowance(state: GameState, config: RulesConfig): { seat: nu
 
 /**
  * The clock ran out for the seat that was to move (gap: the document has no
- * clock). On its turn the seat deposits one credit, the cheapest move there
- * is, and the table is told the deposit was forced. With a swap pending, the
- * swap is forfeited and the turn passes on.
+ * clock). Its turn goes by and costs it `costTimeout` credits, or what it has
+ * left of them: they go nowhere, not towards the swap, so a table is neither
+ * helped nor set back by a seat nobody is playing. The table sees a turn the
+ * clock ended for what it is, not as a hidden action. With a swap pending the
+ * swap is forfeited; the credits that earned it were a move of the seat's own
+ * and are told as any hidden action is.
  */
 export function applyTimeout(state: GameState, config: RulesConfig): ApplyResult {
   if (state.phase === "ended") return refuse("game-over");
+  const next = cloneState(state);
   if (state.phase === "swap") {
     const seat = state.swapSeat;
     if (seat === null) return refuse("no-swap-pending");
-    const next = cloneState(state);
     next.phase = "turn";
     next.swapSeat = null;
+    announce(next, seat);
     const event: GameEvent = { type: "swap-forfeit", seat, out: false, ended: false };
     settle(next, seat, event, config);
     return { ok: true, state: next, event };
   }
-  return step(state, state.current, { type: "tamper", amount: 1 }, config, true);
+  const seat = state.current;
+  const actor = next.seats[seat];
+  const cost = Math.min(config.costTimeout, actor.credits);
+  actor.credits -= cost;
+  actor.timeouts++;
+  const event: GameEvent = { type: "timeout", seat, cost, out: false, ended: false };
+  settle(next, seat, event, config);
+  return { ok: true, state: next, event };
 }
 
 /**
- * A move as `viewer` may be told of it (gap: who did what to which chambers is
- * public; what a private look found and how much a deposit held are not).
+ * A move as `viewer` is told of it, or `null` when it is told nothing yet.
+ * The seat that made the move is told all of it. Anyone else is told a public
+ * look, a turn of the muzzle and a turn the clock ended; of the rest only that
+ * the seat made a hidden action, once its turn is over: credits that earn the
+ * swap are not told apart from the swap that follows them.
  */
-export function eventFor(event: GameEvent, viewer: number | null): SeatEvent {
+export function eventFor(event: GameEvent, viewer: number | null): SeatEvent | null {
+  if (event.seat === viewer) {
+    if (event.type === "public" || event.type === "private") return { ...event, seen: [event.seen[0], event.seen[1]] };
+    return { ...event };
+  }
+  const told = { seat: event.seat, ended: event.ended };
   switch (event.type) {
     case "public":
-      return { ...event, seen: [event.seen[0], event.seen[1]] };
-    case "private":
-      return { ...event, seen: event.seat === viewer ? [event.seen[0], event.seen[1]] : null };
+      return { ...told, type: "public", pair: event.pair, seen: [event.seen[0], event.seen[1]] };
+    case "rotate":
+      return { ...told, type: "rotate", steps: event.steps };
+    case "timeout":
+      return { ...told, type: "timeout", cost: null };
     case "tamper":
-      return { ...event, amount: event.seat === viewer || event.forced ? event.amount : null };
+      return event.earned ? null : { ...told, type: "hidden" };
     default:
-      return { ...event };
+      return { ...told, type: "hidden" };
   }
 }
 
 /**
  * The final volley (rule 9): from the seat the muzzle points at, clockwise,
- * the chamber facing each seat is fired at it (gap: one shot for every seat).
+ * the chamber facing each seat is fired at it, one shot for every seat.
  */
 export function volley(state: GameState): VolleyResult {
   const n = state.seats.length;
@@ -632,65 +768,83 @@ export function volley(state: GameState): VolleyResult {
 }
 
 /**
- * The game as `viewer` may see it: its own credits and deposit, what the
- * table has seen, what it has seen alone, and what follows from counting the
- * rounds. Never another seat's credits, deposits or private looks (rule 7).
- * Pass `null` for a spectator. Once the game has ended, every chamber and the
- * volley are shown to all.
+ * The game as `viewer` may see it: its own credits, what it last saw of each
+ * chamber with the table or alone, how far each of those can still be
+ * trusted, and what follows for certain from counting the rounds. Never
+ * another seat's credits or private looks (rule 7), and nothing that tells
+ * one hidden action from another: not who is out of credits, not how many
+ * credits have gathered for the swap, not that a swap is owed or was made.
+ * Pass `null` for a spectator. Once the game has ended, every chamber, the
+ * volley and who had run out are shown to all.
  */
 export function viewFor(state: GameState, viewer: number | null, config: RulesConfig): SeatView {
   const n = state.seats.length;
   const seat = isWhole(viewer) && viewer >= 0 && viewer < n ? viewer : null;
   const ended = state.phase === "ended";
+  const memory = seat === null ? state.shown : state.seen[seat];
+  const acts = seat === null ? state.hiddenActs : othersActs(state, seat);
   const chambers: Known[] = [];
   const source: KnowledgeSource[] = [];
+  const doubt: number[] = [];
   let live = 0;
   let empty = 0;
   for (let j = 0; j < n; j++) {
-    const open = ended ? state.chambers[j] : state.publicChambers[j];
-    const own = seat === null ? null : state.privateChambers[seat][j];
-    const known = open !== null ? open : own;
+    const sight = memory[j];
+    const known: Known = ended ? state.chambers[j] : sight === null ? null : sight.round;
+    const since = ended || sight === null ? 0 : acts - sight.after;
     chambers.push(known);
-    source.push(open !== null ? "public" : own !== null ? "private" : null);
-    if (known === 1) live++;
-    else if (known === 0) empty++;
+    source.push(ended ? "public" : sight === null ? null : sight.alone ? "private" : "public");
+    doubt.push(since);
+    if (known !== null && since === 0) {
+      if (known === 1) live++;
+      else empty++;
+    }
   }
-  // With every round found the rest are empty, and with every empty chamber found the rest are live.
+  // With every round found for certain the rest are empty, and with every empty chamber found for
+  // certain the rest are live: whatever was remembered of them from before is settled by that.
   const rest: Known = live >= config.bullets ? 0 : empty >= n - config.bullets ? 1 : null;
   if (rest !== null) {
     for (let j = 0; j < n; j++) {
-      if (chambers[j] === null) {
+      if (chambers[j] === null || doubt[j] > 0) {
         chambers[j] = rest;
         source[j] = "inferred";
+        doubt[j] = 0;
       }
     }
   }
+  // A hidden action costs a seat with credits one of them at the least (the smallest amount put
+  // towards the swap) and at the most the dearer of a private look and the largest such amount.
+  const dearest = Math.max(config.costPrivate, config.tamperMaxPerTurn);
+  const history: SeatEvent[] = [];
+  for (const event of state.history) {
+    const told = eventFor(event, seat);
+    if (told !== null) history.push(told);
+  }
   return {
     seat,
-    phase: state.phase,
+    phase: state.phase === "swap" && state.swapSeat !== seat ? "turn" : state.phase,
     round: state.round,
     turn: state.turn,
     current: state.current,
     muzzle: state.muzzle,
-    swapSeat: state.swapSeat,
-    outCount: state.outCount,
     credits: seat === null ? null : state.seats[seat].credits,
-    pot: seat === null ? null : state.seats[seat].pot,
     chambers,
     source,
-    seats: state.seats.map((p) => {
-      const most = config.startCredits - p.seenSpent - p.hiddenDeposits;
-      const least = config.startCredits - p.seenSpent - p.hiddenDeposits * config.tamperMaxPerTurn;
+    doubt,
+    seats: state.seats.map((p, i) => {
+      // that a seat is out is its own to know until the game is over
+      const told = ended || i === seat;
+      const open = config.startCredits - p.seenSpent - p.timeouts * config.costTimeout;
       return {
         occupant: p.occupant,
         bot: p.bot,
-        out: p.out,
-        // A seat still in the game has at least one credit; one that is out has none.
-        minCredits: p.out ? 0 : Math.max(1, least),
-        maxCredits: p.out ? 0 : Math.max(1, most),
+        out: told ? p.out : null,
+        // a seat with nothing left passes, which is a hidden action that costs nothing: never under zero
+        minCredits: told && p.out ? 0 : Math.max(0, open - p.hiddenActs * dearest),
+        maxCredits: told && p.out ? 0 : Math.max(0, open - p.hiddenActs),
       };
     }),
-    history: state.history.map((event) => eventFor(event, seat)),
+    history,
     result: ended ? volley(state) : null,
   };
 }

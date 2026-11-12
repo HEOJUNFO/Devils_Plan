@@ -808,31 +808,49 @@ async function firstGame() {
   // 9. nobody is sent what is not theirs to see
   const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
   check("no token is ever sent to anyone", !sentAll.includes("smoke-check-token"));
-  const secrets = games.every((g) => g.view.seats.every((s) => !("credits" in s) && !("pot" in s)));
-  check("other seats' credits and deposits are not in a player's view", secrets);
+  const secrets = games.every(
+    (g) => !("pot" in g.view) && !("outCount" in g.view) && g.view.seats.every((s, seat) => !("credits" in s) && (seat === g.view.seat || s.out === null)),
+  );
+  check("other seats' credits, who is out of them and the credits gathered for the swap are not in a player's view", secrets);
 
-  // 10. a whole game: everyone deposits one credit a turn, and swaps when the deposit earns it
+  // 10. a whole game: everyone puts one credit a turn towards the swap, whoever's credit earns it makes it,
+  // and whoever has none left passes
   let moves = 0;
+  let hidden = null;
   for (; moves < MOVE_LIMIT; moves++) {
     const views = players.map((p) => p.last("game"));
     if (views.every((g) => g.view.phase === "ended")) break;
-    const turn = views.findIndex((g) => g.view.phase !== "ended" && (g.view.phase === "swap" ? g.view.swapSeat : g.view.current) === g.view.seat);
+    const turn = views.findIndex((g) => g.view.phase !== "ended" && g.view.current === g.view.seat);
     if (turn < 0) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       continue;
     }
-    const before = views[turn].view.history.length;
+    const mine = views[turn].view;
+    // each player is told the game in their own words: what one has been told so far says nothing of another
+    const told = views.map((g) => g.view.history.length);
     const seen = players[turn].messages.length;
-    players[turn].send({ type: "action", action: views[turn].view.phase === "swap" ? { type: "swap", pair: 0 } : { type: "tamper", amount: 1 } });
+    const action = mine.phase === "swap" ? { type: "swap", pair: 0 } : mine.credits === 0 ? { type: "pass" } : { type: "tamper", amount: 1 };
+    players[turn].send({ type: "action", action });
     const answer = await players[turn].until(
       "the move to be made",
-      (m) => (m.type === "game" && (m.view.history.length > before || m.view.phase === "ended")) || m.type === "refused",
+      (m) => (m.type === "game" && (m.view.history.length > told[turn] || m.view.phase === "ended")) || m.type === "refused",
       seen,
     );
     if (answer.type === "refused") throw new Error(`a legal move was refused: ${answer.reason}`);
+    // credits that earn the swap show on no other screen until the swap is made: the others have nothing to catch up with
+    if (answer.view.phase === "swap") continue;
     // let the others catch up before reading who is next
-    await Promise.all(players.map((p) => p.until("the move to reach everyone", (m) => m.type === "game" && (m.view.history.length > before || m.view.phase === "ended"))));
+    const caught = await Promise.all(
+      players.map((p, n) => p.until("the move to reach everyone", (m) => m.type === "game" && (m.view.history.length > told[n] || m.view.phase === "ended"))),
+    );
+    if (hidden === null) {
+      // the first move of the game: one credit towards the swap
+      const mover = caught[turn].view.history.at(-1)?.type;
+      const rest = caught.filter((_, n) => n !== turn).map((g) => g.view.history.at(-1)?.type);
+      hidden = { ok: mover === "tamper" && rest.every((type) => type === "hidden"), detail: `mover ${mover}, others ${rest.join(" ")}` };
+    }
   }
+  check("credits put towards the swap reach the other players as a hidden action and nothing more", hidden !== null && hidden.ok, hidden?.detail ?? "no move was made");
   const ends = players.map((p) => p.last("game"));
   check("the game plays to its end", ends.every((g) => g.view.phase === "ended"), `${moves} moves`);
   const result = ends[0].view.result;

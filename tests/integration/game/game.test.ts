@@ -59,7 +59,7 @@ describe("GameRoom: playing a game", () => {
     expect(seats).toEqual(Array.from({ length: SMALLEST }, (_, seat) => seat));
     for (const game of games) {
       expect(game).toMatchObject({ room: "GAAAA", turnEndsIn: null });
-      expect(game.view).toMatchObject({ phase: "turn", credits: rulesConfig.startCredits, pot: 0 });
+      expect(game.view).toMatchObject({ phase: "turn", credits: rulesConfig.startCredits });
       expect(game.players).toHaveLength(SMALLEST);
     }
     closeAll(clients);
@@ -113,12 +113,37 @@ describe("GameRoom: playing a game", () => {
 
     const after = await Promise.all(clients.map((client) => client.gameWhere((game) => game.view.history.length === 1)));
     after.forEach((game, n) => {
-      const event = game.view.history[0];
-      if (event.type !== "private") throw new Error(`player ${n} was shown a ${event.type}`);
-      // only the player who looked is told what was there
-      expect(event.seen === null).toBe(n !== acting);
+      // only the player who looked is told that it was a look, and what was there: the rest hear of a hidden action
+      if (n === acting) expect(game.view.history[0]).toMatchObject({ type: "private", pair: 0 });
+      else expect(game.view.history[0]).toEqual({ type: "hidden", seat: games[acting].view.seat, ended: false });
     });
     expect(after[acting].view.credits).toBe(rulesConfig.startCredits - rulesConfig.costPrivate);
+    closeAll(clients);
+  });
+
+  it("sends the others nothing while a player who has earned the swap makes it, and then one hidden action", async () => {
+    const clients = await table("GAAA6", SMALLEST);
+    let games = await startGame(clients);
+    // each in turn puts one credit towards the swap, until the table is one short of it
+    for (let n = 0; n < rulesConfig.tamperNeed - 1; n++) {
+      clients[mover(games)].send({ type: "action", action: { type: "tamper", amount: 1 } });
+      games = await Promise.all(clients.map((client) => client.gameWhere((game) => game.view.history.length === n + 1)));
+    }
+    const acting = mover(games);
+
+    clients[acting].send({ type: "action", action: { type: "tamper", amount: 1 } });
+    const earned = await clients[acting].gameWhere((game) => game.view.phase === "swap");
+    const meanwhile = await Promise.all(clients.filter((_, n) => n !== acting).map((client) => client.sentSoFar()));
+    clients[acting].send({ type: "action", action: { type: "swap", pair: 0 } });
+    const after = await Promise.all(clients.map((client) => client.gameWhere((game) => game.view.current !== earned.view.seat)));
+
+    expect(earned.view.history.at(-1)).toMatchObject({ type: "tamper", earned: true });
+    for (const sent of meanwhile) expect(sent).toEqual([]);
+    after.forEach((game, n) => {
+      // to the one who made it: the credits, then the swap. To everyone else: one more hidden action.
+      expect(game.view.history.at(-1)?.type).toBe(n === acting ? "swap" : "hidden");
+      expect(game.view.history).toHaveLength(rulesConfig.tamperNeed + (n === acting ? 1 : 0));
+    });
     closeAll(clients);
   });
 
@@ -160,11 +185,11 @@ describe("GameRoom: playing a game", () => {
     const acting = mover(games);
     const before = games[acting].view.credits!;
 
-    // a page that is not ours adds a seat and a number of credits to its move
-    clients[acting].send({ type: "action", action: { type: "tamper", amount: 1, seat: 0, credits: 99, forced: false } });
+    // a page that is not ours adds a seat, a number of credits and the swap itself to its move
+    clients[acting].send({ type: "action", action: { type: "tamper", amount: 1, seat: 0, credits: 99, earned: true } });
 
     const after = await clients[acting].gameWhere((game) => game.view.history.length === 1);
-    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, forced: false });
+    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, amount: 1, earned: false });
     expect(after.view.credits).toBe(before - 1);
     closeAll(clients);
   });
@@ -193,7 +218,7 @@ describe("GameRoom: playing a game", () => {
     const late = await open("GAAAK", SMALLEST);
 
     const game = await late.gameWhere();
-    expect(game.view).toMatchObject({ seat: null, credits: null, pot: null });
+    expect(game.view).toMatchObject({ seat: null, credits: null });
     expect(game.view.chambers.every((known) => known === null)).toBe(true);
     closeAll([...clients, late]);
   });
@@ -214,7 +239,7 @@ describe("GameRoom: playing a game", () => {
     closeAll([...clients, late]);
   });
 
-  it("starts a clock for a player who drops, and makes the move itself when it runs out", async () => {
+  it("starts a clock for a player who drops, and lets their turn go by when it runs out", async () => {
     const stub = env.GameRoom.getByName("GAAAM");
     const clients = await table("GAAAM", SMALLEST);
     const games = await startGame(clients);
@@ -231,7 +256,8 @@ describe("GameRoom: playing a game", () => {
     expect(waiting.turnEndsIn).toBeGreaterThan(0);
     expect(waiting.turnEndsIn).toBeLessThanOrEqual(AWAY_MS);
     expect(waiting.players[games[acting].view.seat!]).toMatchObject({ connected: false, left: false });
-    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, amount: 1, forced: true });
+    // the table sees whose time ran out, not what it cost them
+    expect(after.view.history[0]).toEqual({ type: "timeout", seat: games[acting].view.seat, cost: null, ended: false });
     closeAll(clients.filter((_, n) => n !== acting));
   });
 
@@ -270,7 +296,7 @@ describe("GameRoom: playing a game", () => {
     clients[acting].send({ type: "leave" });
 
     const after = await watcher.gameWhere((game) => game.view.history.length === 1);
-    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, forced: true });
+    expect(after.view.history[0]).toMatchObject({ type: "timeout", seat: games[acting].view.seat });
     expect(after.players[games[acting].view.seat!]).toMatchObject({ connected: false, left: true });
     closeAll(clients.filter((_, n) => n !== acting));
   });
@@ -348,15 +374,15 @@ describe("GameRoom: playing a game", () => {
     await b.gameWhere();
     b.close();
     game = await a.gameWhere((seen) => seen.players.some((player) => !player.bot && !player.connected));
-    // The one who is here spends all they have, the room plays for the one
-    // who is away each time their clock runs out, and the bots play on by
-    // themselves, until enough seats are out for the game to end. By then the
-    // clock is far past the time an idle slot is given away.
+    // The one who is here spends all they have and passes from then on, the
+    // turns of the one who is away go by each time their clock runs out, and
+    // the bots play on by themselves, until enough seats are out for the game
+    // to end. By then the clock is far past the time an idle slot is given away.
     for (let step = 0; game.view.phase !== "ended"; step++) {
       expect(step).toBeLessThan(200);
       const seen = game.view.history.length;
       if (game.view.current === game.view.seat) {
-        a.send({ type: "action", action: { type: "rotate", steps: 2 } });
+        a.send({ type: "action", action: game.view.credits === 0 ? { type: "pass" } : { type: "rotate", steps: 2 } });
       } else {
         await scheduledAlarm(stub);
         advanceClock(AWAY_MS + 1);
@@ -388,7 +414,7 @@ describe("GameRoom: playing a game", () => {
     closeAll(clients);
   });
 
-  it("gives every move the length of turn the host has set, and makes the move itself when it runs out", async () => {
+  it("gives every move the length of turn the host has set, and lets the turn go by, at its price, when it runs out", async () => {
     const stub = env.GameRoom.getByName("GAAAW");
     const clients = await table("GAAAW", SMALLEST);
     const seconds = Math.min(...roomConfig.turnSecondsChoices.filter((choice) => choice > 0));
@@ -404,7 +430,8 @@ describe("GameRoom: playing a game", () => {
     expect(games[acting].rules.turnSeconds).toBe(seconds);
     expect(games[acting].turnEndsIn).toBeGreaterThan(0);
     expect(games[acting].turnEndsIn).toBeLessThanOrEqual(seconds * 1000);
-    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, amount: 1, forced: true });
+    expect(after.view.history[0]).toMatchObject({ type: "timeout", seat: games[acting].view.seat, cost: rulesConfig.costTimeout });
+    expect(after.view.credits).toBe(rulesConfig.startCredits - rulesConfig.costTimeout);
     expect(after.players[games[acting].view.seat!]).toMatchObject({ connected: true, left: false });
     // the next player's own time starts when the move is made
     expect(after.turnEndsIn).toBeGreaterThan(seconds * 1000 - 1000);
@@ -451,7 +478,7 @@ describe("GameRoom: playing a game", () => {
     advanceClock(AWAY_MS + 1);
     await runDurableObjectAlarm(stub);
     const after = await watcher.gameWhere((game) => game.view.history.length === 1);
-    expect(after.view.history[0]).toMatchObject({ type: "tamper", seat: games[acting].view.seat, forced: true });
+    expect(after.view.history[0]).toMatchObject({ type: "timeout", seat: games[acting].view.seat });
     closeAll(clients.filter((_, n) => n !== acting));
   });
 

@@ -72,7 +72,7 @@
 
 | 러시안 룰렛 | 네모 세기 |
 |---|---|
-| ![러시안 룰렛 테이블](production/qa/evidence/game-2026-11-11-table-second-round.png) | ![네모 세기 정답 화면](production/qa/evidence/rectangles-2026-11-11-right-answer-blank-cell.png) |
+| ![러시안 룰렛 테이블](production/qa/evidence/roulette-2026-11-12-ko-2-my-turn-hidden-and-doubt.png) | ![네모 세기 정답 화면](production/qa/evidence/rectangles-2026-11-11-right-answer-blank-cell.png) |
 
 | 잔디 깔기 | 큐브 세기 |
 |---|---|

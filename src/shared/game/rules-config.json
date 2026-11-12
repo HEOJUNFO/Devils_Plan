@@ -9,5 +9,6 @@
   "tamperMaxPerTurn": 3,
   "bullets": 2,
   "endWhenOut": 3,
-  "turnSeconds": 0
+  "turnSeconds": 0,
+  "costTimeout": 1
 }
