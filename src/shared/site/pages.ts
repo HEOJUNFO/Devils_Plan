@@ -252,7 +252,8 @@ function homePage(lang: Lang, built: Built): string {
   const each = GAME_IDS.map((game) => `${GAMES[game].title[lang]} ${players(lang, game)}`).join(", ");
   const alone = GAME_IDS.filter((game) => GAMES[game].minPlayers === 1).map((game) => GAMES[game].title[lang]);
   const howMany = home.howManyAnswer(each) + (alone.length > 0 ? ` ${home.alone(alone.join(", "))}` : "");
-  const questions: (readonly string[])[] = [home.free, [home.howMany, howMany], home.phone];
+  const names = GAME_IDS.map((game) => GAMES[game].title[lang]).join(", ");
+  const questions: (readonly string[])[] = [home.online(count, names), home.free, [home.howMany, howMany], home.phone];
   const main = `<h1>${escapeHtml(home.heading(count))}</h1>
 <p class="lead">${escapeHtml(home.lead(count))}</p>
 <p class="act"><a class="button" href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a></p>
@@ -269,8 +270,13 @@ ${questions.map(([asked, answer]) => `<h3>${escapeHtml(asked ?? "")}</h3>\n<p>${
     name: home.games,
     itemListElement: GAME_IDS.map((game, at) => ({ "@type": "ListItem", position: at + 1, name: GAMES[game].title[lang], url: ORIGIN + gamePath(lang, game) })),
   };
+  // the questions again, as an answer engine reads them: each with the answer the page shows under it
+  const asked = {
+    "@type": "FAQPage",
+    mainEntity: questions.map(([question, answer]) => ({ "@type": "Question", name: question ?? "", acceptedAnswer: { "@type": "Answer", text: answer ?? "" } })),
+  };
   // a reader of neither language is sent to the game's own page, which shows whichever its browser asks for
-  return page(built, { lang, path: homePath(lang), title: home.title(count), description: home.description(count), others: HOMES, fallback: "/", data: [list], main });
+  return page(built, { lang, path: homePath(lang), title: home.title(count), description: home.description(count), others: HOMES, fallback: "/", data: [list, asked], main });
 }
 
 /** A game's page of rules, in `lang`. */

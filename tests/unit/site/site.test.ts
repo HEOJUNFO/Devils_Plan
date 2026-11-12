@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import { LANGS, type Lang } from "../../../src/shared/lang";
-import { appHead, appNoScript, gamePath, homePath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
+import { appHead, appNoScript, escapeHtml, gamePath, homePath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
 import { siteStyle } from "../../../src/shared/site/style";
 import { ORIGIN, OWNER_CODES, SITE_WORDS } from "../../../src/shared/site/words";
 
@@ -124,6 +124,40 @@ describe("the pages a search engine reads", () => {
     for (const lang of LANGS) {
       const links = all(file(`${lang}/index.html`), /<a [^>]*href="([^"]*)"/g);
       for (const game of GAME_IDS) expect(links).toContain(gamePath(lang, game));
+    }
+  });
+
+  it.each(LANGS)("the page about the games in %s answers first whether the show's games can be played online, with where", (lang) => {
+    const body = file(`${lang}/index.html`);
+    const names = GAME_IDS.map((game) => GAMES[game].title[lang]);
+    const [asked, answer] = SITE_WORDS[lang].home.online(GAME_IDS.length, names.join(", "));
+    const afterQuestions = body.slice(body.indexOf(`<h2>${SITE_WORDS[lang].home.questions}</h2>`));
+
+    // the first question under the heading is this one, and its answer is the next paragraph
+    expect(one(afterQuestions, /<h3>([^<]*)<\/h3>/)).toBe(asked);
+    expect(unescape(one(afterQuestions, /<h3>[^<]*<\/h3>\n<p>([^<]*)<\/p>/))).toBe(answer);
+    // an answer that is quoted alone still says which site, at which address, and which games
+    expect(answer).toContain(SITE_WORDS[lang].show.name);
+    expect(answer).toContain(ORIGIN.replace("https://", ""));
+    for (const name of names) expect(answer).toContain(name);
+  });
+
+  it("asks that question in Korean the way the show's name is typed into a search, and says which season", () => {
+    const body = file("ko/index.html");
+
+    expect(SITE_WORDS.ko.home.online(GAME_IDS.length, "")[0]).toContain("데블스플랜");
+    expect(one(body, /<p class="lead">([^<]*)<\/p>/)).toContain("시즌 3");
+    for (const game of GAME_IDS) expect(one(file(`${gamePath("ko", game).slice(1)}index.html`), /<p class="lead">([^<]*)<\/p>/)).toContain("시즌 3");
+  });
+
+  it.each(LANGS)("the page about the games in %s gives its questions as structured data, each as the page shows it", (lang) => {
+    const body = file(`${lang}/index.html`);
+    const graph = JSON.parse(one(body, /<script type="application\/ld\+json">(.*?)<\/script>/))["@graph"] as { "@type": string; mainEntity?: { name: string; acceptedAnswer: { text: string } }[] }[];
+    const asked = graph.find((node) => node["@type"] === "FAQPage")?.mainEntity ?? [];
+
+    expect(asked.length).toBeGreaterThanOrEqual(4);
+    for (const question of asked) {
+      expect(body).toContain(`<h3>${escapeHtml(question.name)}</h3>\n<p>${escapeHtml(question.acceptedAnswer.text)}</p>`);
     }
   });
 

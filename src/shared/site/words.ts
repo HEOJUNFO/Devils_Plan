@@ -26,6 +26,9 @@ export const SITE_NAME = "brain-survival";
 /** Where the site is: every address a search engine is given starts here. */
 export const ORIGIN = "https://play.brain-survival.workers.dev";
 
+/** The site's address as it is said in a sentence: without the scheme. */
+const HOST = ORIGIN.replace("https://", "");
+
 /**
  * What shows a search engine's console whose site this is: a code it gives the
  * owner, which it then looks for in the head of `/`. It has to stay there for
@@ -71,7 +74,7 @@ const ko = {
       `《데블스 플랜: 데드 어게인》에 나온 게임 ${games}종을 친구와 브라우저에서 실시간으로 합니다. 무료이고 설치와 가입이 없습니다. 게임별 규칙과 하는 법.`,
     heading: (games: number) => `데블스 플랜 게임 ${games}종, 친구와 온라인으로`,
     lead: (games: number) =>
-      `${SITE_NAME}은 《데블스 플랜: 데드 어게인》에 나온 게임 ${games}종을 방송의 규칙으로, 설치 없이 브라우저에서 여럿이 실시간으로 하는 두뇌 게임 모음입니다. 방을 만들어 친구에게 링크를 보내거나, 로비에 열려 있는 방에 들어가면 됩니다. 무료이고 가입이 없습니다.`,
+      `${SITE_NAME}은 《데블스 플랜: 데드 어게인》(시즌 3)에 나온 게임 ${games}종을 방송의 규칙으로, 설치 없이 브라우저에서 여럿이 실시간으로 하는 두뇌 게임 모음입니다. 방을 만들어 친구에게 링크를 보내거나, 로비에 열려 있는 방에 들어가면 됩니다. 무료이고 가입이 없습니다.`,
     games: "게임",
     rules: "규칙 보기",
     how: "하는 법",
@@ -82,6 +85,14 @@ const ko = {
       "인원이 모이면 방장이 게임을 시작합니다. 방에서는 채팅과 음성 대화를 쓸 수 있습니다.",
     ],
     questions: "자주 묻는 질문",
+    /**
+     * The question the pages are found by, asked as it is typed into a search (the show's name without its space),
+     * and an answer that is whole when it is quoted alone: which site, which games, at which address.
+     */
+    online: (games: number, names: string): readonly [string, string] => [
+      "데블스플랜 게임을 온라인으로 할 수 있나요?",
+      `네. ${SITE_NAME}(${HOST})에서 데블스 플랜 시즌 3 《데블스 플랜: 데드 어게인》의 게임 ${games}종(${names})을 방송의 규칙대로 친구들과 실시간으로 할 수 있습니다. 브라우저에서 바로 열리고, 무료이며 설치와 가입이 없습니다.`,
+    ],
     free: ["무료인가요?", "네. 무료이고 가입이나 설치가 없습니다. 닉네임만 정하면 됩니다."],
     howMany: "몇 명이 하나요?",
     howManyAnswer: (each: string) => `게임마다 다릅니다: ${each}.`,
@@ -94,7 +105,7 @@ const ko = {
       `데블스 플랜의 ${name} 규칙. ${summary} 설치 없이 브라우저에서 ${players}이 실시간으로 합니다.`,
     heading: (name: string) => `${name} 규칙`,
     lead: (name: string, summary: string, players: string, alone: boolean) =>
-      `《데블스 플랜: 데드 어게인》에 나온 게임 ${name}. ${summary} ${players}이 한 방에서 실시간으로 합니다${alone ? " (혼자서도 시작할 수 있습니다)" : ""}.`,
+      `《데블스 플랜: 데드 어게인》(시즌 3)에 나온 게임 ${name}. ${summary} ${players}이 한 방에서 실시간으로 합니다${alone ? " (혼자서도 시작할 수 있습니다)" : ""}.`,
     players: "인원",
     team: "팀",
     teamOf: (size: number) => `${size}명이 한 팀을 맺을 수 있습니다`,
@@ -142,6 +153,10 @@ const en: typeof ko = {
       "When enough players are in, the host starts the game. A room has text chat and voice chat.",
     ],
     questions: "Questions",
+    online: (games: number, names: string): readonly [string, string] => [
+      "Can you play the games from The Devil's Plan online?",
+      `Yes. On ${SITE_NAME} (${HOST}) you can play ${games} games from The Devil's Plan season 3 (${names}) by the show's rules, live with friends. It opens in the browser and is free, with no install and no sign-up.`,
+    ],
     free: ["Is it free?", "Yes. It is free, with no sign-up and nothing to install: a nickname is all you need."],
     howMany: "How many players does it take?",
     howManyAnswer: (each: string) => `It depends on the game: ${each}.`,

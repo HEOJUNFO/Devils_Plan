@@ -50,6 +50,12 @@ assistant translates plainly and says so in its report. Terms and sentences:
     `/en/` and each game's page of rules (`src/shared/site/words.ts`). Every
     such page has a line under it that only the rules and names are the
     show's and that the site is one person's, not the broadcaster's.
+  - *Assistant's choice, 2026-11-12, when the user asked again for a search
+    for "데블스플랜" to find the site:* the Korean pages also say which
+    season ("시즌 3"), and the first question on `/ko/` writes the show's
+    name without its space ("데블스플랜 게임을 온라인으로 할 수 있나요?"),
+    which is how it is typed into a search. Everywhere else the name keeps
+    its space, as the show writes it.
   - The game's own screens (the lobby, a room, a game) and the picture a
     shared link shows (`public/og-*.png`) do not carry the show's name.
   - In English the season is "season 3": its English name was not found in
