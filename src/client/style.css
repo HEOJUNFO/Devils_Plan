@@ -160,6 +160,35 @@ ul {
   white-space: nowrap;
 }
 
+/*
+ * The list of who is in the room is for a screen reader, and for a keyboard:
+ * the host picks a player from it. While the keys are in it, it is in sight,
+ * over the top left of the room's picture (it lies in the panel to the right
+ * of the picture, which starts 304 pixels in).
+ */
+#players:has(button:focus-visible) {
+  left: -300px;
+  top: 4px;
+  z-index: 1;
+  width: auto;
+  height: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 4px 6px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  clip-path: none;
+  list-style: none;
+}
+
+#players:has(button:focus-visible) li {
+  padding: 1px 0;
+}
+
+#players:has(button:focus-visible) li.empty {
+  display: none;
+}
+
 /* The panel to the right of the scene. */
 .panel {
   position: absolute;

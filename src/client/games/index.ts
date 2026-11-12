@@ -99,6 +99,8 @@ export interface WaitingScene {
   say(slot: number, text: string): void;
   /** Whose figure or name is at `x`, `y` of the picture, in its own pixels: their slot, or `null` where nobody is. */
   slotAt(x: number, y: number): number | null;
+  /** Where the figure of the player in `slot` is in the picture, in its own pixels; `null` for nobody, and before the picture was drawn. */
+  placeOf(slot: number): { x: number; y: number } | null;
 }
 
 /** A game as the page shows it. */

@@ -149,6 +149,9 @@ const ko = {
     emptySeat: (seat: number) => `${seat}번 빈 자리`,
     came: (nick: string) => `${nick} 님이 들어왔습니다`,
     went: (nick: string) => `${nick} 님이 나갔습니다`,
+    sentOut: (nick: string) => `방장이 ${nick} 님을 내보냈습니다`,
+    /** Over the list of who is here, which a keyboard reaches: the host picks a player from it. */
+    seatsHelp: "사람을 고르면 방장을 넘기거나 내보낼 수 있습니다",
     becameHost: (nick: string) => `${nick} 님이 방장이 됐습니다`,
     needPlayers: (min: number, here: number) => `${min}명이 모이면 방장이 시작할 수 있습니다. 지금 ${here}명.`,
     brokenTeam: (team: number, size: number, teamSize: number) =>
@@ -399,6 +402,8 @@ const en: typeof ko = {
     emptySeat: (seat) => `Seat ${seat}, empty`,
     came: (nick) => `${nick} came in`,
     went: (nick) => `${nick} left`,
+    sentOut: (nick) => `The host removed ${nick}`,
+    seatsHelp: "Pick a player to pass the host on or remove them",
     becameHost: (nick) => `${nick} is the host now`,
     needPlayers: (min, here) => `The host can start once ${min} are here. ${here} now.`,
     brokenTeam: (team, size, teamSize) => `Team ${team} has ${size}, not ${teamSize}, so it is no team: its players start alone.`,

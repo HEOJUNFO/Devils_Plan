@@ -246,6 +246,12 @@ describe("parseServerMessage", () => {
     expect(parseServerMessage(JSON.stringify({ type: "host-check" }))).toEqual({ type: "host-check" });
   });
 
+  it("accepts the word that the host sent a player out, with the slot they held", () => {
+    expect(parseServerMessage(JSON.stringify({ type: "sent-out", slot: 2 }))).toEqual({ type: "sent-out", slot: 2 });
+    expect(parseServerMessage(JSON.stringify({ type: "sent-out" }))).toBeNull();
+    expect(parseServerMessage(JSON.stringify({ type: "sent-out", slot: "2" }))).toBeNull();
+  });
+
   it("accepts the reason a player sent out by the host is given", () => {
     expect(parseServerMessage(JSON.stringify({ type: "error", reason: "kicked" }))).toEqual({ type: "error", reason: "kicked" });
   });

@@ -1551,7 +1551,11 @@ describe("GameRoom: being ready, and the host", () => {
 
     expect(await b.nextOf("error")).toEqual({ type: "error", reason: "kicked" });
     expect(await b.closed).toBe(CLOSE_REJECTED);
-    expect((await a.lobbyWhere((l) => l.players.length === 2)).players.map((p) => p.slot)).toEqual([0, 2]);
+    // those who stay are told the player was sent out, and then of the room without them: what comes next is that room
+    expect(await a.nextOf("sent-out")).toEqual({ type: "sent-out", slot: 1 });
+    const next = await a.next();
+    expect(next.type === "lobby" ? next.players.map((p) => p.slot) : next.type).toEqual([0, 2]);
+    expect(await c.nextOf("sent-out")).toEqual({ type: "sent-out", slot: 1 });
     expect((await c.lobbyWhere((l) => l.players.length === 2)).players.map((p) => p.slot)).toEqual([0, 2]);
     const back = await open("RDYAH", { player: 1 });
     expect(await back.next()).toEqual({ type: "error", reason: "kicked" });

@@ -747,6 +747,9 @@ export class GameRoom extends Server<Env> {
     const hadVoice = theirs.some(([, seat]) => seat.voice !== undefined);
     this.saveLobby(next);
     for (const [member] of theirs) this.reject(member, "kicked");
+    // those who stay hear that the player was sent out before they hear of a room without them
+    const sentOut: ServerMessage = { type: "sent-out", slot: target };
+    for (const [member] of this.members()) member.send(JSON.stringify(sentOut));
     this.broadcastLobby();
     if (hadVoice) this.broadcastVoice();
     await this.presenceChanged();

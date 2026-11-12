@@ -16,6 +16,8 @@
 export type ChatNote =
   /** Someone came into the room, or went. */
   | { kind: "came" | "went"; nick: string }
+  /** The host sent someone out of the room. */
+  | { kind: "kicked"; nick: string }
   /** Someone became the host: the host passed the room on, or was away when everyone else was ready. */
   | { kind: "host"; nick: string }
   /** The host made the room one for another game: which, by its id (its name is put in when the note is shown). */
@@ -24,7 +26,7 @@ export type ChatNote =
   | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" };
 
 /** The kinds of note that name a player, and those that do not. */
-const NAMED_NOTES: readonly string[] = ["came", "went", "host"];
+const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked"];
 const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here"];
 
 /** One line as shown: something a player said, or a note from the page itself. */

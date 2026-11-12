@@ -405,6 +405,10 @@ let hostAsked = false;
 /** The slot of the player the host's menu is open for, or `null` with the menu shut; and whether sending them out has had its first press. */
 let seatShown: number | null = null;
 let kickArmed = false;
+/** The slot whose row in the list of who is here the menu was opened from with the keyboard, or `null`: where the keys go back to when it shuts. */
+let seatFromRow: number | null = null;
+/** The slots of players the room said the host sent out, until the room is next sent without them. */
+const sentOut = new Set<number>();
 /** Whether the host has pressed start and the game is not on the screen yet. */
 let startAsked = false;
 /** Whether a room is being made: asked for, and not there yet. */
@@ -571,6 +575,7 @@ const chat = createChat(
     wordsOf(note) {
       if (note.kind === "came") return WORDS.room.came(note.nick);
       if (note.kind === "went") return WORDS.room.went(note.nick);
+      if (note.kind === "kicked") return WORDS.room.sentOut(note.nick);
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
       if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
@@ -1354,7 +1359,9 @@ function noteComings(before: LobbyView, after: LobbyView): void {
     chat.note({ kind: "came", nick });
     call("came");
   }
-  for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: "went", nick });
+  // someone the host sent out is said to have been sent out, not to have gone
+  for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: sentOut.has(slot) ? "kicked" : "went", nick });
+  sentOut.clear();
   if (after.game !== before.game) chat.note({ kind: "game", game: after.game });
   // The room has another host with both of them here before and after: it was passed on, by the host or by the
   // room for a host who did not answer. Not said when a host's connection drops and comes back: the room goes
@@ -1409,8 +1416,15 @@ function showSeatMenu(slot: number | null, x = 0, y = 0): void {
   const player = slot === null ? undefined : currentView?.players.find((p) => p.slot === slot);
   seatShown = player === undefined ? null : player.slot;
   kickArmed = false;
+  // the keys are in the menu while it is open: taken out of it before it goes
+  const keysInside = seatMenu.contains(document.activeElement);
   seatMenu.hidden = player === undefined;
-  if (player === undefined) return;
+  if (player === undefined) {
+    // opened from the list with the keyboard: the keys go back to the row they came from, if it is still there
+    if (keysInside && seatFromRow !== null) players.querySelector<HTMLButtonElement>(`button[data-slot="${seatFromRow}"]`)?.focus({ preventScroll: true });
+    seatFromRow = null;
+    return;
+  }
   seatName.textContent = player.nick;
   seatMenu.style.left = "0px";
   seatMenu.style.top = "0px";
@@ -1491,15 +1505,42 @@ function renderRoom(code: string, view: LobbyView): void {
   // The picture shows who is here; this list says the same in words for a screen reader.
   const bySlot = new Map(view.players.map((p) => [p.slot, p]));
   const rows: HTMLLIElement[] = [];
+  // For the host each other player is a button there: what a press on a figure opens, a keyboard opens from here.
+  // The list comes into sight while the keys are in it (style.css).
+  const hosting = view.host === view.you;
+  const keysAt = document.activeElement instanceof HTMLElement && players.contains(document.activeElement) ? document.activeElement.dataset.slot : undefined;
   for (let slot = 0; slot < view.maxPlayers; slot++) {
     const player = bySlot.get(slot);
     const row = document.createElement("li");
-    row.textContent = player
+    const words = player
       ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready)
       : WORDS.room.emptySeat(slot + 1);
+    if (player !== undefined && hosting && slot !== view.you) {
+      const pick = document.createElement("button");
+      pick.type = "button";
+      pick.textContent = words;
+      pick.dataset.slot = String(slot);
+      pick.setAttribute("aria-haspopup", "dialog");
+      pick.addEventListener("click", () => {
+        const at = scene?.placeOf(slot) ?? { x: sceneCanvas.width / 2, y: sceneCanvas.height / 2 };
+        seatFromRow = slot;
+        showSeatMenu(slot, at.x, at.y);
+      });
+      row.append(pick);
+    } else {
+      row.textContent = words;
+      row.classList.toggle("empty", player === undefined);
+    }
     rows.push(row);
   }
   players.replaceChildren(...rows);
+  players.setAttribute("aria-label", hosting ? WORDS.room.seatsHelp : "");
+  // the keys stay on the row they were on when the room is sent again
+  // (a row that has gone, its player sent out or away, leaves them on the next there is, or on the start)
+  if (keysAt !== undefined) {
+    const row = players.querySelector<HTMLButtonElement>(`button[data-slot="${keysAt}"]`) ?? players.querySelector<HTMLButtonElement>("button");
+    (row ?? startButton).focus({ preventScroll: true });
+  }
 
   const connected = view.players.filter((p) => p.connected);
   isHost = view.host === view.you;
@@ -1748,6 +1789,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     }
     if (message.type === "host-check") {
       hostChecked();
+      return;
+    }
+    if (message.type === "sent-out") {
+      sentOut.add(message.slot);
       return;
     }
     if (message.type === "chat") {

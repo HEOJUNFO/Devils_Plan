@@ -42,6 +42,8 @@ export interface LobbyScene {
   say(slot: number, text: string): void;
   /** Whose figure or name is at `x`, `y` of the picture, in its own pixels: their slot, or `null` where nobody is. */
   slotAt(x: number, y: number): number | null;
+  /** Where the figure of the player in `slot` is in the picture, in its own pixels; `null` for nobody, and before the picture was drawn. */
+  placeOf(slot: number): { x: number; y: number } | null;
 }
 
 /** The widest a name is drawn beside a seat, in pixels. */
@@ -312,6 +314,10 @@ export function createLobbyScene(
       if (!running) return;
       const now = performance.now() / 1000 - started;
       speech.set(slot, { lines: speechLines(pen, text), until: now + speechSeconds(text) });
+    },
+    placeOf(slot: number): { x: number; y: number } | null {
+      const figure = drawn.find((each) => each.slot === slot && !each.name);
+      return figure === undefined ? null : { x: figure.x + figure.w / 2, y: figure.y + figure.h / 2 };
     },
     slotAt(x: number, y: number): number | null {
       // the name is looked up before the figure: two figures stand closer than their names do

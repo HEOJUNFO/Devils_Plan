@@ -119,6 +119,12 @@ export type ServerMessage =
    */
   | { type: "host-check" }
   /**
+   * The host sent the player in `slot` out of the room. Sent to everyone who
+   * stays, ahead of the lobby without that player: their pages then say that
+   * the player was sent out, not that they left.
+   */
+  | { type: "sent-out"; slot: number }
+  /**
    * The room is there and has nothing new to say: its answer to a `poke`,
    * sent to everyone, so that pages which have heard nothing for a while know
    * their silence is the game's and not a dead connection's.
@@ -362,6 +368,7 @@ export function parseServerMessage(raw: unknown): ServerMessage | null {
     data.type === "voice" ||
     data.type === "rtc" ||
     data.type === "host-check" ||
+    (data.type === "sent-out" && typeof data.slot === "number") ||
     data.type === "alive"
   ) {
     return data as ServerMessage;
