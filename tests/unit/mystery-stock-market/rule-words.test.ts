@@ -18,6 +18,8 @@ import { LANGS, type Lang } from "../../../src/shared/lang";
 
 const draw: DrawConfig = shipped.draw;
 const SHOW = showRules(shipped.rules);
+/** What a rule by the share is given here: the show's own number, as no fresh game draws that kind. */
+const PER_SHARE_WON = shipped.rules.steel.perShare;
 /** How many stages a sentence is opened in beyond the first: one for each round the rules are opened in. */
 const STAGES = shipped.revealRounds.length;
 const EVERY_STAGE = Array.from({ length: STAGES + 1 }, (_, stage) => stage);
@@ -52,11 +54,11 @@ function written(pieces: readonly RulePiece[], readable: number): string {
 
 /** One rule of each kind, with the widest numbers the shipped ranges give, for `stock` and about `other`. */
 function widestRules(stock: StockId, other: StockId): Record<RuleKind, Rule> {
-  const { count, percentUp, percentDown, wonUp, wonDown, perShare, bandFrom, bandWidth, volume } = draw;
+  const { count, percentUp, percentDown, wonUp, wonDown, bandFrom, bandWidth, volume } = draw;
   return {
     breadth: { kind: "breadth", count: count.to, up: percentUp.to, down: percentDown.to },
     follows: { kind: "follows", of: other, way: "down", up: percentUp.to, down: percentDown.to },
-    "per-share": { kind: "per-share", of: other, won: perShare.to },
+    "per-share": { kind: "per-share", of: other, won: PER_SHARE_WON },
     emblem: { kind: "emblem" },
     secret: { kind: "secret", on: other, up: percentUp.to, down: wonDown.to },
     outbuy: { kind: "outbuy", volume: "bought", than: other, up: wonUp.to, down: wonDown.to },

@@ -61,8 +61,6 @@ export interface DrawConfig {
   /** By how many won a price goes up, and down. */
   wonUp: Range;
   wonDown: Range;
-  /** `per-share`: won for each share. */
-  perShare: Range;
   /** `band`: the fewest shares of the band, and how many more its most is. */
   bandFrom: Range;
   bandWidth: Range;
@@ -89,15 +87,21 @@ export function isValidDraw(draw: DrawConfig | undefined): boolean {
     draw.percentDown.to <= 100 &&
     isRange(draw.wonUp, 0) &&
     isRange(draw.wonDown, 0) &&
-    isRange(draw.perShare, 0) &&
     isRange(draw.bandFrom, 0) &&
     isRange(draw.bandWidth, 0) &&
     isRange(draw.volume, 1)
   );
 }
 
-/** The kinds a game's rules are drawn from, beside the emblem, which every game has once. */
-const DRAWN: readonly Exclude<RuleKind, "emblem">[] = ["breadth", "follows", "per-share", "secret", "outbuy", "band", "volume", "net", "outhold"];
+/**
+ * The kinds a game's rules are drawn from, beside the emblem, which every
+ * game has once. `per-share` (방어제철's) is the show's rulebook's alone: a
+ * price that moves by the share is moved by one player as far as they hold
+ * shares, by buying another stock and selling it again, whatever the number
+ * drawn for it (design/games/mystery-stock-market.md, "판마다 새 규칙").
+ */
+const DRAWN = ["breadth", "follows", "secret", "outbuy", "band", "volume", "net", "outhold"] as const satisfies readonly RuleKind[];
+type DrawnKind = (typeof DRAWN)[number] | "emblem";
 
 /** What sets the sequence that draws a game's rules apart from the one that draws its path. */
 const RULES_SEQUENCE = 0x2f6b9d51;
@@ -120,7 +124,7 @@ export function drawRulesWith(random: () => number, draw: DrawConfig): PerStock<
     return all;
   };
 
-  const kinds: RuleKind[] = shuffled<RuleKind>([...shuffled(DRAWN).slice(0, STOCKS.length - 1), "emblem"]);
+  const kinds: DrawnKind[] = shuffled<DrawnKind>([...shuffled(DRAWN).slice(0, STOCKS.length - 1), "emblem"]);
   const rules = {} as PerStock<Rule>;
   STOCKS.forEach((stock, at) => {
     const other = (): StockId => pick(STOCKS.filter((each) => each !== stock));
@@ -130,7 +134,6 @@ export function drawRulesWith(random: () => number, draw: DrawConfig): PerStock<
     if (kind === "emblem") rules[stock] = { kind };
     else if (kind === "breadth") rules[stock] = { kind, count: within(draw.count), up: within(draw.percentUp), down: within(draw.percentDown) };
     else if (kind === "follows") rules[stock] = { kind, of: other(), way: pick(["up", "down"] as const), up: within(draw.percentUp), down: within(draw.percentDown) };
-    else if (kind === "per-share") rules[stock] = { kind, of: selfOrOther(), won: within(draw.perShare) };
     else if (kind === "secret") rules[stock] = { kind, on: pick(STOCKS), up: within(draw.percentUp), down: within(draw.wonDown) };
     else if (kind === "outbuy") rules[stock] = { kind, volume: volume(), than: other(), up: within(draw.wonUp), down: within(draw.wonDown) };
     else if (kind === "band") {

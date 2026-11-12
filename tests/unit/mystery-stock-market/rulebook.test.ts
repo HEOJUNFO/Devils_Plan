@@ -20,8 +20,8 @@ import {
 const draw: DrawConfig = shipped.draw;
 /** How many seeds a property of every draw is tried on. */
 const SEEDS = 300;
-/** The kinds a draw takes six of, beside the emblem. */
-const DRAWN_KINDS = RULE_KINDS.filter((kind) => kind !== "emblem");
+/** The kinds a draw takes six of, beside the emblem: every kind but 방어제철's, which is the show's rulebook's alone. */
+const DRAWN_KINDS = RULE_KINDS.filter((kind) => kind !== "emblem" && kind !== "per-share");
 
 const seeds = (): number[] => Array.from({ length: SEEDS }, (_, seed) => seed);
 const kindsOf = (rules: PerStock<Rule>): RuleKind[] => STOCKS.map((stock) => rules[stock].kind);
@@ -122,20 +122,22 @@ describe("미스터리 거래소, a game's own rules: what is drawn", () => {
     expect(seen.size).toBe(SEEDS);
   });
 
-  it("draws every kind, and leaves three of the nine out of each game", () => {
+  it("draws every kind but 방어제철's, and leaves two of the eight out of each game", () => {
     const counts = new Map<RuleKind, number>();
     for (const seed of seeds()) for (const kind of kindsOf(drawRules(seed, draw))) counts.set(kind, (counts.get(kind) ?? 0) + 1);
 
     expect(counts.get("emblem")).toBe(SEEDS);
+    // a price that moves by the share is one a player moves alone, as far as they hold shares: not in a fresh game
+    expect(counts.get("per-share")).toBeUndefined();
     for (const kind of DRAWN_KINDS) {
-      // six of nine: two games in three have it, give or take
-      expect(counts.get(kind) ?? 0, kind).toBeGreaterThan(SEEDS / 2);
-      expect(counts.get(kind) ?? 0, kind).toBeLessThan((SEEDS * 5) / 6);
+      // six of eight: three games in four have it, give or take
+      expect(counts.get(kind) ?? 0, kind).toBeGreaterThan((SEEDS * 3) / 5);
+      expect(counts.get(kind) ?? 0, kind).toBeLessThan((SEEDS * 9) / 10);
     }
   });
 
   it("gives every kind to every company at some time", () => {
-    for (const kind of RULE_KINDS) {
+    for (const kind of [...DRAWN_KINDS, "emblem"] as const) {
       const had = new Set(drawnOf(kind).map((each) => each.stock));
 
       expect([...had].sort(), kind).toEqual([...STOCKS].sort());
@@ -180,7 +182,7 @@ describe("미스터리 거래소, a game's own rules: stocks and numbers", () =>
   });
 
   it("sets a rule about one stock's holdings or trade on the stock itself about half the time, and on any of the others the rest", () => {
-    for (const kind of ["per-share", "band", "volume", "net"] as const) {
+    for (const kind of ["band", "volume", "net"] as const) {
       const all = drawnOf(kind);
       const own = all.filter((each) => each.rule.of === each.stock).length;
       const others = new Set(all.filter((each) => each.rule.of !== each.stock).map((each) => each.rule.of));
@@ -195,7 +197,7 @@ describe("미스터리 거래소, a game's own rules: stocks and numbers", () =>
     [0, "never"],
     [100, "always"],
   ])("sets such a rule on the stock itself %i times in a hundred: %s", (selfPercent) => {
-    const all = (["per-share", "band", "volume", "net"] as const).flatMap((kind) => drawnOf(kind, { ...draw, selfPercent }));
+    const all = (["band", "volume", "net"] as const).flatMap((kind) => drawnOf(kind, { ...draw, selfPercent }));
     const own = all.filter((each) => each.rule.of === each.stock);
 
     expect(own).toHaveLength(selfPercent === 100 ? all.length : 0);
@@ -224,7 +226,6 @@ describe("미스터리 거래소, a game's own rules: stocks and numbers", () =>
     };
     for (const { rule } of drawnOf("breadth")) check(inRange(draw.count, rule.count) && inRange(draw.percentUp, rule.up) && inRange(draw.percentDown, rule.down), rule);
     for (const { rule } of drawnOf("follows")) check(inRange(draw.percentUp, rule.up) && inRange(draw.percentDown, rule.down), rule);
-    for (const { rule } of drawnOf("per-share")) check(inRange(draw.perShare, rule.won), rule);
     for (const { rule } of drawnOf("secret")) check(inRange(draw.percentUp, rule.up) && inRange(draw.wonDown, rule.down), rule);
     for (const { rule } of drawnOf("outbuy")) check(inRange(draw.wonUp, rule.up) && inRange(draw.wonDown, rule.down), rule);
     for (const { rule } of drawnOf("band")) check(inRange(draw.bandFrom, rule.from) && inRange(draw.bandWidth, rule.to - rule.from) && inRange(draw.wonUp, rule.up) && inRange(draw.wonDown, rule.down), rule);
@@ -238,7 +239,6 @@ describe("미스터리 거래소, a game's own rules: stocks and numbers", () =>
   it("reaches both ends of a range, and every step between", () => {
     const steps = (range: Range): number[] => Array.from({ length: (range.to - range.from) / range.step + 1 }, (_, n) => range.from + n * range.step);
 
-    expect([...new Set(drawnOf("per-share").map((each) => each.rule.won))].sort((a, b) => a - b)).toEqual(steps(draw.perShare));
     expect([...new Set(drawnOf("breadth").map((each) => each.rule.count))].sort((a, b) => a - b)).toEqual(steps(draw.count));
     expect([...new Set(drawnOf("outhold").map((each) => each.rule.up))].sort((a, b) => a - b)).toEqual(steps(draw.wonUp));
     expect([...new Set(drawnOf("band").map((each) => each.rule.to - each.rule.from))].sort((a, b) => a - b)).toEqual(steps(draw.bandWidth));
@@ -302,7 +302,7 @@ describe("미스터리 거래소, the numbers rules are drawn from", () => {
   it.each<[string, Partial<DrawConfig>]>([
     ["a range that ends before it begins", { wonUp: { from: 900, to: 800, step: 100 } }],
     ["a range with no step", { wonDown: { from: 500, to: 1500, step: 0 } }],
-    ["a range of half numbers", { perShare: { from: 100.5, to: 300, step: 100 } }],
+    ["a range of half numbers", { wonUp: { from: 400.5, to: 1500, step: 100 } }],
     ["more stocks to rise than there are", { count: { from: 4, to: 8, step: 1 } }],
     ["no stock at all to rise", { count: { from: 0, to: 5, step: 1 } }],
     ["so few stocks to rise that as many may fall in the same round", { count: { from: 3, to: 5, step: 1 } }],

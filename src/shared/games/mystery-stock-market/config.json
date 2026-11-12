@@ -86,11 +86,6 @@
       "to": 300,
       "step": 100
     },
-    "perShare": {
-      "from": 1,
-      "to": 2,
-      "step": 1
-    },
     "bandFrom": {
       "from": 5,
       "to": 20,
