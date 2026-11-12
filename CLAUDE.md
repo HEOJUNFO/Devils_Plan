@@ -68,6 +68,19 @@ rule has the user's own words, the history, and the detail. A part marked
   evidence. Neither is a phone: what only a real one shows (Safari, fingers,
   the on-screen keyboard) is reported as not checked. Detail:
   `.claude/rules/browser-checks.md`.
+- **A push is on the deployed address within three minutes.** From a push to
+  main to the end of the Cloudflare build that deploys it, and of the GitHub
+  CI run beside it, no more than three minutes. The user, 2026-11-12, on
+  hearing that the last three pushes had taken 1 min 19 s to 2 min 16 s to
+  deploy and the CI run 38 to 59 s: "앞으로 3분이넘지않게 고려하게
+  프로젝트룰에적용해줘". *Reading:* this is weighed when a change adds to
+  what a push runs (tests, a build step, a package to install), not measured
+  on every push; after such a push the two times are read from the commit's
+  check runs and said in the report. The Cloudflare check gives one time for
+  its start and its end, so its length is counted from the start of the
+  GitHub run of the same commit. Where a change would take a push past three
+  minutes, the user is told before it is pushed, with what could be made
+  faster; no test is removed or skipped to keep the time.
 
 ## Project Structure
 
