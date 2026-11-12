@@ -17,6 +17,10 @@
  * - 방어제철's holdings after rounds 13, 14, 15, 16, 17, 18 are estimates read off a chart.
  * - 알트엔터's path is exact after rounds 0, 8, 13, 14, 15, 18, 19, 20 and read off charts to within 100 won elsewhere.
  * - The secret of round 15 on 후자전자 was not shown being used: it is inferred from the monitor.
+ *
+ * The wiki's tables of the same match (`wiki.ts`, twenty-three rounds) were laid beside this on
+ * 2026-11-12 (`wiki.test.ts`): all 27 prices below are the same, and 알트엔터's path differs by
+ * 100 won after rounds 3 and 5, where the wiki has 9,500 and 8,000. This file is left as it was read.
  */
 import type { StockId } from "../../../src/shared/games/mystery-stock-market/prices";
 

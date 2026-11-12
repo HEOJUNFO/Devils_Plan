@@ -5,8 +5,14 @@
  * the match is played, in viewers' subtitle files of the episode, and not
  * checked against the release itself (design/games/under-thirteen.md says from
  * where, and what of it is a reading); the document the other games follow
- * has this game's rules only. Written by a script, so that no number is
- * copied by hand.
+ * had this game's rules only when this was written. Written by a script, so
+ * that no number is copied by hand.
+ *
+ * On 2026-11-12 that document came to have a table of the match, and it was
+ * laid beside this one: all 98 submissions and every pass of the fourteen
+ * rounds are the same. One cell differs, the holder of the marker in round 13
+ * (4 here), and there the document's own row of the order agrees with this
+ * file, not with its cell. So nothing here was changed.
  *
  * Who played is left out. The players are numbers: as they stood, clockwise,
  * from whoever held the first-player marker in the first round.
