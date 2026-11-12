@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { evictDurableObject, runDurableObjectAlarm } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { CHOICES, showCards, type Deck, type EffectKind, type EffectOf } from "../../../src/shared/games/lay-the-grass/cards";
 import shipped from "../../../src/shared/games/lay-the-grass/config.json";
 import hostJson from "../../../src/shared/games/lay-the-grass/host-config.json";
 import { parkSize, waysToLay, type ChoiceNo, type Option } from "../../../src/shared/games/lay-the-grass/rules";
@@ -15,17 +16,42 @@ const AWAY_MS = hostJson.awaySeconds * 1000;
 const STAND_MS = hostJson.standSeconds * 1000;
 /** A tile every test player picks unless the test is about the pick: seven cells, as a park is built of. */
 const TILE = 9;
+/** The kinds a card drawn for choice 6, 7 or 8 may have. */
+const DRAWN_KINDS = Object.values(shipped.cards.slots).flat();
+
+/** The option of `kind` on the document's cards, as a game of `players` has it. */
+function documented<K extends EffectKind>(kind: K, players = SHOW_PLAYERS): EffectOf<K> {
+  for (const card of showCards(CHOICES, players, shipped.cards)) {
+    for (const effect of card.options) if (effect.kind === kind) return effect as EffectOf<K>;
+  }
+  throw new Error(`fixture: the document has no ${kind}`);
+}
+
+/** The kinds of drawn option that what was sent as `sent` says anything of. */
+function tellsOf(sent: unknown): string[] {
+  const text = JSON.stringify(sent);
+  return DRAWN_KINDS.filter((kind) => text.includes(`"${kind}"`));
+}
 
 /** Connects to `room`, a room of 잔디 깔기, and joins as player `player`. */
 function open(room: string, player: number, create = false): Promise<TestClient> {
   return join(room, { player, create, game: GAME });
 }
 
-/** Opens `room` with players 0..count-1, player 0 making it, and waits until all see each other. */
-async function gardeners(room: string, count: number): Promise<TestClient[]> {
+/**
+ * Opens `room` with players 0..count-1, player 0 making it, and waits until
+ * all see each other. The host asks for the show's cards, which most tests
+ * here are about; with `deck` "fresh" the room is left as it is made, to draw
+ * cards for each game.
+ */
+async function gardeners(room: string, count: number, deck: Deck = "show"): Promise<TestClient[]> {
   const clients: TestClient[] = [];
   for (let n = 0; n < count; n++) clients.push(await open(room, n, n === 0));
   await Promise.all(clients.map((client) => client.lobbyOf(count)));
+  if (deck === "show") {
+    clients[0].send({ type: "variant", variant: deck });
+    await Promise.all(clients.map((client) => client.lobbyWhere((lobby) => lobby.variant === deck)));
+  }
   return clients;
 }
 
@@ -138,7 +164,7 @@ describe("GameRoom: a room of 잔디 깔기", () => {
       expect(game.view.phase).toBe("pick");
       expect(game.view.choices.find((chosen) => chosen.player === 1)).toMatchObject({ which: 5, option: 1, forced: false });
       // 점수 gives its points at once: the one who took them picks last
-      expect(game.view.players.find((player) => player.id === 1)?.score).toBe(shipped.scoreBonus);
+      expect(game.view.players.find((player) => player.id === 1)?.score).toBe(documented("score").points);
       expect(game.view.pickOrder.at(-1)).toBe(1);
     }
     // only those who chose 정보 may look at the choices to come
@@ -281,7 +307,9 @@ describe("GameRoom: a room of 잔디 깔기", () => {
     for (const line of lines) {
       expect(line.tile).toBe(line.laid ? TILE : 0);
       // everyone took 견제: its points come when few enough tiles were laid
-      expect(line.check).toBe(game.view.placed.length <= game.view.checkAtMost ? shipped.checkBonus : 0);
+      const check = documented("check", 2);
+      expect(game.view.cards.find((card) => card.which === 7)?.options[1]).toEqual(check);
+      expect(line.check).toBe(game.view.placed.length <= check.atMost ? check.bonus : 0);
       expect(game.view.players.find((player) => player.id === line.player)?.score).toBe(line.total);
     }
     expect(game.clock).toEqual({ turn: null, next: null, stand: null });
@@ -363,16 +391,92 @@ describe("GameRoom: a full room of 잔디 깔기", () => {
     const clients = await gardeners("GAS96", SHOW_PLAYERS);
 
     const games = await startGame(clients);
+    // everyone takes 정보: the card of choice 7 is then theirs to look at
+    const picking = await allChoose(clients, 5, 2);
 
     const cells = games[0].view.park.rows.join("").split("#").length - 1;
     expect(games[0].players).toHaveLength(SHOW_PLAYERS);
     expect(cells).toBe(SHOW_PLAYERS * shipped.cellsPerPlayer + shipped.extraCells);
-    expect(games[0].view.checkAtMost).toBe(shipped.checkAtMost);
+    expect(picking.view.cards.find((card) => card.which === 7)?.options[1]).toEqual({ kind: "check", atMost: 9, bonus: 5 });
     games.forEach((game, n) => {
       expect(game.view.you).toBe(n);
       expect(game.view.park).toEqual(games[0].view.park);
       expect(game.view.choosing).toMatchObject({ which: 5, chosen: [] });
     });
+    closeAll(clients);
+  });
+});
+
+describe("GameRoom: the cards of a game of 잔디 깔기", () => {
+  it("starts a room on cards drawn for each game, and sends nobody a card before its choice comes up", async () => {
+    const clients = await gardeners("LEAAA", 2, "fresh");
+    // whoever comes in is told how the room plays
+    const late = await open("LEAAA", 2);
+    const lobby = await late.lobbyWhere();
+    const everyone = [...clients, late];
+
+    const games = await startGame(everyone);
+
+    expect(lobby.variant).toBe("fresh");
+    for (const game of games) {
+      expect(game.view.deck).toBe("fresh");
+      expect(game.view.cards).toEqual([{ which: 5, options: [documented("score", 3), documented("info", 3)] }]);
+      expect(Object.keys(game.rules).sort()).toEqual(["pickSeconds", "placeSeconds", "rounds"]);
+      expect(tellsOf(game)).toEqual([]);
+    }
+    closeAll(everyone);
+  });
+
+  it("sends the cards to come to the player who chose 정보, and to nobody else", async () => {
+    const clients = await gardeners("LEAAB", 3, "fresh");
+    await startGame(clients);
+
+    clients[0].send({ type: "action", action: { type: "choose", option: 1 } });
+    clients[1].send({ type: "action", action: { type: "choose", option: 2 } });
+    clients[2].send({ type: "action", action: { type: "choose", option: 1 } });
+    const settled = await Promise.all(clients.map((client) => client.grassWhere((game) => game.view.choices.length === 3)));
+
+    expect(settled[1].view.preview).toEqual([6, 7, 8]);
+    expect(settled[1].view.cards.map((card) => card.which)).toEqual([5, 6, 7, 8]);
+    for (const card of settled[1].view.cards.slice(1)) {
+      const kinds = card.options.map((effect) => effect.kind);
+      expect(kinds[0]).not.toBe(kinds[1]);
+      for (const kind of kinds) expect(shipped.cards.slots[`${card.which}` as "6" | "7" | "8"]).toContain(kind);
+    }
+    for (const other of [settled[0], settled[2]]) {
+      expect(other.view.preview).toEqual([]);
+      expect(other.view.cards.map((card) => card.which)).toEqual([5]);
+      expect(tellsOf(other)).toEqual([]);
+    }
+    closeAll(clients);
+  });
+
+  it("plays a game on drawn cards through to its end by the room's clock, every line adding up", async () => {
+    const stub = env.GameRoom.getByName("LEAAC");
+    const clients = await gardeners("LEAAC", 2, "fresh");
+    await startGame(clients);
+
+    const game = await runClock(stub, clients[0], (seen) => seen.view.phase === "ended");
+
+    const score = game.view.history.find((event) => event.type === "score");
+    const lines = score?.type === "score" ? score.lines : [];
+    expect(lines).toHaveLength(2);
+    for (const line of lines) expect(line.total).toBe(line.tile + line.manholes + line.flowers + line.pair + line.check + line.harmony + line.neighbours);
+    expect(game.view.deck).toBe("fresh");
+    // by the end every choice has come up, and everyone has been shown every card
+    expect(game.view.cards.map((card) => card.which)).toEqual([5, 6, 7, 8]);
+    expect(game.view.history.filter((event) => event.type === "choice").map((event) => (event.type === "choice" ? event.card : null))).toEqual(game.view.cards);
+    closeAll(clients);
+  });
+
+  it("plays the show's cards when the host has asked for them", async () => {
+    const clients = await gardeners("LEAAD", 2, "show");
+
+    const games = await startGame(clients);
+    const picking = await allChoose(clients, 5, 2);
+
+    expect(games[0].view.deck).toBe("show");
+    expect(picking.view.cards).toEqual(showCards(CHOICES, 2, shipped.cards));
     closeAll(clients);
   });
 });
@@ -393,7 +497,8 @@ describe("GameRoom: the clock of 잔디 깔기", () => {
     expect(after.view.choices).toEqual(
       expect.arrayContaining([
         { player: 0, which: 5, option: 2, forced: false },
-        { player: 1, which: 5, option: shipped.defaultOptions["5"], forced: true },
+        // 점수: the option with nothing to lose
+        { player: 1, which: 5, option: 1, forced: true },
       ]),
     );
     closeAll(clients);

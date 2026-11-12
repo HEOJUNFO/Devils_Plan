@@ -1,14 +1,17 @@
 /**
  * The screen of 잔디 깔기: the park, the either-or choices as they come up,
- * the seven tiles to pick from, the manholes and trees put on the park, the
- * tile in hand over the place it would lie, and who does what in what order.
+ * the seven tiles to pick from, what is put on the park (manholes, flower
+ * beds, trees, rocks), the tile in hand over the place it would lie, and who
+ * does what in what order.
  *
  * Design: design/games/lay-the-grass.md. The room decides everything; this
- * screen shows what it sends and asks for a choice, a pick, a manhole, a tree
- * or a lay. Whether a tile fits, and whether cells may be cut off it, is
- * worked out here as well, with the same rules, so that a player sees it
- * before asking.
+ * screen shows what it sends and asks for a choice, a pick, something put on
+ * the park or a lay. Whether a tile fits, and whether cells may be cut off
+ * it, is worked out here as well, with the same rules, so that a player sees
+ * it before asking. What a choice's two options are is its card, which the
+ * room sends when the player may see it: nothing here knows a card before.
  */
+import { effectIn, type Card, type Effect, type EffectKind, type EffectOf } from "../../../shared/games/lay-the-grass/cards";
 import {
   CHOICES,
   TILES,
@@ -25,6 +28,7 @@ import {
   type Cut,
   type GrassAction,
   type GrassEvent,
+  type MarkKind,
   type Option,
   type Placement,
   type ScoreLine,
@@ -32,6 +36,7 @@ import {
 } from "../../../shared/games/lay-the-grass/rules";
 import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
+import { rowsOf } from "../../../shared/text";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C, shade } from "../../game/palette";
@@ -122,9 +127,14 @@ const SOIL_D = "#2a1e14";
 const LEAF = "#2f9a4c";
 const LEAF_D = "#1d6a34";
 const TRUNK = "#7a4a26";
-
-/** The two options of each choice, by the names the document gives them. */
-const OPTION_NAMES = WORDS.choice.options;
+/** A rock: its lit side, its body and its shade. */
+const ROCK_L = "#b9bcc8";
+const ROCK = "#8a8d9c";
+const ROCK_D = "#55586a";
+/** A flower bed: its petals and the middle of a flower. */
+const PETAL = "#e8739a";
+const PETAL_D = "#a8456a";
+const POLLEN = "#f2e85c";
 
 type Box = readonly [number, number, number, number];
 
@@ -143,6 +153,9 @@ const OPTION_RECTS: readonly [Box, Box] = [
   [8, 112, 288, 62],
 ];
 const PEEK_RECT: Box = [206, 194, 90, 18];
+/** How wide a row of the results is, between the verdict and the buttons, and what joins the parts of one. */
+const RESULT_WIDTH = 280;
+const RESULT_JOINT = " · ";
 /** How far that button takes a finger: nothing else is pressed near it. */
 const PEEK_REACH: Reach = [6, 6, 8, 6];
 /** How far the three buttons for laying take a finger: half the gap to the next, and up and down to the edges of the bar's row. */
@@ -261,8 +274,42 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   /** What `player` chose at choice `which`, once it has been shown to everyone. */
   const optionOf = (player: number | null, which: ChoiceNo): Option | null =>
     latest?.view.choices.find((each) => each.which === which && each.player === player)?.option ?? null;
-  /** Whether the player may cut cells off their tile: they chose 방어. */
-  const defending = (): boolean => optionOf(me(), 6) === 2;
+  /** The card of choice `which`, where the player may see it. */
+  const cardOf = (which: ChoiceNo): Card | null => latest?.view.cards.find((card) => card.which === which) ?? null;
+  /** The option of choice `which` that is numbered `option`, where the player may see its card. */
+  const effectAt = (which: ChoiceNo, option: Option): Effect | null => cardOf(which)?.options[option - 1] ?? null;
+  /** The option of `kind` that `player` holds: one they chose off a card, once that choice has been shown to everyone. */
+  const held = <K extends EffectKind>(player: number | null, kind: K): EffectOf<K> | null =>
+    latest === null ? null : effectIn(latest.view.cards, latest.view.choices, player, kind);
+  /** The most cells the player may cut off their tile: what 방어 allows them, or none. */
+  const cutMost = (): number => held(me(), "defend")?.cells ?? 0;
+  /** What a tile with nowhere to go brings `player`: what their 보험 gives, what their 공격 takes when it fails, or nothing. */
+  const missedBy = (player: number | null): number => {
+    const attack = held(player, "attack");
+    return attack !== null ? -attack.loss : (held(player, "insure")?.points ?? 0);
+  };
+  /** Whether the player may cut cells off their tile: they hold 방어. */
+  const defending = (): boolean => cutMost() > 0;
+  /**
+   * What `player` puts on the park in the phase that is on, by the option
+   * they hold: which sort of thing, and what the next of them is worth where
+   * it is worth anything. `null` for a player with nothing to put now.
+   */
+  function marksOf(player: number | null): { kind: MarkKind; value: number; flower: boolean; rock: boolean } | null {
+    if (latest === null || player === null) return null;
+    const view = latest.view;
+    if (view.phase === "manholes") {
+      const effect = held(player, "manhole") ?? held(player, "flower");
+      if (effect === null) return null;
+      const down = view.manholes.filter((each) => each.by === player).length;
+      return { kind: effect.kind, value: effect.values[Math.min(down, effect.values.length - 1)] ?? 0, flower: effect.kind === "flower", rock: false };
+    }
+    if (view.phase === "trees") {
+      const effect = held(player, "tree") ?? held(player, "rock");
+      return effect === null ? null : { kind: effect.kind, value: 0, flower: false, rock: effect.kind === "rock" };
+    }
+    return null;
+  }
   /** How the points of the last park came about, by player. */
   function scoreOf(player: number): ScoreLine | null {
     const event = [...(latest?.view.history ?? [])].reverse().find((each) => each.type === "score");
@@ -297,16 +344,16 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     noteT = 2;
   }
 
-  /** The words on the card of option `option` of choice `which`: what it does, with the game's own numbers. */
+  /** The name of option `option` of choice `which`, as its card has it; nothing for a card the player may not see. */
+  function optionName(which: ChoiceNo, option: Option): string {
+    const effect = effectAt(which, option);
+    return effect === null ? "" : WORDS.choice.kinds[effect.kind];
+  }
+
+  /** The words on the card of option `option` of choice `which`: what it does, with the card's own numbers. */
   function cardLines(which: ChoiceNo, option: Option): string[] {
-    const rules = latest?.rules;
-    const atMost = latest?.view.checkAtMost ?? 0;
-    if (rules === undefined) return [];
-    const said = WORDS.choice;
-    if (which === 5) return option === 1 ? said.score(rules.scoreBonus) : said.info;
-    if (which === 6) return option === 1 ? said.attack(rules.attackLoss) : said.defend(rules.cutMax);
-    if (which === 7) return option === 1 ? said.pair : said.check(atMost, rules.checkBonus);
-    return option === 1 ? said.tree : said.manholes;
+    const effect = effectAt(which, option);
+    return effect === null ? [] : WORDS.choice.says(effect);
   }
 
   /** Shows one thing that happened: a sound, and something to see where it happened. */
@@ -444,7 +491,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       // putting one of two back must leave a cut that is allowed by itself: it always is
       cut = without;
       sfx.move();
-    } else if (canCut(tile, [...cut, own], latest.rules.cutMax)) {
+    } else if (canCut(tile, [...cut, own], cutMost())) {
       cut = [...cut, own];
       sfx.move();
     } else {
@@ -579,14 +626,16 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
           return;
         }
         const mine = me();
-        // the tree or the manhole is on the park from the press; a first manhole adds, a second takes away
+        const marks = marksOf(mine);
+        if (marks === null) return;
+        // what is put is on the park from the press, as the player's card has it: a tree or a rock, or a
+        // manhole or a flower bed with the next of the card's values on it
         sendAhead(
           { type: tree ? "tree" : "manhole", row: at.row, col: at.col },
           (view) => {
             if (mine === null) return view;
-            if (tree) return { ...view, trees: [...view.trees, { row: at.row, col: at.col, by: mine }] };
-            const value = view.manholes.some((each) => each.by === mine) ? -1 : 1;
-            return { ...view, manholes: [...view.manholes, { row: at.row, col: at.col, value, by: mine }] };
+            if (tree) return { ...view, trees: [...view.trees, { row: at.row, col: at.col, by: mine, ...(marks.rock ? { rock: true as const } : {}) }] };
+            return { ...view, manholes: [...view.manholes, { row: at.row, col: at.col, value: marks.value, by: mine, ...(marks.flower ? { flower: true as const } : {}) }] };
           },
           tree ? "tree" : "manhole",
         );
@@ -756,11 +805,50 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   }
 
   /** A manhole in a cell: a round cover with what it is worth on it. */
-  function drawManhole(x: number, y: number, size: number, value: 1 | -1): void {
+  function drawManhole(x: number, y: number, size: number, value: number): void {
     const colour = value > 0 ? C.teal : C.crim;
     drawHole(x, y, size, C.steelDD);
     drawHole(x + 1, y + 1, size - 2, shade(colour, 0.45));
-    if (size >= 15) pen.txt(value > 0 ? "+1" : "-1", x + Math.round(size / 2), y + Math.round((size - 13) / 2), colour, "center");
+    if (size >= 15) pen.txt(signed(value), x + Math.round(size / 2), y + Math.round((size - 13) / 2), colour, "center");
+  }
+
+  /**
+   * A flower bed in a cell: flowers in its four corners, and what it is
+   * worth in the middle. In a cell too small for the number, a flower.
+   */
+  function drawFlowers(x: number, y: number, size: number, value: number): void {
+    const flower = (fx: number, fy: number): void => {
+      pen.px(fx - 1, fy, 3, 1, PETAL);
+      pen.px(fx, fy - 1, 1, 3, PETAL);
+      pen.px(fx, fy, 1, 1, POLLEN);
+    };
+    pen.px(x + 1, y + 1, size - 2, size - 2, shade(PETAL_D, 0.45));
+    if (size < 15) {
+      flower(x + Math.floor(size / 2), y + Math.floor(size / 2));
+      return;
+    }
+    for (const [dx, dy] of [[3, 3], [size - 4, 3], [3, size - 4], [size - 4, size - 4]] as const) flower(x + dx, y + dy);
+    pen.txt(signed(value), x + Math.round(size / 2), y + Math.round((size - 13) / 2), PETAL, "center");
+  }
+
+  /** A rock in a cell: a boulder lit from the top left, broad at the foot. */
+  function drawRock(x: number, y: number, size: number): void {
+    const wide = Math.max(4, Math.round(size * 0.7));
+    const high = Math.max(3, Math.round(size * 0.5));
+    const left_ = x + Math.floor((size - wide) / 2);
+    const top = y + Math.floor((size - high) / 2) + 1;
+    for (let i = 0; i < high; i++) {
+      // narrower at the top: a row loses a pixel a side for each row it is from the foot, up to a third of the width
+      const inset = Math.min(Math.floor(wide / 3), Math.max(0, Math.round((high - 1 - i) * 0.6)));
+      pen.px(left_ + inset, top + i, wide - inset * 2, 1, i < high / 3 ? ROCK_L : i >= high - 1 ? ROCK_D : ROCK);
+    }
+    pen.px(left_ + Math.floor(wide / 3) + 1, top + 1, Math.max(1, Math.floor(wide / 4)), 1, C.bone);
+  }
+
+  /** What stands on a cell: a tree, or a rock. */
+  function drawStanding(tree: { row: number; col: number; rock?: boolean }, box: { x: number; y: number; cell: number }): void {
+    if (tree.rock === true) drawRock(box.x + tree.col * box.cell, box.y + tree.row * box.cell, box.cell);
+    else drawTree(box.x + tree.col * box.cell, box.y + tree.row * box.cell, box.cell);
   }
 
   /** A tree in a cell: a round crown on a short trunk. */
@@ -829,24 +917,26 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const tile = shapeOf(placement.tile, placement.cut ?? []);
       if (tile !== undefined) for (const cell of coveredBy(tile, placement.row, placement.col, placement.turns)) covered.add(`${cell.row},${cell.col}`);
     }
-    // a manhole nothing lies on yet shows as it is
+    // a manhole or a flower bed nothing lies on yet shows as it is
     for (const manhole of view.manholes) {
-      if (!covered.has(`${manhole.row},${manhole.col}`)) drawManhole(box.x + manhole.col * box.cell, box.y + manhole.row * box.cell, box.cell, manhole.value);
+      if (covered.has(`${manhole.row},${manhole.col}`)) continue;
+      if (manhole.flower === true) drawFlowers(box.x + manhole.col * box.cell, box.y + manhole.row * box.cell, box.cell, manhole.value);
+      else drawManhole(box.x + manhole.col * box.cell, box.y + manhole.row * box.cell, box.cell, manhole.value);
     }
     for (const placement of view.placed) drawLaid(placement, box, grassOf(placement.player), lit.has(placement.player));
-    // a manhole under a tile: what it gave or took, in the corner of the cell
+    // a manhole or a flower bed under a tile: whether it gave or took, in the corner of the cell
     for (const manhole of view.manholes) {
       if (!covered.has(`${manhole.row},${manhole.col}`)) continue;
       // a plus or a minus on a small plate: it keeps clear of the tile's number and of its hole
       const x = box.x + manhole.col * box.cell + 1;
       const y = box.y + manhole.row * box.cell + 1;
-      const colour = manhole.value > 0 ? C.teal : C.crim;
+      const colour = manhole.flower === true ? PETAL : manhole.value > 0 ? C.teal : C.crim;
       pen.px(x, y, 7, 7, C.ink);
       pen.px(x + 1, y + 3, 5, 1, colour);
       if (manhole.value > 0) pen.px(x + 3, y + 1, 1, 5, colour);
     }
-    // a tree stands in the open, or in the hole of the cell laid over it
-    for (const tree of view.trees) drawTree(box.x + tree.col * box.cell, box.y + tree.row * box.cell, box.cell);
+    // a tree stands in the open, or in the hole of the cell laid over it; a rock always in the open
+    for (const tree of view.trees) drawStanding(tree, box);
 
     // the cell pointed at for a manhole or a tree
     if (marking() && cursor !== null) {
@@ -900,8 +990,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         });
       }
     }
-    // the trees again over the tile in hand: a tree is never hidden
-    if (laying() && hand !== null) for (const tree of view.trees) drawTree(box.x + tree.col * box.cell, box.y + tree.row * box.cell, box.cell);
+    // the trees and the rocks again over the tile in hand: what stands in its way is never hidden
+    if (laying() && hand !== null) for (const tree of view.trees) drawStanding(tree, box);
   }
 
   /** The two options of the choice that is up, over the park. */
@@ -924,7 +1014,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       pen.txt(`${option}`, x + 7, y + 24, C.dim);
       // the option's name, as large as its language leaves room for, level with the middle of the card
       const size = WORDS.choice.optionSize;
-      pen.txt(OPTION_NAMES[up.which][option - 1], x + 20, y + Math.round((h - size - 2) / 2), lit_ ? C.amber : up.mine === null ? C.bone : C.dim, "left", size);
+      pen.txt(optionName(up.which, option), x + 20, y + Math.round((h - size - 2) / 2), lit_ ? C.amber : up.mine === null ? C.bone : C.dim, "left", size);
       cardLines(up.which, option).forEach((line, at) => pen.txt(line, x + 104, y + 8 + at * 15, lit_ || up.mine === null ? C.bone : C.dim));
     }
     pen.txt(WORDS.choice.picked(up.chosen.length, latest.players.length), 12, 180, C.boneD);
@@ -990,15 +1080,16 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     }
     if (picking()) return [WORDS.standing.pick(chosen, seconds), hurry];
     if (marking()) {
-      const mine = me();
-      const down = view.manholes.filter((manhole) => manhole.by === mine).length;
-      return [WORDS.standing.mark(view.phase === "trees" ? "tree" : down === 0 ? "plus" : "minus", seconds), hurry];
+      const marks = marksOf(me());
+      return [WORDS.standing.mark(marks?.kind ?? (view.phase === "trees" ? "tree" : "manhole"), marks?.value ?? 0, seconds), hurry];
     }
     if (laying()) {
-      if (cutting) return [WORDS.standing.cut(cut.length, latest.rules.cutMax, seconds), hurry];
+      if (cutting) return [WORDS.standing.cut(cut.length, cutMost(), seconds), hurry];
       return [WORDS.standing.lay(seconds), hurry];
     }
-    const doing = view.phase === "pick" ? "pick" : view.phase === "manholes" ? "manholes" : view.phase === "trees" ? "trees" : "lay";
+    // what the player on turn is putting on the park is their card's to say
+    const putting = marksOf(view.turn)?.kind ?? (view.phase === "trees" ? "tree" : "manhole");
+    const doing = view.phase === "pick" ? "pick" : view.phase === "manholes" || view.phase === "trees" ? putting : "lay";
     return [WORDS.standing.other(me() === null, who, doing, seconds), C.bone];
   }
 
@@ -1014,7 +1105,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         for (const option of [1, 2] as const) {
           const those = event.chosen.filter((each) => each.option === option).map((each) => each.player);
           if (those.length === 0) continue;
-          const label = OPTION_NAMES[event.which][option - 1];
+          // the card the choice was made of comes with it: a park's cards are its own
+          const label = WORDS.choice.kinds[event.card.options[option - 1].kind];
           const whole = WORDS.log.took(label, names(those));
           // too many to name in one line: how many they are comes first, so that the line still says it where it is cut
           lines.push([pen.width(whole) <= PANEL_WIDTH ? whole : WORDS.log.tookMany(label, those.length, names(those)), C.brass]);
@@ -1022,9 +1114,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       } else if (event.type === "pick") lines.push([WORDS.log.pick(who, event.tile, event.forced === true), C.bone]);
       else if (event.type === "pair") lines.push([WORDS.log.pair(names(event.players)), C.teal]);
       else if (event.type === "alone") lines.push([WORDS.log.alone(who), C.boneD]);
-      else if (event.type === "manhole") lines.push([WORDS.log.manhole(who, event.value > 0), C.bone]);
-      else if (event.type === "tree") lines.push([WORDS.log.tree(who), C.bone]);
-      else if (event.type === "skip") lines.push([WORDS.log.skip(who, event.what === "tree"), C.boneD]);
+      else if (event.type === "manhole") lines.push([WORDS.log.manhole(who, event.value, event.flower === true), C.bone]);
+      else if (event.type === "tree") lines.push([WORDS.log.tree(who, event.rock === true), C.bone]);
+      else if (event.type === "skip") lines.push([WORDS.log.skip(who, event.what), C.boneD]);
       else if (event.type === "lay") lines.push([WORDS.log.lay(who, event.tile, event.cut, event.forced === true), C.teal]);
       else if (event.type === "fail") lines.push([WORDS.log.fail(who, event.tile), C.crim]);
       else if (event.type === "score") {
@@ -1074,7 +1166,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const chose = view.phase === "choose" && view.choosing?.chosen.includes(player) === true;
       const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
       const nameColour = gone ? C.dim : me() === player ? C.amber : C.bone;
-      const tileColour = optionOf(player, 6) === 1 ? C.crim : C.boneD;
+      const tileColour = held(player, "attack") !== null ? C.crim : C.boneD;
       // a pair: the partner's colour beside their own
       const pair = view.pairs.find((each) => each.includes(player));
       const partner = pair === undefined ? null : pair[0] === player ? pair[1] : pair[0];
@@ -1193,13 +1285,17 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   }
 
   /** How `line` came about, in words: each part that is not nought. */
-  function breakdown(line: ScoreLine): string {
+  /** What `line` is made of, a part for each thing that gave or took points: the tile first. */
+  function breakdown(line: ScoreLine): string[] {
     const said = WORDS.result;
-    const parts = [line.laid ? said.tile(signed(line.tile)) : line.tile < 0 ? said.attackFailed(signed(line.tile)) : said.notLaid];
+    const parts = [line.laid ? said.tile(signed(line.tile)) : line.tile < 0 ? said.attackFailed(signed(line.tile)) : line.tile > 0 ? said.insured(signed(line.tile)) : said.notLaid];
     if (line.manholes !== 0) parts.push(said.manholes(signed(line.manholes)));
+    if (line.flowers !== 0) parts.push(said.flowers(signed(line.flowers)));
     if (line.pair !== 0) parts.push(said.pair(signed(line.pair)));
     if (line.check !== 0) parts.push(said.check(signed(line.check)));
-    return parts.join(" · ");
+    if (line.harmony !== 0) parts.push(said.harmony(signed(line.harmony)));
+    if (line.neighbours !== 0) parts.push(said.neighbours(signed(line.neighbours)));
+    return parts;
   }
 
   function drawResults(): void {
@@ -1212,11 +1308,18 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     // equal points share a place
     const ranked = [...view.players].sort((a, b) => b.score - a.score);
     const places = ranked.map((player) => WORDS.result.place(ranked.findIndex((other) => other.score === player.score) + 1, pen.fit(nickOf(player.id), 48), player.score));
-    pen.txt(pen.fit(places.join("  "), 280), 96, 226, C.bone);
+    pen.txt(pen.fit(places.join("  "), RESULT_WIDTH), 96, 226, C.bone);
     const line = mine === null ? null : scoreOf(mine);
-    const five = optionOf(mine, 5) === 1 ? `${WORDS.result.bonus(signed(latest.rules.scoreBonus))} · ` : "";
-    pen.txt(pen.fit(line === null ? WORDS.result.over : `${five}${breakdown(line)}`, 280), 96, 240, C.boneD);
+    const score = held(mine, "score");
+    // The viewer's points, part by part. A game on drawn cards can give more parts than a row holds (in English
+    // four of them already do): what does not fit goes on the row below, in place of the line the buttons beside
+    // it say as well.
+    const parts = line === null ? [WORDS.result.over] : [...(score === null ? [] : [WORDS.result.bonus(signed(score.points))]), ...breakdown(line)];
+    const rows = rowsOf(parts, RESULT_JOINT, RESULT_WIDTH, (text) => pen.width(text));
+    const below = rows.slice(1).join(RESULT_JOINT);
+    pen.txt(pen.fit(rows[0] ?? "", RESULT_WIDTH), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
+    else if (below !== "") pen.txt(pen.fit(below, RESULT_WIDTH), 96, 254, C.boneD);
     else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
     if (host) button(AGAIN_RECT, WORDS.button.again, "", !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
@@ -1244,14 +1347,14 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     if (tile !== undefined && mine !== null) {
       drawTile(turned(tile, hand?.turns ?? 0), 8, 240, 5, grassOf(mine));
       const six = optionOf(mine, 6);
-      pen.txt(WORDS.hand.mine(tile.number, six === null ? null : OPTION_NAMES[6][six - 1]), 40, 240, C.bone);
+      pen.txt(WORDS.hand.mine(tile.number, six === null ? null : optionName(6, six)), 40, 240, C.bone);
     }
     if (view.phase === "choose") {
       pen.txt(WORDS.hand.cards, 40, 253, C.boneD);
     } else if (marking()) {
       pen.txt(WORDS.hand.mark, 40, 253, C.boneD);
     } else if (view.phase === "manholes" || view.phase === "trees") {
-      pen.txt(WORDS.hand.marks, 40, 253, C.boneD);
+      pen.txt(WORDS.hand.marks(view.phase === "trees"), 40, 253, C.boneD);
     } else if (laying()) {
       // with 방어 the button for cutting takes the room the longer hint would
       pen.txt(defending() ? WORDS.hand.layCut : WORDS.hand.lay, 40, 253, C.boneD);
@@ -1261,9 +1364,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       // pressed and on its way, the button stays lit and takes no second press
       button(LAY_RECT, WORDS.button.lay, "", pending || (ok && Math.sin(time * 5) > 0), ok && !pending);
     } else if (view.phase === "place") {
-      pen.txt(WORDS.hand.order, 40, 253, C.boneD);
+      pen.txt(WORDS.hand.order(signed(missedBy(mine))), 40, 253, C.boneD);
     } else if (mine !== null && view.failed.includes(mine)) {
-      pen.txt(WORDS.hand.failed, 40, 253, C.crim);
+      pen.txt(WORDS.hand.failed(signed(missedBy(mine))), 40, 253, C.crim);
     } else if (mine !== null && tile !== undefined && view.placed.some((placement) => placement.player === mine)) {
       pen.txt(WORDS.hand.scored(tile.number), 40, 253, C.teal);
     } else {
@@ -1279,13 +1382,16 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);
     pen.txt(WORDS.choice.sheet, 22, 16, C.amber);
+    // which cards the game is played with: the show's, or its own
+    pen.txt(WORDS.choice.deck[view.deck], 22 + pen.width(WORDS.choice.sheet) + 10, 16, C.boneD);
     pen.txt(WORDS.choice.sheetClose, W - 22, 16, C.boneD, "right");
     // the first option starts clear of the choice's name, which is as long as the language makes it
     const first = Math.max(92, 22 + pen.width(WORDS.choice.name(8)) + 8);
     let y = 34;
     for (const which of CHOICES) {
-      const met = view.choosing?.which === which || view.choices.some((each) => each.which === which);
       const ahead = view.preview.includes(which);
+      // a card is here to be shown once its choice has come up, or before for a player who chose 정보
+      const met = !ahead && cardOf(which) !== null;
       const mine = optionOf(me(), which);
       pen.txt(WORDS.choice.name(which), 22, y, met || ahead ? C.bone : C.dim);
       if (!met && !ahead) {
@@ -1296,7 +1402,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (ahead) pen.txt(WORDS.choice.ahead, 22, y + 14, C.teal);
       for (const option of [1, 2] as const) {
         const x = option === 1 ? first : 288;
-        pen.txt(`${option} ${OPTION_NAMES[which][option - 1]}`, x, y, mine === option ? C.amber : C.brass);
+        pen.txt(`${option} ${optionName(which, option)}`, x, y, mine === option ? C.amber : C.brass);
         cardLines(which, option).forEach((line, at) => pen.txt(line, x, y + 14 + at * 13, mine === option ? C.bone : C.boneD));
       }
       y += 56;
@@ -1306,7 +1412,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   function drawHelp(): void {
     if (latest === null) return;
     const rules = latest.rules;
-    const lines = WORDS.help(rules.pickSeconds, rules.placeSeconds);
+    const lines = WORDS.help(rules.pickSeconds, rules.placeSeconds, latest.view.deck);
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);

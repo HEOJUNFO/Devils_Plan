@@ -34,8 +34,9 @@ function presenceOf(players: Candidate[], away: number[] = [], left: number[] = 
   };
 }
 
+/** What the room asks a game to start with: the show's cards, which these tests are about, unless the test asks otherwise. */
 function request(overrides: Partial<StartRequest> = {}): StartRequest {
-  return { by: tokenOf(0), bots: false, allowBots: false, seed: 7, now: T0, turnSeconds: 0, ...overrides };
+  return { by: tokenOf(0), bots: false, allowBots: false, seed: 7, now: T0, turnSeconds: 0, variant: "show", ...overrides };
 }
 
 /** A game just started by player 0 for `players`, all connected. */
@@ -71,16 +72,13 @@ describe("잔디 깔기 in a room: the either-or choices", () => {
     expect(session.waiting).toBeNull();
   });
 
-  it("tells the screen the numbers on the cards", () => {
+  it("tells the screen the numbers on a card with the card, when it comes up", () => {
     const players = candidates(2);
 
-    expect(seenBy(started(players), players, 0, T0).rules).toMatchObject({
-      rounds: shipped.rounds,
-      scoreBonus: shipped.scoreBonus,
-      attackLoss: shipped.attackLoss,
-      cutMax: shipped.cutMax,
-      checkBonus: shipped.checkBonus,
-    });
+    const sent = seenBy(started(players), players, 0, T0);
+
+    expect(sent.rules).toEqual({ rounds: shipped.rounds, pickSeconds: shipped.pickSeconds, placeSeconds: shipped.placeSeconds });
+    expect(sent.view.cards).toEqual([{ which: 5, options: shipped.cards.show["5"] }]);
   });
 
   it("sends nobody what another player has chosen until everyone has", () => {
@@ -131,7 +129,8 @@ describe("잔디 깔기 in a room: the either-or choices", () => {
     const after = host.attend(session, presenceOf(players, [], [2]), T0 + 1000);
 
     expect(awaited(after.state).sort()).toEqual([0, 1]);
-    expect(after.state.choices).toEqual([{ player: 2, which: 5, option: shipped.defaultOptions["5"], forced: true }]);
+    // 점수, the option with nothing to lose
+    expect(after.state.choices).toEqual([{ player: 2, which: 5, option: 1, forced: true }]);
   });
 
   it("gives a player who is only disconnected the whole time of the choice", () => {
@@ -219,12 +218,15 @@ describe("잔디 깔기 in a room: the either-or choices", () => {
     expect(state.trees.some((tree) => tree.by === 0)).toBe(false);
   });
 
-  it("does not carry on with a game stored before the choices were in it", () => {
+  it("does not carry on with a game stored before the choices were in it, or before its cards were", () => {
     const session = started(candidates(2));
     const old = { ...session, version: 1, state: { ...session.state, version: 1 } };
+    const cardless = { ...session, version: 2, state: { ...session.state, version: 2 } };
 
     expect(host.usable(JSON.parse(JSON.stringify(session)))).toBe(true);
     expect(host.usable(old)).toBe(false);
+    expect(host.usable(cardless)).toBe(false);
     expect(host.usable({ ...session, state: { ...session.state, choices: undefined } })).toBe(false);
+    expect(host.usable({ ...session, state: { ...session.state, decks: undefined } })).toBe(false);
   });
 });

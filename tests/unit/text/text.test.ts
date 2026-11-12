@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanLine, cutTo } from "../../../src/shared/text";
+import { cleanLine, cutTo, rowsOf } from "../../../src/shared/text";
 
 /** The character with the number `code`: the ones tested here cannot be seen, so none is written in this file. */
 const ch = (code: number): string => String.fromCodePoint(code);
@@ -70,5 +70,52 @@ describe("cutTo", () => {
 
   it("does not leave a space at the cut", () => {
     expect(cutTo("ab cd", 3)).toBe("ab");
+  });
+});
+
+describe("rowsOf", () => {
+  /** A width for the tests: every character one pixel wide. */
+  const byLength = (text: string): number => text.length;
+
+  it("keeps parts that fit together on one row, joined", () => {
+    expect(rowsOf(["ab", "cd", "ef"], " / ", 12, byLength)).toEqual(["ab / cd / ef"]);
+  });
+
+  it("starts a new row with the part that no longer fits, and breaks nowhere else", () => {
+    // "ab / cd" is 7 wide and "ab / cd / ef" 12: at 11 the third part goes down
+    expect(rowsOf(["ab", "cd", "ef"], " / ", 11, byLength)).toEqual(["ab / cd", "ef"]);
+    expect(rowsOf(["ab", "cd", "ef", "gh"], " / ", 7, byLength)).toEqual(["ab / cd", "ef / gh"]);
+  });
+
+  it("fills a row to exactly its width", () => {
+    expect(rowsOf(["ab", "cd"], " / ", 7, byLength)).toEqual(["ab / cd"]);
+    expect(rowsOf(["ab", "cd"], " / ", 6, byLength)).toEqual(["ab", "cd"]);
+  });
+
+  it("gives a part wider than a row a row of its own, whole", () => {
+    expect(rowsOf(["ab", "much too long", "cd"], " / ", 6, byLength)).toEqual(["ab", "much too long", "cd"]);
+    expect(rowsOf(["much too long"], " / ", 6, byLength)).toEqual(["much too long"]);
+  });
+
+  it("has no rows for no parts", () => {
+    expect(rowsOf([], " / ", 10, byLength)).toEqual([]);
+  });
+
+  it("leaves no part out and keeps their order, whatever the width", () => {
+    const parts = ["Points +5", "Tile +39", "Manholes -4", "Flower beds +12", "Neighbors +16"];
+    for (let max = 1; max <= 80; max++) {
+      const rows = rowsOf(parts, " · ", max, byLength);
+
+      expect(rows.join(" · ")).toBe(parts.join(" · "));
+      for (const row of rows) expect(row.length <= max || !row.includes(" · ")).toBe(true);
+    }
+  });
+
+  it("measures with the width it is given, not by counting characters", () => {
+    // wide letters: each "W" is three pixels
+    const wide = (text: string): number => Array.from(text).reduce((sum, each) => sum + (each === "W" ? 3 : 1), 0);
+
+    expect(rowsOf(["WW", "ab"], "-", 8, byLength)).toEqual(["WW-ab"]);
+    expect(rowsOf(["WW", "ab"], "-", 8, wide)).toEqual(["WW", "ab"]);
   });
 });

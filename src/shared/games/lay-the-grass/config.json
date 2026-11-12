@@ -17,16 +17,98 @@
   ],
   "chooseSeconds": 20,
   "markSeconds": 20,
-  "scoreBonus": 5,
-  "attackLoss": 4,
-  "cutMax": 2,
-  "checkBonus": 5,
-  "checkAtMost": 9,
-  "checkOutOf": 16,
-  "defaultOptions": {
-    "5": 1,
-    "6": 2,
-    "7": 2,
-    "8": 1
+  "cards": {
+    "outOf": 16,
+    "show": {
+      "5": [
+        { "kind": "score", "points": 5 },
+        { "kind": "info" }
+      ],
+      "6": [
+        { "kind": "attack", "times": 2, "loss": 4 },
+        { "kind": "defend", "cells": 2 }
+      ],
+      "7": [
+        { "kind": "pair", "perSide": 1 },
+        { "kind": "check", "atMost": 9, "bonus": 5 }
+      ],
+      "8": [
+        { "kind": "tree", "count": 1 },
+        { "kind": "manhole", "values": [1, -1] }
+      ]
+    },
+    "slots": {
+      "6": ["attack", "defend", "insure", "first"],
+      "7": ["pair", "check", "harmony", "neighbour"],
+      "8": ["tree", "manhole", "rock", "flower"]
+    },
+    "draw": {
+      "attack": [
+        { "kind": "attack", "times": 2, "loss": 4 },
+        { "kind": "attack", "times": 2, "loss": 6 },
+        { "kind": "attack", "times": 3, "loss": 8 }
+      ],
+      "defend": [
+        { "kind": "defend", "cells": 1 },
+        { "kind": "defend", "cells": 2 }
+      ],
+      "insure": [
+        { "kind": "insure", "points": 2 },
+        { "kind": "insure", "points": 3 },
+        { "kind": "insure", "points": 4 }
+      ],
+      "first": [
+        { "kind": "first" }
+      ],
+      "pair": [
+        { "kind": "pair", "perSide": 1 },
+        { "kind": "pair", "perSide": 2 }
+      ],
+      "check": [
+        { "kind": "check", "atMost": 8, "bonus": 6 },
+        { "kind": "check", "atMost": 9, "bonus": 5 },
+        { "kind": "check", "atMost": 10, "bonus": 4 }
+      ],
+      "harmony": [
+        { "kind": "harmony", "atLeast": 9, "bonus": 4 },
+        { "kind": "harmony", "atLeast": 10, "bonus": 5 },
+        { "kind": "harmony", "atLeast": 11, "bonus": 6 }
+      ],
+      "neighbour": [
+        { "kind": "neighbour", "points": 1 },
+        { "kind": "neighbour", "points": 2 }
+      ],
+      "tree": [
+        { "kind": "tree", "count": 1 },
+        { "kind": "tree", "count": 2 }
+      ],
+      "manhole": [
+        { "kind": "manhole", "values": [1, -1] },
+        { "kind": "manhole", "values": [2, -2] }
+      ],
+      "rock": [
+        { "kind": "rock", "count": 1 }
+      ],
+      "flower": [
+        { "kind": "flower", "values": [2] },
+        { "kind": "flower", "values": [3] }
+      ]
+    },
+    "forAbsent": [
+      "score",
+      "defend",
+      "insure",
+      "first",
+      "check",
+      "harmony",
+      "neighbour",
+      "tree",
+      "rock",
+      "flower",
+      "manhole",
+      "pair",
+      "info",
+      "attack"
+    ]
   }
 }

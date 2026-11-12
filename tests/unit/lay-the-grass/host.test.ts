@@ -250,10 +250,6 @@ describe("what a player is sent", () => {
       rounds: BARE.rounds,
       pickSeconds: shipped.pickSeconds,
       placeSeconds: shipped.placeSeconds,
-      scoreBonus: shipped.scoreBonus,
-      attackLoss: shipped.attackLoss,
-      cutMax: shipped.cutMax,
-      checkBonus: shipped.checkBonus,
     });
   });
 
@@ -582,7 +578,8 @@ describe("a stored game", () => {
 
   it.each([
     ["another game's", { version: 1, state: { version: 1, units: [] }, players: [] }],
-    ["a later version's", { version: 2, state: { version: 1, pickOrder: [] } }],
+    ["an earlier version's", { version: 2, state: { version: 2, pickOrder: [], choices: [] }, players: [] }],
+    ["a later version's", { version: 4, state: { version: 3, pickOrder: [], choices: [], decks: [] } }],
     ["nothing", null],
     ["text", "game"],
   ])("is not carried on with when it is %s", (_what, stored) => {

@@ -6,7 +6,8 @@
 // early, so that the room passes for them) and leave; then two more
 // make a room of the second game, team up and part, and play it to its end,
 // through the choice that follows its race and the contest that choice adds;
-// then two make a room of the third game and lay its first park; then two
+// then two make a room of the third game and lay its first park on the show's
+// cards, and two more a room of it on cards drawn for the game; then two
 // make a room of the fourth game, one of them wrong before the other is right;
 // then two make a room of the fifth game and play its first round; then two
 // make a room of the sixth game and play its first round, one of them passing;
@@ -44,6 +45,13 @@ const SIXTH_GAME = "under-thirteen";
 const SEVENTH_GAME = "mystery-stock-market";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
+/** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
+const CARD_SLOTS = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/config.json", import.meta.url), "utf8")).cards.slots;
+/** The kinds of drawn option that `message` says anything of: none, for a player who may not see the cards to come. */
+const cardKindsIn = (message) => {
+  const text = JSON.stringify(message);
+  return Object.values(CARD_SLOTS).flat().filter((kind) => text.includes(`"${kind}"`));
+};
 /** How long the first game's room waits before it passes for a player with no credits, as its own config has it. */
 const PASS_SECONDS = JSON.parse(readFileSync(new URL("../src/shared/game/host-config.json", import.meta.url), "utf8")).passSeconds;
 const STEP_TIMEOUT_MS = 8000;
@@ -222,39 +230,48 @@ async function secondGame() {
   for (const p of players) p.close();
 }
 
-/** The cells of tile `number`, as [row, col] in its own box, after `turns` quarter turns clockwise. */
+/** The cells of tile `number`, as [row, col, whether it has a hole] in its own box, after `turns` quarter turns clockwise. */
 function tileCells(number, turns) {
   const drawing = TILES[String(number)];
   let rows = drawing.length;
   let cells = [];
-  drawing.forEach((line, row) => [...line].forEach((mark, col) => mark !== "." && cells.push([row, col])));
+  drawing.forEach((line, row) => [...line].forEach((mark, col) => mark !== "." && cells.push([row, col, mark === "O"])));
   for (let turn = 0; turn < turns; turn++) {
     const height = rows;
     rows = Math.max(...cells.map(([, col]) => col)) + 1;
-    cells = cells.map(([row, col]) => [col, height - 1 - row]);
+    cells = cells.map(([row, col, hole]) => [col, height - 1 - row, hole]);
   }
   return cells;
 }
 
-/** The first place tile `number` fits on the park as `view` shows it, or `null`: worked out from what a player sees. */
+/**
+ * The first place tile `number` fits whole on the park as `view` shows it, or
+ * `null`: worked out from what a player sees. A tree may be covered by a
+ * holed cell only, a rock by none.
+ */
 function firstWay(view, number) {
   const taken = new Set();
   for (const placement of view.placed) {
     for (const [row, col] of tileCells(placement.tile, placement.turns)) taken.add(`${placement.row + row},${placement.col + col}`);
   }
-  const free = (row, col) => view.park.rows[row]?.[col] === "#" && !taken.has(`${row},${col}`);
+  const standing = new Map(view.trees.map((tree) => [`${tree.row},${tree.col}`, tree.rock === true]));
+  const free = (row, col, hole) => {
+    if (view.park.rows[row]?.[col] !== "#" || taken.has(`${row},${col}`)) return false;
+    const rock = standing.get(`${row},${col}`);
+    return rock === undefined || (!rock && hole);
+  };
   for (let turns = 0; turns < 4; turns++) {
     const cells = tileCells(number, turns);
     for (let row = 0; row < view.park.rows.length; row++) {
       for (let col = 0; col < view.park.rows[0].length; col++) {
-        if (cells.every(([r, c]) => free(row + r, col + c))) return { row, col, turns };
+        if (cells.every(([r, c, hole]) => free(row + r, col + c, hole))) return { row, col, turns };
       }
     }
   }
   return null;
 }
 
-/** The third game, in a room of its own: two players, off the list, one park laid with its four choices. */
+/** The third game, in a room of its own: two players, off the list, one park laid with the four choices of the show's cards. */
 async function thirdGame() {
   const code = roomCode();
   const players = [];
@@ -268,11 +285,16 @@ async function thirdGame() {
   const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
   check("a room is made for the third game", lobby.game === THIRD_GAME, lobby.game);
 
+  // the host asks for the show's cards, which the rest of this part is about; the room draws its own otherwise
+  players[0].send({ type: "variant", variant: "show" });
+  const asked = await players[1].until("the room to take the show's cards", (m) => (m.type === "lobby" && m.variant === "show") || m.type === "error");
+  check("the host's word for the show's cards is passed on to everyone in the room", asked.type === "lobby", asked.type);
+
   players[0].send({ type: "start", bots: false });
   const games = await Promise.all(players.map((p) => p.until("the third game to start", (m) => m.type === "game" || m.type === "refused")));
   const cells = games[0].type === "game" ? games[0].view.park.rows.join("").split("#").length - 1 : 0;
   check("the third game starts on a park for two", games.every((g) => g.type === "game" && g.game === THIRD_GAME) && cells === 16, `${cells} cells`);
-  check("it starts with choice 5 put to both", games[0].view.phase === "choose" && games[0].view.choosing?.which === 5, games[0].view.phase);
+  check("it starts with choice 5 put to both, on the show's cards", games[0].view.phase === "choose" && games[0].view.choosing?.which === 5 && games[0].view.deck === "show", `${games[0].view.phase}, ${games[0].view.deck}`);
 
   /** Both choose `option` of choice `which`; resolves with what player 0 sees once the choice is settled. */
   const bothChoose = async (which, option) => {
@@ -341,12 +363,136 @@ async function thirdGame() {
     "the park is closed with a tile laid counted double and one not laid at a loss, and every line adds up",
     closed.view.phase === "ended" &&
       lines.length === 2 &&
-      lines.every((line) => line.tile === (line.laid ? 14 : -4) && line.total === line.tile + line.manholes + line.pair + line.check) &&
+      lines.every((line) => line.tile === (line.laid ? 14 : -4) && line.total === line.tile + line.manholes + line.flowers + line.pair + line.check + line.harmony + line.neighbours) &&
       points === lines.reduce((sum, line) => sum + line.total, 0),
     `${closed.view.phase}, ${closed.view.placed.length} laid, ${closed.view.failed.length} failed, ${points} points`,
   );
   const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
   check("no token is sent in the third game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
+/**
+ * The third game again, in a room left as it is made: two players, off the
+ * list, one park on cards drawn for the game. The cards of choices 6 to 8 are
+ * sent to nobody before their choice comes up but to the player who chose 정보.
+ */
+async function thirdGameDrawn() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 2; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `drawn${n}`, create: n === 0, game: THIRD_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[1].until("both in the room", (m) => m.type === "lobby" && m.players.length === 2);
+  check("a room of the third game draws its cards for each game unless the host asks otherwise", lobby.variant === "fresh", String(lobby.variant));
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the third game to start on drawn cards", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "it starts with the first card alone: nothing of the cards to come is sent",
+    games.every((g) => g.type === "game" && g.view.deck === "fresh" && g.view.cards.map((card) => card.which).join() === "5" && cardKindsIn(g).length === 0),
+    games.map((g) => (g.type === "game" ? `${g.view.deck} ${g.view.cards.map((card) => card.which).join()} ${cardKindsIn(g).join("+") || "none told"}` : g.type)).join(", "),
+  );
+
+  // player 0 takes 정보, player 1 the points
+  players[0].send({ type: "action", action: { type: "choose", option: 2 } });
+  players[1].send({ type: "action", action: { type: "choose", option: 1 } });
+  const settled = await Promise.all(players.map((p) => p.until("choice 5 to be settled", (m) => m.type === "game" && m.view.choices.filter((c) => c.which === 5).length === 2)));
+  const drawn = settled[0].view.cards.filter((card) => card.which !== 5);
+  check(
+    "the player who chose 정보 is sent the cards to come, and the other nothing of them",
+    settled[0].view.preview.join() === "6,7,8" &&
+      drawn.map((card) => card.which).join() === "6,7,8" &&
+      settled[1].view.preview.length === 0 &&
+      settled[1].view.cards.map((card) => card.which).join() === "5" &&
+      players[1].messages.every((m) => cardKindsIn(m).length === 0),
+    `informed ${settled[0].view.cards.map((card) => card.which).join()}, the other ${settled[1].view.cards.map((card) => card.which).join()}`,
+  );
+  check(
+    "each card drawn has two different options, both of its own choice",
+    drawn.length === 3 && drawn.every((card) => card.options.length === 2 && card.options[0].kind !== card.options[1].kind && card.options.every((effect) => CARD_SLOTS[card.which].includes(effect.kind))),
+    drawn.map((card) => `${card.which} ${card.options.map((effect) => effect.kind).join("/")}`).join(", "),
+  );
+
+  /** What of `view` moves when anybody has done anything. */
+  const progressOf = (view) =>
+    [view.phase, view.turn, view.choosing?.which, view.choosing?.chosen.length, view.choices.length, view.picks.length, view.manholes.length, view.trees.length, view.placed.length, view.failed.length].join();
+  /** The park's cells nothing has been put on that would keep `more` off them. */
+  const cellsFreeOf = (view, standing) => {
+    const cells = [];
+    view.park.rows.forEach((line, row) => [...line].forEach((mark, col) => mark === "#" && cells.push({ row, col })));
+    const on = (list, cell) => list.some((each) => each.row === cell.row && each.col === cell.col);
+    return cells.filter((cell) => !on(view.manholes, cell) && !(standing && on(view.trees, cell)));
+  };
+  // The rest of the park, whatever the cards turn out to be. Each takes a side of every card, player 0 its first and
+  // player 1 its second, but neither takes 방어: this check lays tiles whole, and a tile that fits only when cut
+  // would be given a turn it has no move for.
+  for (let step = 0; step < MOVE_LIMIT; step++) {
+    const view = players[0].last("game").view;
+    if (view.phase === "ended" || view.phase === "pause") break;
+    const from = players[0].messages.length;
+    const before = progressOf(view);
+    if (view.phase === "choose") {
+      const which = view.choosing.which;
+      const n = [0, 1].find((each) => !view.choosing.chosen.includes(each));
+      const seen = await players[n].until(`choice ${which} to come up for player ${n}`, (m) => m.type === "game" && m.view.choosing?.which === which);
+      const card = seen.view.cards.find((each) => each.which === which);
+      const wanted = n === 0 ? 1 : 2;
+      players[n].send({ type: "action", action: { type: "choose", option: card.options[wanted - 1].kind === "defend" ? 3 - wanted : wanted } });
+    } else if (view.phase === "pick") {
+      players[view.turn].send({ type: "action", action: { type: "pick", tile: 7 } });
+    } else if (view.phase === "manholes") {
+      players[view.turn].send({ type: "action", action: { type: "manhole", ...cellsFreeOf(view, false)[0] } });
+    } else if (view.phase === "trees") {
+      // from the far end of the park, so that the tiles laid from its near end have room
+      players[view.turn].send({ type: "action", action: { type: "tree", ...cellsFreeOf(view, true).at(-1) } });
+    } else {
+      const way = firstWay(view, 7);
+      if (way === null) throw new Error("the room gave the turn to a player whose tile fits nowhere");
+      players[view.turn].send({ type: "action", action: { type: "lay", ...way } });
+    }
+    await players[0].until("the third game to move on", (m) => (m.type === "game" && progressOf(m.view) !== before) || m.type === "refused", from);
+  }
+  const ends = await Promise.all(players.map((p) => p.until("the park of drawn cards to be closed", (m) => m.type === "game" && m.view.phase === "ended")));
+  const closed = ends[0];
+  const refused = players.flatMap((p) => p.messages).filter((m) => m.type === "refused");
+  check("nothing this check asked for on the drawn cards was refused", refused.length === 0, refused.map((m) => m.reason).join(" "));
+  const lines = closed.view.history.find((event) => event.type === "score")?.lines ?? [];
+  // 점수, which player 1 took at choice 5, is given at the choice and is in no line of the park
+  const given = closed.view.cards.find((card) => card.which === 5)?.options[0].points ?? 0;
+  const points = closed.view.players.reduce((sum, player) => sum + player.score, 0);
+  check(
+    "the park is closed on the drawn cards, and every line adds up",
+    lines.length === 2 &&
+      lines.every((line) => line.total === line.tile + line.manholes + line.flowers + line.pair + line.check + line.harmony + line.neighbours) &&
+      points === given + lines.reduce((sum, line) => sum + line.total, 0),
+    `${closed.view.placed.length} laid, ${closed.view.failed.length} failed, ${points} points`,
+  );
+  check("by the end both have been shown every card", ends.every((g) => g.view.cards.map((card) => card.which).join() === "5,6,7,8"), ends.map((g) => g.view.cards.map((card) => card.which).join()).join(" | "));
+  /** What player `n` took at choice 8: what they were to put on the park. */
+  const heldAtEight = (n) => {
+    const option = closed.view.choices.find((chosen) => chosen.which === 8 && chosen.player === n)?.option;
+    return closed.view.cards.find((card) => card.which === 8)?.options[option - 1];
+  };
+  const put = [0, 1].map((n) => {
+    const effect = heldAtEight(n);
+    const cells = closed.view.manholes.filter((each) => each.by === n);
+    const stands = closed.view.trees.filter((each) => each.by === n);
+    const asCard =
+      effect?.kind === "manhole" || effect?.kind === "flower"
+        ? stands.length === 0 && cells.map((each) => each.value).join() === effect.values.join() && cells.every((each) => (each.flower === true) === (effect.kind === "flower"))
+        : cells.length === 0 && stands.length === effect?.count && stands.every((each) => (each.rock === true) === (effect.kind === "rock"));
+    return { asCard, said: `${effect?.kind}: ${cells.length} in the ground, ${stands.length} standing` };
+  });
+  check("each put on the park what the card of choice 8 had them put", put.every((each) => each.asCard), put.map((each) => each.said).join(", "));
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in a room of drawn cards either", !sentAll.includes("smoke-check-token"));
 
   for (const p of players) p.send({ type: "leave" });
   for (const p of players) p.close();
@@ -918,6 +1064,7 @@ const PARTS = [
   [GAME, firstGame],
   [SECOND_GAME, secondGame],
   [THIRD_GAME, thirdGame],
+  [THIRD_GAME, thirdGameDrawn],
   [FOURTH_GAME, fourthGame],
   [FIFTH_GAME, fifthGame],
   [SIXTH_GAME, sixthGame],

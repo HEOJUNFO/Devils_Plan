@@ -11,6 +11,7 @@ import { randomInt, randomSource, seedFrom } from "../../game/rng";
 import type { Candidate, GameHost, HostResult, Presence, StartRequest } from "../../hosting";
 import { stand } from "../../standing";
 import botJson from "./bot-config.json";
+import { DECKS, isDeck, type Deck } from "./cards";
 import configJson from "./config.json";
 import hostJson from "./host-config.json";
 import {
@@ -46,12 +47,13 @@ export interface GrassHostConfig {
 /**
  * Values for the bot that fills places while developing. It is a test aid
  * and no more (.claude/rules/bots.md): it chooses by a throw of the dice,
- * picks any tile, puts its manholes and its tree on any cell free for them
- * and lays its tile anywhere it fits (cutting it only when it has no room
- * whole), which is enough to play a game through.
+ * picks any tile, puts what its card has it put on the park (manholes, a
+ * flower bed, trees, a rock) on any cell free for them and lays its tile
+ * anywhere it fits (cutting it only when it has no room whole), which is
+ * enough to play a game through.
  */
 export interface GrassBotConfig {
-  /** Seconds a bot takes over a pick, a manhole, a tree or a lay. */
+  /** Seconds a bot takes over a pick, a thing it puts on the park or a lay. */
   thinkSeconds: number;
 }
 
@@ -61,8 +63,8 @@ const bots: GrassBotConfig = botJson;
 /** With bots asked for, places are filled until there are this many players. */
 const PLAYERS_WITH_BOTS = 4;
 
-/** The version of a stored game this code can carry on with. */
-const VERSION = 2;
+/** The version of a stored game this code can carry on with: 3 since a game has its cards in it. */
+const VERSION = 3;
 
 /** A player of one game. */
 export interface GrassSeat {
@@ -75,7 +77,7 @@ export interface GrassSeat {
 
 /** A game being played or just over, as the room stores it. Send only {@link GrassSnapshot} of it. */
 export interface GrassSession {
-  version: 2;
+  version: 3;
   state: GrassState;
   players: GrassSeat[];
   /** When the game started, in ms since the epoch. Tells one game in a room from the next. */
@@ -121,8 +123,12 @@ export interface GrassTablePlayer {
 /** What one player is sent about the game. */
 export interface GrassSnapshot {
   startedAt: number;
-  /** The numbers of the rules the screen shows or counts with. */
-  rules: Pick<GrassConfig, "rounds" | "pickSeconds" | "placeSeconds" | "scoreBonus" | "attackLoss" | "cutMax" | "checkBonus">;
+  /**
+   * The numbers of the rules the screen shows or counts with. The numbers
+   * on the cards are not among them: each card comes with the game
+   * (`view.cards`) when the player may see it, and not before.
+   */
+  rules: Pick<GrassConfig, "rounds" | "pickSeconds" | "placeSeconds">;
   view: GrassView;
   players: GrassTablePlayer[];
   /**
@@ -154,7 +160,7 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
     return { ...session, state: abandon(session.state), frozenAt: null, waiting: null };
   }
 
-  /** The park cells a bot may put a manhole on, or a tree: any without a manhole, and for a tree without a tree. */
+  /** The park cells a bot may put a manhole or a flower bed on, or a tree or a rock: any without one of the first two, and for the last two without one of those either. */
   function freeToMark(state: GrassState, tree: boolean): { row: number; col: number }[] {
     const cells: { row: number; col: number }[] = [];
     state.park.rows.forEach((line, row) => {
@@ -170,8 +176,9 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
 
   /**
    * A bot does what the game awaits of it: chooses either option, picks any
-   * tile, marks any free cell, lays its tile in any place it fits. Whatever
-   * the rules would not take, the room does for it instead.
+   * tile, puts what it has to put on any free cell, lays its tile in any
+   * place it fits. Whatever the rules would not take, the room does for it
+   * instead.
    */
   function botMoves(session: GrassSession, player: number, now: number): GrassSession {
     const state = session.state;
@@ -264,7 +271,9 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
           seats.push({ id, token: null, nick: `봇 ${seats.filter((seat) => seat.token === null).length + 1}` });
         }
       }
-      const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now }, config);
+      // a room asks for the show's cards by name; any other game draws its own, from the room's numbers
+      const deck: Deck = isDeck(request.variant) ? request.variant : DECKS[0];
+      const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now, deck, chance: request.chance }, config);
       if (!created.ok) return refuse(created.reason);
       const session: GrassSession = {
         version: VERSION,
@@ -330,10 +339,6 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
           rounds: config.rounds,
           pickSeconds: config.pickSeconds,
           placeSeconds: config.placeSeconds,
-          scoreBonus: config.scoreBonus,
-          attackLoss: config.attackLoss,
-          cutMax: config.cutMax,
-          checkBonus: config.checkBonus,
         },
         view: viewFor(state, seat?.id ?? null, config),
         players: session.players.map((player) => ({
@@ -376,7 +381,8 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
       (stored as Partial<GrassSession>).version === VERSION &&
       (stored as Partial<GrassSession>).state?.version === VERSION &&
       Array.isArray((stored as Partial<GrassSession>).state?.pickOrder) &&
-      Array.isArray((stored as Partial<GrassSession>).state?.choices),
+      Array.isArray((stored as Partial<GrassSession>).state?.choices) &&
+      Array.isArray((stored as Partial<GrassSession>).state?.decks),
   };
 
   return host;

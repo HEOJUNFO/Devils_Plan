@@ -52,7 +52,16 @@ describe("the games a room can be made for", () => {
 
   it("lets a room of 미스터리 거래소 be played by rules drawn for each game, which it starts with, or by the show's", () => {
     expect(GAMES["mystery-stock-market"].variants.map((each) => each.id)).toEqual(["fresh", "show"]);
-    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["mystery-stock-market"]);
+  });
+
+  it("lets a room of 잔디 깔기 be played with cards drawn for each game, which it starts with, or with the show's", () => {
+    // what a room is made with is a game's first way: a game somebody has played is not known to them beforehand
+    expect(GAMES["lay-the-grass"].variants.map((each) => each.id)).toEqual(["fresh", "show"]);
+    expect(GAMES["lay-the-grass"].variants.map((each) => each.title.ko)).toEqual(["판마다 새 카드", "방송의 카드"]);
+  });
+
+  it("offers a choice of ways in the two games whose hidden part the show gives away, and in no other", () => {
+    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["lay-the-grass", "mystery-stock-market"]);
   });
 
   it("names each game in Korean as the show does, and in English as its English release does", () => {

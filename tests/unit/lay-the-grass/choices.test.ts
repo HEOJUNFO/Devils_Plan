@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { forAbsent, showCards, type EffectKind, type EffectOf } from "../../../src/shared/games/lay-the-grass/cards";
 import shipped from "../../../src/shared/games/lay-the-grass/config.json";
 import {
   CHOICES,
@@ -7,7 +8,7 @@ import {
   applyTimeout,
   awaited,
   canCut,
-  checkAtMostFor,
+  cardsOf,
   coveredBy,
   createGame,
   cutsOf,
@@ -28,10 +29,25 @@ import {
   type GrassConfig,
   type GrassState,
   type Option,
+  type ScoreLine,
 } from "../../../src/shared/games/lay-the-grass/rules";
 
 /** The game as shipped: one park, with the four either-or choices of the document. */
 const CONFIG: GrassConfig = shipped;
+
+/** The option of `kind` on the document's cards, as its game of sixteen has it. */
+function documented<K extends EffectKind>(kind: K): EffectOf<K> {
+  for (const card of showCards(CHOICES, 16, CONFIG.cards)) {
+    for (const effect of card.options) if (effect.kind === kind) return effect as EffectOf<K>;
+  }
+  throw new Error(`fixture: the document has no ${kind}`);
+}
+
+/** The numbers on the document's cards: what these tests are played with (`game` asks for no other deck). */
+const SCORE_BONUS = documented("score").points;
+const ATTACK_LOSS = documented("attack").loss;
+const CUT_MAX = documented("defend").cells;
+const CHECK_BONUS = documented("check").bonus;
 
 /** An arbitrary moment the tests call the start of the game, in ms. */
 const START = 2_000_000;
@@ -123,7 +139,7 @@ function onTurn(state: GrassState): number {
 }
 
 /** What `player` was given for the park just closed. */
-function lineOf(state: GrassState, player: number): { tile: number; manholes: number; pair: number; check: number; total: number; laid: boolean } {
+function lineOf(state: GrassState, player: number): ScoreLine {
   const event = [...state.history].reverse().find((each) => each.type === "score");
   const line = event?.type === "score" ? event.lines.find((each) => each.player === player) : undefined;
   if (line === undefined) throw new Error("fixture: no points were counted");
@@ -136,8 +152,9 @@ describe("잔디 깔기: the either-or choices, one after another", () => {
     expect(CONFIG.choices).toEqual([...CHOICES]);
     expect(isValidConfig({ ...CONFIG, choices: [5, 9] })).toBe(false);
     expect(isValidConfig({ ...CONFIG, choices: [5, 5] })).toBe(false);
-    expect(isValidConfig({ ...CONFIG, cutMax: 3 })).toBe(false);
-    expect(isValidConfig({ ...CONFIG, defaultOptions: { ...CONFIG.defaultOptions, "6": 3 } })).toBe(false);
+    // 방어 with more cells to cut than the room tries when it looks for room for a tile
+    const three = { ...CONFIG.cards.show, "6": [CONFIG.cards.show["6"][0], { kind: "defend", cells: 3 }] };
+    expect(isValidConfig({ ...CONFIG, cards: { ...CONFIG.cards, show: three } })).toBe(false);
   });
 
   it("puts choice 5 to everyone before any tile is picked", () => {
@@ -214,7 +231,8 @@ describe("잔디 깔기: the either-or choices, one after another", () => {
     const chosen = event?.type === "choice" ? event.chosen : [];
     expect(chosen.find((each) => each.player === 0)).toEqual({ player: 0, option: 2, forced: false });
     expect(chosen.filter((each) => each.player !== 0)).toEqual(
-      state.players.filter((player) => player.id !== 0).map((player) => ({ player: player.id, option: CONFIG.defaultOptions["5"], forced: true })),
+      // 점수: of the card's two, the one the values rank first for someone who does not choose
+      state.players.filter((player) => player.id !== 0).map((player) => ({ player: player.id, option: 1, forced: true })),
     );
     expect(after.phase).toBe("pick");
   });
@@ -225,7 +243,8 @@ describe("잔디 깔기: the either-or choices, one after another", () => {
     const after = applyTimeout(state, deadline(state, CONFIG)!, CONFIG);
 
     expect(state.choosing?.which).toBe(6);
-    expect(CONFIG.defaultOptions["6"]).toBe(2);
+    // 방어, the second on the document's card
+    expect(forAbsent(cardsOf(state)[1], CONFIG.cards)).toBe(2);
     expect(after.choices.filter((chosen) => chosen.which === 6).map((chosen) => [chosen.option, chosen.forced])).toEqual([
       [2, true],
       [2, true],
@@ -267,7 +286,7 @@ describe("잔디 깔기: choice 5, 점수 or 정보", () => {
   it("gives 점수 its points at once, so that those who took them pick after those who did not", () => {
     const state = chooseAll(game(4), (player) => (player < 2 ? 1 : 2));
 
-    expect(state.players.filter((player) => player.id < 2).map((player) => player.score)).toEqual([CONFIG.scoreBonus, CONFIG.scoreBonus]);
+    expect(state.players.filter((player) => player.id < 2).map((player) => player.score)).toEqual([SCORE_BONUS, SCORE_BONUS]);
     expect(state.players.filter((player) => player.id >= 2).map((player) => player.score)).toEqual([0, 0]);
     expect(state.pickOrder.slice(0, 2).sort()).toEqual([2, 3]);
     expect(state.pickOrder.slice(2).sort()).toEqual([0, 1]);
@@ -314,8 +333,8 @@ describe("잔디 깔기: choice 6, 공격 or 방어", () => {
 
     expect(state.failed).toEqual([second]);
     expect(lineOf(state, first)).toMatchObject({ laid: true, tile: 26 });
-    expect(lineOf(state, second)).toMatchObject({ laid: false, tile: -CONFIG.attackLoss, total: -CONFIG.attackLoss });
-    expect(state.players.find((player) => player.id === second)?.score).toBe(-CONFIG.attackLoss);
+    expect(lineOf(state, second)).toMatchObject({ laid: false, tile: -ATTACK_LOSS, total: -ATTACK_LOSS });
+    expect(state.players.find((player) => player.id === second)?.score).toBe(-ATTACK_LOSS);
   });
 
   it("gives a 방어 player whose tile was not laid nothing, and takes nothing", () => {
@@ -413,49 +432,49 @@ describe("잔디 깔기: what may be cut off a tile", () => {
   const nine = tileOf(9)!;
 
   it("allows cutting nothing, one cell, or two cells that lie together", () => {
-    expect(canCut(thirteen, [], CONFIG.cutMax)).toBe(true);
-    expect(canCut(thirteen, [{ row: 0, col: 0 }], CONFIG.cutMax)).toBe(true);
-    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 1, col: 0 }], CONFIG.cutMax)).toBe(true);
+    expect(canCut(thirteen, [], CUT_MAX)).toBe(true);
+    expect(canCut(thirteen, [{ row: 0, col: 0 }], CUT_MAX)).toBe(true);
+    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 1, col: 0 }], CUT_MAX)).toBe(true);
   });
 
   it("never the cell with the number on it", () => {
-    expect(canCut(thirteen, [{ row: 0, col: 2 }], CONFIG.cutMax)).toBe(false);
-    expect(canCut(nine, [{ row: 1, col: 1 }], CONFIG.cutMax)).toBe(false);
+    expect(canCut(thirteen, [{ row: 0, col: 2 }], CUT_MAX)).toBe(false);
+    expect(canCut(nine, [{ row: 1, col: 1 }], CUT_MAX)).toBe(false);
   });
 
   it("not two cells that do not lie together", () => {
-    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 2, col: 0 }], CONFIG.cutMax)).toBe(false);
-    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 1, col: 1 }], CONFIG.cutMax)).toBe(false);
+    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 2, col: 0 }], CUT_MAX)).toBe(false);
+    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 1, col: 1 }], CUT_MAX)).toBe(false);
   });
 
   it("not more cells than the card says", () => {
     expect(canCut(thirteen, [{ row: 2, col: 0 }, { row: 2, col: 1 }, { row: 2, col: 2 }], 3)).toBe(true);
-    expect(canCut(thirteen, [{ row: 2, col: 0 }, { row: 2, col: 1 }, { row: 2, col: 2 }], CONFIG.cutMax)).toBe(false);
+    expect(canCut(thirteen, [{ row: 2, col: 0 }, { row: 2, col: 1 }, { row: 2, col: 2 }], CUT_MAX)).toBe(false);
     expect(canCut(thirteen, [{ row: 2, col: 0 }], 0)).toBe(false);
   });
 
   it("not a cell that leaves an empty one shut in the middle of the tile", () => {
-    expect(canCut(thirteen, [{ row: 1, col: 1 }], CONFIG.cutMax)).toBe(false);
+    expect(canCut(thirteen, [{ row: 1, col: 1 }], CUT_MAX)).toBe(false);
     // the middle and the cell under it: the gap opens to the outside, so nothing is shut in
-    expect(canCut(thirteen, [{ row: 1, col: 1 }, { row: 2, col: 1 }], CONFIG.cutMax)).toBe(true);
+    expect(canCut(thirteen, [{ row: 1, col: 1 }, { row: 2, col: 1 }], CUT_MAX)).toBe(true);
   });
 
   it("not a cell that leaves the tile in two pieces", () => {
     // tile 9 is a column of five with one cell beside it: cutting the column's third cell parts it
-    expect(canCut(nine, [{ row: 2, col: 1 }], CONFIG.cutMax)).toBe(false);
-    expect(canCut(nine, [{ row: 4, col: 1 }], CONFIG.cutMax)).toBe(true);
+    expect(canCut(nine, [{ row: 2, col: 1 }], CUT_MAX)).toBe(false);
+    expect(canCut(nine, [{ row: 4, col: 1 }], CUT_MAX)).toBe(true);
   });
 
   it("not a cell the tile does not have, nor the same cell twice", () => {
-    expect(canCut(nine, [{ row: 0, col: 0 }], CONFIG.cutMax)).toBe(false);
-    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 0, col: 0 }], CONFIG.cutMax)).toBe(false);
+    expect(canCut(nine, [{ row: 0, col: 0 }], CUT_MAX)).toBe(false);
+    expect(canCut(thirteen, [{ row: 0, col: 0 }, { row: 0, col: 0 }], CUT_MAX)).toBe(false);
   });
 
   it("lists every cut a tile allows, nothing cut first", () => {
-    const cuts = cutsOf(thirteen, CONFIG.cutMax);
+    const cuts = cutsOf(thirteen, CUT_MAX);
 
     expect(cuts[0]).toEqual([]);
-    expect(cuts.every((cut) => canCut(thirteen, cut, CONFIG.cutMax))).toBe(true);
+    expect(cuts.every((cut) => canCut(thirteen, cut, CUT_MAX))).toBe(true);
     expect(cuts.some((cut) => cut.some((cell) => cell.row === 0 && cell.col === 2))).toBe(false);
     // singles come before pairs
     expect(cuts.findIndex((cut) => cut.length === 2)).toBeGreaterThan(cuts.findIndex((cut) => cut.length === 1));
@@ -535,8 +554,8 @@ describe("잔디 깔기: choice 7, 상생 or 견제", () => {
     while (state.phase === "place") state = moveFor(state, START + 9000, CONFIG);
 
     expect(state.placed).toHaveLength(2);
-    expect(lineOf(state, 0).check).toBe(CONFIG.checkBonus);
-    expect(lineOf(state, 1).check).toBe(CONFIG.checkBonus);
+    expect(lineOf(state, 0).check).toBe(CHECK_BONUS);
+    expect(lineOf(state, 1).check).toBe(CHECK_BONUS);
     expect(lineOf(state, 2).check).toBe(0);
   });
 
@@ -549,12 +568,13 @@ describe("잔디 깔기: choice 7, 상생 or 견제", () => {
   });
 
   it("keeps the document's share for a smaller game: nine of sixteen", () => {
-    expect(checkAtMostFor(16, CONFIG)).toBe(9);
-    expect(checkAtMostFor(6, CONFIG)).toBe(3);
-    expect(checkAtMostFor(4, CONFIG)).toBe(2);
-    expect(checkAtMostFor(3, CONFIG)).toBe(1);
-    expect(checkAtMostFor(2, CONFIG)).toBe(1);
-    expect(viewFor(game(4), 0, CONFIG).checkAtMost).toBe(2);
+    const atMost = (players: number): unknown => cardsOf(game(players))[2].options[1];
+
+    expect(atMost(16)).toEqual({ kind: "check", atMost: 9, bonus: CHECK_BONUS });
+    expect(atMost(6)).toEqual({ kind: "check", atMost: 3, bonus: CHECK_BONUS });
+    expect(atMost(4)).toEqual({ kind: "check", atMost: 2, bonus: CHECK_BONUS });
+    expect(atMost(3)).toEqual({ kind: "check", atMost: 1, bonus: CHECK_BONUS });
+    expect(atMost(2)).toEqual({ kind: "check", atMost: 1, bonus: CHECK_BONUS });
   });
 });
 
@@ -704,7 +724,7 @@ describe("잔디 깔기: choice 8, 가로수 or 맨홀", () => {
     const [one] = state.layOrder;
     state = act(state, one, { type: "lay", row: 0, col: 0, turns: 0 });
 
-    expect(scoreLines(state, CONFIG).find((line) => line.player === one)).toMatchObject({ tile: 26, manholes: 1, total: 27 });
+    expect(scoreLines(state).find((line) => line.player === one)).toMatchObject({ tile: 26, manholes: 1, total: 27 });
   });
 });
 
@@ -719,9 +739,9 @@ describe("잔디 깔기: the end of a park played with its choices", () => {
     expect(score?.type === "score" ? score.lines.map((line) => line.player) : []).toEqual(state.players.map((player) => player.id));
     for (const player of state.players) {
       const line = lineOf(state, player.id);
-      expect(line.total).toBe(line.tile + line.manholes + line.pair + line.check);
+      expect(line.total).toBe(line.tile + line.manholes + line.flowers + line.pair + line.check + line.harmony + line.neighbours);
       // the five of 점수 and the nine of the tile
-      expect(player.score).toBe(CONFIG.scoreBonus + line.total);
+      expect(player.score).toBe(SCORE_BONUS + line.total);
     }
   });
 

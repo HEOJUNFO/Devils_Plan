@@ -42,7 +42,22 @@
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false,
-    "variants": []
+    "variants": [
+      {
+        "id": "fresh",
+        "title": {
+          "ko": "판마다 새 카드",
+          "en": "New cards"
+        }
+      },
+      {
+        "id": "show",
+        "title": {
+          "ko": "방송의 카드",
+          "en": "Show's cards"
+        }
+      }
+    ]
   },
   "count-cubes": {
     "title": {

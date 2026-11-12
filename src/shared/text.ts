@@ -1,6 +1,6 @@
 /**
  * Cleaning of text that one player types and others are shown: nicknames and
- * chat lines.
+ * chat lines. And, at the end, the laying of a line's parts in rows.
  *
  * The characters dealt with here are ones that cannot be seen, so none of
  * them is written in this file: each is named by its number.
@@ -59,4 +59,23 @@ export function cleanLine(raw: string): string {
 export function cutTo(text: string, max: number): string {
   const chars = Array.from(text);
   return chars.length <= max ? text : chars.slice(0, max).join("").trim();
+}
+
+/**
+ * `parts` laid out in rows no wider than `max`, the parts of a row joined by
+ * `joint`: a part goes on the row in hand while the row still fits, and
+ * starts the next row when it would not. A row is broken nowhere else, so a
+ * part wider than `max` has a row of its own, whole; what is done with such a
+ * row is the caller's to say. `width` says how wide a piece of text is: the
+ * screen that draws the rows knows, and this does not.
+ */
+export function rowsOf(parts: readonly string[], joint: string, max: number, width: (text: string) => number): string[] {
+  const rows: string[] = [];
+  for (const part of parts) {
+    const last = rows.length - 1;
+    const longer = last < 0 ? part : `${rows[last]}${joint}${part}`;
+    if (last >= 0 && width(longer) <= max) rows[last] = longer;
+    else rows.push(part);
+  }
+  return rows;
 }
