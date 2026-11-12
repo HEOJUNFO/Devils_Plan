@@ -914,6 +914,10 @@ function standing(listing: RoomListing, game: GameId): string {
 /** The game whose rooms the lobby lists, `null` for every game: what the player last picked while the page has been open. */
 let listedGame: GameId | null = null;
 /** The list of rooms as the directory last sent it; `null` while it is not known (connecting, or the connection dropped). */
+/** The games one player can start by themselves, by name: said to someone who finds the lobby empty. */
+const ALONE_GAMES = GAME_IDS.filter((id) => GAMES[id].minPlayers === 1)
+  .map((id) => GAMES[id].title[lang])
+  .join(", ");
 let roomsSent: DirectoryMessage | null = null;
 /** How many are looking at the list of rooms, this page among them, as the directory last said; `null` before it has, and while the list is not connected. */
 let watching: Watching | null = null;
@@ -1021,7 +1025,7 @@ function renderRooms(): void {
       : known.length > 0
         ? ""
         : listedGame === null
-          ? WORDS.rooms.none
+          ? WORDS.rooms.none(ALONE_GAMES)
           : WORDS.rooms.noneOf(GAMES[listedGame].title[lang]);
   roomsPick.textContent = `${listedGame === null ? WORDS.rooms.everyGame : GAMES[listedGame].title[lang]} ▾`;
   for (const pick of gamePicks) {

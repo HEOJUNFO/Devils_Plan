@@ -74,7 +74,8 @@ const ko = {
     /** Beside the heading, which says what is counted: in English the number alone, so the widest name of a game fits on the button beside it. */
     total: (rooms: number) => `${rooms}개`,
     loading: "방 목록을 불러오는 중입니다.",
-    none: "열린 방이 없습니다. 공개 방을 만들면 여기에 올라와 누구나 들어올 수 있습니다.",
+    /** With no room on the list. `alone` names the games one player can start, for someone who came by themselves; empty where there is none. */
+    none: (alone: string) => `열린 방이 없습니다. 공개 방을 만들면 여기에 올라와 누구나 들어올 수 있습니다.${alone === "" ? "" : ` 혼자서도 시작할 수 있는 게임: ${alone}.`}`,
     of: (host: string) => `${host}의 방`,
     full: "가득 참",
     playing: "게임 중 · 들어가면 관전",
@@ -363,7 +364,7 @@ const en: typeof ko = {
     count: (rooms) => (rooms === 1 ? "1 room" : `${rooms} rooms`),
     total: (rooms) => String(rooms),
     loading: "Loading the rooms.",
-    none: "No open rooms. Make a public room and it is listed here for anyone to join.",
+    none: (alone) => `No open rooms. Make a public room and it is listed here for anyone to join.${alone === "" ? "" : ` One player can start: ${alone}.`}`,
     of: (host) => `${host}'s room`,
     full: "Full",
     playing: "Playing · join to watch",
