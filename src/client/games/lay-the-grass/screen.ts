@@ -48,7 +48,7 @@ export interface GrassHandlers {
   /** The player chose, picked, marked the park or laid. Returns whether it could be sent. */
   act(action: unknown): boolean;
   /** The host asked for the next game. */
-  again(): void;
+  again(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -177,6 +177,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   let seen = 0;
   /** Something has been sent and the room has not answered yet. */
   let pending = false;
+  /** The host has asked for the next game and the room has not answered yet. */
+  let starting = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -314,7 +316,16 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     }
   }
 
+  /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
+  function askAgain(): void {
+    if (starting) return;
+    starting = handlers.again();
+    if (!starting) say(WORDS.notSent);
+  }
+
   function update(message: GrassMessage): void {
+    // the next game has begun: what was asked for is here
+    if (message.view.phase !== "ended") starting = false;
     const fresh = latest === null || latest.startedAt !== message.startedAt;
     if (fresh) {
       // A game met part-way is shown as it stands; only what happens from here on is played out.
@@ -421,7 +432,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
-        if (host) handlers.again();
+        if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
       return;
@@ -1131,8 +1142,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const five = optionOf(mine, 5) === 1 ? `${WORDS.result.bonus(signed(latest.rules.scoreBonus))} · ` : "";
     pen.txt(pen.fit(line === null ? WORDS.result.over : `${five}${breakdown(line)}`, 280), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, WORDS.button.again, "", true, true);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, "", !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
   }
 
@@ -1172,7 +1183,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (defending()) button(CUT_RECT, cutting ? WORDS.button.cutDone : WORDS.button.cut, "", cutting, true);
       button(TURN_RECT, WORDS.button.turn, "", false, true);
       const ok = hand !== null && number !== null && fits(view.park, view.placed, number, hand.row, hand.col, hand.turns, { cut, trees: view.trees });
-      button(LAY_RECT, WORDS.button.lay, "", ok && Math.sin(time * 5) > 0, ok);
+      // pressed and on its way, the button stays lit and takes no second press
+      button(LAY_RECT, WORDS.button.lay, "", pending || (ok && Math.sin(time * 5) > 0), ok && !pending);
     } else if (view.phase === "place") {
       pen.txt(WORDS.hand.order, 40, 253, C.boneD);
     } else if (mine !== null && view.failed.includes(mine)) {
@@ -1307,11 +1319,13 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   return {
     update,
     refused(reason: string): void {
+      starting = false;
       pending = false;
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
+      starting = false;
       pending = false;
       offline = true;
     },

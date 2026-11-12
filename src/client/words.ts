@@ -58,6 +58,8 @@ const ko = {
     unlisted: "비공개",
     cancel: "취소",
     go: "만들기",
+    /** On the same button, from the press until the room is there. */
+    making: "만드는 중…",
     listedHint: "목록에 보여 누구나 들어옵니다.",
     unlistedHint: "링크나 코드를 아는 사람만 들어옵니다.",
     /** How long a turn is when the room is made; `seconds` 0 is no limit. */
@@ -66,6 +68,8 @@ const ko = {
   },
   room: {
     start: "게임 시작",
+    /** On the same button, from the host's press until the game is on the screen. */
+    starting: "시작하는 중…",
     leave: "나가기",
     copy: "링크 복사",
     copied: "복사됨",
@@ -223,6 +227,7 @@ const en: typeof ko = {
     unlisted: "Private",
     cancel: "Cancel",
     go: "Make",
+    making: "Making…",
     listedHint: "Listed: anyone can come in.",
     unlistedHint: "By link or code only.",
     // two lines of the column at most: five games leave the form no more
@@ -232,6 +237,7 @@ const en: typeof ko = {
   room: {
     // "Start game" would crowd the button beside it out of the row
     start: "Start",
+    starting: "Starting…",
     leave: "Leave",
     // beside a code of wide letters the button has room for one short word
     copy: "Invite",

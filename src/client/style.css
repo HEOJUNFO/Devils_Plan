@@ -799,6 +799,15 @@ button.choice[aria-pressed="true"] {
   color: var(--dim);
 }
 
+/* The player's own line, sent and not yet back from the room. */
+#chat-log .waiting {
+  color: var(--dim);
+}
+
+#chat-log .waiting .who.mine {
+  color: var(--amber-dim);
+}
+
 #chat-form {
   display: flex;
   flex: none;

@@ -30,7 +30,7 @@ export interface UnderHandlers {
   /** The player put something in, had a rock placed, or passed. Returns whether it could be sent. */
   act(action: unknown): boolean;
   /** The host asked for the next game. */
-  again(): void;
+  again(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -134,6 +134,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   let dropped = 0;
   /** Something has been sent and the room has not answered yet. */
   let pending = false;
+  /** The host has asked for the next game and the room has not answered yet. */
+  let starting = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -197,7 +199,16 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     }
   }
 
+  /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
+  function askAgain(): void {
+    if (starting) return;
+    starting = handlers.again();
+    if (!starting) say(WORDS.notSent);
+  }
+
   function update(message: UnderMessage): void {
+    // the next game has begun: what was asked for is here
+    if (message.view.phase !== "ended") starting = false;
     const fresh = latest === null || latest.startedAt !== message.startedAt;
     // The history holds this round and the one before, and begins with a round's opening. How many
     // events have dropped off its front since the last message is where that opening stood then.
@@ -279,7 +290,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
-        if (host) handlers.again();
+        if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
       return;
@@ -603,8 +614,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     const how = end?.type === "ended" ? WORDS.ended[end.reason] : "";
     pen.txt(own === undefined ? how : WORDS.result.mine(own.points), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, WORDS.button.again, true, true);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, false, true);
   }
 
@@ -736,11 +747,13 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   return {
     update,
     refused(reason: string): void {
+      starting = false;
       pending = false;
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
+      starting = false;
       pending = false;
       offline = true;
     },

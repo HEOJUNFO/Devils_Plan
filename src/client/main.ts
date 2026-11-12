@@ -284,6 +284,17 @@ let entering: string | null = null;
 let warm: { code: string; socket: PartySocket } | null = null;
 /** The wait before a connection is opened ahead, while one is running. */
 let warming: ReturnType<typeof setTimeout> | null = null;
+/**
+ * What this page has asked the room to change in the waiting room and the
+ * room has not shown yet. The buttons say these at once and the next press
+ * goes on from them: the room's answer is a moment away, and a button that
+ * stays as it was until then reads as a press not taken.
+ */
+let asked: { listed?: boolean; turnSeconds?: number; variant?: string; team?: number } = {};
+/** Whether the host has pressed start and the game is not on the screen yet. */
+let startAsked = false;
+/** Whether a room is being made: asked for, and not there yet. */
+let creating = false;
 /** The room this page is in, while it is in one. */
 let currentCode = "";
 /** The room as last sent, while this page is in one. */
@@ -381,6 +392,8 @@ function revive(): void {
   online = false;
   // whatever the game screen had asked for and not heard back about is not coming
   table?.lost();
+  chat.lost();
+  unask();
   renderStatus();
   socket.reconnect();
 }
@@ -428,6 +441,7 @@ const chat = createChat(
     maxLength: chatConfig.maxLength,
     storagePrefix: storageKey("chat"),
     send: (text) => send({ type: "chat", text }),
+    me: () => currentView?.players.find((p) => p.slot === currentView?.you)?.nick ?? "",
     wordsOf(note) {
       if (note.kind === "came") return WORDS.room.came(note.nick);
       if (note.kind === "went") return WORDS.room.went(note.nick);
@@ -567,6 +581,8 @@ function showScene(view: LobbyView | null): void {
 
 /** Shows the screen of `game` over the frame, making it on first use. */
 function showTable(game: GameId): GameScreen {
+  // the game asked for is here: the button under it is the start button again
+  if (startAsked) unask();
   if (table !== null && tableGame !== game) {
     table.destroy();
     table = null;
@@ -860,6 +876,9 @@ roomList.addEventListener("focusin", (event) => {
 function showLobby(message = ""): void {
   voice.leave();
   setEntering(null);
+  setCreating(false);
+  asked = {};
+  startAsked = false;
   lastLobby = null;
   lastGame = null;
   staleSince = null;
@@ -930,6 +949,9 @@ function showNewRoom(): void {
 }
 
 function closeNewRoom(): void {
+  // a room on its way is not waited for: the form is put away, and so is the asking
+  if (creating) disconnect();
+  setCreating(false);
   newRoom.hidden = true;
   entry.hidden = false;
   rules.hidden = true;
@@ -968,8 +990,9 @@ function renderStatus(): void {
   // as in English it mostly is. (The room is on show when this is written, so the line can be measured.)
   // a room put back from what was kept says so until the room itself has spoken: who is here may have changed
   const away = returning ? WORDS.room.returning : online ? null : WORDS.room.offline;
-  write(away === null ? WORDS.room.status(game, view.listed, here, view.maxPlayers) : [away]);
-  if (away === null && roomGame.childElementCount === 1 && roomGame.scrollWidth > roomGame.clientWidth) write(WORDS.room.statusTall(game, view.listed, here, view.maxPlayers));
+  const listed = asked.listed ?? view.listed;
+  write(away === null ? WORDS.room.status(game, listed, here, view.maxPlayers) : [away]);
+  if (away === null && roomGame.childElementCount === 1 && roomGame.scrollWidth > roomGame.clientWidth) write(WORDS.room.statusTall(game, listed, here, view.maxPlayers));
   // said aloud to a screen reader when it changes
   status.textContent = away ?? WORDS.room.statusSpoken(here, view.maxPlayers);
 }
@@ -989,6 +1012,8 @@ function renderRoom(code: string, view: LobbyView): void {
   currentCode = code;
   currentView = view;
   setEntering(null);
+  // the room asked for is here
+  if (creating) setCreating(false);
   unwatchRooms();
   roomsPanel.hidden = true;
   entry.hidden = true;
@@ -1031,12 +1056,17 @@ function renderRoom(code: string, view: LobbyView): void {
   const game = isGameId(view.game) ? GAMES[view.game] : null;
   document.title = `${game?.title[lang] ?? SITE_TITLE} · ${code}`;
   listingButton.hidden = !isHost;
-  listingButton.textContent = view.listed ? WORDS.room.toUnlisted : WORDS.room.toListed;
-  clockButton.textContent = WORDS.room.clock(view.turnSeconds);
+  // what was asked for and is now so needs no saying ahead of the room any more
+  if (asked.listed === view.listed) delete asked.listed;
+  if (asked.turnSeconds === view.turnSeconds) delete asked.turnSeconds;
+  if (asked.variant === view.variant) delete asked.variant;
+  if (asked.team === (view.players.find((p) => p.slot === view.you)?.team ?? 0)) delete asked.team;
+  listingButton.textContent = (asked.listed ?? view.listed) ? WORDS.room.toUnlisted : WORDS.room.toListed;
+  clockButton.textContent = WORDS.room.clock(asked.turnSeconds ?? view.turnSeconds);
   clockButton.disabled = !isHost;
   clockButton.title = isHost ? WORDS.room.clockHost : WORDS.room.clockGuest;
   // which way the game is played here, where it has more than one: the host's to choose
-  const variant = game?.variants.find((each) => each.id === view.variant);
+  const variant = game?.variants.find((each) => each.id === (asked.variant ?? view.variant));
   variantButton.hidden = variant === undefined;
   variantButton.textContent = variant?.title[lang] ?? "";
   variantButton.disabled = !isHost;
@@ -1052,9 +1082,10 @@ function renderRoom(code: string, view: LobbyView): void {
   clockButton.hidden = !game.turns;
   teamButton.hidden = !teams;
   const mine = view.players.find((p) => p.slot === view.you);
-  const myTeam = mine?.team ?? 0;
+  const myTeam = asked.team ?? mine?.team ?? 0;
   // a team's leader is whoever took it first: their share of the team's points differs from the others'
-  teamButton.textContent = myTeam === 0 ? WORDS.room.solo : WORDS.room.team(myTeam, mine?.leads === true);
+  // (of a team just asked for, the room has yet to say who leads)
+  teamButton.textContent = myTeam === 0 ? WORDS.room.solo : WORDS.room.team(myTeam, asked.team === undefined && mine?.leads === true);
   teamButton.title = WORDS.room.teamHelp(game.teamSize);
 
   const sizes = new Map<number, number>();
@@ -1064,7 +1095,9 @@ function renderRoom(code: string, view: LobbyView): void {
   // A game starts with as many as it takes at least: one, in a game that can be played alone. Teams
   // change nothing in that: one team, or one player, is enough where one player is.
   const enough = wantBots || (connected.length >= game.minPlayers && connected.length <= game.maxPlayers);
-  startButton.disabled = !isHost || !enough;
+  startButton.disabled = !isHost || !enough || startAsked;
+  startButton.textContent = startAsked ? WORDS.room.starting : WORDS.room.start;
+  startButton.setAttribute("aria-busy", String(startAsked));
   const alone = connected.length === 1 && game.minPlayers === 1;
   hint = !enough
     ? WORDS.room.needPlayers(game.minPlayers, connected.length)
@@ -1125,6 +1158,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     staleSince ??= Date.now();
     // whatever the game screen had asked for and not heard back about is not coming
     table?.lost();
+    chat.lost();
+    unask();
     if (event.code === CLOSE_LEFT) {
       // The room let this player go without this page asking: they left in
       // another window, or were away so long that their place was given up.
@@ -1197,6 +1232,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       } else if (table !== null) {
         table.refused(message.reason);
       } else {
+        // what the buttons were saying ahead of the room is taken back
+        unask();
         hint = WORDS.refused[message.reason] ?? WORDS.refusedOther;
         renderRoomBar();
       }
@@ -1252,6 +1289,34 @@ function createRoom(): void {
   localStorage.setItem(storageKey("game"), chosenGame);
   localStorage.setItem(storageKey("listed"), chosenListed ? "1" : "0");
   connect(generateRoomCode(Math.random, config), true, nick, CREATE_ATTEMPTS - 1);
+  setCreating(true);
+}
+
+/** Notes that a room is being made, or no longer: its button says so and takes no second press, which would start the making over. */
+function setCreating(on: boolean): void {
+  creating = on;
+  const button = el<HTMLButtonElement>("create-go");
+  button.textContent = on ? WORDS.newRoom.making : WORDS.newRoom.go;
+  button.disabled = on;
+  button.setAttribute("aria-busy", String(on));
+}
+
+/**
+ * Asks the room for a change to the waiting room, and shows it at once.
+ * Nothing is shown that could not be sent.
+ */
+function askRoom(message: ClientMessage, change: typeof asked): void {
+  if (currentView === null || !send(message)) return;
+  asked = { ...asked, ...change };
+  renderRoom(currentCode, currentView);
+}
+
+/** Forgets what was asked of the room and not shown: it was refused, or the line dropped. The waiting room says again what the room last said. */
+function unask(): void {
+  const any = startAsked || Object.keys(asked).length > 0;
+  asked = {};
+  startAsked = false;
+  if (any && currentView !== null && currentCode !== "") renderRoom(currentCode, currentView);
 }
 
 /** Enters the room `code`, from the list or from an address. */
@@ -1318,23 +1383,32 @@ codeInput.addEventListener("keydown", (event) => {
   joinFromInput();
 });
 el<HTMLButtonElement>("leave").addEventListener("click", leaveRoom);
-startButton.addEventListener("click", () => send({ type: "start", bots: wantBots }));
+startButton.addEventListener("click", () => {
+  // pressed once: a second start would reach the room with the game on, and be refused on the game's own screen
+  if (startAsked || currentView === null || !send({ type: "start", bots: wantBots })) return;
+  startAsked = true;
+  renderRoom(currentCode, currentView);
+});
 listingButton.addEventListener("click", () => {
-  if (currentView !== null) send({ type: "listing", listed: !currentView.listed });
+  if (currentView === null) return;
+  const listed = !(asked.listed ?? currentView.listed);
+  askRoom({ type: "listing", listed }, { listed });
 });
 teamButton.addEventListener("click", () => {
   // each press moves on: alone, then each team the game has room for, and round again
   const view = currentView;
   if (view === null || !isGameId(view.game)) return;
-  const mine = view.players.find((p) => p.slot === view.you)?.team ?? 0;
-  send({ type: "team", team: (mine + 1) % (teamsIn(view.game, config) + 1) });
+  const mine = asked.team ?? view.players.find((p) => p.slot === view.you)?.team ?? 0;
+  const team = (mine + 1) % (teamsIn(view.game, config) + 1);
+  askRoom({ type: "team", team }, { team });
 });
 clockButton.addEventListener("click", () => {
   // each press moves to the next length the room offers, round to the first
   if (currentView === null) return;
   const choices = config.turnSecondsChoices;
-  const at = choices.indexOf(currentView.turnSeconds);
-  send({ type: "clock", seconds: choices[(at + 1) % choices.length] });
+  const at = choices.indexOf(asked.turnSeconds ?? currentView.turnSeconds);
+  const seconds = choices[(at + 1) % choices.length];
+  askRoom({ type: "clock", seconds }, { turnSeconds: seconds });
 });
 
 variantButton.addEventListener("click", () => {
@@ -1343,8 +1417,9 @@ variantButton.addEventListener("click", () => {
   if (view === null || !isGameId(view.game)) return;
   const variants = GAMES[view.game].variants;
   if (variants.length === 0) return;
-  const at = variants.findIndex((each) => each.id === view.variant);
-  send({ type: "variant", variant: variants[(at + 1) % variants.length].id });
+  const at = variants.findIndex((each) => each.id === (asked.variant ?? view.variant));
+  const variant = variants[(at + 1) % variants.length].id;
+  askRoom({ type: "variant", variant }, { variant });
 });
 
 // Leaving a game hands the seat to the room, so it takes a second press: the

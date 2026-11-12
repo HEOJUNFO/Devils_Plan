@@ -67,7 +67,7 @@ export interface TableHandlers {
   /** The player made a move. Returns whether it could be sent. */
   act(action: Action): boolean;
   /** The host asked for the next game. */
-  again(): void;
+  again(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -233,6 +233,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let selAt = 0;
   /** A move has been sent and the room has not answered yet. */
   let pending = false;
+  /** The host has asked for the next game and the room has not answered yet. */
+  let starting = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -410,7 +412,16 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     }
   }
 
+  /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
+  function askAgain(): void {
+    if (starting) return;
+    starting = handlers.again();
+    if (!starting) say(WORDS.notSent);
+  }
+
   function update(message: GameMessage): void {
+    // the next game has begun: what was asked for is here
+    if (message.view.phase !== "ended") starting = false;
     if (latest === null || latest.startedAt !== message.startedAt) resetFor(message);
     latest = message;
     receivedAt = performance.now();
@@ -606,7 +617,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
-        if (host) handlers.again();
+        if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
       return;
@@ -1152,8 +1163,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(WORDS.result.live(live.join("·")), 96, 226, C.bone);
     pen.txt(WORDS.result.fallen(result.hitSeats.map((seat) => pen.fit(nickOf(seat), LOG_NAME_WIDTH)).join(", ")), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) smallButton(AGAIN_RECT, WORDS.button.again, true);
+    else pen.txt(starting ? WORDS.prompt.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) smallButton(AGAIN_RECT, WORDS.button.again, !starting);
     smallButton(LOBBY_RECT, WORDS.button.lobby, false);
   }
 
@@ -1294,11 +1305,13 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   return {
     update,
     refused(reason: string): void {
+      starting = false;
       pending = false;
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
+      starting = false;
       pending = false;
       offline = true;
     },

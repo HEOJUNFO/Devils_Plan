@@ -37,7 +37,7 @@ export interface CubesHandlers {
   /** The player gave an answer. Returns whether it could be sent. */
   act(action: unknown): boolean;
   /** The host asked for the next game. */
-  again(): void;
+  again(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -152,6 +152,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   let seen = 0;
   /** Something has been sent and the room has not answered yet. */
   let pending = false;
+  /** The host has asked for the next game and the room has not answered yet. */
+  let starting = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -247,7 +249,16 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     }
   }
 
+  /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
+  function askAgain(): void {
+    if (starting) return;
+    starting = handlers.again();
+    if (!starting) say(WORDS.notSent);
+  }
+
   function update(message: CubesMessage): void {
+    // the next game has begun: what was asked for is here
+    if (message.view.phase !== "ended") starting = false;
     const fresh = latest === null || latest.startedAt !== message.startedAt;
     if (fresh) {
       // A game met part-way is shown as it stands; only what happens from here on is played out.
@@ -287,7 +298,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
-        if (host) handlers.again();
+        if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
       return;
@@ -576,8 +587,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     pen.txt(pen.fit(places.length > 0 ? places.join(" · ") : WORDS.result.nobody, 280), 96, 226, C.bone);
     pen.txt(WORDS.result.answer(`${view.answer ?? "?"}`), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? WORDS.result.hostNext(latest.players.length === 1) : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, WORDS.button.again, true, true);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext(latest.players.length === 1) : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, false, true);
   }
 
@@ -740,11 +751,13 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   return {
     update,
     refused(reason: string): void {
+      starting = false;
       pending = false;
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
+      starting = false;
       pending = false;
       offline = true;
     },

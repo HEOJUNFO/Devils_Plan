@@ -32,7 +32,7 @@ export interface PokerHandlers {
   /** The player chose cards, or made the choice final. Returns whether it could be sent. */
   act(action: unknown): boolean;
   /** The host asked for the next game. */
-  again(): void;
+  again(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -132,6 +132,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
   let seen = 0;
   /** A final choice has been sent and the room has not answered yet. */
   let pending = false;
+  /** The host has asked for the next game and the room has not answered yet. */
+  let starting = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -209,7 +211,16 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     }
   }
 
+  /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
+  function askAgain(): void {
+    if (starting) return;
+    starting = handlers.again();
+    if (!starting) say(WORDS.notSent);
+  }
+
   function update(message: PokerMessage): void {
+    // the next game has begun: what was asked for is here
+    if (message.view.phase !== "ended") starting = false;
     const fresh = latest === null || latest.startedAt !== message.startedAt;
     if (fresh) {
       // A game met part-way is shown as it stands; only what happens from here on is played out.
@@ -227,7 +238,9 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     if (touched !== round) selection = [...(message.view.mine?.cells ?? [])];
     latest = message;
     receivedAt = performance.now();
-    pending = false;
+    // A final choice goes as two messages and the room answers each, and others' choices are sent here meanwhile:
+    // it is on its way until the room shows it final, or the choosing is over. (A refusal and a lost line end it too.)
+    if (message.view.phase !== "choose" || message.view.mine?.locked === true) pending = false;
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
   }
@@ -247,6 +260,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       sfx.deny();
       return;
     }
+    // the choice is on its way to being final: a card turned now would be refused, and put back before the eyes
+    if (pending) return;
     const picks = latest.rules.picks;
     const next = selection.includes(cell) ? selection.filter((each) => each !== cell) : [...selection.slice(Math.max(0, selection.length - picks + 1)), cell];
     if (!handlers.act({ type: "pick", cells: next })) return say(WORDS.notSent);
@@ -286,7 +301,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
-        if (host) handlers.again();
+        if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
       return;
@@ -595,8 +610,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     const how = end?.type === "ended" ? WORDS.ended[end.reason] : "";
     pen.txt(own === undefined ? how : WORDS.result.mine(own.wins, own.ties, own.losses), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, WORDS.button.again, true, true);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, false, true);
   }
 
@@ -621,7 +636,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     pen.txt(pen.fit(WORDS.keys, LOCK_RECT[0] - 14), 6, 240, C.boneD);
     pen.txt(hint, 6, 254, C.dim);
     const live = canChoose() && !pending;
-    button(LOCK_RECT, WORDS.button.lock, live && selection.length === latest.rules.picks, live);
+    // pressed and on its way, the button stays lit: it has been taken, not shut
+    button(LOCK_RECT, WORDS.button.lock, pending || (live && selection.length === latest.rules.picks), live);
   }
 
   function drawHelp(): void {
@@ -714,6 +730,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
   return {
     update,
     refused(reason: string): void {
+      starting = false;
       pending = false;
       // what the room holds is what counts again: this page's own choice did not go through
       touched = null;
@@ -722,6 +739,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       sfx.deny();
     },
     lost(): void {
+      starting = false;
       pending = false;
       offline = true;
     },

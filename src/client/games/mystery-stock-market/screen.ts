@@ -35,7 +35,7 @@ export interface MarketHandlers {
   /** The player asked for something: an order, their secret, a piece, the end of their round. Returns whether it could be sent. */
   act(action: unknown): boolean;
   /** The host asked for the next game. */
-  again(): void;
+  again(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -188,6 +188,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   let seen = 0;
   /** What was asked of the room and has not shown in what it sends yet; `null` when nothing is on its way. */
   let sent: MarketMove | null = null;
+  /** The host has asked for the next game and the room has not answered yet. */
+  let starting = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   let host = false;
@@ -276,7 +278,16 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     return is.pieces < was.pieces;
   }
 
+  /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
+  function askAgain(): void {
+    if (starting) return;
+    starting = handlers.again();
+    if (!starting) say(WORDS.notSent);
+  }
+
   function update(message: MarketMessage): void {
+    // the next game has begun: what was asked for is here
+    if (message.view.phase !== "ended") starting = false;
     const before = latest;
     const fresh = before === null || before.startedAt !== message.startedAt;
     if (fresh) {
@@ -369,7 +380,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       if (pressed("Escape") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
-        if (host) handlers.again();
+        if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
       return;
@@ -774,6 +785,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       if (mode === "piece") return [WORDS.standing.askPiece(name, WORDS.won(latest.rules.pieceCash)), C.amber];
       if (mode === "done") return [WORDS.standing.askDone, C.amber];
     }
+    // what was asked of the room is on its way: said at once, over whatever the last move left written
+    if (sent !== null && !offline) return [WORDS.standing.sending, C.boneD];
     if (noteT > 0) return [note, C.amber];
     if (offline) return [WORDS.standing.offline, C.crim];
     if (view.phase === "ended") return [WORDS.standing.over, C.amber];
@@ -811,8 +824,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       pen.txt(pen.fit(pen.width(whole) <= RESULT_WIDTH ? whole : WORDS.result.won(award), RESULT_WIDTH), 96, 240, award === "" ? C.boneD : C.brass);
     }
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, WORDS.button.again, true, true);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, false, true);
   }
 
@@ -964,12 +977,14 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   return {
     update,
     refused(reason: string): void {
+      starting = false;
       sent = null;
       mode = "trade";
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();
     },
     lost(): void {
+      starting = false;
       sent = null;
       offline = true;
     },

@@ -42,7 +42,7 @@ export interface RectHandlers {
   /** The player buzzed or answered. Returns whether it could be sent. */
   act(action: unknown): boolean;
   /** The host asked for the next game. */
-  again(): void;
+  again(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -201,6 +201,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   let typed = "";
   /** Something has been sent and the room has not answered yet. */
   let pending = false;
+  /** The host has asked for the next game and the room has not answered yet. */
+  let starting = false;
   /** The connection to the room is down; the next thing the room sends says it is back. */
   let offline = false;
   /**
@@ -354,7 +356,16 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
   }
 
+  /** Asks the room for the next game, once: a press made again before the room answers is the same press. */
+  function askAgain(): void {
+    if (starting) return;
+    starting = handlers.again();
+    if (!starting) say(WORDS.notSent);
+  }
+
   function update(message: RectMessage): void {
+    // the next game has begun: what was asked for is here
+    if (message.view.phase !== "ended") starting = false;
     const fresh = latest === null || latest.startedAt !== message.startedAt;
     if (fresh) {
       // A game met part-way is shown as it stands; only what happens from here on is played out.
@@ -417,7 +428,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
-        if (host) handlers.again();
+        if (host) askAgain();
         else say(WORDS.refused["not-host"]);
       }
       return;
@@ -478,6 +489,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       // what was pressed after the buzz in the same step is the start of the answer
       typing = rest;
     }
+    // the answer has been said and is on its way: the figure on screen stays the one that was sent
+    if (toAnswer && pending) return;
     const most = `${latest.rules.maxSaid}`.length;
     // the pad is on screen only once the answer is this player's; its buttons count as the keys they stand for
     const pad: string[] = [];
@@ -805,6 +818,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     }
     if (view.phase === "answer" && view.floor !== null) {
       const seconds = Math.ceil((left(latest.clock.answer) ?? 0) / 1000);
+      // the answer said is on its way: no longer one to be typed
+      if (answering() && pending) return [WORDS.standing.sending, C.boneD];
       if (answering()) return [WORDS.standing.answer(seconds), seconds <= TICK_FROM ? C.crim : C.amber];
       return [WORDS.standing.answering(pen.fit(nickOf(view.floor.player), LIST_NAME_WIDTH), seconds), C.bone];
     }
@@ -964,8 +979,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       pen.txt(pen.fit(parts.join(" · "), 280), 96, 240, line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD);
     }
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(host ? WORDS.result.hostNext(latest.players.length === 1) : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, WORDS.button.again, "", true, true);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext(latest.players.length === 1) : WORDS.result.waitHost, 96, 254, C.boneD);
+    if (host) button(AGAIN_RECT, WORDS.button.again, "", !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
   }
 
@@ -999,13 +1014,16 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       pen.px(24, 241, 84, 26, C.amberD);
       pen.px(25, 242, 82, 24, C.ink);
       pen.txt(typed === "" ? "_" : typed, 66, 242, C.amber, "center", 24);
-      for (let digit = 0; digit <= 9; digit++) button(digitRect(digit), `${digit}`, "", false, true);
-      button(ERASE_RECT, WORDS.button.erase, "", false, typed !== "");
-      button(SAY_RECT, WORDS.button.say, "", typed !== "", typed !== "");
+      for (let digit = 0; digit <= 9; digit++) button(digitRect(digit), `${digit}`, "", false, !pending);
+      button(ERASE_RECT, WORDS.button.erase, "", false, typed !== "" && !pending);
+      // said and on its way, the button stays lit and takes no second press
+      button(SAY_RECT, WORDS.button.say, "", typed !== "", typed !== "" && !pending);
       return;
     }
     const able = canBuzz();
-    button(BUZZ_RECT, WORDS.button.buzzer, able ? WORDS.button.buzzerKeys : WORDS.button.buzzerShut, able && Math.sin(time * 5) > 0, able);
+    // this player's own buzz is on its way: the button stays pressed and says so, it does not say it is shut
+    const going = buzzed && pending;
+    button(BUZZ_RECT, WORDS.button.buzzer, going ? WORDS.standing.sending : able ? WORDS.button.buzzerKeys : WORDS.button.buzzerShut, going || (able && Math.sin(time * 5) > 0), able);
     pen.txt(WORDS.brief[0], 162, 241, C.boneD);
     pen.txt(WORDS.brief[1], 162, 254, C.boneD);
   }
@@ -1092,6 +1110,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   return {
     update,
     refused(reason: string): void {
+      starting = false;
       pending = false;
       buzzed = false;
       queued = false;
@@ -1102,6 +1121,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       sfx.deny();
     },
     lost(): void {
+      starting = false;
       // A buzz or an answer that was on its way when the connection went is not coming back as anything:
       // the buzzer is free again. If the room did take the buzz, the game sent on rejoining says so.
       pending = false;

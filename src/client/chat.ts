@@ -54,6 +54,8 @@ export interface Chat {
   said(who: string, text: string, mine: boolean): void;
   /** Something worth a line happened: someone came or went, a line was refused. */
   note(note: ChatNote): void;
+  /** The connection to the room went: the lines on their way are not coming back. */
+  lost(): void;
   /** Puts the cursor in the box. */
   focus(): void;
   /** Scrolls to the last line; for when the chat comes back on show. */
@@ -65,8 +67,11 @@ const KEEP = 60;
 
 /**
  * Makes the chat out of its elements. `options.send` is given each line the
- * player types; lines are shown only when they come back from the room, so
- * everyone sees them in the same order.
+ * player types. A line is in the chat for good only when it comes back from
+ * the room, so everyone sees them in the same order; until then the player's
+ * own line is shown under the others, faint, from the moment it is sent: the
+ * room is a moment away, and a box that empties onto nothing reads as a line
+ * lost.
  */
 export function createChat(
   elements: { log: HTMLOListElement; form: HTMLFormElement; input: HTMLInputElement },
@@ -75,6 +80,8 @@ export function createChat(
     storagePrefix: string;
     /** Sends a line; says whether it went. */
     send(text: string): boolean;
+    /** The player's own name, as the room shows it beside their lines. */
+    me(): string;
     /** A note in words, in the language the page is read in. */
     wordsOf(note: ChatNote): string;
   },
@@ -82,6 +89,8 @@ export function createChat(
   const { log, form, input } = elements;
   let lines: Line[] = [];
   let key: string | null = null;
+  /** The player's own lines sent and not yet back from the room, oldest first: shown, not kept. */
+  let waiting: { text: string; item: HTMLLIElement }[] = [];
 
   input.maxLength = options.maxLength;
 
@@ -103,7 +112,8 @@ export function createChat(
     // someone reading further up is not pulled down, unless they are the one speaking
     const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 14;
     lines.push(line);
-    log.append(row(line));
+    // above the lines still on their way, which are the last to have been said
+    log.insertBefore(row(line), waiting[0]?.item ?? null);
     if (lines.length > KEEP) {
       lines = lines.slice(-KEEP);
       log.firstElementChild?.remove();
@@ -124,9 +134,22 @@ export function createChat(
     event.preventDefault();
     if (input.value.trim() === "") return;
     // a line that did not go stays in the box, to be sent when it can
-    if (options.send(input.value)) input.value = "";
-    else add({ note: { kind: "not-sent" } });
+    const text = input.value.trim();
+    if (!options.send(input.value)) return add({ note: { kind: "not-sent" } });
+    input.value = "";
+    const item = row({ who: options.me(), text, mine: true });
+    item.classList.add("waiting");
+    waiting.push({ text, item });
+    log.append(item);
+    log.scrollTop = log.scrollHeight;
   });
+
+  /** Takes the oldest line on its way off the screen: the room answers them in the order they were sent. */
+  function settle(): string | null {
+    const first = waiting.shift();
+    first?.item.remove();
+    return first?.text ?? null;
+  }
 
   return {
     open(code: string): void {
@@ -138,6 +161,7 @@ export function createChat(
       } catch {
         lines = [];
       }
+      waiting = [];
       log.replaceChildren(...lines.map(row));
       log.scrollTop = log.scrollHeight;
       input.value = "";
@@ -145,14 +169,27 @@ export function createChat(
     close(): void {
       key = null;
       lines = [];
+      waiting = [];
       log.replaceChildren();
       input.value = "";
     },
     said(who: string, text: string, mine: boolean): void {
+      // the player's own line is back: it takes its place among the others as the room has it
+      if (mine) settle();
       add({ who, text, mine });
     },
     note(note: ChatNote): void {
+      if (note.kind === "too-fast") {
+        // the room did not take the line: it goes back in the box, unless another is being typed there
+        const text = settle();
+        if (text !== null && input.value === "") input.value = text;
+      }
       add({ note });
+    },
+    lost(): void {
+      if (waiting.length === 0) return;
+      while (waiting.length > 0) settle();
+      add({ note: { kind: "not-sent" } });
     },
     focus(): void {
       input.focus();
