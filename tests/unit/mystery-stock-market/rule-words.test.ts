@@ -35,6 +35,20 @@ function openedAt(lang: Lang, pieces: readonly RulePiece[]): string[][] {
   return EVERY_STAGE.map((stage) => pieces.filter((piece) => piece.stage === stage).map((piece) => said(lang, piece)));
 }
 const showSentence = (lang: Lang, stock: StockId): RulePiece[] => sentenceOf(lang, stock, SHOW[stock], "show");
+/**
+ * A Korean sentence as the board shows it to someone who may read `readable`
+ * stages of it: an open word as it is, a covered one as a square to each
+ * letter, and the comma of a covered word as itself (the only mark the
+ * show's Korean sentences have).
+ */
+function written(pieces: readonly RulePiece[], readable: number): string {
+  return cardOf("ko", pieces, readable).reduce((line, shown, at) => {
+    const words = shown.open
+      ? textOf("ko", shown.key, shown.args)
+      : shown.words.map((word) => word.map(([squares]) => (squares === 0 ? "," : "□".repeat(squares))).join("")).join(" ");
+    return line + (at === 0 || shown.glue === true ? "" : " ") + words;
+  }, "");
+}
 
 /** One rule of each kind, with the widest numbers the shipped ranges give, for `stock` and about `other`. */
 function widestRules(stock: StockId, other: StockId): Record<RuleKind, Rule> {
@@ -67,15 +81,93 @@ describe("미스터리 거래소, the rule board: the show's sentences", () => {
   });
 
   it.each<[StockId, string[][]]>([
-    ["finance", [["다음"], ["주식이", "경우", "주식이"], ["다음 라운드 +20%,", "경우", "라운드"], ["상승할", "하락할", "-10%"], ["4개 이상의", "4개 이상의"]]],
+    ["finance", [["다음"], ["주식이", "경우", "주식이"], ["다음 라운드 +20%,", "라운드", "-10%"], ["상승할", "하락할", "경우"], ["4개 이상의", "4개 이상의"]]],
     ["build", [["가격이"], ["그렇지 않으면"], ["올랐으면", "+10%,"], ["-10%"], ["방어제철의"]]],
     ["steel", [["-200원,", "+200원"], ["보유 총량이"], ["1주당", "1주당"], ["증가한 만큼", "감소한 만큼"], ["방어제철의"]]],
-    ["alt", [["한다"], ["알트엔터의"], ["주가 변동 그래프는"], ["와 일치"], ["미스터리 거래소 로고"]]],
+    ["alt", [["한다"], ["알트엔터의"], ["주가 변동"], ["그래프는", "와 일치"], ["미스터리 거래소 로고"]]],
     ["open", [["있으면", ", 그렇지"], ["+13%", "않으면"], ["-1000원"], ["후자전자에"], ["시크릿이 걸려"]]],
     ["coyo", [["매수량", "많을 경우"], ["코요테크의", "그렇지 않으면"], ["+1400원,", "-700원"], ["매수량이", "보다"], ["후자전자의"]]],
-    ["latter", [["+1500원,"], ["이상", "이하이면", "그렇지 않으면"], ["보유 총량이", "-1000원"], ["후자전자의"], ["10주", "30주"]]],
+    ["latter", [["+1500원,"], ["이상", "이하이면", "그렇지 않으면"], ["후자전자의"], ["보유 총량이", "-1000원"], ["10주", "30주"]]],
   ])("opens the rule of %s in the show's order: what is read from the start, then at rounds 5, 10, 15 and 20", (stock, stages) => {
     expect(openedAt("ko", showSentence("ko", stock))).toEqual(stages);
+  });
+
+  /**
+   * The board as a record of the show has it: at the start, and after rounds
+   * 5, 10 and 15 opened more of it (Namuwiki, 데블스 플랜: 데드 어게인/2일차,
+   * the four tables of the board before the last, read 2026-11-12). Two words
+   * of that record are not followed, in the rule and so here: its last amount
+   * of 후자전자 is -1500원, where the prices of the same record fall by 1000
+   * (design/games/mystery-stock-market.md).
+   */
+  it.each<[StockId, [string, string, string, string]]>([
+    [
+      "finance",
+      [
+        "□□ □□□ □□□ □□□ □□ □□ □□□ □□□□, □□ □□□ □□□ □□□ □□ 다음 □□□ □□□□",
+        "□□ □□□ 주식이 □□□ 경우 □□ □□□ □□□□, □□ □□□ 주식이 □□□ □□ 다음 □□□ □□□□",
+        "□□ □□□ 주식이 □□□ 경우 다음 라운드 +20%, □□ □□□ 주식이 □□□ □□ 다음 라운드 -10%",
+        "□□ □□□ 주식이 상승할 경우 다음 라운드 +20%, □□ □□□ 주식이 하락할 경우 다음 라운드 -10%",
+      ],
+    ],
+    [
+      "build",
+      [
+        "□□□□□ 가격이 □□□□ □□□□, □□□ □□□ □□□□",
+        "□□□□□ 가격이 □□□□ □□□□, 그렇지 않으면 □□□□",
+        "□□□□□ 가격이 올랐으면 +10%, 그렇지 않으면 □□□□",
+        "□□□□□ 가격이 올랐으면 +10%, 그렇지 않으면 -10%",
+      ],
+    ],
+    [
+      "steel",
+      [
+        "□□□□□ □□ □□□ □□□ □□ □□□ -200원, □□□ □□ □□□ +200원",
+        "□□□□□ 보유 총량이 □□□ □□ □□□ -200원, □□□ □□ □□□ +200원",
+        "□□□□□ 보유 총량이 □□□ □□ 1주당 -200원, □□□ □□ 1주당 +200원",
+        "□□□□□ 보유 총량이 증가한 만큼 1주당 -200원, 감소한 만큼 1주당 +200원",
+      ],
+    ],
+    [
+      "alt",
+      [
+        "□□□□□ □□ □□ □□□□ □□□□ □□□ □□□ □□한다",
+        "알트엔터의 □□ □□ □□□□ □□□□ □□□ □□□ □□한다",
+        "알트엔터의 주가 변동 □□□□ □□□□ □□□ □□□ □□한다",
+        "알트엔터의 주가 변동 그래프는 □□□□ □□□ □□와 일치한다",
+      ],
+    ],
+    [
+      "open",
+      [
+        "□□□□□ □□□□ □□ 있으면 □□□□, 그렇지 □□□ □□□□□□",
+        "□□□□□ □□□□ □□ 있으면 +13%, 그렇지 않으면 □□□□□□",
+        "□□□□□ □□□□ □□ 있으면 +13%, 그렇지 않으면 -1000원",
+        "후자전자에 □□□□ □□ 있으면 +13%, 그렇지 않으면 -1000원",
+      ],
+    ],
+    [
+      "coyo",
+      [
+        "□□□□□ □□□□ □□□□□ 매수량□□ 많을 경우 □□□□□□, □□□ □□□ □□□□□",
+        "코요테크의 □□□□ □□□□□ 매수량□□ 많을 경우 □□□□□□, 그렇지 않으면 □□□□□",
+        "코요테크의 □□□□ □□□□□ 매수량□□ 많을 경우 +1400원, 그렇지 않으면 -700원",
+        "코요테크의 매수량이 □□□□□ 매수량보다 많을 경우 +1400원, 그렇지 않으면 -700원",
+      ],
+    ],
+    [
+      "latter",
+      [
+        "□□□□□ □□ □□□ □□□ □□ □□□ □□□□ +1500원, □□□ □□□ □□□□□□",
+        "□□□□□ □□ □□□ □□□ 이상 □□□ 이하이면 +1500원, 그렇지 않으면 □□□□□□",
+        "후자전자의 □□ □□□ □□□ 이상 □□□ 이하이면 +1500원, 그렇지 않으면 □□□□□□",
+        "후자전자의 보유 총량이 □□□ 이상 □□□ 이하이면 +1500원, 그렇지 않으면 -1000원",
+      ],
+    ],
+  ])("covers the rule of %s as the record of the show's board has it, from the start and after rounds 5, 10 and 15", (stock, boards) => {
+    const pieces = showSentence("ko", stock);
+
+    expect([0, 1, 2, 3].map((readable) => written(pieces, readable))).toEqual(boards);
   });
 
   it.each<[StockId, string]>([
@@ -91,13 +183,13 @@ describe("미스터리 거래소, the rule board: the show's sentences", () => {
   });
 
   it.each<[StockId, string[][]]>([
-    ["finance", [["next"], ["If", "stocks", "stocks"], ["+20% next round;", "if", "round."], ["rise,", "fall,", "-10%"], ["4 or more", "4 or more"]]],
+    ["finance", [["next"], ["If", "stocks", "stocks"], ["+20% next round;", "-10%", "round."], ["rise,", "if", "fall,"], ["4 or more", "4 or more"]]],
     ["build", [["price"], ["otherwise"], ["If", "rose,", "+10%;"], ["-10%."], ["Defense Steel's"]]],
     ["steel", [["-200 won;", "+200 won."], ["total holdings:"], ["for each share", "for each share"], ["more,", "fewer,"], ["Defense Steel's"]]],
-    ["alt", [["is"], ["Alt Entertainment's"], ["price chart"], ["the same as"], ["the Mystery Stock Market logo."]]],
+    ["alt", [["is"], ["Alt Entertainment's"], ["price"], ["chart", "the same as"], ["the Mystery Stock Market logo."]]],
     ["open", [["If", "if"], ["+13%;", "not,"], ["-1000 won."], ["Latter Electronics,"], ["a secret is on"]]],
     ["coyo", [["If", "is higher", "bought volume,"], ["CoyoTech's", "otherwise"], ["+1400 won;", "-700 won."], ["bought volume", "than"], ["Latter Electronics'"]]],
-    ["latter", [["+1500 won;"], ["If", "are", "or more", "and", "or fewer,", "otherwise"], ["total holdings", "-1000 won."], ["Latter Electronics'"], ["10 shares", "30 shares"]]],
+    ["latter", [["+1500 won;"], ["If", "are", "or more", "and", "or fewer,", "otherwise"], ["Latter Electronics'"], ["total holdings", "-1000 won."], ["10 shares", "30 shares"]]],
   ])("opens the English rule of %s as the Korean one is opened", (stock, stages) => {
     expect(openedAt("en", showSentence("en", stock))).toEqual(stages);
   });
@@ -228,14 +320,15 @@ describe("미스터리 거래소, the rule board: the sentences of a game's own 
     }
   });
 
-  it("opens the name of another stock a rule goes by last of all, or last but one", () => {
+  it("opens the name of another stock a rule goes by last of all, or last but one; in a band, where the show opens it, at round 10", () => {
     for (const lang of LANGS) {
       for (const kind of ["follows", "per-share", "secret", "outbuy", "band", "volume", "net", "outhold"] as const) {
         const pieces = sentenceOf(lang, "coyo", widestRules("coyo", "latter")[kind], "fresh");
         const naming = pieces.filter((piece) => piece.args.includes("latter"));
 
         expect(naming, `${lang} ${kind}`).toHaveLength(1);
-        expect(naming[0].stage, `${lang} ${kind}`).toBeGreaterThanOrEqual(STAGES - 1);
+        if (kind === "band") expect(naming[0].stage, `${lang} ${kind}`).toBe(STAGES - 2);
+        else expect(naming[0].stage, `${lang} ${kind}`).toBeGreaterThanOrEqual(STAGES - 1);
       }
     }
   });
@@ -334,8 +427,8 @@ describe("미스터리 거래소, the rule board: what a player is sent", () => 
   it("keeps a piece that stands against the one before it standing against it, open or covered", () => {
     const pieces = sentenceOf("ko", "alt", SHOW.alt, "show");
 
-    expect(cardOf("ko", pieces, 0).map((shown) => shown.glue === true)).toEqual([false, false, false, true, true]);
-    expect(cardOf("ko", pieces, STAGES).map((shown) => shown.glue === true)).toEqual([false, false, false, true, true]);
+    expect(cardOf("ko", pieces, 0).map((shown) => shown.glue === true)).toEqual([false, false, false, false, true, true]);
+    expect(cardOf("ko", pieces, STAGES).map((shown) => shown.glue === true)).toEqual([false, false, false, false, true, true]);
   });
 
   it("covers every company alike in a game's own rules: the shape does not tell which one a rule goes by", () => {
@@ -430,7 +523,7 @@ describe("미스터리 거래소, the rule board: where the words go", () => {
       { open: true, text: "알트엔터의", width: 60, glue: false },
       { open: false, next: true, shape: [[2, 24]], width: 24, glue: false },
       { open: false, next: true, shape: [[2, 24]], width: 24, glue: false },
-      { open: false, next: true, shape: [[4, 48]], width: 48, glue: false },
+      { open: false, next: false, shape: [[4, 48]], width: 48, glue: false },
       { open: false, next: false, shape: [[4, 48]], width: 48, glue: false },
       { open: false, next: false, shape: [[3, 36]], width: 36, glue: false },
       { open: false, next: false, shape: [[2, 24]], width: 24, glue: false },

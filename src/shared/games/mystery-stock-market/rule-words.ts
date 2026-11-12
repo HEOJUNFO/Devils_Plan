@@ -7,9 +7,10 @@
  * on a board with most of its words covered: a covered word is a row of
  * squares, one to a letter, and the words are uncovered at rounds 5, 10, 15
  * and 20. The Korean sentences of the show's seven rules are the show's own,
- * and so is the order their words are uncovered in; the English ones are
- * translated here, and (gap) so are both of the three kinds the show does
- * not have.
+ * and so is the order their words are uncovered in (as a record of the
+ * board at each of its five stages has it; the rule-words test holds the
+ * record); the English ones are translated here, and (gap) so are both of
+ * the three kinds the show does not have.
  *
  * Why the words are here and not beside the screen, where a screen's words
  * are kept (.claude/rules/languages.md): what a player may not read yet must
@@ -94,7 +95,8 @@ const WORDS: Record<Lang, Record<string, Wording>> = {
     grew: () => "증가한 만큼",
     shrank: () => "감소한 만큼",
     aShare: () => "1주당",
-    chart: () => "주가 변동 그래프는",
+    swing: () => "주가 변동",
+    chart: () => "그래프는",
     logo: () => "미스터리 거래소 로고",
     same: () => "와 일치",
     does: () => "한다",
@@ -131,7 +133,7 @@ const WORDS: Record<Lang, Record<string, Wording>> = {
     eachShare: () => "for each share",
     more: () => "more,",
     fewer: () => "fewer,",
-    chart: () => "price chart",
+    chart: () => "chart",
     is: () => "is",
     sameAs: () => "the same as",
     logo: () => "the Mystery Stock Market logo.",
@@ -176,10 +178,10 @@ function korean(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(4, "count", rule.count),
         piece(1, "stocks"),
         piece(3, "fall"),
-        piece(2, "case"),
+        piece(3, "case"),
         piece(0, "next"),
         piece(2, "round"),
-        down(3, rule.down, "%"),
+        down(2, rule.down, "%"),
       ];
     case "follows":
       return [piece(4, "of", rule.of, naming), piece(0, "price"), piece(2, "moved", rule.way), up(2, rule.up, "%"), piece(1, "otherwise"), down(3, rule.down, "%")];
@@ -195,7 +197,7 @@ function korean(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         up(0, rule.won, "won", ""),
       ];
     case "emblem":
-      return [piece(1, "of", stock, naming), piece(2, "chart"), piece(4, "logo"), glued(3, "same"), glued(0, "does")];
+      return [piece(1, "of", stock, naming), piece(2, "swing"), piece(3, "chart"), piece(4, "logo"), glued(3, "same"), glued(0, "does")];
     case "secret":
       return [
         piece(3, "on", rule.on, naming),
@@ -220,15 +222,15 @@ function korean(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
       ];
     case "band":
       return [
-        piece(3, "of", rule.of, naming),
-        piece(2, "held"),
+        piece(2, "of", rule.of, naming),
+        piece(3, "held"),
         piece(4, "shares", rule.from),
         piece(1, "orMore"),
         piece(4, "shares", rule.to),
         piece(1, "orFewerIf"),
         up(0, rule.up, "won"),
         piece(1, "otherwise"),
-        down(2, rule.down, "won"),
+        down(3, rule.down, "won"),
       ];
     case "volume":
       return [
@@ -278,11 +280,11 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(1, "stocks"),
         piece(3, "rise"),
         piece(2, "upNextRound", rule.up),
-        piece(2, "ifAgain"),
+        piece(3, "ifAgain"),
         piece(4, "count", rule.count),
         piece(1, "stocks"),
         piece(3, "fall"),
-        piece(3, "amount", "-", rule.down, "%", ""),
+        piece(2, "amount", "-", rule.down, "%", ""),
         piece(0, "next"),
         piece(2, "round"),
       ];
@@ -300,7 +302,7 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(0, "amount", "+", rule.won, "won", "."),
       ];
     case "emblem":
-      return [piece(1, "of", stock, naming), piece(2, "chart"), piece(0, "is"), piece(3, "sameAs"), piece(4, "logo")];
+      return [piece(1, "of", stock, naming), piece(2, "price"), piece(3, "chart"), piece(0, "is"), piece(3, "sameAs"), piece(4, "logo")];
     case "secret":
       return [piece(0, "if"), piece(4, "secretOn"), piece(3, "named", rule.on, naming), up(1, rule.up, "%"), piece(0, "ifAgain"), piece(1, "not"), down(2, rule.down, "won")];
     case "outbuy":
@@ -319,8 +321,8 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
     case "band":
       return [
         piece(1, "if"),
-        piece(3, "of", rule.of, naming),
-        piece(2, "held"),
+        piece(2, "of", rule.of, naming),
+        piece(3, "held"),
         piece(1, "are"),
         piece(4, "shares", rule.from),
         piece(1, "orMore"),
@@ -329,7 +331,7 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(1, "orFewerLast"),
         up(0, rule.up, "won"),
         piece(1, "otherwise"),
-        down(2, rule.down, "won"),
+        down(3, rule.down, "won"),
       ];
     case "volume":
       return [
