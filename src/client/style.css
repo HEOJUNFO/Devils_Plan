@@ -314,6 +314,20 @@ ul {
   outline-offset: -1px;
 }
 
+/* The row pressed, until the room answers: lit as a chosen button is, and saying so where it said how the room stands. */
+#room-list .room-row.entering {
+  background: #3a2a12;
+}
+
+.room-row.entering .room-state {
+  color: var(--amber);
+}
+
+/* What the form says while a room is being entered is no warning. */
+#notice.going {
+  color: var(--bone-dim);
+}
+
 .room-host {
   overflow: hidden;
   text-overflow: ellipsis;

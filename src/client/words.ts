@@ -24,6 +24,8 @@ const ko = {
     byCode: "방 코드로 입장",
     code: "방 코드",
     join: "입장",
+    /** Under the form, from the press that asks for a room until the room answers. */
+    entering: "방에 들어가는 중입니다.",
   },
   rooms: {
     title: "열린 방",
@@ -37,6 +39,8 @@ const ko = {
     playing: "게임 중 · 들어가면 관전",
     waitingFor: (more: number) => `대기 중 · ${more}명 더 오면 시작`,
     waiting: "대기 중 · 곧 시작",
+    /** On the row that was pressed, in place of how the room stands, until the room answers. */
+    entering: "들어가는 중…",
     /** On the button that picks whose rooms are listed, and first among the games it offers. */
     everyGame: "모든 게임",
     /** What the games to pick from are, said to a screen reader. */
@@ -189,6 +193,7 @@ const en: typeof ko = {
     byCode: "Enter by room code",
     code: "Room code",
     join: "Join",
+    entering: "Entering the room.",
   },
   rooms: {
     title: "Open rooms",
@@ -201,6 +206,7 @@ const en: typeof ko = {
     playing: "Playing · join to watch",
     waitingFor: (more) => `Waiting · needs ${more} more`,
     waiting: "Waiting · starts soon",
+    entering: "Entering…",
     everyGame: "Every game",
     pick: "Rooms by game",
     noneOf: (game) => `No open rooms of ${game}. Make a public one and it is listed here.`,

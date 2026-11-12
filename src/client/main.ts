@@ -273,6 +273,16 @@ if (TOUCH) {
 let socket: PartySocket | null = null;
 /** The connection to the list of rooms, while the lobby is on show. */
 let listSocket: PartySocket | null = null;
+/** The room this page has asked to enter and has not heard back from; `null` when there is none. */
+let entering: string | null = null;
+/**
+ * A connection opened ahead to the room whose row the pointer or the keyboard
+ * is on, so that a press finds it open (`warmUp`). Nothing is sent on it: to
+ * the room it is nobody until `connect` takes it and joins.
+ */
+let warm: { code: string; socket: PartySocket } | null = null;
+/** The wait before a connection is opened ahead, while one is running. */
+let warming: ReturnType<typeof setTimeout> | null = null;
 /** The room this page is in, while it is in one. */
 let currentCode = "";
 /** The room as last sent, while this page is in one. */
@@ -680,9 +690,12 @@ function renderRooms(): void {
     const full = listing.players >= listing.maxPlayers;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "room-row";
+    // the row pressed says at once that the press was taken: the room's answer is a second away on a slow line
+    const going = listing.code === entering;
+    button.className = going ? "room-row entering" : "room-row";
     button.dataset.code = listing.code;
     button.disabled = full;
+    if (going) button.setAttribute("aria-busy", "true");
     const part = (name: string, text: string): HTMLSpanElement => {
       const span = document.createElement("span");
       span.className = name;
@@ -693,7 +706,7 @@ function renderRooms(): void {
       part("room-host", WORDS.rooms.of(listing.host)),
       part("room-count", `${listing.players}/${listing.maxPlayers}`),
       part("room-game", GAMES[game].title[lang]),
-      part(listing.playing || full ? "room-state busy" : "room-state", standing(listing, game)),
+      part(!going && (listing.playing || full) ? "room-state busy" : "room-state", going ? WORDS.rooms.entering : standing(listing, game)),
     );
     button.addEventListener("click", () => joinRoom(listing.code));
     const item = document.createElement("li");
@@ -757,11 +770,83 @@ function watchRooms(): void {
 function unwatchRooms(): void {
   listSocket?.close();
   listSocket = null;
+  coolDown();
 }
+
+/** Notes which room this page is on its way into, `null` for none: what the form says meanwhile is not said as something gone wrong. */
+function setEntering(code: string | null): void {
+  entering = code;
+  notice.classList.toggle("going", code !== null);
+}
+
+/** A connection to the room `code`, with nothing said on it yet. */
+function openRoom(code: string): PartySocket {
+  return new PartySocket({
+    host: location.host,
+    party: PARTY_NAME,
+    room: code,
+    // nothing is kept to send when the connection comes back: see `send`
+    maxEnqueuedMessages: 0,
+    // a connection the room ended on purpose (this player left, or was refused) is not opened again
+    shouldReconnectOnClose: (event) => event.code !== CLOSE_LEFT && event.code !== CLOSE_REJECTED,
+    ...reconnecting(),
+  });
+}
+
+/** Lets go of the connection opened ahead, and of the wait for one. */
+function coolDown(): void {
+  if (warming !== null) clearTimeout(warming);
+  warming = null;
+  warm?.socket.close();
+  warm = null;
+}
+
+/**
+ * Opens a connection to the room `code` ahead of the press, once the pointer
+ * or the keyboard has stayed on its row a moment. Opening one takes several
+ * trips to the server and back, which far from it is most of the wait between
+ * the press and the room.
+ */
+function warmUp(code: string): void {
+  if (warm?.code === code || entering === code) return;
+  coolDown();
+  warming = setTimeout(() => {
+    warming = null;
+    const current = openRoom(code);
+    warm = { code, socket: current };
+    // The room ends a connection that says nothing for long, and a line can drop: this one is then let go,
+    // not opened again, and the press opens its own.
+    current.addEventListener("close", () => {
+      if (warm?.socket === current) coolDown();
+    });
+  }, config.warmUpMs);
+}
+
+/** The code of the room whose row `target` is in, if that room can be entered. */
+function rowCode(target: EventTarget | null): string | null {
+  const row = target instanceof Element ? target.closest<HTMLButtonElement>(".room-row") : null;
+  return row === null || row.disabled ? null : (row.dataset.code ?? null);
+}
+
+// A finger is on a row only for the press itself, which is no time to open anything in: a mouse and the keyboard are there first.
+roomList.addEventListener("pointerover", (event) => {
+  if (event.pointerType !== "mouse") return;
+  const code = rowCode(event.target);
+  if (code === null) coolDown();
+  else warmUp(code);
+});
+roomList.addEventListener("pointerleave", (event) => {
+  if (event.pointerType === "mouse") coolDown();
+});
+roomList.addEventListener("focusin", (event) => {
+  const code = rowCode(event.target);
+  if (code !== null) warmUp(code);
+});
 
 /** The lobby: the rooms anyone can join, a nickname, and a room to make or enter by code. */
 function showLobby(message = ""): void {
   voice.leave();
+  setEntering(null);
   currentCode = "";
   currentView = null;
   hideTable();
@@ -779,6 +864,8 @@ function showLobby(message = ""): void {
   langButton.hidden = false;
   document.title = SITE_TITLE;
   watchRooms();
+  // a row that was on its way in is a row like the others again
+  renderRooms();
 }
 
 // ---- Making a room ------------------------------------------------------------------------------------
@@ -881,6 +968,7 @@ function renderRoom(code: string, view: LobbyView): void {
   else if (currentView !== null) noteComings(currentView, view);
   currentCode = code;
   currentView = view;
+  setEntering(null);
   unwatchRooms();
   roomsPanel.hidden = true;
   entry.hidden = true;
@@ -978,6 +1066,10 @@ function disconnect(): void {
  * may be tried if this is a create and the code turns out to be in use.
  */
 function connect(code: string, create: boolean, nick: string, attemptsLeft = 0): void {
+  // a connection opened ahead to this very room is the one used; one to any other room is let go
+  const ahead = !create && warm?.code === code ? warm.socket : null;
+  if (ahead !== null) warm = null;
+  coolDown();
   disconnect();
   // The token goes in the first message, never in the address, so it stays
   // out of server logs and browser history.
@@ -991,19 +1083,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     pings: true,
   };
 
-  const current = new PartySocket({
-    host: location.host,
-    party: PARTY_NAME,
-    room: code,
-    // nothing is kept to send when the connection comes back: see `send`
-    maxEnqueuedMessages: 0,
-    // a connection the room ended on purpose (this player left, or was refused) is not opened again
-    shouldReconnectOnClose: (event) => event.code !== CLOSE_LEFT && event.code !== CLOSE_REJECTED,
-    ...reconnecting(),
-  });
+  const current = ahead ?? openRoom(code);
   socket = current;
 
-  current.addEventListener("open", () => {
+  const greet = (): void => {
     // Fires again on every reconnect; the server expects `join` each time.
     current.send(JSON.stringify(join));
     // a connection that came back is a new one to the room: say again that this page is in voice
@@ -1011,7 +1094,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     online = true;
     live = opened(Date.now());
     renderStatus();
-  });
+  };
+  current.addEventListener("open", greet);
+  // one opened ahead may be open already: its `open` has been and gone
+  if (current.readyState === WebSocket.OPEN) greet();
   current.addEventListener("close", (event) => {
     // PartySocket reconnects by itself unless we closed it.
     if (socket !== current) return;
@@ -1126,6 +1212,7 @@ function readNick(): string | null {
 function createRoom(): void {
   const nick = readNick();
   if (nick === null) return;
+  setEntering(null);
   localStorage.setItem(storageKey("game"), chosenGame);
   localStorage.setItem(storageKey("listed"), chosenListed ? "1" : "0");
   connect(generateRoomCode(Math.random, config), true, nick, CREATE_ATTEMPTS - 1);
@@ -1133,10 +1220,14 @@ function createRoom(): void {
 
 /** Enters the room `code`, from the list or from an address. */
 function joinRoom(code: string): void {
+  // pressed again on the way in: the first press stands, and the connection it opened is not thrown away for a new one
+  if (entering === code && socket !== null) return;
   const nick = readNick();
   if (nick === null) return;
-  notice.textContent = "";
   connect(code, false, nick);
+  setEntering(code);
+  notice.textContent = WORDS.entry.entering;
+  renderRooms();
 }
 
 function joinFromInput(): void {

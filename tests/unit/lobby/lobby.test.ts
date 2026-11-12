@@ -50,6 +50,7 @@ function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     askAfterSeconds: 2,
     deadAfterSeconds: 2,
     reconnect: { firstMs: 100, jitterMs: 100, grow: 1.5, mostMs: 2000 },
+    warmUpMs: 100,
     staleConnectionSeconds: 20,
     pokeSeconds: 15,
     turnSecondsChoices: [0, 20, 40],

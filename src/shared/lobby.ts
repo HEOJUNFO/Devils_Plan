@@ -81,6 +81,12 @@ export interface RoomConfig {
    */
   reconnect: { firstMs: number; jitterMs: number; grow: number; mostMs: number };
   /**
+   * How long the pointer or the keyboard stays on a room's row in the list
+   * before the page opens a connection to that room ahead of the press, in
+   * ms: long enough that a pointer only passing over the rows opens none.
+   */
+  warmUpMs: number;
+  /**
    * Seconds without a ping after which a connection that has been pinging is
    * taken for dead and ended: a laptop that went to sleep or a network that
    * dropped says nothing when it goes. Long enough for a tab in the
