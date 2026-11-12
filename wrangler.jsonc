@@ -11,6 +11,12 @@
   // here is what the deployed Worker gets; `npm run dev` reads `.dev.vars`
   // (not committed), where ALLOW_BOTS=true turns them on for local play.
   "vars": { "ALLOW_BOTS": "false" },
+  // What the Worker and the rooms write to their log is kept, to be read in
+  // the Cloudflare dashboard (Workers & Pages > play > Logs): an error in a
+  // room, a limit below that could not be asked. The line Cloudflare would
+  // write for every request by itself is left off: it holds the address of
+  // each request, a room's code among them, and the game writes neither.
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } },
   // Limits kept by the network address a connection comes from, against a
   // script that opens connections or makes rooms without end: each of those
   // wakes a Durable Object and writes to its storage, and the free plan has

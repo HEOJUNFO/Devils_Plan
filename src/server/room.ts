@@ -43,7 +43,7 @@ import {
 import roomConfig from "../shared/room-config.json";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
 import voiceConfigJson from "../shared/voice-config.json";
-import { ADDRESS_HEADER } from "./address";
+import { ADDRESS_HEADER, withinLimit } from "./address";
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
@@ -789,7 +789,8 @@ export class GameRoom extends Server<Env> {
       if (this.stored && listed !== (wanted !== null)) this.save(LISTED_KEY, wanted !== null ? true : null);
     } catch (error) {
       // The room goes on without the list, and tells the directory again when it next changes.
-      console.error(`room ${this.name} could not report to the directory`, error);
+      // Without the room's code: for a room off the list the code is all that keeps a stranger out, and logs are kept.
+      console.error("a room could not report to the directory", error);
     }
   }
 
@@ -819,16 +820,10 @@ export class GameRoom extends Server<Env> {
    * Whether a room may be made for a connection from `from`: an address may
    * make so many rooms in a while and no more (`CREATE_LIMITER`,
    * `wrangler.jsonc`), as making one is the dearest thing a stranger can ask
-   * for. Where the address is not known, or the count cannot be had, the
-   * room is made: the limit is a guard, and the game does not stop for it.
+   * for.
    */
-  private async mayMake(from: string | null): Promise<boolean> {
-    if (from === null) return true;
-    try {
-      return (await this.env.CREATE_LIMITER.limit({ key: from })).success;
-    } catch {
-      return true;
-    }
+  private mayMake(from: string | null): Promise<boolean> {
+    return withinLimit(this.env.CREATE_LIMITER, from, "CREATE_LIMITER");
   }
 
   /** Reads one stored value, or `null` when there is none. */
