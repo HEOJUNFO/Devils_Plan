@@ -104,6 +104,30 @@ browser-skill:
 - **Its tab is not in front, and the page's frames stand still** until a
   screenshot is taken. A game's screen takes its presses in at the next frame:
   one press, one screenshot, or two presses are read as one.
+- **After several moves at once the screen is many screenshots behind the
+  room.** A game's screen moves a quarter of a second a frame at most (a
+  stalled tab never fast-forwards it), and this tab has a frame only at a
+  screenshot: the five bots of a room move at once, and their moves take
+  twenty screenshots to be shown. The screen keeps time when the page's
+  frames are called from a worker's tick instead, whose messages are not held
+  back as a hidden tab's timers are. Run once in the page with `bsk evaluate`,
+  after it has loaded; the page's own code is not changed, and the report says
+  the frames were driven so:
+
+  ```js
+  (() => { const blob = new Blob(["setInterval(() => postMessage(0), 16)"], { type: "text/javascript" });
+    const worker = new Worker(URL.createObjectURL(blob)); let queue = [];
+    window.requestAnimationFrame = (cb) => { queue.push(cb); return 0; };
+    worker.onmessage = () => { const q = queue; queue = []; for (const cb of q) cb(performance.now()); }; })()
+  ```
+- **A tab hidden for some minutes has its timers run about once a minute.**
+  A wait made in the page (`setTimeout`) then takes up to a minute. Wait in
+  the shell: `until <a bsk evaluate that asks the page>; do sleep 2; done`.
+- **What the room does a few seconds after a turn came** (the pass it makes
+  for a player of 러시안 룰렛 with no credits) is over before a room of bots
+  has been shown on the screen. For the look only, the pause is made longer
+  in the game's config on the local server and set back afterwards; the
+  report says so.
 - **A made-up finger is not a browser's.** `setPointerCapture` refuses the
   pointer id of an event made in the page, so the handler that asks for it
   ends there with an error a real finger never causes; a drag still turns
