@@ -60,8 +60,13 @@ describe("the games a room can be made for", () => {
     expect(GAMES["lay-the-grass"].variants.map((each) => each.title.ko)).toEqual(["판마다 새 카드", "방송의 카드"]);
   });
 
-  it("offers a choice of ways in the two games whose hidden part the show gives away, and in no other", () => {
-    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["lay-the-grass", "mystery-stock-market"]);
+  it("offers a choice of ways in the two games whose hidden part the show gives away, and of length in the game the show gives none", () => {
+    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["lay-the-grass", "memory-poker", "mystery-stock-market"]);
+  });
+
+  it("lets a room of 기억 포커 be as many rounds as its host says, starting with the five it always was", () => {
+    expect(GAMES["memory-poker"].variants.map((each) => each.id)).toEqual(["rounds-five", "rounds-three", "rounds-seven"]);
+    expect(GAMES["memory-poker"].variants.map((each) => each.title.ko)).toEqual(["5라운드", "3라운드", "7라운드"]);
   });
 
   it("names each game in Korean as the show does, and in English as its English release does", () => {

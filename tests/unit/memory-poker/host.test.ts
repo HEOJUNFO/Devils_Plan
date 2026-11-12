@@ -3,6 +3,7 @@ import botJson from "../../../src/shared/games/memory-poker/bot-config.json";
 import shipped from "../../../src/shared/games/memory-poker/config.json";
 import hostJson from "../../../src/shared/games/memory-poker/host-config.json";
 import { pokerHost, type PokerSession, type PokerSnapshot } from "../../../src/shared/games/memory-poker/host";
+import { GAMES } from "../../../src/shared/games";
 import type { Candidate, Presence, StartRequest } from "../../../src/shared/hosting";
 
 const host = pokerHost;
@@ -464,5 +465,51 @@ describe("기억 포커 in a room: what is kept", () => {
     expect(host.usable({ ...session, bots: null })).toBe(false);
     expect(host.usable(null)).toBe(false);
     expect(host.usable("a game")).toBe(false);
+  });
+});
+
+describe("기억 포커 in a room: how many rounds the host makes a game", () => {
+  it.each([
+    ["rounds-three", 3],
+    ["rounds-five", 5],
+    ["rounds-seven", 7],
+  ])("plays %s as that many rounds: said to the players, and the game is over after the last and not before", (variant, rounds) => {
+    const players = candidates(3);
+    const presence = presenceOf(players);
+
+    const session = started(players, { variant });
+    // three steps of the clock a round, when nobody chooses
+    const nearly = runOut(session, presence, rounds * 3 - 1);
+    const over = runOut(nearly, presence, 1);
+
+    expect(seenBy(session, players, 0, T0).rules.rounds).toBe(rounds);
+    expect(host.running(nearly)).toBe(true);
+    expect(host.running(over)).toBe(false);
+    expect(seenBy(over, players, 0, T0 + 20 * 60_000).view.round).toBe(rounds);
+  });
+
+  it("plays the rounds it always did where the host chose nothing, or something that is no number of rounds", () => {
+    const players = candidates(2);
+
+    expect(seenBy(started(players), players, 0, T0).rules.rounds).toBe(shipped.rounds);
+    expect(seenBy(started(players, { variant: "show" }), players, 0, T0).rules.rounds).toBe(shipped.rounds);
+  });
+
+  it("goes on with a game kept from before the host could choose, by the rounds it always had", () => {
+    const players = candidates(2);
+    const { rounds: _rounds, ...kept } = started(players);
+
+    const over = runOut(kept as PokerSession, presenceOf(players), shipped.rounds * 3);
+
+    expect(host.usable(kept)).toBe(true);
+    expect(host.running(over)).toBe(false);
+    expect(seenBy(over, players, 0, T0 + 20 * 60_000).view.round).toBe(shipped.rounds);
+  });
+
+  it("knows how many rounds each of the ways the list of games names is, the first of them the rounds it always had", () => {
+    const ways = GAMES["memory-poker"].variants.map((each) => each.id);
+
+    expect(Object.keys(hostJson.rounds).sort()).toEqual([...ways].sort());
+    expect(hostJson.rounds[ways[0] as keyof typeof hostJson.rounds]).toBe(shipped.rounds);
   });
 });

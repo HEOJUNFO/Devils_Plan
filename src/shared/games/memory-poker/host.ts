@@ -35,6 +35,13 @@ import {
 export interface PokerHostConfig {
   /** Seconds a game stands still, with none of its players connected, before it is ended. */
   standSeconds: number;
+  /**
+   * How many rounds a game is, by the way of playing its room's host chose
+   * (the `variants` of the game in `games.json`). The show gives the game no
+   * set length, so the rules' own number is a filled one, and a room may
+   * have another.
+   */
+  rounds: Record<string, number>;
 }
 
 /**
@@ -83,6 +90,8 @@ export interface PokerSession {
   planned: number;
   /** The state of the host's own random sequence, for the bots. */
   rng: number;
+  /** How many rounds this game is, where its room's host chose; a game kept from before that could be chosen has the rules' own number. */
+  rounds?: number;
 }
 
 /** Why a game was not started or something asked of it was refused. */
@@ -129,6 +138,17 @@ export interface PokerSnapshot {
   frozen: boolean;
 }
 
+/** The rules of one game: the rules as they are set, with as many rounds as its room's host chose. */
+function rulesOf(session: Pick<PokerSession, "rounds">): PokerConfig {
+  return session.rounds === undefined ? config : { ...config, rounds: session.rounds };
+}
+
+/** How many rounds the way of playing `variant` is; the rules' own number for none, or for one that is no number of rounds. */
+function roundsFor(variant: string | undefined): number {
+  const rounds = variant === undefined || !Object.hasOwn(hosting.rounds, variant) ? undefined : hosting.rounds[variant];
+  return rounds === undefined ? config.rounds : rounds;
+}
+
 const refuse = (reason: PokerHostRefusal): HostResult<PokerSession, PokerHostRefusal> => ({ ok: false, reason });
 
 /** Whether any person of the game is among `there` (those connected, or those who have not left the room). */
@@ -172,7 +192,7 @@ function settle(session: PokerSession, presence: Presence, now: number): PokerSe
     const seat = next.players.find((each) => each.id === player);
     return seat !== undefined && (seat.token === null || presence.seated.has(seat.token));
   };
-  const state = showIfChosen(closeIfLeft(next.state, there), there, now, config);
+  const state = showIfChosen(closeIfLeft(next.state, there), there, now, rulesOf(next));
   if (state !== next.state) next = { ...next, state };
   if (next.state.phase === "choose" && next.planned !== next.state.round) {
     next = {
@@ -194,8 +214,8 @@ function botChooses(session: PokerSession, player: number): PokerSession {
   const cells: number[] = [];
   while (cells.length < config.picks) cells.push(...free.splice(randomInt(source.next, free.length), 1));
   const rest = session.bots.filter((bot) => bot.player !== player);
-  const picked = applyAction(session.state, player, { type: "pick", cells }, config);
-  const locked = picked.ok ? applyAction(picked.state, player, { type: "lock" }, config) : picked;
+  const picked = applyAction(session.state, player, { type: "pick", cells }, rulesOf(session));
+  const locked = picked.ok ? applyAction(picked.state, player, { type: "lock" }, rulesOf(session)) : picked;
   // a choice the game would not take leaves the bot to have its cells chosen for it
   if (!locked.ok) return { ...session, bots: rest, rng: source.state };
   return { ...session, state: locked.state, bots: rest, rng: source.state };
@@ -218,7 +238,8 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
         seats.push({ id, token: null, nick: `봇 ${seats.filter((seat) => seat.token === null).length + 1}` });
       }
     }
-    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now }, config);
+    const rounds = roundsFor(request.variant);
+    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now }, rulesOf({ rounds }));
     if (!created.ok) return refuse(created.reason);
     seats.sort((a, b) => a.id - b.id);
     const session: PokerSession = {
@@ -231,6 +252,7 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
       planned: 0,
       // A sequence of the host's own, kept apart from the game's: what the bots do never changes which cards are dealt.
       rng: seedFrom(request.seed ^ 0x2545f491),
+      rounds,
     };
     return { ok: true, session: settle(session, presence, request.now) };
   },
@@ -244,7 +266,7 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
     // Whatever the clock has brought due comes first: a choice made after the time is up
     // is no choice, however late the room's own alarm is in saying so.
     const due = this.tick(session, presence, now);
-    const result = applyAction(due.state, player.id, action, config);
+    const result = applyAction(due.state, player.id, action, rulesOf(due));
     if (!result.ok) return refuse(result.reason);
     return { ok: true, session: settle({ ...due, state: result.state }, presence, now) };
   },
@@ -254,7 +276,7 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
     // standing still: nothing runs but the wait for someone to come back
     if (session.frozenAt !== null) return settle(session, presence, now);
     // The phase's own time comes first: a bot due at the same moment is too late.
-    const timed = applyTimeout(session.state, now, config);
+    const timed = applyTimeout(session.state, now, rulesOf(session));
     if (timed !== session.state) return settle({ ...session, state: timed }, presence, now);
     let next = session;
     for (const bot of [...next.bots].sort((a, b) => a.at - b.at)) {
@@ -271,10 +293,11 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
     const state = session.state;
     // while the game stands still its clock shows what it had left when it stopped
     const at = session.frozenAt ?? now;
+    const rules = rulesOf(session);
     return {
       startedAt: session.startedAt,
       rules: {
-        rounds: config.rounds,
+        rounds: rules.rounds,
         rows: config.rows,
         cols: config.cols,
         shared: config.shared,
@@ -284,7 +307,7 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
         revealSeconds: config.revealSeconds,
         sharedFromStart: config.sharedFromStart,
       },
-      view: viewFor(state, seat?.id ?? null, config),
+      view: viewFor(state, seat?.id ?? null, rules),
       players: session.players.map((player) => ({
         id: player.id,
         nick: player.nick,
@@ -324,5 +347,6 @@ export const pokerHost: GameHost<PokerSession, PokerHostRefusal> = {
     (stored as Partial<PokerSession>).version === VERSION &&
     (stored as Partial<PokerSession>).state?.version === VERSION &&
     Array.isArray((stored as Partial<PokerSession>).state?.board) &&
-    Array.isArray((stored as Partial<PokerSession>).bots),
+    Array.isArray((stored as Partial<PokerSession>).bots) &&
+    ((stored as Partial<PokerSession>).rounds === undefined || Number.isInteger((stored as Partial<PokerSession>).rounds)),
 };

@@ -1,3 +1,8 @@
 {
-  "standSeconds": 180
+  "standSeconds": 180,
+  "rounds": {
+    "rounds-five": 5,
+    "rounds-three": 3,
+    "rounds-seven": 7
+  }
 }

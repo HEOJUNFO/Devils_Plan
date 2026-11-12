@@ -87,7 +87,29 @@
     "maxPlayers": 16,
     "teamSize": 0,
     "turns": false,
-    "variants": []
+    "variants": [
+      {
+        "id": "rounds-five",
+        "title": {
+          "ko": "5라운드",
+          "en": "5 rounds"
+        }
+      },
+      {
+        "id": "rounds-three",
+        "title": {
+          "ko": "3라운드",
+          "en": "3 rounds"
+        }
+      },
+      {
+        "id": "rounds-seven",
+        "title": {
+          "ko": "7라운드",
+          "en": "7 rounds"
+        }
+      }
+    ]
   },
   "under-thirteen": {
     "title": {
