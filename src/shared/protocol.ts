@@ -168,6 +168,12 @@ export interface DirectoryMessage {
   type: "rooms";
   rooms: RoomListing[];
   /**
+   * The game these are the rooms of, `null` for every game: what the viewer
+   * last asked for, as the directory has it. Not sent by a directory from
+   * before lists said so.
+   */
+  of?: GameId | null;
+  /**
    * How many rooms of each game there are, among `rooms` or not: what a
    * viewer goes by to see that there are more than the list shows, and of
    * which game. Not sent by a directory older than the counts.
@@ -397,6 +403,7 @@ export function parseDirectoryMessage(raw: unknown): DirectoryMessage | null {
   if (typeof data.counts === "object" && data.counts !== null && !Array.isArray(data.counts)) {
     message.counts = data.counts as RoomCounts;
   }
+  if (data.of === null || isGameId(data.of)) message.of = data.of;
   if (typeof data.build === "string") message.build = data.build;
   if (typeof data.feedback === "boolean") message.feedback = data.feedback;
   return message;

@@ -641,6 +641,8 @@ function syncShare(): void {
 function openChat(open: boolean): void {
   chatOpen = open;
   if (open) unread = 0;
+  // the words said with one press belong to the chat: they do not stay up over the moves
+  else showQuick(false);
   syncChat();
   // Under a finger the chat is opened to be read as often as to be written in, and a box that takes
   // the focus brings the keyboard up over half the screen: there the box is pressed to type in it.
@@ -839,6 +841,8 @@ function showTable(game: GameId): GameScreen {
 
 /** Puts the game screen away and stops it. */
 function hideTable(): void {
+  // put away while the game is still there to take the keys back
+  showQuick(false);
   table?.destroy();
   table = null;
   waited = false;
@@ -1065,9 +1069,10 @@ function watchRooms(): void {
     const message = parseDirectoryMessage(event.data);
     if (message === null) return;
     // A room that was not on the list before and can be joined is what someone left waiting in the lobby is
-    // waiting for: a tab behind others says so in its title. (A list of another game, asked for by a press,
-    // comes while the tab is in front, where nothing is called.)
-    if (newlyOpen(roomsSent?.rooms ?? null, message.rooms).length > 0) call("room");
+    // waiting for: a tab behind others says so in its title. Not a room on a list of another game than the
+    // one before: after a reconnection the rooms of every game come first and those of the game picked
+    // after, with rooms the first had no place for.
+    if (newlyOpen(roomsSent, message).length > 0) call("room");
     roomsSent = message;
     renderRooms();
     // a word about the game is offered only where the server keeps them for someone to read
@@ -2355,7 +2360,9 @@ tabChat.addEventListener("click", () => openChat(true));
 // A button pressed with the mouse keeps the focus, and the next Enter or Space meant for the game
 // would press it again. The ones that lie over the game give the focus back; reached and pressed
 // from the keyboard (no mouse: `detail` is 0) they keep it, and the key is theirs.
-for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, tabShare, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
+// The chat's own button is one of them: after a line is sent with the mouse it would stay under the
+// keys with the box empty, where a press of it asks for the words said with one press.
+for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, tabShare, chatSend, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
   button.addEventListener("click", (event) => {
     if (event.detail > 0 && !tableCanvas.hidden) button.blur();
   });

@@ -326,6 +326,15 @@ describe("parseDirectoryMessage", () => {
     expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [] }))).toEqual({ type: "rooms", rooms: [] });
   });
 
+  it("reads which game the list is of: one game, or every game", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], of: DEFAULT_GAME }))).toEqual({ type: "rooms", rooms: [], of: DEFAULT_GAME });
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], of: null }))).toEqual({ type: "rooms", rooms: [], of: null });
+  });
+
+  it("reads a list of a game it has not heard of as a list that does not say which game it is of", () => {
+    expect(parseDirectoryMessage(JSON.stringify({ type: "rooms", rooms: [], of: "a-game-not-made-yet" }))).toEqual({ type: "rooms", rooms: [] });
+  });
+
   it("rejects a message of another type", () => {
     expect(parseDirectoryMessage(JSON.stringify({ type: "lobby", rooms: [] }))).toBeNull();
   });

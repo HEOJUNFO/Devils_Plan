@@ -76,9 +76,9 @@ class Viewer extends Inbox<DirectoryMessage> {
   }
 }
 
-/** Starts looking at the list of rooms, as the lobby screen does. */
-async function watch(): Promise<Viewer> {
-  return new Viewer(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
+/** Starts looking at the list of rooms, as the lobby screen does; from the address `from`, where one is given. */
+async function watch(from?: string): Promise<Viewer> {
+  return new Viewer(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`, from));
 }
 
 /**
@@ -343,6 +343,29 @@ describe("RoomDirectory", () => {
     after.close();
     viewer.close();
     again.close();
+  });
+
+  it("says with each list which game it is of: every game to begin with, then the one asked for", async () => {
+    const viewer = await watch();
+    const first = await viewer.next();
+
+    // the directory is one for all the tests: a list sent for another's room, of the game asked for before, may come before the answer
+    const listOf = async (game: GameId | null): Promise<DirectoryMessage> => {
+      for (;;) {
+        const list = await viewer.next();
+        if (list.of === game) return list;
+      }
+    };
+
+    viewer.show(OTHER_GAME);
+    const answer = await listOf(OTHER_GAME);
+    viewer.show(null);
+    const back = await listOf(null);
+
+    expect(first.of).toBeNull();
+    expect(answer.of).toBe(OTHER_GAME);
+    expect(back.of).toBeNull();
+    viewer.close();
   });
 
   it("answers a viewer who asks for one game with the rooms of that game only", async () => {
@@ -630,6 +653,71 @@ describe("RoomDirectory: how many are looking", () => {
     // the one who came is told, as everyone who comes is
     await vi.waitFor(() => expect(late.watching().at(-1)).toMatchObject({ count: directoryConfig.watchingMost, more: true }));
     // whatever the first was sent before this answer has arrived by now
+    first.show(null);
+    await first.next();
+    expect(first.watching().length).toBe(toldSoFar);
+    for (const viewer of [first, late, ...crowd]) viewer.close();
+  });
+
+  it("counts two connections from one address as one person looking", async () => {
+    const first = await watch();
+    const alone = await firstTold(first);
+    const one = await watch("203.0.113.7");
+    await first.toldOf(alone + 1);
+    const toldSoFar = first.watching().length;
+
+    const again = await watch("203.0.113.7");
+
+    // the second tab is told the number as it stands, itself not one more in it
+    expect(await firstTold(again)).toBe(alone + 1);
+    // whatever the first was sent before this answer has arrived by now
+    first.show(null);
+    await first.next();
+    expect(first.watching().length).toBe(toldSoFar);
+
+    // and when one of the two tabs goes, the person is still there
+    again.close();
+    const other = await watch("203.0.113.8");
+    await first.toldOf(alone + 2);
+    for (const viewer of [first, one, other]) viewer.close();
+  });
+
+  it("still counts someone from an address after they asked for one game's rooms", async () => {
+    const first = await watch();
+    const alone = await firstTold(first);
+    const one = await watch("203.0.113.9");
+    await first.toldOf(alone + 1);
+    one.show(OTHER_GAME);
+    await one.next();
+    const toldSoFar = first.watching().length;
+
+    const again = await watch("203.0.113.9");
+
+    expect(await firstTold(again)).toBe(alone + 1);
+    first.show(null);
+    await first.next();
+    expect(first.watching().length).toBe(toldSoFar);
+    for (const viewer of [first, one, again]) viewer.close();
+  });
+
+  it("tells nobody of a coming past the most it counts out, also when it has slept and forgotten what it last told", async () => {
+    const first = await watch();
+    const crowd: Viewer[] = [];
+    while (first.watching().at(-1)?.more !== true) {
+      expect(crowd.length).toBeLessThanOrEqual(directoryConfig.watchingMost);
+      const next = await watch();
+      await firstTold(next);
+      crowd.push(next);
+    }
+    const toldSoFar = first.watching().length;
+    // what sleep does to it: the fields of the object are gone, the connections are not
+    await runInDurableObject(directoryStub(), (object) => {
+      (object as unknown as { watchingTold: string | null }).watchingTold = null;
+    });
+
+    const late = await watch();
+
+    await vi.waitFor(() => expect(late.watching().at(-1)).toMatchObject({ count: directoryConfig.watchingMost, more: true }));
     first.show(null);
     await first.next();
     expect(first.watching().length).toBe(toldSoFar);

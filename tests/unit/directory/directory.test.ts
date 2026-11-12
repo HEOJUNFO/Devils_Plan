@@ -8,6 +8,7 @@ import {
   mayMakeAnother,
   newlyOpen,
   parseReport,
+  peopleLooking,
   quickPicks,
   roomsShown,
   watchingOf,
@@ -625,32 +626,60 @@ describe("watchingOf", () => {
   });
 });
 
+describe("peopleLooking", () => {
+  it("counts each address once, however many connections came from it", () => {
+    expect(peopleLooking(["a", "a", "b", "a"])).toBe(2);
+  });
+
+  it("counts a connection that came with no address as someone of its own", () => {
+    expect(peopleLooking([null, "a", null, "a"])).toBe(3);
+  });
+
+  it("is nobody when nobody is looking", () => {
+    expect(peopleLooking([])).toBe(0);
+  });
+});
+
 describe("newlyOpen", () => {
   it("is nothing for a list seen for the first time", () => {
-    expect(newlyOpen(null, [listing("AAAAA")])).toEqual([]);
+    expect(newlyOpen(null, { rooms: [listing("AAAAA")] })).toEqual([]);
   });
 
   it("is the room that was not on the list before", () => {
     const before = [listing("AAAAA")];
     const added = listing("BBBBB");
 
-    expect(newlyOpen(before, [added, ...before])).toEqual([added]);
+    expect(newlyOpen({ rooms: before }, { rooms: [added, ...before] })).toEqual([added]);
   });
 
   it("is nothing when the same rooms are listed again, however they have changed", () => {
     const before = [listing("AAAAA"), listing("BBBBB")];
 
-    expect(newlyOpen(before, [listing("BBBBB", { players: 2 }), listing("AAAAA", { host: "bob" })])).toEqual([]);
+    expect(newlyOpen({ rooms: before }, { rooms: [listing("BBBBB", { players: 2 }), listing("AAAAA", { host: "bob" })] })).toEqual([]);
   });
 
   it("leaves out a new room nobody can come into and play: one that is full, one whose game is on", () => {
     const full = listing("CCCCC", { players: 4, maxPlayers: 4 });
     const playing = listing("DDDDD", { playing: true });
 
-    expect(newlyOpen([], [full, playing])).toEqual([]);
+    expect(newlyOpen({ rooms: [] }, { rooms: [full, playing] })).toEqual([]);
   });
 
   it("is nothing when a room has gone from the list", () => {
-    expect(newlyOpen([listing("AAAAA"), listing("BBBBB")], [listing("AAAAA")])).toEqual([]);
+    expect(newlyOpen({ rooms: [listing("AAAAA"), listing("BBBBB")] }, { rooms: [listing("AAAAA")] })).toEqual([]);
+  });
+
+  it("is nothing when the list is of another game than the one before: a room of the game just asked for has not just opened", () => {
+    const [game] = GAME_IDS;
+    const before = { rooms: [listing("AAAAA")], of: null };
+
+    expect(newlyOpen(before, { rooms: [listing("AAAAA"), listing("BBBBB", { game })], of: game })).toEqual([]);
+  });
+
+  it("is the new room on a list of the same game as the one before", () => {
+    const [game] = GAME_IDS;
+    const added = listing("BBBBB", { game });
+
+    expect(newlyOpen({ rooms: [], of: game }, { rooms: [added], of: game })).toEqual([added]);
   });
 });

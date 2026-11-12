@@ -68,15 +68,42 @@ export function watchingOf(viewers: number, config: DirectoryConfig): Watching {
 }
 
 /**
+ * How many people are looking at the list, going by what each connection to
+ * it is counted as (`from`): the connections of one address are one person,
+ * so that a second tab, or the page of whoever reads the words sent about
+ * the game, is not somebody else waiting for a room. A connection that came
+ * with no address (`null`) is counted as someone of its own. An address is
+ * not a person: two people on one network are counted as one, which says
+ * too little rather than too much.
+ */
+export function peopleLooking(from: readonly (string | null)[]): number {
+  const known = new Set<string>();
+  let unknown = 0;
+  for (const key of from) {
+    if (key === null) unknown++;
+    else known.add(key);
+  }
+  return known.size + unknown;
+}
+
+/** A list of rooms as the directory sent it, with the game it is of where the directory said (`null`: every game). */
+export interface ListSent {
+  rooms: readonly RoomListing[];
+  of?: GameId | null;
+}
+
+/**
  * The rooms on the list `now` that were not on the one `before` and that
  * someone can still come into and play: what a person waiting in the lobby
  * is waiting for. None when there was no list before: a list seen for the
- * first time has nothing new on it.
+ * first time has nothing new on it. None either when the two are lists of
+ * different games: the rooms of the game just asked for were there before,
+ * on a list this viewer was not sent.
  */
-export function newlyOpen(before: readonly RoomListing[] | null, now: readonly RoomListing[]): RoomListing[] {
-  if (before === null) return [];
-  const known = new Set(before.map((room) => room.code));
-  return now.filter((room) => !known.has(room.code) && !room.playing && room.players < room.maxPlayers);
+export function newlyOpen(before: ListSent | null, now: ListSent): RoomListing[] {
+  if (before === null || before.of !== now.of) return [];
+  const known = new Set(before.rooms.map((room) => room.code));
+  return now.rooms.filter((room) => !known.has(room.code) && !room.playing && room.players < room.maxPlayers);
 }
 
 /** How many rooms of each game there are to join. A game with none is left out. */

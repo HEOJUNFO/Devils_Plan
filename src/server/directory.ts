@@ -1,4 +1,4 @@
-import { Server, type Connection, type WSMessage } from "partyserver";
+import { Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import { BUILD } from "../shared/build";
 import directoryConfig from "../shared/directory-config.json";
 import {
@@ -9,6 +9,7 @@ import {
   makeMemoryMs,
   mayMakeAnother,
   parseReport,
+  peopleLooking,
   watchingOf,
   type DirectoryConfig,
   type DirectoryEntry,
@@ -20,7 +21,7 @@ import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
 import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer, type WatchingNote } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
-import { countedAs } from "./address";
+import { ADDRESS_HEADER, countedAs } from "./address";
 import { inboxKey, sameKey, type InboxEnv } from "./inbox";
 
 const config: DirectoryConfig = directoryConfig;
@@ -47,11 +48,15 @@ async function keyOf(from: string): Promise<string> {
 
 /**
  * What the directory keeps of someone looking at the list: the game whose
- * rooms they asked for. Nothing is kept of a viewer of every game. Kept with
- * the connection, so it is still known after the directory has slept.
+ * rooms they asked for, where they asked for one, and what the address they
+ * came from is counted as (`keyOf`: a digest, not the address), where they
+ * came with one, so that the tabs of one person are counted as one looking
+ * (`peopleLooking`). Kept with the connection and no longer than it, and so
+ * still known after the directory has slept.
  */
 interface ViewerState {
-  game: GameId;
+  game?: GameId;
+  from?: string;
 }
 
 /**
@@ -84,7 +89,7 @@ export class RoomDirectory extends Server<Env> {
   private entries = new Map<string, DirectoryEntry>();
   /** How fast each viewer has been asking for another game, by connection id. Forgotten in sleep, when nobody is asking. */
   private readonly showPace = new Map<string, Pace>();
-  /** What the viewers were last told of how many they are, as it was sent; nothing after the directory has slept, when the next change is told to all. */
+  /** What the viewers were last told of how many they are, as it was sent; nothing after the directory has slept, when it is worked out from who was there (`tellWatching`). */
   private watchingTold: string | null = null;
   /** How many words about the game each viewer has sent lately, by connection id. Forgotten in sleep: the day's limit is kept. */
   private readonly feedbackPace = new Map<string, Pace>();
@@ -116,9 +121,11 @@ export class RoomDirectory extends Server<Env> {
   }
 
   /** Someone is looking at the list: send it, the rooms of every game, and how many are looking now. */
-  onConnect(connection: Connection<ViewerState>): void {
+  async onConnect(connection: Connection<ViewerState>, context: ConnectionContext): Promise<void> {
     const now = Date.now();
     connection.send(this.message(now, null, this.counts(now)));
+    const from = context.request.headers.get(ADDRESS_HEADER);
+    if (from !== null) connection.setState({ from: await keyOf(from.slice(0, ADDRESS_MAX_LENGTH)) });
     this.tellWatching(connection, null);
   }
 
@@ -137,7 +144,9 @@ export class RoomDirectory extends Server<Env> {
     const paced = pace(this.showPace.get(connection.id), now, config.showLimit.burst, config.showLimit.windowSeconds);
     this.showPace.set(connection.id, paced.pace);
     if (!paced.ok) return;
-    connection.setState(request.game === null ? null : { game: request.game });
+    // what the viewer's address is counted as stays with the connection, whichever game is asked for
+    const from = connection.state?.from;
+    connection.setState({ ...(request.game === null ? {} : { game: request.game }), ...(from === undefined ? {} : { from }) });
     connection.send(this.message(now, request.game, this.counts(now)));
   }
 
@@ -152,17 +161,22 @@ export class RoomDirectory extends Server<Env> {
    * waiting in the lobby for a room to appear know of each other. `came`
    * has just come and is told whatever the number; the others are told only
    * when what is said changes, which past `watchingMost` it does not: a
-   * crowd is not told of each coming and going. `gone` has just left and is
-   * not counted. A number and nothing else: who they are is not said.
+   * crowd is not told of each coming and going. Nor is anyone told of a
+   * second tab of someone already counted (`peopleLooking`). `gone` has just
+   * left and is not counted. A number and nothing else: who they are is not
+   * said.
    */
   private tellWatching(came: Connection<ViewerState> | null, gone: Connection<ViewerState> | null): void {
     const viewers = [...this.getConnections<ViewerState>()].filter((viewer) => viewer.id !== gone?.id);
-    const watching = watchingOf(viewers.length, config);
-    const note: WatchingNote = { type: "watching", ...watching };
-    const data = JSON.stringify(note);
-    const changed = data !== this.watchingTold;
+    const noteOf = (looking: readonly Connection<ViewerState>[]): string => {
+      const note: WatchingNote = { type: "watching", ...watchingOf(peopleLooking(looking.map((viewer) => viewer.state?.from ?? null)), config) };
+      return JSON.stringify(note);
+    };
+    const data = noteOf(viewers);
+    // After a sleep what was last told is not remembered: it is what was true before this coming or going.
+    const told = this.watchingTold ?? noteOf([...viewers.filter((viewer) => viewer.id !== came?.id), ...(gone === null ? [] : [gone])]);
     this.watchingTold = data;
-    for (const viewer of viewers) if (changed || viewer.id === came?.id) viewer.send(data);
+    for (const viewer of viewers) if (data !== told || viewer.id === came?.id) viewer.send(data);
   }
 
   /**
@@ -346,7 +360,7 @@ export class RoomDirectory extends Server<Env> {
 
   /** The list as sent to a viewer of `game`, or of every game. */
   private message(now: number, game: GameId | null, counts: DirectoryMessage["counts"]): string {
-    const message: DirectoryMessage = { type: "rooms", rooms: listRooms([...this.entries.values()], now, config, game), counts, build: BUILD, feedback: this.takesFeedback() };
+    const message: DirectoryMessage = { type: "rooms", rooms: listRooms([...this.entries.values()], now, config, game), of: game, counts, build: BUILD, feedback: this.takesFeedback() };
     return JSON.stringify(message);
   }
 }
