@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { REVEAL_VARIANT } from "../../../src/shared/game/host";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId } from "../../../src/shared/games";
 import { LANGS } from "../../../src/shared/lang";
@@ -60,8 +61,12 @@ describe("the games a room can be made for", () => {
     expect(GAMES["lay-the-grass"].variants.map((each) => each.title.ko)).toEqual(["판마다 새 카드", "방송의 카드"]);
   });
 
-  it("offers a choice of ways in the two games whose hidden part the show gives away, and of length in the two games the show gives none", () => {
-    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["lay-the-grass", "count-cubes", "memory-poker", "mystery-stock-market"]);
+  it("lets a room of 러시안 룰렛 keep the hidden moves hidden when the game is over, which it starts with, or tell them then", () => {
+    expect(GAMES["russian-roulette"].variants.map((each) => each.id)).toEqual(["kept", REVEAL_VARIANT]);
+  });
+
+  it("offers a choice of ways in the two games whose hidden part the show gives away, of length in the two games the show gives none, and of what is told at the end of the first", () => {
+    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["russian-roulette", "lay-the-grass", "count-cubes", "memory-poker", "mystery-stock-market"]);
   });
 
   it("lets a room of 큐브 세기 give its problem as long as its host says, starting with the five minutes it always had", () => {

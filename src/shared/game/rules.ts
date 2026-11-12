@@ -315,6 +315,12 @@ export interface SeatView {
   seats: SeatPublic[];
   /** Every move so far, as the viewer is told of it. */
   history: SeatEvent[];
+  /**
+   * Every move of the game in full, as the seat that made each was told of
+   * it: there once the game is over, at a table that tells the hidden moves
+   * then (the room's choice; see `viewFor`). `history` stays as it was told.
+   */
+  revealed?: SeatEvent[];
   /** The volley, once the game has ended; `null` before. */
   result: VolleyResult | null;
 }
@@ -777,7 +783,7 @@ export function volley(state: GameState): VolleyResult {
  * Pass `null` for a spectator. Once the game has ended, every chamber, the
  * volley and who had run out are shown to all.
  */
-export function viewFor(state: GameState, viewer: number | null, config: RulesConfig): SeatView {
+export function viewFor(state: GameState, viewer: number | null, config: RulesConfig, reveal = false): SeatView {
   const n = state.seats.length;
   const seat = isWhole(viewer) && viewer >= 0 && viewer < n ? viewer : null;
   const ended = state.phase === "ended";
@@ -820,7 +826,17 @@ export function viewFor(state: GameState, viewer: number | null, config: RulesCo
     const told = eventFor(event, seat);
     if (told !== null) history.push(told);
   }
+  // Once it is over, a table that plays so is told what each hidden move was: everyone the same, beside what
+  // they were told as it went, which is not rewritten.
+  const revealed: SeatEvent[] = [];
+  if (reveal && ended) {
+    for (const event of state.history) {
+      const told = eventFor(event, event.seat);
+      if (told !== null) revealed.push(told);
+    }
+  }
   return {
+    ...(reveal && ended ? { revealed } : {}),
     seat,
     phase: state.phase === "swap" && state.swapSeat !== seat ? "turn" : state.phase,
     round: state.round,

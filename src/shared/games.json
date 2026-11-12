@@ -12,7 +12,22 @@
     "maxPlayers": 6,
     "teamSize": 0,
     "turns": true,
-    "variants": []
+    "variants": [
+      {
+        "id": "kept",
+        "title": {
+          "ko": "끝나도 비공개",
+          "en": "Stays hidden"
+        }
+      },
+      {
+        "id": "told",
+        "title": {
+          "ko": "끝나면 공개",
+          "en": "Told at the end"
+        }
+      }
+    ]
   },
   "count-rectangles": {
     "title": {

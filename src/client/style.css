@@ -1366,6 +1366,51 @@ button.choice[aria-pressed="true"] {
   justify-content: flex-end;
 }
 
+/*
+ * What the game is played by in this room, where the row beside the start does not hold it (러시안 룰렛: the
+ * length of a turn and what is told at the end): a sheet like the others, its buttons one under another.
+ */
+#options-sheet {
+  position: absolute;
+  left: 110px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 260px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#options-sheet[hidden] {
+  display: none;
+}
+
+#options-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#options-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#options-sheet .row {
+  justify-content: flex-end;
+}
+
+:root.touch #options-sheet button {
+  height: 24px;
+}
+
+:root.touch #options-sheet {
+  top: 40px;
+}
+
 :root.touch #to-sheet button,
 :root.touch #chat-to {
   height: 24px;

@@ -406,6 +406,8 @@ describe("the length of a turn", () => {
 describe("how a room's games are played", () => {
   /** A game that can be played in more ways than one, and the ways. */
   const VARIED_GAME = "mystery-stock-market" as const;
+  /** A game that is played one way only. */
+  const ONE_WAY_GAME = "under-thirteen" as const;
   const [FIRST, SECOND] = GAMES[VARIED_GAME].variants.map((each) => each.id);
 
   it("is the first of the game's ways in a new room", () => {
@@ -415,9 +417,9 @@ describe("how a room's games are played", () => {
   });
 
   it("is none in a room of a game that is played one way only, and cannot be set there", () => {
-    const state = createLobby(DEFAULT_GAME, false, testConfig());
+    const state = createLobby(ONE_WAY_GAME, false, testConfig());
 
-    expect(GAMES[DEFAULT_GAME].variants).toEqual([]);
+    expect(GAMES[ONE_WAY_GAME].variants).toEqual([]);
     expect(variantOf(state)).toBeNull();
     expect(setVariant(state, FIRST)).toBeNull();
   });
@@ -462,7 +464,9 @@ describe("how a room's games are played", () => {
 
     expect(viewLobby(joined.state, new Set([0]), 0, config).variant).toBe(FIRST);
     expect(viewLobby(set, new Set([0]), 0, config).variant).toBe(SECOND);
-    expect(viewLobby(lobbyWith(1, config), new Set([0]), 0, config).variant).toBeNull();
+    const oneWay = joinLobby(createLobby(ONE_WAY_GAME, false, config), { token: tokenFor(0), nick: "p0" }, config);
+    if (!oneWay.ok) throw new Error("fixture join refused");
+    expect(viewLobby(oneWay.state, new Set([0]), 0, config).variant).toBeNull();
   });
 
   it("stays as it is while players come and go", () => {

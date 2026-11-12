@@ -67,6 +67,13 @@ const ko = {
     swapped: (who: string, a: string, b: string) => `${who} 조작: ${a}·${b} 맞바꿈`,
     lostSwap: "시간 초과: 교체하지 못함",
     passed: (who: string) => `${who} 패스`,
+    /**
+     * After the last shot, at a table that tells the hidden moves when the game is over: the line over them,
+     * what another player's private check found, and a swap another player won and ran out of time to make.
+     */
+    revealed: "- 숨은 행동 공개 -",
+    found: (a: string, b: string, inA: string, inB: string) => `  ${a} ${inA}, ${b} ${inB}`,
+    lostSwapBy: (who: string) => `${who} 교체 시간 초과`,
     /** The player's own: nobody else is told. */
     outOfCredits: (who: string) => `${who} 크레딧 소진`,
     fire: "격발!",
@@ -227,6 +234,9 @@ const en: typeof ko = {
     swapped: (who, a, b) => `${who} swaps ${a}·${b}`,
     lostSwap: "Time up: no swap made",
     passed: (who) => `${who} passes`,
+    revealed: "- hidden moves, told -",
+    found: (a, b, inA, inB) => `  ${a} ${inA}, ${b} ${inB}`,
+    lostSwapBy: (who) => `${who}: no swap made`,
     outOfCredits: (who) => `${who} is out of credits`,
     fire: "Fire!",
     shot: (who, hit) => (hit ? `Bang! ${who} is shot` : `Click. ${who} lives`),

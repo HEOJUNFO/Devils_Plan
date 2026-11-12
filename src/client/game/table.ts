@@ -120,6 +120,8 @@ const LOG_NAME_WIDTH = 52;
 /** The log on screen: where it starts, under the row the page keeps for its tabs, and its rows. */
 const LOG_TOP = 106;
 const LOG_ROWS = 8;
+/** The height of a row of the log. */
+const LOG_ROW_H = 14;
 
 /** The lead's mark beside a name: a plate a pixel wider than its word on each side, and the gap before it. */
 const LEAD_MARK_EDGE = 2;
@@ -236,6 +238,9 @@ const AGAIN_HOLD = 0.35;
 /** The two buttons under the results: the next game (the host's) and the way back to the waiting room. */
 const AGAIN_RECT: [number, number, number, number] = [386, 225, 90, 15];
 const LOBBY_RECT: [number, number, number, number] = [386, 250, 90, 15];
+/** The log's upper and lower halves: once the game is over a press on one reads the log back, on the other on again. */
+const LOG_UPPER: [number, number, number, number] = [PANEL_X, LOG_TOP, 168, (LOG_ROWS * LOG_ROW_H) / 2];
+const LOG_LOWER: [number, number, number, number] = [PANEL_X, LOG_TOP + (LOG_ROWS * LOG_ROW_H) / 2, 168, (LOG_ROWS * LOG_ROW_H) / 2];
 
 /** Makes `canvas` the game screen. Nothing is drawn until the first {@link Table.update}. */
 export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers): Table {
@@ -284,6 +289,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let fire: Fire | null = null;
   /** The volley of this game has been shown to its end. */
   let fired = false;
+  /** How many rows the log is read back by, once the game is over: 0 shows its newest rows. */
+  let logBack = 0;
   let fallen: boolean[] = [];
   let revealed: (0 | 1 | null)[] = [];
   let pops: Pop[] = [];
@@ -442,6 +449,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     fallen = new Array<boolean>(n).fill(false);
     revealed = new Array<0 | 1 | null>(n).fill(null);
     fired = false;
+    logBack = 0;
     couldAct = false;
     // A game met part-way is shown as it stands; only a game seen from its first moment gets the seat draw.
     seen = history.length;
@@ -733,6 +741,15 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (help !== was) handlers.covered(help);
     if (help || was) return;
     if (fired && latest.view.phase === "ended") {
+      // The log is read back once the game is over: a row with the up and down keys, a screenful with the page
+      // keys or a press on its upper or lower half. It has more rows than it shows at a table that tells the
+      // hidden moves at the end.
+      const most = Math.max(0, logLines().length - LOG_ROWS);
+      if (pressed("ArrowUp")) logBack += 1;
+      if (pressed("ArrowDown")) logBack -= 1;
+      if (pressed("PageUp") || clicked(LOG_UPPER)) logBack += LOG_ROWS - 1;
+      if (pressed("PageDown") || clicked(LOG_LOWER)) logBack -= LOG_ROWS - 1;
+      logBack = Math.max(0, Math.min(most, logBack));
       if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
       } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
@@ -940,6 +957,25 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       for (const shot of shots) {
         const who = pen.fit(nickOf(shot.seat), LOG_NAME_WIDTH);
         lines.push({ text: WORDS.log.shot(who, shot.hit), colour: shot.hit ? C.crim : C.teal, fresh: true });
+      }
+    }
+    // At a table that tells them: what each hidden move of the others was, after the last shot. What this player
+    // did they were told as they did it, and what everyone was told is above.
+    if (fired && view.revealed !== undefined) {
+      const told = view.revealed.filter((event) => event.seat !== me && ["private", "tamper", "swap", "swap-forfeit", "pass"].includes(event.type));
+      const add = (text: string, colour: string = C.bone) => lines.push({ text, colour, fresh: false });
+      if (told.length > 0) add(WORDS.log.revealed, C.amber);
+      for (const event of told) {
+        const who = pen.fit(nickOf(event.seat), LOG_NAME_WIDTH);
+        if (event.type === "private") {
+          const a = LETTERS[event.pair];
+          const b = LETTERS[mod(event.pair + 1, seats())];
+          add(WORDS.log.privateCheck(who, a, b));
+          add(WORDS.log.found(a, b, word(event.seen[0]), word(event.seen[1])), C.boneD);
+        } else if (event.type === "tamper") add(WORDS.log.putIn(who, event.amount));
+        else if (event.type === "swap") add(WORDS.log.swapped(who, LETTERS[event.pair], LETTERS[mod(event.pair + 1, seats())]), C.amber);
+        else if (event.type === "swap-forfeit") add(WORDS.log.lostSwapBy(who), C.boneD);
+        else if (event.type === "pass") add(WORDS.log.passed(who), C.boneD);
       }
     }
     return lines;
@@ -1213,12 +1249,20 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(WORDS.panel.status(view.round + 1), x, 76, C.boneD);
     // what happened, newest at the bottom; a mark on what came since my last move
     const lines = logLines();
-    const from = Math.max(0, lines.length - LOG_ROWS);
-    for (let i = from; i < lines.length; i++) {
-      const y = LOG_TOP + (i - from) * 14;
+    const back = fired ? Math.min(logBack, Math.max(0, lines.length - LOG_ROWS)) : 0;
+    const from = Math.max(0, lines.length - LOG_ROWS - back);
+    const to = Math.min(lines.length, from + LOG_ROWS);
+    for (let i = from; i < to; i++) {
+      const y = LOG_TOP + (i - from) * LOG_ROW_H;
       const line = lines[i];
       if (line.fresh) pen.px(x - 3, y + 1, 1, 11, C.amber);
       pen.txt(line.text, x, y, line.fresh || line.colour !== C.bone ? line.colour : C.boneD);
+    }
+    // once the game is over: an arrow where there are rows above what is shown, and one where there are rows below
+    if (fired && latest?.view.phase === "ended") {
+      const arrow = (y: number, up: boolean): void => [1, 3, 5].forEach((w, row) => pen.px(x + 161 + (5 - w) / 2, y + (up ? row : 2 - row), w, 1, C.amber));
+      if (from > 0) arrow(LOG_TOP + 4, true);
+      if (to < lines.length) arrow(LOG_TOP + LOG_ROWS * LOG_ROW_H - 8, false);
     }
   }
 

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Action, BotConfig, RulesConfig, TableSizes } from "../../../src/shared/game";
 import botJson from "../../../src/shared/game/bot-config.json";
-import { rouletteHost } from "../../../src/shared/game/host";
+import { REVEAL_VARIANT, rouletteHost } from "../../../src/shared/game/host";
 import hostJson from "../../../src/shared/game/host-config.json";
 import rulesJson from "../../../src/shared/game/rules-config.json";
 import sizesJson from "../../../src/shared/game/table-sizes.json";
+import type { StartRequest } from "../../../src/shared/hosting";
 import roomJson from "../../../src/shared/room-config.json";
 import {
   sessionAction,
@@ -72,6 +73,11 @@ function started(count: number = SMALLEST, config: SessionConfig = CONFIG): Sess
   const result = startSession(null, players, { by: tokenOf(0), bots: false }, { allowBots: false, seed: 7, now: T0 }, presenceOf(players), config);
   if (!result.ok) throw new Error(`fixture start refused: ${result.reason}`);
   return result.session;
+}
+
+/** What the room asks the game's host to start with: `variant` as the host of the room chose it. */
+function hostRequest(variant?: string): StartRequest {
+  return { by: tokenOf(0), bots: false, allowBots: false, seed: 7, now: T0, turnSeconds: 0, ...(variant === undefined ? {} : { variant }) };
 }
 
 /** The seat whose move the game is waiting for. */
@@ -944,6 +950,26 @@ describe("sessionSnapshot", () => {
 
     for (const text of sent) {
       for (const p of players) expect(text).not.toContain(p.token);
+    }
+  });
+});
+
+describe("rouletteHost: what is told when the game is over", () => {
+  it("starts a game that tells the hidden moves then, where the room asks for that way of playing", () => {
+    const players = candidates(SMALLEST);
+
+    const told = rouletteHost.start(null, players, hostRequest(REVEAL_VARIANT), presenceOf(players));
+
+    expect(told.ok && told.session.reveal).toBe(true);
+  });
+
+  it("starts a game that keeps them, where the room asks for the game's first way, or for none, or for one it has not heard of", () => {
+    const players = candidates(SMALLEST);
+
+    for (const variant of ["kept", undefined, "tiddlywinks"]) {
+      const kept = rouletteHost.start(null, players, hostRequest(variant), presenceOf(players));
+
+      expect(kept.ok && kept.session.reveal).toBeUndefined();
     }
   });
 });

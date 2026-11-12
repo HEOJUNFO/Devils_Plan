@@ -67,6 +67,12 @@ export interface Session {
   nicks: string[];
   /** When the game started, in ms since the epoch. Tells one game in a room from the next. */
   startedAt: number;
+  /**
+   * Whether the hidden moves are told to everyone once the game is over: the
+   * choice of the room's host when it started. Absent for a game that keeps
+   * them, as the game did before there was a choice.
+   */
+  reveal?: true;
   /** When the move now awaited began to be awaited, in ms since the epoch. */
   turnStartedAt: number;
   /** Since when the player now awaited has had no live connection; `null` while connected. */
@@ -274,7 +280,7 @@ function settle(session: Session, presence: Presence, now: number, config: Sessi
 export function startSession(
   current: Session | null,
   players: Candidate[],
-  request: { by: string; bots: boolean },
+  request: { by: string; bots: boolean; reveal?: boolean },
   options: { allowBots: boolean; seed: number; now: number; chance?: readonly number[] },
   presence: Presence,
   config: SessionConfig,
@@ -308,6 +314,7 @@ export function startSession(
     tokens: state.seats.map((seat) => bySlot.get(seat.occupant)?.token ?? null),
     nicks: state.seats.map((seat) => bySlot.get(seat.occupant)?.nick ?? `봇 ${free.indexOf(seat.occupant) + 1}`),
     startedAt: options.now,
+    ...(request.reveal === true ? { reveal: true as const } : {}),
     turnStartedAt: options.now,
     awaySince: null,
     deadline: null,
@@ -388,7 +395,7 @@ export function sessionSnapshot(session: Session, viewer: string | null, presenc
   return {
     startedAt: session.startedAt,
     rules: session.rules,
-    view: viewFor(session.state, seat < 0 ? null : seat, session.rules),
+    view: viewFor(session.state, seat < 0 ? null : seat, session.rules, session.reveal === true),
     players: session.tokens.map((token, i) => ({
       nick: session.nicks[i],
       bot: token === null,

@@ -103,6 +103,8 @@
           <button id="ready" type="button" class="primary" hidden></button>
           <button id="clock" type="button"></button>
           <button id="variant" type="button" hidden></button>
+          <!-- Where a game has both a clock and a choice of ways the two do not fit beside the start: this opens them (`#options-sheet`). -->
+          <button id="options-open" type="button" aria-haspopup="dialog" hidden></button>
           <button id="team" type="button" hidden></button>
         </div>
         <div class="row bottom">
@@ -185,6 +187,16 @@
         <div id="to-people"></div>
         <div class="row">
           <button id="to-close" type="button"></button>
+        </div>
+      </section>
+
+      <!-- What the game is played by in this room, where that is more than the row beside the start holds: the buttons themselves are put in here. -->
+      <section id="options-sheet" role="dialog" aria-labelledby="options-title" hidden>
+        <h2 id="options-title"></h2>
+        <p id="options-help" class="dim"></p>
+        <div id="options-list"></div>
+        <div class="row">
+          <button id="options-close" type="button"></button>
         </div>
       </section>
 

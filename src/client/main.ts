@@ -161,6 +161,9 @@ const copyButton = el<HTMLButtonElement>("copy");
 const clockButton = el<HTMLButtonElement>("clock");
 const variantButton = el<HTMLButtonElement>("variant");
 const teamButton = el<HTMLButtonElement>("team");
+const optionsOpen = el<HTMLButtonElement>("options-open");
+const optionsSheet = el<HTMLElement>("options-sheet");
+const optionsList = el<HTMLElement>("options-list");
 const chatBox = el<HTMLElement>("chat");
 const chatInput = el<HTMLInputElement>("chat-input");
 const voiceBox = el<HTMLElement>("voice");
@@ -302,6 +305,9 @@ function writeWords(): void {
     ["to-title", WORDS.chat.toTitle],
     ["to-help", WORDS.chat.toHelp],
     ["to-close", WORDS.chat.toClose],
+    ["options-open", WORDS.room.options],
+    ["options-title", WORDS.room.optionsTitle],
+    ["options-close", WORDS.room.optionsClose],
     ["turn-words", WORDS.site.turnDevice],
     ["turn-full", WORDS.site.turnFull],
     ["menu-open", WORDS.menu.open],
@@ -840,6 +846,7 @@ function showScene(view: LobbyView | null): void {
 
 /** Shows the screen of `game` over the frame, making it on first use. */
 function showTable(game: GameId): GameScreen {
+  showOptions(false);
   // the game asked for is here: the button under it is the start button again
   if (startAsked) unask();
   showSeatMenu(null);
@@ -1730,6 +1737,25 @@ function showTo(shown: boolean): void {
   toPeople.querySelector("button")?.focus({ preventScroll: true });
 }
 
+/** Shows what the game is played by in this room, where that has a sheet of its own, or puts it away. */
+function showOptions(shown: boolean): void {
+  if (!shown || currentView === null || table !== null) {
+    if (optionsSheet.hidden) return;
+    const within = optionsSheet.contains(document.activeElement);
+    optionsSheet.hidden = true;
+    if (within) optionsOpen.focus({ preventScroll: true });
+    return;
+  }
+  // one sheet at a time
+  showQuick(false);
+  showSwap(false);
+  optionsSheet.hidden = false;
+  (optionsList.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? el<HTMLButtonElement>("options-close")).focus({ preventScroll: true });
+}
+
+optionsOpen.addEventListener("click", () => showOptions(optionsSheet.hidden === true));
+el<HTMLButtonElement>("options-close").addEventListener("click", () => showOptions(false));
+
 chatToButton.addEventListener("click", () => showTo(toSheet.hidden === true));
 el<HTMLButtonElement>("to-close").addEventListener("click", () => showTo(false));
 
@@ -1756,6 +1782,7 @@ function showSwap(shown: boolean): void {
     swapSheet.hidden = true;
     return;
   }
+  showOptions(false);
   const slots = view.players.map((p) => p.slot);
   const choices = GAME_IDS.map((id) => {
     const button = document.createElement("button");
@@ -1974,6 +2001,17 @@ function renderRoom(code: string, view: LobbyView): void {
   // The same place holds what this game has to set before it starts: the length of a turn, or a team to choose.
   const teams = game.teamSize > 0;
   clockButton.hidden = !game.turns;
+  // A game with both a clock and a choice of ways has a button more than the row beside the start holds: the two
+  // go into a sheet of their own, opened from where they were. Everyone can open it; only the host's presses count.
+  const crowded = game.turns && variant !== undefined;
+  const home = crowded ? optionsList : teamButton.parentElement;
+  if (home !== null && clockButton.parentElement !== home) {
+    if (crowded) home.append(clockButton, variantButton);
+    else for (const button of [clockButton, variantButton]) home.insertBefore(button, optionsOpen);
+  }
+  optionsOpen.hidden = !crowded;
+  el("options-help").textContent = isHost ? WORDS.room.optionsHost : WORDS.room.optionsGuest;
+  if (!crowded) showOptions(false);
   teamButton.hidden = !teams;
   const mine = view.players.find((p) => p.slot === view.you);
   const myTeam = asked.team ?? mine?.team ?? 0;
@@ -2349,6 +2387,7 @@ function joinFromInput(): void {
 }
 
 function leaveRoom(): void {
+  showOptions(false);
   voice.leave();
   send({ type: "leave" });
   disconnect();
@@ -2667,6 +2706,7 @@ addEventListener("keydown", (event) => {
   else if (!swapSheet.hidden) showSwap(false);
   else if (!quickSheet.hidden) showQuick(false);
   else if (!toSheet.hidden) showTo(false);
+  else if (!optionsSheet.hidden) showOptions(false);
   else if (!feedbackSheet.hidden) showFeedback(false);
   else if (!recordSheet.hidden) showRecord(false);
   else if (!inboxSheet.hidden) showInbox(false);

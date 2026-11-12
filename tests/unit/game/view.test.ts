@@ -32,6 +32,49 @@ function botGame(seed: number): GameState {
   return freshGame(RULES, seed, Array.from({ length: RULES.seats }, (_, i) => i));
 }
 
+/**
+ * A game over: seat 0 looked at two chambers alone, seat 1 put a credit
+ * towards the swap, and seat 2 spent its last credit on a look, which ended it.
+ */
+function over(): GameState {
+  const out = Array.from({ length: RULES.endWhenOut - 1 }, (_, i) => RULES.seats - 1 - i);
+  const start = withCredits(withOut(gameWithRounds([1, 4]), out), 2, RULES.costPublic);
+  return play(start, [[0, { type: "private", pair: 1 }], [1, ONE], [2, LOOK]]);
+}
+
+describe("viewFor: the hidden moves, told when the game is over at a table that plays so", () => {
+  it("tells everyone every move in full, the watcher too", () => {
+    const state = over();
+
+    for (const viewer of [0, 3, null]) {
+      const told = viewFor(state, viewer, RULES, true).revealed;
+
+      expect(state.phase).toBe("ended");
+      expect(told).toHaveLength(state.history.length);
+      expect(told?.[0]).toMatchObject({ seat: 0, type: "private", pair: 1, seen: [1, 0] });
+      expect(told?.[1]).toMatchObject({ seat: 1, type: "tamper", amount: 1 });
+    }
+  });
+
+  it("leaves what was told during the game as it was told", () => {
+    const state = over();
+
+    expect(viewFor(state, 3, RULES, true).history).toEqual(viewFor(state, 3, RULES).history);
+    expect(viewFor(state, 3, RULES, true).history[0]).toEqual({ seat: 0, ended: false, type: "hidden" });
+  });
+
+  it("tells nothing of them at a table that does not play so", () => {
+    expect(viewFor(over(), 3, RULES).revealed).toBeUndefined();
+    expect(viewFor(over(), 3, RULES, false).revealed).toBeUndefined();
+  });
+
+  it("tells nothing of them before the game is over", () => {
+    const state = play(gameWithRounds([1, 4]), [[0, { type: "private", pair: 1 }]]);
+
+    expect(viewFor(state, 3, RULES, true).revealed).toBeUndefined();
+  });
+});
+
 describe("viewFor: what a seat sees", () => {
   it("shows a seat its own credits", () => {
     const state = play(freshGame(), [[0, { type: "tamper", amount: 2 }]]);

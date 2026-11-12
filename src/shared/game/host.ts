@@ -33,13 +33,17 @@ const config: SessionConfig = {
 /** The version of a stored game this code can carry on with. */
 const VERSION = 2;
 
+/** The variant of the game, by its id in `games.json`, that tells the hidden moves to everyone once the game is over. */
+export const REVEAL_VARIANT = "told";
+
 /** Russian Roulette, for a room to host. */
 export const rouletteHost: GameHost<Session, StartRefusal | MoveRefusal> = {
   start: (current, players, request, presence) =>
     startSession(
       current,
       players,
-      { by: request.by, bots: request.bots },
+      // whether the hidden moves are told at the end is the room's choice (`games.json`: "told")
+      { by: request.by, bots: request.bots, reveal: request.variant === REVEAL_VARIANT },
       { allowBots: request.allowBots, seed: request.seed, now: request.now, chance: request.chance },
       presence,
       // the length of a turn is the room's own setting; the rest of the rules are the game's

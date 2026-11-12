@@ -61,7 +61,8 @@ describe("GameRoom", () => {
       listed: false,
       turnSeconds: 0,
       // the first game is played one way only
-      variant: null,
+      // the room's game is played its first way until the host says otherwise
+      variant: "kept",
       voice: true,
       host: 0,
       players: [{ slot: 0, nick: "ann", connected: true, team: 0, leads: false, ready: false, pieces: 0 }],
