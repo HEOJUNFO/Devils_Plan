@@ -4,8 +4,11 @@
     <meta charset="utf-8" />
     <!-- A phone's keyboard is laid over the page and does not shrink it: the frame keeps its size while a box is typed in. -->
     <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-visual" />
-    <title>게임 로비</title>
-    <meta name="description" content="친구들과 방을 만들어 함께 하는 두뇌 게임. 열린 방에 들어가거나 방을 만들어 사람들을 모으세요." />
+    <!--
+      The title, the description and what a search engine and a shared link read (which address to index,
+      the pages in each language, the card a messenger draws) are put in here by the build, from the words
+      in src/shared/site/words.ts (vite.config.ts).
+    -->
     <meta name="theme-color" content="#0d1020" />
     <!-- A pixel mark of the page's own, drawn here so no request is made for one. -->
     <link
@@ -20,8 +23,9 @@
     <!--
       Everything is laid out on the game's own 480 by 270 pixels and scaled up as one piece.
       No sentence is written here: the page is read in Korean or in English, and main.ts
-      puts the words of the reader's language in (src/client/words.ts). The title and the
-      description above are what a reader without the script is shown.
+      puts the words of the reader's language in (src/client/words.ts). A reader without the
+      script is shown the title and the description the build puts in the head, and a link to
+      the pages that are read without it (/ko/, /en/).
     -->
     <div id="frame">
       <!-- The lobby: the rooms anyone can join, of every game. -->

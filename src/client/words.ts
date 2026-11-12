@@ -6,13 +6,17 @@
  * Buttons are a fixed number of pixels wide and the bar under the frame holds
  * three lines: a sentence changed here is looked at on the page it is on.
  */
+import { GAME_IDS } from "../shared/games";
 import type { RejectReason } from "../shared/protocol";
+import { SITE_WORDS } from "../shared/site/words";
 import { words } from "./lang";
 
 const ko = {
   site: {
     title: "게임 로비",
-    description: "친구들과 방을 만들어 함께 하는 두뇌 게임. 열린 방에 들어가거나 방을 만들어 사람들을 모으세요.",
+    // the tab's title in the lobby and what a search result says of the page: written with the pages a search engine reads
+    tab: SITE_WORDS.ko.app.title,
+    description: SITE_WORDS.ko.app.description(GAME_IDS.length),
     turnDevice: "화면을 가로로 돌려 주세요",
     /** On the button that turns the page itself, where the browser can. */
     turnFull: "가로 전체 화면으로 보기",
@@ -188,7 +192,8 @@ const ko = {
 const en: typeof ko = {
   site: {
     title: "Game Lobby",
-    description: "Brain games to play with friends in a room of your own. Join an open room, or make one and gather people.",
+    tab: SITE_WORDS.en.app.title,
+    description: SITE_WORDS.en.app.description(GAME_IDS.length),
     turnDevice: "Turn your screen sideways",
     turnFull: "Go full screen, sideways",
   },

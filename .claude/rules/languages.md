@@ -27,6 +27,13 @@ This is a project rule the user set on 2026-11-11, in their words:
   them, so the room has to know how long each covered word is in each
   language. It still sends no sentence: of an open word the key of the table
   and what it is filled with, of a covered one only its shape.
+- The pages a search engine reads (`/ko/`, `/en/` and a page of rules for
+  each game, written by the build: `src/shared/site/pages.ts`) are in both
+  languages too. Their own sentences are in `src/shared/site/words.ts`; a
+  game's name, summary and rules are taken from `games.json` and from the
+  sheet in the game's `words.ts`, so they are written once. They are
+  documents, not screens of 480 by 270: an English one is looked at in a
+  browser at a phone's width.
 - The type check holds the two to one shape, so a sentence missing in one
   language does not compile.
 - A game's name and summary are in `src/shared/games.json`, by language.

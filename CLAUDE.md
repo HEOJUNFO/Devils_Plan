@@ -32,10 +32,20 @@ rule has the user's own words, the history, and the detail. A part marked
   report says which. Detail: `.claude/rules/bots.md`.
 - **A game is shown under the name the show gives it.** Also where the show
   made the name up ("무거운 13", "미스터리 거래소"). No game is given a name
-  of the assistant's own. The rules are used as documented; the show's title,
-  logo, cast, set and screen layout are not used. Game ids stay as they are,
+  of the assistant's own. The rules are used as documented; the show's
+  logo, cast, set and screen layout are not used, and its title only as the
+  next rule says. Game ids stay as they are,
   the project is `brain-survival`, and its address is
   `play.brain-survival.workers.dev`. Detail: `.claude/rules/game-names.md`.
+- **A search for the show finds the site.** The user, 2026-11-12: "데블스플랜을
+  검색했을때 나왔으면좋겠어 우리사이트가". The pages a search engine reads
+  name the show: the titles and descriptions of `/`, of `/ko/` and `/en/`, and
+  of each game's page of rules, and their opening sentences
+  (`src/shared/site/words.ts`). *Reading:* the show is named in sentences,
+  as what the games are from, and every such page says under it that the site
+  is not the broadcaster's; the game's own screens and the picture a shared
+  link shows do not carry the show's name. A new game's page names the show
+  the same way. Detail: `.claude/rules/game-names.md`.
 - **The game is read in Korean and in English.** Every sentence a player
   reads is there in both; a new game or a new sentence comes with both. A
   screen's sentences are in the `words.ts` beside it, never in the markup or

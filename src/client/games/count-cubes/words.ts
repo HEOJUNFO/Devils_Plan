@@ -230,3 +230,6 @@ const en: typeof ko = {
 
 /** The words of 큐브 세기 (Count the Cubes), in the language the page is read in. */
 export const WORDS = words({ ko, en });
+
+/** The rules sheet in every language, for the pages a search engine reads (`site-sheets.ts`): a page of the game shows one, `WORDS.sheet`. */
+export const SHEETS = { ko: ko.sheet, en: en.sheet };

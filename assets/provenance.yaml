@@ -29,3 +29,21 @@
   licence: {id: OFL-1.1}
   date: 2026-11-11
   ships: true
+- path: public/og-ko.png
+  origin: code
+  tool: "tools/share-picture.py (Pillow): the card a shared link shows, drawn with Galmuri11 in the game's colours from the names in src/shared/games.json"
+  model: "claude-fable-5-2 (wrote the script)"
+  date: 2026-11-12
+  ships: true
+- path: public/og-en.png
+  origin: code
+  tool: "tools/share-picture.py (Pillow): the same card in English"
+  model: "claude-fable-5-2 (wrote the script)"
+  date: 2026-11-12
+  ships: true
+- path: public/icon-180.png
+  origin: code
+  tool: "tools/share-picture.py (Pillow): the page's pixel mark (the favicon drawn in index.html) as a file of 180 by 180"
+  model: "claude-fable-5-2 (wrote the script)"
+  date: 2026-11-12
+  ships: true

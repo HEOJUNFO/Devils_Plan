@@ -171,8 +171,10 @@ src/
     protocol.ts           #   소켓 메시지
     frame.ts              #   게임 화면을 기기 화면에 놓는 크기와 자리, 손가락이 버튼 둘레까지 닿는 범위
     *-config.json         #   방, 채팅, 음성, 방 목록의 설정값
+    site/                 #   검색 엔진이 읽는 페이지: 게임 소개(/ko/, /en/)와 게임별 규칙 페이지, sitemap.xml, robots.txt, llms.txt
   client/                 # 브라우저: 로비, 대기실, 채팅, 음성
     touch.ts              #   손가락으로 하는 기기인지, 그때 키 이름 대신 보여 줄 문구
+    site-sheets.ts        #   게임별 규칙 시트를 두 언어로 모은 것 (빌드가 규칙 페이지를 쓸 때만 읽음)
     game/                 #   러시안 룰렛 화면, 공통 그리기
     games/<게임 id>/       #   게임별 화면
 tests/
@@ -180,6 +182,8 @@ tests/
   integration/            # 방을 실제 Workers 런타임에 띄워서 확인
 tools/smoke.mjs           # npm run smoke
 tools/subset-font.py      # 처음 받는 작은 글꼴 파일을 만듭니다 (문장에 새 글자가 생기면 다시 실행, --check 로 확인)
+tools/share-picture.py    # 링크를 공유할 때 보이는 카드 그림과 아이콘을 만듭니다 (public/og-*.png, 게임이 늘거나 이름이 바뀌면 다시 실행)
+vite.config.ts            # 빌드할 때 검색 엔진이 읽는 페이지를 써 넣습니다 (src/shared/site/)
 design/                   # 게임별 설계 기록 (규칙의 출처, 채운 부분)
 assets/                   # 글꼴과 출처 기록 (provenance.yaml)
 vendor/pixelfx/           # 픽셀 이펙트 라이브러리 사본
@@ -197,6 +201,7 @@ production/qa/evidence/   # 화면을 바꿀 때마다 남긴 스크린샷
 2. `src/shared/games/<id>/` 에 규칙(`rules.ts`)과 호스트(`host.ts`)를 만들고 `src/shared/hosts.ts` 에 등록
 3. `src/client/games/<id>/screen.ts` 에 화면을, `words.ts` 에 그 화면의 문구(한국어와 영어)와 규칙 시트를 만들고 `src/client/games/index.ts` 에 등록. 키로 하는 일은 누를 곳도 함께 두고, 키 이름이 들어가는 문구는 손가락용 문구를 같이 적습니다 (`src/client/touch.ts` 의 `byInput`, `keyed`)
 4. `tests/unit/<id>/`, `tests/integration/` 에 테스트, `design/games/<id>.md` 에 규칙의 출처
+5. `words.ts` 에서 규칙 시트를 두 언어로 내보내고(`SHEETS`) `src/client/site-sheets.ts` 에 등록하면 그 게임의 규칙 페이지와 sitemap 항목이 빌드 때 생깁니다. 그 뒤 `python3 tools/share-picture.py` 로 공유 카드 그림을 다시 만듭니다
 
 방(`src/server/room.ts`)은 게임 안을 들여다보지 않고 호스트에 맡기므로, 방
 코드는 고치지 않아도 됩니다.

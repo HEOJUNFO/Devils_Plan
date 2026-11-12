@@ -37,8 +37,23 @@ assistant translates plainly and says so in its report. Terms and sentences:
 ## What the rule does not reach
 
 - It is about the game's name. The rest of what was agreed stays: the rules
-  are used exactly as documented, and the show's own title, logo, cast, set
-  and screen layout are not used.
+  are used exactly as documented, and the show's own logo, cast, set and
+  screen layout are not used.
+- The show's title is written where a search engine reads it. The user said
+  so on 2026-11-12, when the pages a search engine reads had been built
+  without it and the assistant asked: "데블스플랜을 검색했을때
+  나왔으면좋겠어 우리사이트가". Until then the title was not used anywhere
+  on the site.
+  - *Assistant's reading, not the user's words:* it is named in sentences
+    ("데블스 플랜 게임 7종 온라인으로 하기", "《데블스 플랜: 데드 어게인》에
+    나온 게임"), in the titles, descriptions and opening lines of `/`, `/ko/`,
+    `/en/` and each game's page of rules (`src/shared/site/words.ts`). Every
+    such page has a line under it that only the rules and names are the
+    show's and that the site is one person's, not the broadcaster's.
+  - The game's own screens (the lobby, a room, a game) and the picture a
+    shared link shows (`public/og-*.png`) do not carry the show's name.
+  - In English the season is "season 3": its English name was not found in
+    what the project has read.
 - Game ids (`russian-roulette`, `lay-the-grass`, `under-thirteen`) are not
   shown to players and stay as they are.
 - The address is shown: `play.brain-survival.workers.dev`. The user chose it

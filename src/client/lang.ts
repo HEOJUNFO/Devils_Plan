@@ -9,20 +9,26 @@
  * a `words.ts` beside the screen that shows it. The type check holds them to
  * the same shape: a sentence missing in one language does not compile.
  */
-import { LANGS, chooseLang, type Lang } from "../shared/lang";
+import { FALLBACK_LANG, LANGS, chooseLang, type Lang } from "../shared/lang";
 import { storageKey } from "./storage";
 
 const STORED = storageKey("lang");
 
+/**
+ * Whether this is a page in a browser. The build reads the games' words too,
+ * in every language, to write the pages a search engine reads
+ * (`vite.config.ts`, `site-sheets.ts`): there is no page there to settle a
+ * language for.
+ */
+const PAGE = typeof document !== "undefined";
+
 /** The language this page is read in. */
-export const lang: Lang = chooseLang(
-  new URLSearchParams(location.search).get("lang"),
-  localStorage.getItem(STORED),
-  navigator.languages ?? [navigator.language],
-);
+export const lang: Lang = PAGE
+  ? chooseLang(new URLSearchParams(location.search).get("lang"), localStorage.getItem(STORED), navigator.languages ?? [navigator.language])
+  : FALLBACK_LANG;
 
 // what a screen reader pronounces the page as, and what the style sheet fits its buttons to
-document.documentElement.lang = lang;
+if (PAGE) document.documentElement.lang = lang;
 
 /** Of the same words written in every language, the ones in this page's. */
 export function words<T>(written: Record<Lang, T>): T {

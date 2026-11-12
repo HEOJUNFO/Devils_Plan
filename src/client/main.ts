@@ -142,7 +142,7 @@ const rulesSheet = el<HTMLElement>("rules-sheet");
 const langButton = el<HTMLButtonElement>("lang");
 
 /** What the page is called while no room is open. */
-const SITE_TITLE = WORDS.site.title;
+const SITE_TITLE = WORDS.site.tab;
 
 /** The words that stay as they are while the page is open, put where the markup leaves room for them. */
 function writeWords(): void {
