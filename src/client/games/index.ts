@@ -78,6 +78,13 @@ export interface GameScreen {
    * `null` while the game is being played, and for someone who watched it.
    */
   verdict(): string | null;
+  /**
+   * Whether the game now waits on this player alone: a turn that is theirs
+   * to take. Read off what the room last sent, not off what the screen has
+   * got to showing, so it is true in a tab that is not being drawn. A game
+   * everyone plays at once has no such moment and leaves this out.
+   */
+  waits?(): boolean;
   /** Stops drawing and listening. */
   destroy(): void;
 }

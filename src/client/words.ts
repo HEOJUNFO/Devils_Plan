@@ -172,6 +172,14 @@ const ko = {
     reloadForGame: "새로고침하면 이 게임을 할 수 있습니다.",
     left: "방에서 나왔습니다. 다른 창에서 나갔거나 자리를 오래 비웠습니다.",
   },
+  /** At the head of the tab's title while the tab is behind others: what there is to come back for. Short: a title is cut. */
+  call: {
+    said: "새 채팅",
+    came: "누가 들어옴",
+    started: "게임 시작",
+    host: "방장 확인",
+    turn: "내 차례",
+  },
   /** The host's choice of another game for the room. */
   swap: {
     title: "게임 바꾸기",
@@ -409,6 +417,13 @@ const en: typeof ko = {
     },
     reloadForGame: "Reload the page to play this game.",
     left: "You are out of the room: you left in another window, or were away too long.",
+  },
+  call: {
+    said: "New chat",
+    came: "Someone came",
+    started: "Game started",
+    host: "Still there?",
+    turn: "Your turn",
   },
   swap: {
     title: "Change the game",

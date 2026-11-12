@@ -93,6 +93,8 @@ export interface Table {
   press(code: string): void;
   /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
   verdict(): string | null;
+  /** Whether the turn is this player's by the room's last word, and theirs to take. */
+  waits(): boolean;
   /** Stops drawing and listening. */
   destroy(): void;
 }
@@ -1271,6 +1273,13 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(label, rect[0] + Math.round(rect[2] / 2), rect[1] + 2, strong ? C.amber : C.bone, "center");
   }
 
+  /** Whether the turn is this player's by the room's last word, and theirs to take: not one the room passes for them. */
+  function waits(): boolean {
+    const me = truth?.view.seat ?? null;
+    if (truth === null || me === null || truth.view.phase === "ended" || truth.view.current !== me) return false;
+    return !(truth.view.phase === "turn" && truth.view.credits === 0);
+  }
+
   /** What this player came out of the game with, in the word the results lead with; `null` while it is being played, and for someone who watched. */
   function verdict(): string | null {
     const result = latest?.view.result ?? null;
@@ -1431,6 +1440,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   return {
     update,
     verdict,
+    waits,
     refused(reason: string): void {
       starting = false;
       pending = false;

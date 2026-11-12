@@ -126,6 +126,11 @@ export const sfx = {
     noise(0.5, 0.9, 2400);
     tone(140, 0.35, "sine", 0.6, 0, 40);
   },
+  /** Something in the room is the player's to see, and their tab is behind others (`calling.ts`): two soft notes, rising. */
+  call: () => {
+    tone(784, 0.12, "triangle", 0.22);
+    tone(1175, 0.2, "triangle", 0.2, 0.13);
+  },
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, "triangle", 0.2, i * 0.11)),
   lose: () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.22, "sawtooth", 0.14, i * 0.16)),
 };

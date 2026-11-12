@@ -14,6 +14,7 @@
 import { PartySocket } from "partysocket";
 import { BUILD, outOfDate } from "../shared/build";
 import { quickPicks, roomsShown, type RoomListing } from "../shared/directory";
+import { louder, titleFor, type Call } from "../shared/calling";
 import type { StoredWord } from "../shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
 import {
@@ -50,7 +51,7 @@ import directoryConfig from "../shared/directory-config.json";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
-import { isMuted, setMuted, startAudio } from "./game/sound";
+import { isMuted, setMuted, sfx, startAudio } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
@@ -177,9 +178,51 @@ const feedbackSend = el<HTMLButtonElement>("feedback-send");
 /** What the page is called while no room is open. */
 const SITE_TITLE = WORDS.site.tab;
 
+/** The page's own title: the site, or the game and code of the room it is in. */
+let ownTitle = SITE_TITLE;
+/** What the title calls the player back for while the tab is behind others, or `null` (`calling.ts`). */
+let calling: Call | null = null;
+/** Whether the game on the table was waiting on this player when the room last spoke: a turn is called once, when it comes. */
+let waited = false;
+
+/** Writes the page's title: its own, or with what calls the player back at its head. */
+function writeTitle(): void {
+  document.title = titleFor(calling === null ? null : WORDS.call[calling], ownTitle);
+}
+
+/** Gives the page the title `title` for its own. */
+function setTitle(title: string): void {
+  ownTitle = title;
+  writeTitle();
+}
+
+/**
+ * Something happened that is this player's to see. With the tab in front it
+ * is on the screen and nothing more is done. Behind others, the title says
+ * so until the tab is looked at again, and a sound is made (if sound has
+ * started and is not muted): the turn clock runs whether or not its player
+ * is looking, and someone who has waited for a room to fill has usually
+ * gone to another tab by the time it does.
+ */
+function call(what: Call): void {
+  if (document.visibilityState === "visible") return;
+  const before = calling;
+  calling = louder(calling, what);
+  writeTitle();
+  // Sounded when the title has something new to say, and for every turn and every asking of the host, which
+  // each have a clock running. Not for each line of a chat that goes on while the tab is away.
+  if (calling !== before || what === "turn" || what === "host") sfx.call();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible" || calling === null) return;
+  calling = null;
+  writeTitle();
+});
+
 /** The words that stay as they are while the page is open, put where the markup leaves room for them. */
 function writeWords(): void {
-  document.title = SITE_TITLE;
+  setTitle(SITE_TITLE);
   document.querySelector('meta[name="description"]')?.setAttribute("content", WORDS.site.description);
   const said: [id: string, text: string][] = [
     ["rooms-title", WORDS.rooms.title],
@@ -735,6 +778,7 @@ function showTable(game: GameId): GameScreen {
 function hideTable(): void {
   table?.destroy();
   table = null;
+  waited = false;
   tableGame = null;
   crowded = false;
   frame.classList.remove("covered");
@@ -1201,7 +1245,9 @@ function showLobby(message = ""): void {
   syncScene();
   setBar(WORDS.bar.lobby[0], WORDS.bar.lobby[1], false);
   showLobbyLinks(true);
-  document.title = SITE_TITLE;
+  // out of the room, nothing in it calls any more
+  calling = null;
+  setTitle(SITE_TITLE);
   watchRooms();
   // a row that was on its way in is a row like the others again
   renderRooms();
@@ -1303,7 +1349,11 @@ function renderStatus(): void {
 function noteComings(before: LobbyView, after: LobbyView): void {
   const was = new Map(before.players.map((p) => [p.slot, p.nick]));
   const is = new Map(after.players.map((p) => [p.slot, p.nick]));
-  for (const [slot, nick] of is) if (!was.has(slot)) chat.note({ kind: "came", nick });
+  for (const [slot, nick] of is) {
+    if (was.has(slot)) continue;
+    chat.note({ kind: "came", nick });
+    call("came");
+  }
   for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: "went", nick });
   if (after.game !== before.game) chat.note({ kind: "game", game: after.game });
   // The room has another host with both of them here before and after: it was passed on, by the host or by the
@@ -1393,6 +1443,7 @@ function hostChecked(): void {
     return;
   }
   hostAsked = true;
+  call("host");
   if (currentView !== null && currentCode !== "") renderRoom(currentCode, currentView);
   // the room waits this long and no longer: after it the question is no longer open
   setTimeout(() => {
@@ -1476,7 +1527,7 @@ function renderRoom(code: string, view: LobbyView): void {
 
   // A room made by a newer server may be for a game this page has not heard of.
   const game = isGameId(view.game) ? GAMES[view.game] : null;
-  document.title = `${game?.title[lang] ?? SITE_TITLE} · ${code}`;
+  setTitle(`${game?.title[lang] ?? SITE_TITLE} · ${code}`);
   listingButton.hidden = !isHost;
   // what was asked for and is now so needs no saying ahead of the room any more
   if (asked.listed === view.listed) delete asked.listed;
@@ -1649,6 +1700,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       if (!isGameId(message.game)) return;
       keptTable = false;
       const over = message.view.phase === "ended";
+      // a game has begun that was not on a moment ago
+      if (!over && !gameOn) call("started");
       gameOn = !over;
       if (over && (table === null || dismissedGame === message.startedAt)) {
         keepAwake();
@@ -1656,7 +1709,12 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       }
       shownGame = message.startedAt;
       if (typeof event.data === "string") lastGame = event.data;
-      showTable(message.game).update(message);
+      const shown = showTable(message.game);
+      shown.update(message);
+      // a turn that has just become this player's
+      const waits = shown.waits?.() === true;
+      if (waits && !waited) call("turn");
+      waited = waits;
       // whether the game is over, and with it whether there is a result to pass on
       syncShare();
       keepAwake();
@@ -1696,6 +1754,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       const mine = currentView !== null && message.from === currentView.you;
       chat.said(message.nick, message.text, mine);
       if (!mine) {
+        call("said");
         // over the speaker's seat too, so a line is seen without the chat on show
         if (table !== null) table.say(message.from, message.text);
         else scene?.say(message.from, message.text);
