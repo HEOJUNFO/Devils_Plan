@@ -39,6 +39,7 @@ import {
 } from "../shared/protocol";
 import { liftFor, placeFrame } from "../shared/frame";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
+import { keepRoom, keptRoom } from "../shared/resume";
 import chatConfig from "../shared/chat-config.json";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
@@ -304,6 +305,18 @@ let dismissedGame: number | null = null;
 let leaveArmed: ReturnType<typeof setTimeout> | null = null;
 /** Whether the connection to the room is up; the waiting room says so when it is not. */
 let online = false;
+/**
+ * The room's last word on its waiting room and on the game on the screen, as it was sent: what this
+ * page puts away when it is left, for the page loaded in its place to show at once (`resume.ts`).
+ */
+let lastLobby: string | null = null;
+let lastGame: string | null = null;
+/** Since when what is shown of the room may not be how the room stands; `null` while the room's word is the latest. */
+let staleSince: number | null = null;
+/** Whether the room on show is the one put back from what was kept, with the room itself not heard from yet. */
+let returning = false;
+/** Whether the game on show is the one put back from what was kept, with the room's word on its game not heard yet. */
+let keptTable = false;
 /** What the waiting room says under the scene about starting, or about what was just refused. */
 let hint = "";
 /** When the room last sent this page anything, in ms since the epoch. */
@@ -847,6 +860,11 @@ roomList.addEventListener("focusin", (event) => {
 function showLobby(message = ""): void {
   voice.leave();
   setEntering(null);
+  lastLobby = null;
+  lastGame = null;
+  staleSince = null;
+  returning = false;
+  keptTable = false;
   currentCode = "";
   currentView = null;
   hideTable();
@@ -948,10 +966,12 @@ function renderStatus(): void {
   };
   // One line where it fits, as in Korean it mostly does; two where a game's name is as wide as the column,
   // as in English it mostly is. (The room is on show when this is written, so the line can be measured.)
-  write(online ? WORDS.room.status(game, view.listed, here, view.maxPlayers) : [WORDS.room.offline]);
-  if (online && roomGame.childElementCount === 1 && roomGame.scrollWidth > roomGame.clientWidth) write(WORDS.room.statusTall(game, view.listed, here, view.maxPlayers));
+  // a room put back from what was kept says so until the room itself has spoken: who is here may have changed
+  const away = returning ? WORDS.room.returning : online ? null : WORDS.room.offline;
+  write(away === null ? WORDS.room.status(game, view.listed, here, view.maxPlayers) : [away]);
+  if (away === null && roomGame.childElementCount === 1 && roomGame.scrollWidth > roomGame.clientWidth) write(WORDS.room.statusTall(game, view.listed, here, view.maxPlayers));
   // said aloud to a screen reader when it changes
-  status.textContent = online ? WORDS.room.statusSpoken(here, view.maxPlayers) : WORDS.room.offline;
+  status.textContent = away ?? WORDS.room.statusSpoken(here, view.maxPlayers);
 }
 
 /** Says in the chat who has come into the room and who has gone since it was last sent. */
@@ -1102,6 +1122,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // PartySocket reconnects by itself unless we closed it.
     if (socket !== current) return;
     online = false;
+    staleSince ??= Date.now();
     // whatever the game screen had asked for and not heard back about is not coming
     table?.lost();
     if (event.code === CLOSE_LEFT) {
@@ -1130,7 +1151,20 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // this player's slot go.
       join = { ...join, create: false };
       history.replaceState(null, "", `${location.pathname}${location.search}#${code}`);
+      if (typeof event.data === "string") lastLobby = event.data;
+      staleSince = null;
+      returning = false;
       renderRoom(code, message);
+      if (keptTable) {
+        // The room's word on its game comes right behind this one. A game put back from what was kept
+        // that the room then says nothing of is one it no longer has: it is not left on the screen.
+        setTimeout(() => {
+          if (socket !== current || !keptTable) return;
+          keptTable = false;
+          gameOn = false;
+          hideTable();
+        }, config.deadAfterSeconds * 1000);
+      }
       return;
     }
     if (message.type === "game") {
@@ -1139,6 +1173,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // in the waiting room.
       // a room made by a newer server may be playing a game this page has not heard of
       if (!isGameId(message.game)) return;
+      keptTable = false;
       const over = message.view.phase === "ended";
       gameOn = !over;
       if (over && (table === null || dismissedGame === message.startedAt)) {
@@ -1146,6 +1181,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
         return;
       }
       shownGame = message.startedAt;
+      if (typeof event.data === "string") lastGame = event.data;
       showTable(message.game).update(message);
       keepAwake();
       return;
@@ -1544,11 +1580,75 @@ setInterval(() => {
   send({ type: "poke" });
 }, POKE_CHECK_MS);
 
+/**
+ * Keeps what the room last said, for the page that is loaded in this one's
+ * place (a reload, or a tab the browser dropped and brings back) to show
+ * while it is on its way back in: see {@link comeBack}. In the lobby there is
+ * nothing to keep, and what was kept before is thrown away.
+ */
+function putAway(): void {
+  // what this page shows is itself what was kept, the room not heard from yet: that is left as it is, with its age
+  if (returning) return;
+  try {
+    if (currentCode === "" || lastLobby === null) sessionStorage.removeItem(storageKey("room"));
+    else sessionStorage.setItem(storageKey("room"), keepRoom(currentCode, lastLobby, table !== null ? lastGame : null, staleSince ?? Date.now()));
+  } catch {
+    // a full or closed store only means a reload starts in the lobby and goes on to the room from there
+  }
+}
+// a phone drops a tab that is not in front without telling it: what it would keep is kept when it is hidden
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") putAway();
+});
+
+/**
+ * Loaded again in the room the address names: puts the room back on the
+ * screen as this tab last saw it, the game that was on show with it, and asks
+ * the room to come back in. Until the room answers, which far from it is more
+ * than a second, the waiting room says it is on its way back; then the room's
+ * own word replaces what was kept. Says whether it did: with nothing kept of
+ * that room (an invitation, a tab that was never in it, a place given up by
+ * now) the page starts in the lobby as before.
+ */
+function comeBack(): boolean {
+  const code = location.hash.slice(1).toUpperCase();
+  const nick = normalizeNick(nickInput.value, config);
+  if (nick === null || !isValidRoomCode(code, config)) return false;
+  let stored: string | null = null;
+  try {
+    stored = sessionStorage.getItem(storageKey("room"));
+  } catch {
+    // a closed store: nothing was kept
+  }
+  // a room gives up the place of a player away for `awaySlotSeconds`: what is older than that is not this player's room
+  const kept = keptRoom(stored, code, Date.now(), config.awaySlotSeconds);
+  if (kept === null) return false;
+  try {
+    returning = true;
+    staleSince = kept.at;
+    renderRoom(code, kept.lobby);
+    if (kept.game !== null && isGameId(kept.game.game)) {
+      gameOn = kept.game.view.phase !== "ended";
+      shownGame = kept.game.startedAt;
+      keptTable = true;
+      showTable(kept.game.game).update(kept.game);
+      keepAwake();
+    }
+  } catch {
+    // what a page of another version kept may not be what this one draws: the lobby, and on to the room from there
+    return false;
+  }
+  codeInput.value = code;
+  connect(code, false, nick);
+  return true;
+}
+
 // A page the browser has moved away from may be kept, frozen, in case the
 // player comes back to it: its connections would stay open and the room would
 // go on showing someone who is not there. They are closed when the page is
 // put away and opened again if it is brought back.
 addEventListener("pagehide", () => {
+  putAway();
   voice.leave();
   socket?.close();
   listSocket?.close();
@@ -1563,7 +1663,8 @@ addEventListener("pageshow", (event) => {
 nickInput.maxLength = config.nickMaxLength;
 codeInput.maxLength = config.roomCodeLength;
 nickInput.value = localStorage.getItem(storageKey("nick")) ?? "";
-showLobby();
+// Loaded again in a room, the room is on the screen at once; anywhere else, the lobby.
+if (!comeBack()) showLobby();
 followAddress();
 // Ready to be typed in at once where there are keys. Under a finger a box that takes the focus by
 // itself brings the keyboard up over the list of rooms before anything has been read.

@@ -88,6 +88,8 @@ const ko = {
     statusTall: (game: string, listed: boolean, here: number, max: number) => [game, `${listed ? "공개" : "비공개"} · ${here}/${max}`],
     statusSpoken: (here: number, max: number) => `${here}명 접속, 최대 ${max}명`,
     offline: "연결이 끊겼습니다. 다시 연결하는 중",
+    /** Over the room's code when the page was loaded again and the room has not answered yet. */
+    returning: "방으로 돌아오는 중",
     newGame: "새 게임",
     seat: (seat: number, nick: string, me: boolean, connected: boolean) => `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? "접속" : "끊김"}`,
     emptySeat: (seat: number) => `${seat}번 빈 자리`,
@@ -251,6 +253,7 @@ const en: typeof ko = {
     statusTall: (game, listed, here, max) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}`],
     statusSpoken: (here, max) => `${here} connected, ${max} at most`,
     offline: "Connection lost. Reconnecting",
+    returning: "Returning to the room",
     newGame: "New game",
     seat: (seat, nick, me, connected) => `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? "connected" : "disconnected"}`,
     emptySeat: (seat) => `Seat ${seat}, empty`,
