@@ -55,6 +55,7 @@ import chatConfig from "../shared/chat-config.json";
 import directoryConfig from "../shared/directory-config.json";
 import meetConfig from "../shared/meet-config.json";
 import { meetNear } from "../shared/meet";
+import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
@@ -2034,10 +2035,13 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     game: chosenGame,
     listed: chosenListed,
     pings: true,
+    parts: true,
   };
 
   const current = ahead ?? openRoom(code);
   socket = current;
+  // the room sends this connection the game whole once, and after that what has changed in it
+  const read = gameReader();
 
   const greet = (): void => {
     // Fires again on every reconnect; the server expects `join` each time.
@@ -2087,7 +2091,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       pingSentAt = null;
       return;
     }
-    const message = parseServerMessage(event.data);
+    const message = parseServerMessage(event.data, read);
     if (message === null) return;
     heardAt = Date.now();
     // the room is there and has nothing new: that it was heard from is all there is to it

@@ -258,8 +258,10 @@ export type ClientMessage =
    * goes on the list of rooms. `pings` says the page will send `PING` on a
    * schedule, which lets the room end this connection if the pings stop; a
    * page from before pings does not say so and is never ended for silence.
+   * `parts` says the page reads a game sent as what has changed in it
+   * (`parts.ts`); a page that does not say so is sent every game whole.
    */
-  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean; pings: boolean }
+  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean; pings: boolean; parts?: boolean }
   /** Give up the slot for good (a dropped connection keeps it). */
   | { type: "leave" }
   /**
@@ -348,6 +350,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       game: isGameId(data.game) ? data.game : DEFAULT_GAME,
       listed: data.listed === true,
       pings: data.pings === true,
+      parts: data.parts === true,
     };
   }
   if (data.type === "listing") {
@@ -387,10 +390,18 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   return null;
 }
 
-/** Parses a server message, returning `null` for anything unrecognised. */
-export function parseServerMessage(raw: unknown): ServerMessage | null {
-  const data = parseObject(raw, Number.POSITIVE_INFINITY);
-  if (data === null) return null;
+/**
+ * Parses a server message, returning `null` for anything unrecognised.
+ * `read`, where given, is this connection's reader of games sent as what has
+ * changed in them (`gameReader` of `parts.ts`).
+ */
+export function parseServerMessage(raw: unknown, read?: (data: unknown) => unknown): ServerMessage | null {
+  const came = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (came === null) return null;
+  // a game sent as what has changed in it is made whole before it is read (`parts.ts`)
+  const made = read === undefined ? came : read(came);
+  if (typeof made !== "object" || made === null) return null;
+  const data = made as Record<string, unknown>;
   if (
     data.type === "lobby" ||
     data.type === "error" ||

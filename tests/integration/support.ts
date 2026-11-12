@@ -11,6 +11,7 @@ import { exports } from "cloudflare:workers";
 import { runInDurableObject } from "cloudflare:test";
 import { expect, vi } from "vitest";
 import { DEFAULT_GAME, type GameId } from "../../src/shared/games";
+import { gameReader } from "../../src/shared/parts";
 import { PARTY_NAME, PING, PONG, type ClientMessage, type ServerMessage } from "../../src/shared/protocol";
 
 /** The server message of one type. */
@@ -41,6 +42,7 @@ export class Inbox<Message> {
   private pongWaiting: (() => void) | null = null;
   /** Every message received, as text, in order. */
   readonly raw: string[] = [];
+  private readonly read = gameReader();
   /** Answers to pings received. */
   pongs = 0;
   /** Resolves with the close code when the other end closes the socket. */
@@ -54,7 +56,8 @@ export class Inbox<Message> {
         return;
       }
       this.raw.push(event.data as string);
-      this.unread.push(JSON.parse(event.data as string) as Message);
+      // a game sent as what has changed in it is read as the page reads it: as the game it stands for
+      this.unread.push(this.read(JSON.parse(event.data as string)) as Message);
       this.waiting?.();
     });
     this.closed = new Promise((resolve) => {
@@ -263,6 +266,8 @@ export interface JoinOptions {
   pings?: boolean;
   /** The network address the player connects from; none unless the test is about the limits kept by address. */
   from?: string;
+  /** Whether the page says it reads a game sent as parts. A test player does not, unless the test is about that. */
+  parts?: boolean;
 }
 
 /** Connects to `room` and sends `join`, as the browser client does. */
@@ -276,6 +281,7 @@ export async function join(room: string, options: JoinOptions): Promise<TestClie
     game: options.game ?? DEFAULT_GAME,
     listed: options.listed ?? false,
     pings: options.pings ?? false,
+    parts: options.parts ?? false,
   });
   return client;
 }

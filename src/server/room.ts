@@ -6,6 +6,7 @@ import { listingOf, type RoomListing, type RoomReport } from "../shared/director
 import type { GameId } from "../shared/games";
 import { HOSTS } from "../shared/hosts";
 import { CHANCE_WORDS, TIME_OF_SIGHT, type Presence } from "../shared/hosting";
+import { GAME_PART, partOf, type GamePart } from "../shared/parts";
 import {
   awayPlayers,
   clearReady,
@@ -99,6 +100,8 @@ interface Seat {
   since: number;
   /** Whether the page said it pings, so that silence from it means it is gone. */
   pings: boolean;
+  /** Whether the page said it reads a game sent as what has changed in it. */
+  parts: boolean;
   /** There while this connection is in the room's voice chat. */
   voice?: { muted: boolean };
 }
@@ -208,6 +211,14 @@ export class GameRoom extends Server<Env> {
    * more: the safe way to be wrong.
    */
   private readonly sights = new Map<string, string>();
+
+  /**
+   * By connection: the game as that connection was last sent it, whole or as
+   * a part, clocks and all: what the page at its far end has now, and what
+   * the next part for it is taken from. Forgotten when the room sleeps, like
+   * {@link sights}, after which everyone is sent the game whole.
+   */
+  private readonly sent = new Map<string, unknown>();
 
   /**
    * How many messages of each sort each slot has sent lately, by slot and
@@ -380,6 +391,7 @@ export class GameRoom extends Server<Env> {
    */
   async onClose(connection: Connection<ConnectionState>): Promise<void> {
     this.sights.delete(connection.id);
+    this.sent.delete(connection.id);
     // one the room ended itself has been dealt with where it was ended
     if (connection.state?.kind !== "player") return;
     await this.dropped(connection.state.voice !== undefined);
@@ -557,7 +569,7 @@ export class GameRoom extends Server<Env> {
     this.saveLobby(result.state);
     // For the log, which is all that counts rooms: which game, and whether on the list. Never the code or a name.
     if (made) console.log(`room made: ${result.state.game} ${result.state.listed ? "listed" : "unlisted"}`);
-    connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings });
+    connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings, parts: request.parts === true });
     // Also notes anyone whose connection ended without the room being told.
     this.saveLobby(markAway(result.state, this.connectedSlots(), now));
     this.countHere();
@@ -829,7 +841,7 @@ export class GameRoom extends Server<Env> {
     if (!this.voiceOffered()) {
       // Strangers may now come in: nobody is left connected directly to anybody.
       for (const [member, seat] of this.members()) {
-        if (seat.voice !== undefined) member.setState({ kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings });
+        if (seat.voice !== undefined) member.setState({ kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings, parts: seat.parts });
       }
     }
     this.broadcastLobby();
@@ -845,7 +857,7 @@ export class GameRoom extends Server<Env> {
   /** Brings a connection into the room's voice chat or takes it out, and tells everyone who is in it now. */
   private handleVoice(connection: Connection<ConnectionState>, seat: Seat, on: boolean, muted: boolean): void {
     if (on && !this.voiceOffered()) return this.refuse(connection, "voice-not-here");
-    const plain: Seat = { kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings };
+    const plain: Seat = { kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings, parts: seat.parts };
     connection.setState(on ? { ...plain, voice: { muted } } : plain);
     this.broadcastVoice();
   }
@@ -997,7 +1009,10 @@ export class GameRoom extends Server<Env> {
       await this.timers.set("turn", due);
     }
     // a game that is over and gone leaves nothing to compare the next one with
-    if (next === null) this.sights.clear();
+    if (next === null) {
+      this.sights.clear();
+      this.sent.clear();
+    }
     this.broadcastGame(asker);
     if (wasPlaying && !this.playing() && this.lobby !== null) {
       // For the log: which game, and how long it took. A game nobody stayed for ends here too.
@@ -1228,6 +1243,10 @@ export class GameRoom extends Server<Env> {
    * own player's alone until the round ends, so in a room of sixteen fifteen
    * of the sixteen messages about it told a player what they had been told
    * already.
+   *
+   * A connection whose page reads parts is sent what has changed since it
+   * was last sent the game, where that is shorter than the game whole: a
+   * player being done with a round is one mark in a table of sixteen.
    */
   private broadcastGame(always: Connection<ConnectionState> | null = null): void {
     const lobby = this.lobby;
@@ -1245,8 +1264,21 @@ export class GameRoom extends Server<Env> {
       this.sights.set(member.id, sight);
       // which game it is comes first; the rest is what that game's host says this player may see
       // to whoever made the move it is marked as the answer to it: their page is waiting for that, among whatever else is sent
-      const answer = member === always ? { answer: true } : {};
-      member.send(JSON.stringify({ type: "game", room: this.name, game, ...answer, ...host.view(session, seat.token, presence, now) }));
+      const answer: { answer?: true } = member === always ? { answer: true } : {};
+      const whole = { type: "game", room: this.name, game, ...host.view(session, seat.token, presence, now) };
+      const text = JSON.stringify({ ...whole, ...answer });
+      if (!seat.parts) {
+        member.send(text);
+        continue;
+      }
+      // what the page has is what was sent: the game as JSON carried it, not as the host made it
+      const carried = JSON.parse(JSON.stringify(whole)) as unknown;
+      const before = this.sent.get(member.id);
+      this.sent.set(member.id, carried);
+      const change: GamePart = { type: GAME_PART, room: this.name, ...answer, part: (before === undefined ? null : partOf(before, carried)) ?? { o: {} } };
+      const part = before === undefined ? null : JSON.stringify(change);
+      // a new round changes most of it: then the game whole is the shorter
+      member.send(part !== null && part.length < text.length ? part : text);
     }
   }
 

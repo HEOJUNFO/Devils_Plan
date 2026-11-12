@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { QUICK_WORDS } from "../../../src/shared/chat";
 import { DEFAULT_GAME } from "../../../src/shared/games";
+import { gameReader } from "../../../src/shared/parts";
 import {
   MAX_CLIENT_MESSAGE_LENGTH,
   MAX_DIRECTORY_REQUEST_LENGTH,
@@ -36,7 +37,14 @@ describe("parseClientMessage", () => {
       game: DEFAULT_GAME,
       listed: false,
       pings: false,
+      parts: false,
     });
+  });
+
+  it("reads whether the page says it reads a game sent as parts, and takes anything but yes as no", () => {
+    expect(parseClientMessage(joinJson({ parts: true }))).toMatchObject({ parts: true });
+    expect(parseClientMessage(joinJson({ parts: 1 }))).toMatchObject({ parts: false });
+    expect(parseClientMessage(joinJson())).toMatchObject({ parts: false });
   });
 
   it("reads whether the page says it pings, and takes anything but yes as no", () => {
@@ -280,6 +288,24 @@ describe("parseWatchingNote", () => {
 });
 
 describe("parseServerMessage", () => {
+  it("reads a game sent as what has changed in it as the game it stands for, through the connection's reader", () => {
+    const read = gameReader();
+    const game = { type: "game", room: "ABCDE", game: DEFAULT_GAME, round: 1 };
+
+    const whole = parseServerMessage(JSON.stringify(game), read);
+    const made = parseServerMessage(JSON.stringify({ type: "game-part", room: "ABCDE", answer: true, part: { o: { round: { s: 2 } } } }), read);
+
+    expect(whole).toEqual(game);
+    expect(made).toEqual({ ...game, round: 2, answer: true });
+  });
+
+  it("makes nothing of a part of a game with no reader, or with no game before it", () => {
+    const part = JSON.stringify({ type: "game-part", room: "ABCDE", part: { o: {} } });
+
+    expect(parseServerMessage(part)).toBeNull();
+    expect(parseServerMessage(part, gameReader())).toBeNull();
+  });
+
   it("reads a word said with one press, and nothing said so that is not one of them", () => {
     const said = { type: "quick", room: "ABCDE", from: 1, nick: "ann", word: QUICK_WORDS[0], at: 5 };
 
