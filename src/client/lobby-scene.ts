@@ -29,6 +29,7 @@ import {
   type SeatLayout,
 } from "./game/draw";
 import { FIGURE_COUNT } from "./game/figures";
+import { lessMotion } from "./game/motion";
 import { C } from "./game/palette";
 import { WORDS } from "./words";
 
@@ -146,7 +147,9 @@ export function createLobbyScene(
 
   function draw(): void {
     const time = performance.now() / 1000 - started;
-    const sway = Math.sin(time * 1.3) * 3;
+    // the lamp sways and the cylinder turns, slowly; for a player who asked for less motion both stand still
+    const still = lessMotion();
+    const sway = still ? 0 : Math.sin(time * 1.3) * 3;
     const me = lobby?.you ?? 0;
     const bySlot = new Map((lobby?.players ?? []).map((player) => [player.slot, player]));
     // how wide the host's mark is, with the gap before it: its word is as long as the language makes it
@@ -169,7 +172,7 @@ export function createLobbyScene(
     for (const place of places) if (!place.at.back) seat(place);
     if (!rows) {
       drawTable(pen);
-      if (look.device) drawDevice(pen, seats, time * 0.25, time * 0.25, () => [null, null]);
+      if (look.device) drawDevice(pen, seats, still ? 0 : time * 0.25, still ? 0 : time * 0.25, () => [null, null]);
     }
     for (const place of places) if (place.at.back) seat(place);
     light.draw(pen, CX + sway, CY - 4, rows ? HALL_LIGHT : 1);

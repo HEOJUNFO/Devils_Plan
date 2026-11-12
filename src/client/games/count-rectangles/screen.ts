@@ -30,6 +30,7 @@ import { FIGURE_COUNT, figureRects } from "../../game/figures";
 import { C } from "../../game/palette";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
 import * as fxlib from "../../game/pixelfx.js";
+import { lessMotion } from "../../game/motion";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LIST_PITCH, LOG_PITCH, PANEL_WIDTH, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS } from "./words";
@@ -307,6 +308,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
 
   // ---- Effects ---------------------------------------------------------------------------------------
   function addFx(effect: fxlib.FxModule, options: fxlib.FxOptions, box: [number, number, number, number]): void {
+    // a burst is for the eye only: the answer's colour and its sound say whether it was right
+    if (lessMotion()) return;
     const [x0, y0, w, h] = box.map(Math.round) as [number, number, number, number];
     const buffer = document.createElement("canvas");
     buffer.width = w;
@@ -612,7 +615,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       }
     }
     // the frame follows the board's outline, and is lit for a moment by a right or a wrong answer
-    const frame = flash !== null && Math.sin(time * 40) > -0.3 ? flash.colour : C.woodD;
+    // (lit steadily for a player who asked for less motion: it flickers otherwise)
+    const frame = flash !== null && (lessMotion() || Math.sin(time * 40) > -0.3) ? flash.colour : C.woodD;
     for (const place of places) pen.px(place.cx - 5, place.cy - 5, cell + 10, cell + 10, C.ink);
     for (const place of places) pen.px(place.cx - 4, place.cy - 4, cell + 8, cell + 8, frame);
     for (const place of places) pen.px(place.cx - 2, place.cy - 2, cell + 4, cell + 4, C.ink);
@@ -690,7 +694,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         const x = xs[at];
         const info = latest!.players.find((each) => each.id === player);
         const hop = hops.get(player) ?? 0;
-        const lift = hop > 0 ? Math.round(Math.sin((hop / 0.35) * Math.PI) * 5) : 0;
+        const lift = hop > 0 && !lessMotion() ? Math.round(Math.sin((hop / 0.35) * Math.PI) * 5) : 0;
         pen.rects(figureRects(player % FIGURE_COUNT, false, 1), x, FIGURES_Y - lift);
         const gone = info !== undefined && (info.left || !info.connected);
         const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);

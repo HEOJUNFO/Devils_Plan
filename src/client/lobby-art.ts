@@ -4,6 +4,7 @@
  * the list are laid over it from the top as rooms open.
  */
 import { BAR_Y, CX, Light, Pen, SCENE_W, drawLamp } from "./game/draw";
+import { lessMotion } from "./game/motion";
 import { C } from "./game/palette";
 
 /** Where the wall meets the floor. */
@@ -92,6 +93,8 @@ export function drawLobbyArt(canvas: HTMLCanvasElement): void {
   // Someone is always playing behind one door or another: now and then a light dips.
   setInterval(() => {
     if (canvas.offsetParent === null) return;
-    for (const x of DOOR_XS) drawSlit(pen, x, Math.random() < 0.18 ? 0 : 1);
+    // for a player who asked for less motion every light stays on, one that had dipped included
+    const steady = lessMotion();
+    for (const x of DOOR_XS) drawSlit(pen, x, !steady && Math.random() < 0.18 ? 0 : 1);
   }, FLICKER_MS);
 }

@@ -57,6 +57,7 @@ import { CHAIR_DOWN, FIGURE_COUNT } from "./figures";
 import { C } from "./palette";
 import * as fxlib from "./pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "./pointer";
+import { lessMotion } from "./motion";
 import { isMuted, setMuted, sfx, startAudio } from "./sound";
 import { WORDS } from "./words";
 
@@ -384,6 +385,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
 
   // ---- Effects --------------------------------------------------------------------------
   function addFx(effect: fxlib.FxModule, options: fxlib.FxOptions, box: [number, number, number, number]): void {
+    // a burst is for the eye only: what happened is said by the words over it and by the sound
+    if (lessMotion()) return;
     const [x0, y0, w, h] = box.map(Math.round) as [number, number, number, number];
     const buffer = document.createElement("canvas");
     buffer.width = w;
@@ -626,8 +629,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (shot.hit) {
       fire.hits++;
       fallen[shot.seat] = true;
-      shake = 5;
-      flick = 0.5;
+      // the room shakes and the lamp flickers, unless the player has asked for less motion
+      shake = lessMotion() ? 0 : 5;
+      flick = lessMotion() ? 0 : 0.5;
       sfx.bang();
       pops.push({ text: WORDS.bang, x: px0, y: py0, t: 1.1, colour: C.crim });
       muzzleFx(fire.a, 3 + fire.k);
@@ -1054,7 +1058,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (latest === null) return;
     const view = latest.view;
     const n = seats();
-    const blink = Math.floor(time * 5) % 2 === 0;
+    // what is marked out blinks; for a player who asked for less motion it is marked steadily
+    const blink = lessMotion() || Math.floor(time * 5) % 2 === 0;
     const mine = myChamber();
     if (mine !== null && deal <= 0 && view.phase !== "ended") {
       // my own chamber, coloured by what I know of it
@@ -1125,7 +1130,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (latest === null) return;
     const n = seats();
     const ringA = ringAngle();
-    const sway = Math.sin(time * 1.3) * 3;
+    const sway = lessMotion() ? 0 : Math.sin(time * 1.3) * 3;
     const sx = shake > 0.3 ? Math.round(Math.sin(time * 97) * shake) : 0;
     const sy = shake > 0.3 ? Math.round(Math.cos(time * 83) * shake * 0.6) : 0;
     ctx.save();
