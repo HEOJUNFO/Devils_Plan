@@ -16,6 +16,10 @@ project.local.yaml
 production/session-logs/
 # Ephemeral per-session checkpoint; never committed.
 production/session-state/
+# Audit reports and release checklists of the live game; kept on the machine
+# they were written on, not in a public repository.
+production/security/
+production/releases/
 .scratch/
 # Per-agent working memory written at runtime — not release material
 .claude/agent-memory/
