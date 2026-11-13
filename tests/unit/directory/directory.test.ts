@@ -45,6 +45,7 @@ function roomConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     missedPings: 2,
     askAfterSeconds: 2,
     deadAfterSeconds: 2,
+    hiddenRetrySeconds: 180,
     reconnect: { firstMs: 100, jitterMs: 100, grow: 1.5, mostMs: 2000 },
     warmUpMs: 100,
     warmFreshSeconds: 45,

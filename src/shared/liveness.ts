@@ -22,6 +22,8 @@ export interface LivenessConfig {
   askAfterSeconds: number;
   /** Seconds that ping has to be answered in. */
   deadAfterSeconds: number;
+  /** Seconds a page that is not on show goes on trying to open a connection that is down. */
+  hiddenRetrySeconds: number;
 }
 
 /** What the page knows of its connection. Times are in ms. */
@@ -90,4 +92,20 @@ export function look(state: Liveness, now: number, config: LivenessConfig): Look
     return { state: { ...state, pingedAt: now, unanswered: state.unanswered + 1 }, ping: true, dead: false };
   }
   return { state, ping: false, dead: false };
+}
+
+/**
+ * Whether a connection that has been down since `downSince` (`null`: it is
+ * up) is left alone at `now`, tried no more until the page is looked at
+ * again. A page on show is never left without its tries: someone may be
+ * waiting on it. A page that is not (`hidden`: a tab behind another, a
+ * window put away, a phone with another app in front) goes on trying for
+ * `hiddenRetrySeconds`, which mends a line that dropped for a moment under a
+ * player waiting for a turn in another tab, and then stops. A tab forgotten
+ * there would else ask for a new connection every few seconds for as long as
+ * it stayed open, and every one of those counts against what the game has
+ * for a day.
+ */
+export function givenUp(downSince: number | null, now: number, hidden: boolean, config: LivenessConfig): boolean {
+  return hidden && downSince !== null && now - downSince >= config.hiddenRetrySeconds * 1000;
 }

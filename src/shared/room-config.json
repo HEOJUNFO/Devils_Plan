@@ -23,6 +23,7 @@
   "missedPings": 2,
   "askAfterSeconds": 4,
   "deadAfterSeconds": 4,
+  "hiddenRetrySeconds": 180,
   "reconnect": { "firstMs": 400, "jitterMs": 600, "grow": 1.5, "mostMs": 10000 },
   "warmUpMs": 100,
   "warmFreshSeconds": 45,

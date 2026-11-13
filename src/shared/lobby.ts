@@ -88,6 +88,13 @@ export interface RoomConfig {
   /** Seconds that ping has to be answered in before the page opens a new connection. */
   deadAfterSeconds: number;
   /**
+   * Seconds a page that is not on show goes on trying to open a connection
+   * that is down (`givenUp`, `liveness.ts`); after that it waits to be looked
+   * at again. No shorter than `awaySlotSeconds`: a player whose tab is behind
+   * another is brought back for as long as the room keeps the seat.
+   */
+  hiddenRetrySeconds: number;
+  /**
    * How soon a page opens a new connection after one has closed: `firstMs`
    * and up to `jitterMs` more (so that the pages of a room do not all come
    * back in the same instant after a deploy), each try after that `grow`

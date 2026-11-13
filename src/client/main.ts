@@ -52,7 +52,7 @@ import {
 } from "../shared/protocol";
 import { liftFor, placeFrame } from "../shared/frame";
 import { INVITED_GAME_KEY, invitePath } from "../shared/site/paths";
-import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
+import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptRoom } from "../shared/resume";
 import { hearersOf, namesOf, teammatesOf, toggled, type ChatTo, type Hearer } from "../shared/aside";
 import { QUICK_WORDS } from "../shared/chat";
@@ -448,6 +448,10 @@ if (TOUCH) {
 let socket: PartySocket | null = null;
 /** The connection to the list of rooms, while the lobby is on show. */
 let listSocket: PartySocket | null = null;
+/** Since when the connection to the room has been down, in ms; `null` while it is up or there is none. */
+let roomDown: number | null = null;
+/** The same of the connection to the list of rooms. */
+let listDown: number | null = null;
 /** The room this page has asked to enter and has not heard back from; `null` when there is none. */
 let entering: string | null = null;
 /**
@@ -1489,7 +1493,9 @@ function watchRooms(): void {
   renderRooms();
   const current = new PartySocket({ host: location.host, party: DIRECTORY_PARTY, room: DIRECTORY_NAME, ...reconnecting() });
   listSocket = current;
+  listDown = null;
   current.addEventListener("open", () => {
+    if (listSocket === current) listDown = null;
     // every connection starts with the rooms of every game, a reconnection too: the game picked is asked for again
     if (listSocket === current && listedGame !== null) askForGame();
     // and so is a hand that was up: a new connection has none
@@ -1546,6 +1552,7 @@ function watchRooms(): void {
   current.addEventListener("close", () => {
     // PartySocket reconnects by itself; until then the list on show may be out of date
     if (listSocket !== current) return;
+    listDown ??= Date.now();
     roomsSent = null;
     watching = null;
     wanting = {};
@@ -2603,6 +2610,7 @@ function renderRoom(code: string, view: LobbyView): void {
 function disconnect(): void {
   socket?.close();
   socket = null;
+  roomDown = null;
 }
 
 /**
@@ -2633,6 +2641,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
 
   const current = ahead ?? openRoom(code);
   socket = current;
+  roomDown = null;
   // the room sends this connection the game whole once, and after that what has changed in it
   const read = gameReader();
 
@@ -2642,6 +2651,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // a connection that came back is a new one to the room: say again that this page is in voice
     voice.announce();
     online = true;
+    roomDown = null;
     live = opened(Date.now());
     renderStatus();
   };
@@ -2652,6 +2662,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // PartySocket reconnects by itself unless we closed it.
     if (socket !== current) return;
     online = false;
+    roomDown ??= Date.now();
     // a ping on its way is not coming back, and the next connection is measured anew
     pingSentAt = null;
     pingTimes = [];
@@ -3544,6 +3555,19 @@ function wake(): void {
 }
 addEventListener("online", wake);
 document.addEventListener("visibilitychange", wake);
+
+// A connection that stays down is asked for again every few seconds, without
+// end. On a page nobody is looking at that goes on for as long as the tab is
+// left open, and every try that gets as far as the server is counted against
+// what the game has for a day: such a page stops after a while (`givenUp`).
+// `wake` opens the connection again the moment the page is looked at.
+const GIVE_UP_CHECK_MS = 5000;
+setInterval(() => {
+  const now = Date.now();
+  const hidden = document.visibilityState === "hidden";
+  if (socket !== null && socket.shouldReconnect && givenUp(roomDown, now, hidden, config)) socket.close();
+  if (listSocket !== null && listSocket.shouldReconnect && givenUp(listDown, now, hidden, config)) listSocket.close();
+}, GIVE_UP_CHECK_MS);
 // the browser takes the screen's promise back when the page is hidden: asked for again when it is back
 document.addEventListener("visibilitychange", keepAwake);
 // leaving full screen by the browser's own way (a swipe, the back button) is told to the menu when it is next opened

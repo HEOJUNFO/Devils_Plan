@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { doubted, heard, look, opened, sent, type Liveness, type LivenessConfig } from "../../../src/shared/liveness";
+import { doubted, givenUp, heard, look, opened, sent, type Liveness, type LivenessConfig } from "../../../src/shared/liveness";
 import shipped from "../../../src/shared/room-config.json";
 
 /** The numbers as shipped. */
@@ -9,6 +9,7 @@ const OPEN = 1_000_000;
 const PING_MS = CONFIG.pingSeconds * 1000;
 const ASK_MS = CONFIG.askAfterSeconds * 1000;
 const DEAD_MS = CONFIG.deadAfterSeconds * 1000;
+const HIDDEN_MS = CONFIG.hiddenRetrySeconds * 1000;
 
 /** Looks at `state` at `now`, sending the ping if one is asked for, and returns the state after. */
 function after(state: Liveness, now: number): Liveness {
@@ -147,7 +148,37 @@ describe("a connection the page has reason to doubt", () => {
   });
 });
 
+describe("a connection that stays down", () => {
+  /** When the connection of these tests closed, in ms. */
+  const DOWN = OPEN + 60_000;
+
+  it("is tried again by a page on show however long it has been down", () => {
+    expect(givenUp(DOWN, DOWN + HIDDEN_MS * 100, false, CONFIG)).toBe(false);
+  });
+
+  it("is tried again by a hidden page until it has been down for the time a hidden page tries", () => {
+    expect(givenUp(DOWN, DOWN + HIDDEN_MS - 1, true, CONFIG)).toBe(false);
+  });
+
+  it("is left alone by a hidden page once it has been down that long", () => {
+    expect(givenUp(DOWN, DOWN + HIDDEN_MS, true, CONFIG)).toBe(true);
+  });
+
+  it("is counted from when it last closed, not from when the page was hidden", () => {
+    // down for long on a page on show, which is then hidden: left alone at the next look
+    expect(givenUp(DOWN, DOWN + HIDDEN_MS * 3, true, CONFIG)).toBe(true);
+  });
+
+  it("is nothing to give up while the connection is up", () => {
+    expect(givenUp(null, DOWN + HIDDEN_MS * 100, true, CONFIG)).toBe(false);
+  });
+});
+
 describe("the numbers as shipped", () => {
+  it("have a hidden page try for as long as a room keeps the seat of a player who is away", () => {
+    expect(CONFIG.hiddenRetrySeconds).toBeGreaterThanOrEqual(shipped.awaySlotSeconds);
+  });
+
   it("find a dead connection within ten seconds of a press, and never ask sooner than a slow answer takes", () => {
     expect(CONFIG.askAfterSeconds + CONFIG.deadAfterSeconds).toBeLessThanOrEqual(10);
     expect(CONFIG.askAfterSeconds).toBeGreaterThanOrEqual(2);
