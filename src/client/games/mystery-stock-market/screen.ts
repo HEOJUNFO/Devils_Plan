@@ -44,6 +44,8 @@ export interface MarketHandlers {
   covered(covered: boolean): void;
   /** The game has more players than the column lists one to a row, or no longer has. */
   crowded(crowded: boolean): void;
+  /** Whether this is the player's first game of 미스터리 거래소 (`GameHandlers.first`): until they have bought anything, the bar says what the game is where it would say what they hold. */
+  first: boolean;
 }
 
 /** The game screen. */
@@ -874,7 +876,16 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     const done = view.standings.filter((each) => each.done).length;
     if (view.mine === null) return [WORDS.standing.watching(done, view.standings.length), C.bone];
     if (view.mine.done) return [WORDS.standing.done(done, view.standings.length), C.teal];
+    // a first game, with nothing bought yet: what is held is what everyone starts with, so the line can say what the game is
+    if (handlers.first && untouched()) return [WORDS.coach.start, C.amber];
     return [wallet(), C.bone];
+  }
+
+  /** Whether the player still holds exactly what the game began with, in its first round: all of the starting money and no share. */
+  function untouched(): boolean {
+    const own = mine();
+    if (latest === null || own === null) return false;
+    return latest.view.round === 1 && own.cash === latest.rules.startCash && STOCKS.every((stock) => own.shares[stock] === 0);
   }
 
   /** What this player came out of the game with, in the word the results lead with; `null` while it is being played, and for someone who watched. */

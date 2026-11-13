@@ -145,6 +145,14 @@ const ko = {
   },
   /** Over the table while the game stands still; `seconds` until it is given up, where that is known. */
   waitingBack: (seconds: number | null) => (seconds === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${seconds}초`),
+  /**
+   * To a player in their first game of it, in place of `wallet` until they have bought anything (468
+   * pixels): what moves a price and what the game is won by. What is held then is what everyone starts
+   * with; a piece taken as money, or a share bought, brings the wallet back.
+   */
+  coach: {
+    start: "주가는 라운드 끝에 종목의 규칙대로 움직입니다 · 마지막에 현금+주식이 많으면 1위",
+  },
   /** The line at the top of the bar, 468 pixels. */
   standing: {
     offline: "연결이 끊겼습니다. 다시 연결하는 중",
@@ -306,6 +314,9 @@ const en: typeof ko = {
     opened: "More of the rules is open",
   },
   waitingBack: (seconds) => (seconds === null ? "Waiting for them to come back" : `Waiting for them to come back · ${seconds}s`),
+  coach: {
+    start: "Prices move by the rules as each round ends · most cash + shares wins",
+  },
   standing: {
     offline: "Connection lost. Reconnecting",
     over: "The game is over",
