@@ -14,7 +14,8 @@ import {
   type DirectoryConfig,
   type DirectoryEntry,
 } from "../shared/directory";
-import { normalizeFeedback, type StoredWord } from "../shared/feedback";
+import chatConfig from "../shared/chat-config.json";
+import { normalizeFeedback, parseFlag, type Flag, type FlagConfig, type StoredWord } from "../shared/feedback";
 import { comingOf, mayAnswer, mayGiveAnother } from "../shared/going";
 import { isLang } from "../shared/lang";
 import { isGameId, type GameId } from "../shared/games";
@@ -44,11 +45,14 @@ const config: DirectoryConfig = directoryConfig;
 const rooms: RoomConfig = roomConfig;
 const numbers: NumbersConfig = numbersConfig;
 const meets: MeetConfig = meetConfig;
+const flags: FlagConfig = chatConfig.flag;
 
 /** The path a room reports to, the path it asks at whether one more room may be made, and the path it says at what happened in it that is counted by the day. */
 export const REPORT_PATH = "/report";
 export const MAKE_PATH = "/make";
 export const COUNT_PATH = "/count";
+/** The path a room passes on at that one of its players pointed another out (`Flag`). */
+export const FLAG_PATH = "/flag";
 /** The longest an address is written: an IPv6 address with an IPv4 one for its end. */
 const ADDRESS_MAX_LENGTH = 45;
 /** How long a word about the game counts against the day's limit, in ms. */
@@ -63,6 +67,18 @@ const DAY_MS = 86_400_000;
 async function keyOf(from: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(countedAs(from)));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Who a kept flag is of and in which game, as its column has it; `null` for what is not that. */
+function flagOf(kept: string): { nick: string; game: string } | null {
+  try {
+    const data: unknown = JSON.parse(kept);
+    if (typeof data !== "object" || data === null) return null;
+    const { nick, game } = data as { nick?: unknown; game?: unknown };
+    return typeof nick === "string" && typeof game === "string" ? { nick, game } : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -137,6 +153,13 @@ export class RoomDirectory extends Server<Env> {
     this.ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS words (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, text TEXT NOT NULL, lang TEXT NOT NULL, build TEXT NOT NULL)",
     );
+    // A player pointed out in a room is kept among them, with who and in which game in a column of its own.
+    // The table was made before there was one: it is added where the asking for it fails.
+    try {
+      this.ctx.storage.sql.exec("SELECT flag FROM words LIMIT 0");
+    } catch {
+      this.ctx.storage.sql.exec("ALTER TABLE words ADD COLUMN flag TEXT");
+    }
     // one row for each wrong key the inbox was tried with, kept for as long as the limit on them looks back
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS misses (at INTEGER NOT NULL)");
     // the site's numbers by the day (`numbers.ts`): how many of each thing, and nothing of who
@@ -366,9 +389,35 @@ export class RoomDirectory extends Server<Env> {
     const sql = this.ctx.storage.sql;
     if (request.drop !== undefined) sql.exec("DELETE FROM words WHERE id = ?", request.drop);
     const rows = sql
-      .exec<{ id: number; at: number; text: string; lang: string; build: string }>("SELECT id, at, text, lang, build FROM words ORDER BY id DESC")
+      .exec<{ id: number; at: number; text: string; lang: string; build: string; flag: string | null }>("SELECT id, at, text, lang, build, flag FROM words ORDER BY id DESC")
       .toArray();
-    answer(rows.map((row) => ({ id: row.id, at: row.at, text: row.text, lang: isLang(row.lang) ? row.lang : ("en" as const), build: row.build })));
+    answer(
+      rows.map((row) => {
+        const word: StoredWord = { id: row.id, at: row.at, text: row.text, lang: isLang(row.lang) ? row.lang : ("en" as const), build: row.build };
+        const flag = row.flag === null ? null : flagOf(row.flag);
+        if (flag !== null) word.flag = flag;
+        return word;
+      }),
+    );
+  }
+
+  /**
+   * Keeps a player pointed out in a room (`Flag`) among the words about the
+   * game, for whoever makes it to read with them. Not where nobody could
+   * read it, nor once the day's flags from every room together have all been
+   * taken: a room that flagged without end would otherwise push what players
+   * wrote out of what is kept. The log gets that one was kept, never who.
+   */
+  private takeFlag(flag: Flag, now: number): void {
+    if (!this.takesFeedback()) return;
+    const sql = this.ctx.storage.sql;
+    if (sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM words WHERE flag IS NOT NULL AND at > ?", now - DAY_MS).one().n >= flags.dayLimit) {
+      console.log("a flag turned away: the day's flags are all taken");
+      return;
+    }
+    sql.exec("INSERT INTO words (at, text, lang, build, flag) VALUES (?, ?, ?, ?, ?)", now, flag.lines.join("\n"), "", "", JSON.stringify({ nick: flag.nick, game: flag.game }));
+    sql.exec("DELETE FROM words WHERE id NOT IN (SELECT id FROM words ORDER BY id DESC LIMIT ?)", config.feedback.keep);
+    console.log("a flag kept");
   }
 
   /**
@@ -475,6 +524,12 @@ export class RoomDirectory extends Server<Env> {
       const event = parseRoomEvent(raw);
       if (event === null) return new Response("Bad Request", { status: 400 });
       this.count(countsOf(event), Date.now());
+      return new Response(null, { status: 204 });
+    }
+    if (path === FLAG_PATH) {
+      const flag = parseFlag(raw, { lines: flags.lines, lineLength: chatConfig.maxLength, nickLength: rooms.nickMaxLength });
+      if (flag === null) return new Response("Bad Request", { status: 400 });
+      this.takeFlag(flag, Date.now());
       return new Response(null, { status: 204 });
     }
     const report = parseReport(raw, rooms);

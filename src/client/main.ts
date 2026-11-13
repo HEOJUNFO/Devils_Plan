@@ -160,6 +160,11 @@ const chatToButton = el<HTMLButtonElement>("chat-to");
 const toSheet = el<HTMLElement>("to-sheet");
 const toPeople = el<HTMLElement>("to-people");
 const toHelp = el<HTMLElement>("to-help");
+const whoSheet = el<HTMLElement>("who-sheet");
+const whoName = el<HTMLElement>("who-name");
+const whoHelp = el<HTMLElement>("who-help");
+const whoHide = el<HTMLButtonElement>("who-hide");
+const whoFlag = el<HTMLButtonElement>("who-flag");
 const chatSend = el<HTMLButtonElement>("chat-send");
 const joinButton = el<HTMLButtonElement>("join");
 const createButton = el<HTMLButtonElement>("create");
@@ -319,6 +324,7 @@ function writeWords(): void {
     ["to-title", WORDS.chat.toTitle],
     ["to-help", WORDS.chat.toHelp],
     ["to-close", WORDS.chat.toClose],
+    ["who-close", WORDS.chat.who.close],
     ["options-open", WORDS.room.options],
     ["options-title", WORDS.room.optionsTitle],
     ["options-close", WORDS.room.optionsClose],
@@ -527,6 +533,16 @@ let gameOn = false;
 let chatTo: number | null = null;
 /** Whether a press of the button that forgets the player's record does so: the press before it only asked. */
 let clearArmed = false;
+/** The other players whose lines this player covered on their own screen, in the room the page is in: each by slot and name (`personKey`). Kept for the tab, by room. */
+let hiddenPeople = new Set<string>();
+/** Those this player pointed out from this room, the same way: the room takes one of each, so the button says it was done. */
+const flaggedPeople = new Set<string>();
+/** The player the sheet of what can be done about another is open for, and the element the keys go back to when it shuts; `null` with it shut. */
+let whoShown: { slot: number; nick: string; from: HTMLElement } | null = null;
+/** Whether pointing them out has had its first press. */
+let flagArmed = false;
+/** Whether the site keeps what players tell whoever runs it, as the list of rooms last said: where it does not, nobody is offered to point anyone out. Kept for the tab, so a reload in a room still knows. */
+let takesWords = sessionStorage.getItem(storageKey("takes-words")) === "1";
 /** During a game: whether the right-hand column shows the chat rather than the moves. */
 let chatOpen = false;
 /** During a game of many players: the tabs sit at the top of the column, and the first shows the players with the moves. */
@@ -669,12 +685,118 @@ const chat = createChat(
       if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
       if (note.kind === "too-fast") return WORDS.chat.tooFast;
+      if (note.kind === "hid") return WORDS.chat.who.hid(note.nick);
+      if (note.kind === "shown") return WORDS.chat.who.shown(note.nick);
+      if (note.kind === "flagged") return WORDS.chat.who.flaggedNote(note.nick);
       if (note.kind === "voice-joined") return WORDS.voice.joined;
       if (note.kind === "voice-listen-only") return WORDS.voice.listenOnly;
       return WORDS.voice.notHere;
     },
+    hidden: (from, who) => hiddenPeople.has(personKey(from, who)),
+    hiddenLine: WORDS.chat.who.hiddenLine,
+    nameLabel: (who) => WORDS.chat.who.label(who),
+    picked: (from, who, at) => showWho({ slot: from, nick: who, from: at }),
+    wholeLine: TOUCH,
   },
 );
+
+/** How a player is named among those whose lines are covered: by their slot and the name they go by, so that whoever next takes the slot is not covered with them. */
+function personKey(slot: number, nick: string): string {
+  return `${slot}:${nick}`;
+}
+
+/** Reads whose lines this tab covered in the room `code`. */
+function openHidden(code: string): void {
+  hiddenPeople = new Set();
+  flaggedPeople.clear();
+  try {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(`${storageKey("hidden")}.${code}`) ?? "[]");
+    if (Array.isArray(stored)) hiddenPeople = new Set(stored.filter((key): key is string => typeof key === "string"));
+  } catch {
+    hiddenPeople = new Set();
+  }
+}
+
+/** Covers what the player says on this screen, or uncovers it: their lines in the chat, their words over their seat, and their voice. */
+function setHidden(slot: number, nick: string, hidden: boolean): void {
+  const key = personKey(slot, nick);
+  if (hidden) hiddenPeople.add(key);
+  else hiddenPeople.delete(key);
+  if (currentCode !== "") {
+    try {
+      sessionStorage.setItem(`${storageKey("hidden")}.${currentCode}`, JSON.stringify([...hiddenPeople]));
+    } catch {
+      // a full or closed store only means a reload uncovers them
+    }
+  }
+  voice.quiet(slot, hidden);
+  chat.redraw();
+  chat.note({ kind: hidden ? "hid" : "shown", nick });
+}
+
+/**
+ * Shows what this player can do about another, whose name they pressed in
+ * the chat, or with `null` puts it away. The keys go to its first button,
+ * and back to the name they came from if it is still there.
+ */
+function showWho(person: { slot: number; nick: string; from: HTMLElement } | null): void {
+  flagArmed = false;
+  if (person === null || currentView === null || person.slot === currentView.you) {
+    const was = whoShown;
+    whoShown = null;
+    if (whoSheet.hidden) return;
+    const within = whoSheet.contains(document.activeElement);
+    whoSheet.hidden = true;
+    if (!within) return;
+    if (was !== null && was.from.isConnected) was.from.focus({ preventScroll: true });
+    else if (table !== null && !chatOpen) (document.activeElement as HTMLElement | null)?.blur();
+    else if (!TOUCH) chat.focus();
+    return;
+  }
+  // one sheet over the chat at a time
+  showQuick(false);
+  showTo(false);
+  whoShown = person;
+  whoName.textContent = person.nick;
+  syncWho();
+  whoSheet.hidden = false;
+  whoHide.focus({ preventScroll: true });
+}
+
+/** The sheet's words as things now stand: whether their lines are covered, and whether they have been pointed out. */
+function syncWho(): void {
+  if (whoShown === null) return;
+  const key = personKey(whoShown.slot, whoShown.nick);
+  // someone who has gone can still be covered and uncovered (their lines are still here), and no longer pointed out: the room would not know them
+  const here = currentView?.players.some((p) => p.slot === whoShown?.slot && p.nick === whoShown.nick) === true;
+  const flagged = flaggedPeople.has(key);
+  whoHelp.textContent = takesWords && here ? `${WORDS.chat.who.help} ${WORDS.chat.who.helpFlag}` : WORDS.chat.who.help;
+  whoHide.textContent = hiddenPeople.has(key) ? WORDS.chat.who.unhide : WORDS.chat.who.hide;
+  whoFlag.hidden = !takesWords || !here;
+  whoFlag.disabled = flagged;
+  whoFlag.textContent = flagged ? WORDS.chat.who.flagged : flagArmed ? WORDS.chat.who.flagConfirm : WORDS.chat.who.flag;
+}
+
+whoHide.addEventListener("click", () => {
+  const person = whoShown;
+  if (person === null) return;
+  showWho(null);
+  setHidden(person.slot, person.nick, !hiddenPeople.has(personKey(person.slot, person.nick)));
+});
+whoFlag.addEventListener("click", () => {
+  const person = whoShown;
+  if (person === null) return;
+  // twice, as sending someone out is: nobody is pointed out by a slip
+  if (!flagArmed) {
+    flagArmed = true;
+    return syncWho();
+  }
+  const sent = send({ type: "flag", slot: person.slot, lines: chat.linesOf(person.slot, person.nick, chatConfig.flag.lines) });
+  if (sent) flaggedPeople.add(personKey(person.slot, person.nick));
+  showWho(null);
+  chat.note(sent ? { kind: "flagged", nick: person.nick } : { kind: "not-sent" });
+});
+el<HTMLButtonElement>("who-close").addEventListener("click", () => showWho(null));
 
 /**
  * Puts the chat where the screen has room for it: in the waiting room's
@@ -1393,6 +1515,12 @@ function watchRooms(): void {
     renderRooms();
     // a word about the game is offered only where the server keeps them for someone to read
     feedbackButton.hidden = message.feedback !== true;
+    takesWords = message.feedback === true;
+    try {
+      sessionStorage.setItem(storageKey("takes-words"), takesWords ? "1" : "0");
+    } catch {
+      // a full or closed store only means a reload in a room offers no pointing out
+    }
     heardBuild(message.build);
   });
   current.addEventListener("close", () => {
@@ -1571,7 +1699,10 @@ function inboxAnswered(words: StoredWord[] | null): void {
       const row = document.createElement("li");
       const head = document.createElement("p");
       head.className = "dim";
-      head.textContent = WORDS.inbox.head(new Date(word.at).toLocaleString(lang === "ko" ? "ko-KR" : "en-US"), word.lang, word.build);
+      const when = new Date(word.at).toLocaleString(lang === "ko" ? "ko-KR" : "en-US");
+      // a player pointed out in a room is kept among the words: over it who and in which game, under it the lines said to be theirs
+      head.textContent =
+        word.flag === undefined ? WORDS.inbox.head(when, word.lang, word.build) : WORDS.inbox.flagHead(when, word.flag.nick, isGameId(word.flag.game) ? GAMES[word.flag.game].title[lang] : word.flag.game);
       // what a stranger wrote is shown as text and nothing else
       const text = document.createElement("p");
       text.className = "word";
@@ -1754,6 +1885,7 @@ function showLobby(message = ""): void {
   pingTimes = [];
   hideTable();
   chat.close();
+  showWho(null);
   room.hidden = true;
   newRoom.hidden = true;
   entry.hidden = false;
@@ -1948,6 +2080,7 @@ function renderPing(): void {
 function showQuick(shown: boolean): void {
   // one sheet over the chat at a time
   showTo(false);
+  if (shown) showWho(null);
   if (!shown || currentCode === "") {
     if (quickSheet.hidden) return;
     const within = quickSheet.contains(document.activeElement);
@@ -1999,6 +2132,7 @@ function showTo(shown: boolean): void {
     return;
   }
   showQuick(false);
+  showWho(null);
   const view = currentView;
   const pick = (slot: number | null, label: string): HTMLButtonElement => {
     const button = document.createElement("button");
@@ -2174,6 +2308,7 @@ function renderRoom(code: string, view: LobbyView): void {
   if (currentCode !== code) {
     // another room: whoever was spoken to alone was in the one before
     chatTo = null;
+    openHidden(code);
     chat.open(code);
     // once for a room: a page loaded again has the line among those it kept
     if (!chat.noted("first-time")) tipRules(view.game);
@@ -2182,6 +2317,12 @@ function renderRoom(code: string, view: LobbyView): void {
   currentView = view;
   // who the chat's next line is said to, as the room now stands
   renderTo();
+  // whose voice is not played here: those whose lines are covered, and nobody who has since taken the seat of one of them
+  for (let slot = 0; slot < view.maxPlayers; slot++) {
+    const player = view.players.find((p) => p.slot === slot);
+    voice.quiet(slot, player !== undefined && hiddenPeople.has(personKey(slot, player.nick)));
+  }
+  syncWho();
   setEntering(null);
   // the room asked for is here
   if (creating) setCreating(false);
@@ -2566,9 +2707,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       const mine = currentView !== null && message.from === currentView.you;
       // one said with a press is put in this page's language here: the room said only which
       const text = message.type === "chat" ? message.text : WORDS.chat.quick[message.word];
-      if (message.type === "chat") chat.said(message.nick, text, mine, message.toNick);
-      else chat.saidQuick(message.nick, message.word, mine);
-      if (!mine) {
+      if (message.type === "chat") chat.said(message.nick, text, mine, message.toNick, message.from);
+      else chat.saidQuick(message.nick, message.word, mine, message.from);
+      // someone whose lines this player covered calls nobody back to the tab and says nothing over their seat
+      if (!mine && !hiddenPeople.has(personKey(message.from, message.nick))) {
         call("said");
         // over the speaker's seat too, so a line is seen without the chat on show
         if (table !== null) table.say(message.from, text);
@@ -3074,6 +3216,7 @@ const SHEETS: readonly (readonly [HTMLElement, () => void])[] = [
   [swapSheet, () => showSwap(false)],
   [quickSheet, () => showQuick(false)],
   [toSheet, () => showTo(false)],
+  [whoSheet, () => showWho(null)],
   [optionsSheet, () => showOptions(false)],
   [feedbackSheet, () => showFeedback(false)],
   [recordSheet, () => showRecord(false)],

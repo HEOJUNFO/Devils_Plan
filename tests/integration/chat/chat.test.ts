@@ -3,6 +3,7 @@ import { runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QUICK_WORDS } from "../../../src/shared/chat";
 import chatConfig from "../../../src/shared/chat-config.json";
+import maskConfig from "../../../src/shared/mask-config.json";
 import type { ClientMessage } from "../../../src/shared/protocol";
 import { advanceClock, closeAll, connect, join, roomOf, type TestClient } from "../support";
 
@@ -296,6 +297,49 @@ describe("GameRoom: chat", () => {
     expect((await late.nextOf("chat")).text).toBe("said after");
     expect(late.raw.join("\n")).not.toContain("said before");
     closeAll([...clients, late]);
+  });
+
+  it("covers a word of the list in a room on the list, and passes the rest of the line on", async () => {
+    const [word] = maskConfig.anywhere;
+    const clients = await roomOf("CAABB", 2, true);
+
+    clients[0].say(`well ${word} then`);
+
+    expect((await clients[1].nextOf("chat")).text).toBe(`well ${"*".repeat(Array.from(word).length)} then`);
+    closeAll(clients);
+  });
+
+  it("covers it in a line said to one player there too", async () => {
+    const [word] = maskConfig.anywhere;
+    const clients = await roomOf("CAABC", 2, true);
+
+    clients[0].send({ type: "chat", text: word, to: 1 });
+
+    expect((await clients[1].nextOf("chat")).text).toBe("*".repeat(Array.from(word).length));
+    closeAll(clients);
+  });
+
+  it("passes the same line on as it was said in a room that is off the list", async () => {
+    const [word] = maskConfig.anywhere;
+    const clients = await roomOf("CAABD", 2);
+
+    clients[0].say(`well ${word} then`);
+
+    expect((await clients[1].nextOf("chat")).text).toBe(`well ${word} then`);
+    closeAll(clients);
+  });
+
+  it("covers a word of the list in a name, on the list or off it", async () => {
+    const [word] = maskConfig.anywhere;
+    const first = await join("CAABE", { player: 0, create: true, nick: `${word}1` });
+    await first.lobbyOf(1);
+    const second = await join("CAABE", { player: 1, nick: "p1" });
+    await second.lobbyOf(2);
+
+    first.say("hi");
+
+    expect((await second.nextOf("chat")).nick).toBe(`${"*".repeat(Array.from(word).length)}1`);
+    closeAll([first, second]);
   });
 
   it("stores nothing that is said", async () => {

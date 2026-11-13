@@ -2,6 +2,9 @@ import { Server, type Connection, type ConnectionContext, type WSMessage } from 
 import { BUILD } from "../shared/build";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace, type QuickWord } from "../shared/chat";
 import chatConfigJson from "../shared/chat-config.json";
+import type { Flag, FlagConfig } from "../shared/feedback";
+import { maskLine, type MaskConfig } from "../shared/mask";
+import maskConfigJson from "../shared/mask-config.json";
 import { listingOf, type RoomListing, type RoomReport } from "../shared/directory";
 import type { GameId } from "../shared/games";
 import { HOSTS } from "../shared/hosts";
@@ -63,11 +66,13 @@ import roomConfig from "../shared/room-config.json";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
 import voiceConfigJson from "../shared/voice-config.json";
 import { ADDRESS_HEADER, withinLimit, type Limiter } from "./address";
-import { COUNT_PATH, MAKE_PATH, REPORT_PATH } from "./directory";
+import { COUNT_PATH, FLAG_PATH, MAKE_PATH, REPORT_PATH } from "./directory";
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
 const chatConfig: ChatConfig = chatConfigJson;
+const flagConfig: FlagConfig = chatConfigJson.flag;
+const maskConfig: MaskConfig = maskConfigJson;
 const voiceConfig: VoiceConfig = voiceConfigJson;
 /** What the log calls the directory's count of rooms made by each address. */
 const ROOM_COUNT = "ROOM_COUNT";
@@ -209,6 +214,9 @@ export class GameRoom extends Server<Env> {
    * only ever lets someone speak sooner.
    */
   private readonly chatPace = new Map<number, ChatPace>();
+
+  /** How many players each slot has pointed out from this room. Forgotten when the room sleeps: the directory keeps the day's limit. */
+  private readonly flagsSent = new Map<number, number>();
 
   /** When the room last acted on a poke, in ms since the epoch. Forgotten when the room sleeps; nothing depends on it. */
   private pokedAt = 0;
@@ -380,6 +388,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "listing") await this.handleListing(connection, seat.slot, parsed.listed);
     else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text, parsed.to);
     else if (parsed.type === "quick") this.handleQuick(connection, seat.slot, parsed.word);
+    else if (parsed.type === "flag") this.handleFlag(seat.slot, parsed.slot, parsed.lines);
     else if (parsed.type === "clock") this.handleClock(connection, seat.slot, parsed.seconds);
     else if (parsed.type === "variant") this.handleVariant(connection, seat.slot, parsed.variant);
     else if (parsed.type === "knockout") this.handleKnockout(connection, seat.slot, parsed.on);
@@ -563,7 +572,8 @@ export class GameRoom extends Server<Env> {
     }
 
     const now = Date.now();
-    const joining = { token: request.token, nick: request.nick };
+    // a name is read by whoever comes into the room, and on the list by everyone: the words covered there are covered in it
+    const joining = { token: request.token, nick: maskLine(request.nick, maskConfig) };
     let result = joinLobby(lobby, joining, config);
     if (!result.ok && result.reason === "full") {
       // Someone who is away gives their slot to someone who is here, unless a
@@ -644,13 +654,16 @@ export class GameRoom extends Server<Env> {
    * said to the player in the slot `to`, to that player and the speaker and
    * nobody else. Nothing is stored: chat costs the room no writes, and a
    * line is gone once sent. A line to one player counts with the rest
-   * against how fast its speaker may talk.
+   * against how fast its speaker may talk. In a room on the list, where
+   * whoever reads it may be a stranger, the words of `mask-config.json` are
+   * covered; in a room off it the line goes as it was said.
    */
   private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string, to?: number): void {
     const player = this.lobby?.players.find((p) => p.slot === slot);
     if (!player) return;
-    const text = normalizeChat(raw, chatConfig);
-    if (text === null) return;
+    const clean = normalizeChat(raw, chatConfig);
+    if (clean === null) return;
+    const text = this.lobby?.listed === true ? maskLine(clean, maskConfig) : clean;
     const now = Date.now();
     const paced = paceChat(this.chatPace.get(slot), now, chatConfig);
     this.chatPace.set(slot, paced.pace);
@@ -686,6 +699,33 @@ export class GameRoom extends Server<Env> {
     const message: ServerMessage = { type: "quick", room: this.name, from: slot, nick: player.nick, word, at: now };
     const data = JSON.stringify(message);
     for (const [member] of this.members()) member.send(data);
+  }
+
+  /**
+   * Passes on to the directory, for whoever runs the site to read, that the
+   * player in `slot` pointed out the one in `target`: the name that one goes
+   * by here, the game, and the lines the page that pointed had of theirs
+   * (the room keeps none to check them against). Nothing of who pointed, and
+   * not the room's code. Nobody in the room is told, the one who pointed
+   * included: their page says it was sent. Each player may point so many
+   * times from a room and no more, and nothing here waits for the directory.
+   */
+  private handleFlag(slot: number, target: number, raw: readonly string[]): void {
+    const lobby = this.lobby;
+    const other = lobby === null || target === slot ? undefined : lobby.players.find((p) => p.slot === target);
+    if (lobby === null || other === undefined) return;
+    const sent = this.flagsSent.get(slot) ?? 0;
+    if (sent >= flagConfig.each) return;
+    this.flagsSent.set(slot, sent + 1);
+    const lines = raw
+      .map((line) => normalizeChat(line, chatConfig))
+      .filter((line): line is string => line !== null)
+      .slice(-flagConfig.lines);
+    const flag: Flag = { nick: other.nick, game: gameOf(lobby), lines };
+    const told = this.askDirectory(FLAG_PATH, JSON.stringify(flag))
+      .then((response) => response.body?.cancel())
+      .catch(() => undefined);
+    this.ctx.waitUntil(told);
   }
 
   /** The slot of the host: of the players connected, the one who came into the room first. */

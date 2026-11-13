@@ -1,5 +1,6 @@
 {
   "maxLength": 120,
   "burst": 5,
-  "windowSeconds": 6
+  "windowSeconds": 6,
+  "flag": { "lines": 3, "each": 3, "dayLimit": 40 }
 }

@@ -106,6 +106,18 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "quick", word: 3 }))).toBeNull();
   });
 
+  it("reads a player pointed out: who by their slot, and the lines that go with it", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "flag", slot: 2, lines: ["one", "two"] }))).toEqual({ type: "flag", slot: 2, lines: ["one", "two"] });
+    expect(parseClientMessage(JSON.stringify({ type: "flag", slot: 0, lines: [] }))).toEqual({ type: "flag", slot: 0, lines: [] });
+  });
+
+  it("rejects a player pointed out by what is no slot, with what are not lines, or with more lines than a page sends", () => {
+    for (const slot of [-1, 1.5, "2", null, undefined]) expect(parseClientMessage(JSON.stringify({ type: "flag", slot, lines: [] }))).toBeNull();
+    for (const lines of [undefined, "one", [1], [["one"]], Array.from({ length: 9 }, () => "x")]) {
+      expect(parseClientMessage(JSON.stringify({ type: "flag", slot: 1, lines }))).toBeNull();
+    }
+  });
+
   it("reads a line said to one player only: who by their slot", () => {
     expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 3 }))).toEqual({ type: "chat", text: "psst", to: 3 });
     expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 0 }))).toEqual({ type: "chat", text: "psst", to: 0 });
@@ -449,6 +461,20 @@ describe("parseInboxAnswer", () => {
 
     expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [word] }))).toEqual({ type: "inbox", words: [word] });
     expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [] }))).toEqual({ type: "inbox", words: [] });
+  });
+
+  it("reads a player pointed out in a room among them: who, and in which game", () => {
+    const word = { id: 4, at: 1_700_000_000_000, text: "a line of theirs", lang: "en", build: "", flag: { nick: "rude", game: "count-cubes" } };
+
+    expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [word] }))).toEqual({ type: "inbox", words: [word] });
+  });
+
+  it("reads a word whose flag is not one as a word, without it", () => {
+    const word = { id: 3, at: 1, text: "kept", lang: "ko", build: "a" };
+
+    for (const flag of [null, "rude", {}, { nick: "rude" }, { nick: 1, game: "g" }]) {
+      expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [{ ...word, flag }] }))).toEqual({ type: "inbox", words: [word] });
+    }
   });
 
   it("reads that the inbox did not open", () => {

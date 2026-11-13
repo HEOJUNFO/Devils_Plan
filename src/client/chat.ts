@@ -35,10 +35,12 @@ export type ChatNote =
   /** 탈락전: a game put someone out of the room's next games, or left one player in, who has won. */
   | { kind: "out" | "champion"; nick: string }
   /** 탈락전: the host turned it on or off, or it starts over because too few were left in. */
-  | { kind: "knockout-on" | "knockout-off" | "knockout-again" };
+  | { kind: "knockout-on" | "knockout-off" | "knockout-again" }
+  /** This player covered what someone says on their own screen, or uncovered it; or pointed them out to whoever runs the site. */
+  | { kind: "hid" | "shown" | "flagged"; nick: string };
 
 /** The kinds of note that name a player, and those that do not. */
-const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked", "out", "champion"];
+const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked", "out", "champion", "hid", "shown", "flagged"];
 const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time", "to-gone", "to-left", "knockout-on", "knockout-off", "knockout-again"];
 
 /** One line as shown: something a player said, or a note from the page itself. */
@@ -47,6 +49,8 @@ interface Line {
   who?: string;
   /** Whether this player said it. */
   mine?: boolean;
+  /** The slot of who said it, where the room said: with `who`, how the player says whose lines are covered on their screen. A line kept by an earlier build has none. */
+  from?: number;
   /** What was said. A note has none: it has `note`. (A note kept by an earlier build of the page has its words here.) */
   text?: string;
   /** Said with one press: which of the words, put in the page's language when the line is shown. Such a line has no `text`. */
@@ -75,12 +79,16 @@ export interface Chat {
   open(code: string): void;
   /** Ends it: nothing is shown and nothing more is kept. */
   close(): void;
-  /** A player said a line. */
-  said(who: string, text: string, mine: boolean, to?: string): void;
+  /** A player said a line: `from` is their slot. */
+  said(who: string, text: string, mine: boolean, to?: string, from?: number): void;
   /** This player says one of the words that take one press. */
   sayQuick(word: QuickWord): void;
-  /** A player said one of them. */
-  saidQuick(who: string, word: QuickWord, mine: boolean): void;
+  /** A player said one of them: `from` is their slot. */
+  saidQuick(who: string, word: QuickWord, mine: boolean, from?: number): void;
+  /** Shows the lines again as they now are: after the player covered or uncovered what someone says. */
+  redraw(): void;
+  /** The last `count` lines the player in the slot `from`, going by `who`, typed that this tab has, oldest first. */
+  linesOf(from: number, who: string, count: number): string[];
   /** Something worth a line happened: someone came or went, a line was refused. */
   note(note: ChatNote): void;
   /** Whether a note of `kind` is among the lines on show. */
@@ -129,6 +137,16 @@ export function createChat(
     me(): string;
     /** A note in words, in the language the page is read in. */
     wordsOf(note: ChatNote): string;
+    /** Whether what the player in the slot `from`, going by `who`, says is covered on this screen. */
+    hidden(from: number, who: string): boolean;
+    /** What stands in place of a covered line. */
+    hiddenLine: string;
+    /** What a name in the chat says it does when pressed, for a screen reader and a pointer at rest. */
+    nameLabel(who: string): string;
+    /** The name of another player was pressed, on the line `at`: what can be done about them is asked for. */
+    picked(from: number, who: string, at: HTMLElement): void;
+    /** Whether a press anywhere on another player's line does what a press of their name does: under a finger, which a name alone is too small for. */
+    wholeLine: boolean;
   },
 ): Chat {
   const { log, form, input, button } = elements;
@@ -169,9 +187,29 @@ export function createChat(
       item.textContent = line.note === undefined ? (line.text ?? "") : options.wordsOf(line.note);
       return item;
     }
-    const who = document.createElement("span");
+    // Another player's name is a button: what can be done about them (covering what they say, pointing them out) is behind it.
+    const from = line.mine === true ? undefined : line.from;
+    const name = line.who;
+    const who = document.createElement(from === undefined ? "span" : "button");
     who.className = line.mine === true ? "who mine" : "who";
-    who.textContent = line.to === undefined ? line.who : `${line.who} → ${line.to}`;
+    who.textContent = line.to === undefined ? name : `${name} → ${line.to}`;
+    if (who instanceof HTMLButtonElement && from !== undefined) {
+      who.type = "button";
+      who.title = options.nameLabel(name);
+      who.setAttribute("aria-haspopup", "dialog");
+      who.addEventListener("click", () => options.picked(from, name, who));
+      if (options.wholeLine) {
+        item.addEventListener("click", (event) => {
+          if (event.target !== who) options.picked(from, name, who);
+        });
+      }
+    }
+    if (from !== undefined && options.hidden(from, name)) {
+      // covered: that they spoke is seen, and their name is still there to press and uncover them by
+      item.className = "hush";
+      item.append(who, ` ${options.hiddenLine}`);
+      return item;
+    }
     if (line.to !== undefined) item.className = "aside";
     item.append(who, ` ${line.quick === undefined ? (line.text ?? "") : options.quickOf(line.quick)}`);
     return item;
@@ -246,18 +284,30 @@ export function createChat(
       log.replaceChildren();
       fill("");
     },
-    said(who: string, text: string, mine: boolean, to?: string): void {
+    said(who: string, text: string, mine: boolean, to?: string, from?: number): void {
       // the player's own line is back: it takes its place among the others as the room has it
       if (mine) settle();
-      add(to === undefined ? { who, text, mine } : { who, text, mine, to });
+      const line: Line = { who, text, mine };
+      if (to !== undefined) line.to = to;
+      if (from !== undefined) line.from = from;
+      add(line);
     },
     sayQuick(word: QuickWord): void {
       if (!options.sendQuick(word)) return add({ note: { kind: "not-sent" } });
       onItsWay(null, row({ who: options.me(), quick: word, mine: true }));
     },
-    saidQuick(who: string, word: QuickWord, mine: boolean): void {
+    saidQuick(who: string, word: QuickWord, mine: boolean, from?: number): void {
       if (mine) settle();
-      add({ who, quick: word, mine });
+      add(from === undefined ? { who, quick: word, mine } : { who, quick: word, mine, from });
+    },
+    redraw(): void {
+      const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 14;
+      log.replaceChildren(...lines.map(row), ...waiting.map((line) => line.item));
+      if (atEnd) log.scrollTop = log.scrollHeight;
+    },
+    linesOf(from: number, who: string, count: number): string[] {
+      const theirs = lines.filter((line) => line.from === from && line.who === who && line.mine !== true && typeof line.text === "string");
+      return theirs.slice(-count).map((line) => line.text ?? "");
     },
     note(note: ChatNote): void {
       if (note.kind === "too-fast" || note.kind === "to-gone") {

@@ -904,6 +904,31 @@ button.choice[aria-pressed="true"] {
   font-style: italic;
 }
 
+/* Another player's name is a button (what can be done about them is behind it), and reads as the name it is. */
+#chat-log button.who {
+  display: inline;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+#chat-log button.who:hover,
+#chat-log button.who:focus-visible {
+  text-decoration: underline;
+}
+
+/* A line of someone whose lines this player covered: that they spoke, and no more. */
+#chat-log .hush,
+#chat-log .hush .who {
+  color: var(--dim);
+}
+
 /* The player's own line, sent and not yet back from the room. */
 #chat-log .waiting {
   color: var(--dim);
@@ -1412,6 +1437,45 @@ button.choice[aria-pressed="true"] {
 
 #to-sheet .row {
   justify-content: flex-end;
+}
+
+/* What can be done about another player: a sheet like the one of people to say a line to, and in its place. */
+#who-sheet {
+  position: absolute;
+  left: 60px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 360px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#who-sheet[hidden] {
+  display: none;
+}
+
+#who-sheet h2 {
+  overflow: hidden;
+  color: var(--amber);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#who-sheet .row {
+  justify-content: flex-end;
+}
+
+:root.touch #who-sheet button {
+  height: 24px;
+}
+
+:root.touch #who-sheet {
+  top: 40px;
 }
 
 /*

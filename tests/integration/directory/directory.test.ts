@@ -20,7 +20,8 @@ import type { Wanting } from "../../../src/shared/want";
 import type { Meet } from "../../../src/shared/meet";
 import numbersConfig from "../../../src/shared/numbers-config.json";
 import { dayOf, type DayNumbers } from "../../../src/shared/numbers";
-import { COUNT_PATH, MAKE_PATH } from "../../../src/server/directory";
+import chatConfig from "../../../src/shared/chat-config.json";
+import { COUNT_PATH, FLAG_PATH, MAKE_PATH } from "../../../src/server/directory";
 import { advanceClock, Inbox, join as open, socket, type TestClient } from "../support";
 
 /** The most players the list says a room of the first game can have. */
@@ -779,11 +780,14 @@ describe("RoomDirectory: a word about the game", () => {
     const words = await read(inbox);
     expect(words).toEqual([{ id: expect.any(Number), at: expect.any(Number), text: "방 목록이 느려요\n두 번째 줄", lang: "ko", build: "abc1234" }]);
     expect(words?.[0].at).toBeGreaterThanOrEqual(before);
-    // what is kept is those five things and no more: no address, no connection, no name
+    // what is kept is those five things and no more: no address, no connection, no name.
+    // (The sixth column is for a player pointed out in a room, and of a word written here it holds nothing.)
     const columns = await runInDurableObject(directoryStub(), (_object, state) =>
       state.storage.sql.exec<{ name: string }>("SELECT name FROM pragma_table_info('words')").toArray().map((row) => row.name),
     );
-    expect(columns.sort()).toEqual(["at", "build", "id", "lang", "text"]);
+    expect(columns.sort()).toEqual(["at", "build", "flag", "id", "lang", "text"]);
+    const flags = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ flag: string | null }>("SELECT flag FROM words").toArray().map((row) => row.flag));
+    expect(flags).toEqual([null]);
     inbox.close();
   });
 
@@ -953,6 +957,215 @@ describe("RoomDirectory: a word about the game", () => {
     expect(lines.join("\n")).not.toContain("guess");
     expect(lines.join("\n")).not.toContain(KEY);
     inbox.close();
+  });
+});
+
+describe("RoomDirectory: a player pointed out in a room", () => {
+  afterEach(keyAsItIs);
+
+  /** Tells the directory of a flag as a room does, and gives its answer's status. */
+  async function flagged(flag: unknown): Promise<number> {
+    const response = await directoryStub().fetch(`https://directory.internal${FLAG_PATH}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-partykit-room": DIRECTORY_NAME },
+      body: JSON.stringify(flag),
+    });
+    await response.body?.cancel();
+    return response.status;
+  }
+
+  /** A room of two, player 0 its maker and player 1 going by `nick`. */
+  async function roomOfTwo(code: string, nick: string): Promise<[TestClient, TestClient]> {
+    const maker = await open(code, { player: 0, create: true });
+    const other = await open(code, { player: 1, nick });
+    await Promise.all([maker.lobbyOf(2), other.lobbyOf(2)]);
+    return [maker, other];
+  }
+
+  /** Waits until the inbox holds `count` words, and gives them, the latest first. */
+  async function kept(reader: Inbox<Answer>, count: number): Promise<StoredWord[]> {
+    let words: StoredWord[] = [];
+    await vi.waitFor(async () => {
+      words = (await read(reader)) ?? [];
+      expect(words).toHaveLength(count);
+    });
+    return words;
+  }
+
+  it("keeps who was pointed out in a room, in which game and with which lines, and nothing of who pointed or of the room", async () => {
+    await withKey();
+    const [maker, other] = await roomOfTwo("DFAAA", "rude");
+    const reader = await writer();
+
+    maker.send({ type: "flag", slot: 1, lines: ["first line", "second line"] });
+
+    const [word] = await kept(reader, 1);
+    expect(word).toMatchObject({ text: "first line\nsecond line", flag: { nick: "rude", game: DEFAULT_GAME } });
+    expect(JSON.stringify(word)).not.toContain("p0");
+    expect(JSON.stringify(word)).not.toContain("DFAAA");
+    maker.close();
+    other.close();
+    reader.close();
+  });
+
+  it("tells nobody in the room that someone was pointed out", async () => {
+    await withKey();
+    const [maker, other] = await roomOfTwo("DFAAB", "p1");
+    const reader = await writer();
+
+    maker.send({ type: "flag", slot: 1, lines: [] });
+    await kept(reader, 1);
+    maker.say("after");
+    await Promise.all([maker.nextOf("chat"), other.nextOf("chat")]);
+
+    for (const client of [maker, other]) expect(client.raw.join("\n")).not.toContain("flag");
+    maker.close();
+    other.close();
+    reader.close();
+  });
+
+  it("keeps the latest lines of those sent, as many as a flag carries, each cleaned as a line is", async () => {
+    await withKey();
+    const [maker, other] = await roomOfTwo("DFAAC", "p1");
+    const reader = await writer();
+    const lines = Array.from({ length: chatConfig.flag.lines + 2 }, (_, n) => `  line\n${n}  `);
+
+    maker.send({ type: "flag", slot: 1, lines });
+
+    const [word] = await kept(reader, 1);
+    expect(word.text.split("\n")).toEqual(lines.slice(-chatConfig.flag.lines).map((_, n) => `line ${n + 2}`));
+    maker.close();
+    other.close();
+    reader.close();
+  });
+
+  it("keeps nothing of a player who points at themselves or at a seat nobody is in", async () => {
+    await withKey();
+    const [maker, other] = await roomOfTwo("DFAAD", "p1");
+    const reader = await writer();
+
+    maker.send({ type: "flag", slot: 0, lines: ["me"] });
+    maker.send({ type: "flag", slot: 5, lines: ["nobody"] });
+    // the room takes what it is sent in order: once this one is kept, the two before it were not going to be
+    maker.send({ type: "flag", slot: 1, lines: ["them"] });
+
+    const words = await kept(reader, 1);
+    expect(words[0].text).toBe("them");
+    maker.close();
+    other.close();
+    reader.close();
+  });
+
+  it("takes so many flags from one player in a room and no more, and still takes another player's", async () => {
+    await withKey();
+    const [maker, other] = await roomOfTwo("DFAAE", "p1");
+    const reader = await writer();
+
+    for (let n = 0; n < chatConfig.flag.each + 2; n++) maker.send({ type: "flag", slot: 1, lines: [`from the maker ${n}`] });
+    other.send({ type: "flag", slot: 0, lines: ["from the other"] });
+    await kept(reader, chatConfig.flag.each + 1);
+    // one more, sent once those are kept: when it is kept too, whatever the maker sent has been taken or was not going to be
+    other.send({ type: "flag", slot: 0, lines: ["from the other again"] });
+
+    const words = await kept(reader, chatConfig.flag.each + 2);
+    const texts = words.map((word) => word.text).sort();
+    expect(texts).toEqual([...Array.from({ length: chatConfig.flag.each }, (_, n) => `from the maker ${n}`), "from the other", "from the other again"].sort());
+    maker.close();
+    other.close();
+    reader.close();
+  });
+
+  it("keeps a flag among the words written about the game, each read as what it is", async () => {
+    await withKey();
+    const reader = await writer();
+    write(reader, "a word about the game");
+    await answerTo(reader);
+
+    expect(await flagged({ nick: "p1", game: DEFAULT_GAME, lines: ["a line"] })).toBe(204);
+
+    const words = (await read(reader)) ?? [];
+    expect(words.map((word) => word.text)).toEqual(["a line", "a word about the game"]);
+    expect(words[0].flag).toEqual({ nick: "p1", game: DEFAULT_GAME });
+    expect(words[1].flag).toBeUndefined();
+    reader.close();
+  });
+
+  it("throws a flag away when its reader says so, as a word is", async () => {
+    await withKey();
+    const reader = await writer();
+    await flagged({ nick: "p1", game: DEFAULT_GAME, lines: [] });
+    const [word] = (await read(reader)) ?? [];
+
+    expect(await read(reader, KEY, word.id)).toEqual([]);
+    reader.close();
+  });
+
+  it("keeps so many flags in a day from every room together, and no more", async () => {
+    await withKey();
+    const reader = await writer();
+
+    for (let n = 0; n < chatConfig.flag.dayLimit + 2; n++) await flagged({ nick: "p1", game: DEFAULT_GAME, lines: [`line ${n}`] });
+
+    expect(await read(reader)).toHaveLength(chatConfig.flag.dayLimit);
+    reader.close();
+  });
+
+  it("still keeps what a player writes about the game on a day whose flags are all taken", async () => {
+    await withKey();
+    const reader = await writer();
+    for (let n = 0; n < chatConfig.flag.dayLimit; n++) await flagged({ nick: "p1", game: DEFAULT_GAME, lines: [] });
+
+    write(reader, "still heard");
+
+    expect((await answerTo(reader)).sent).toBe(true);
+    expect((await read(reader))?.[0].text).toBe("still heard");
+    reader.close();
+  });
+
+  it("keeps none where there is no key to read them with", async () => {
+    await withKey(null);
+
+    expect(await flagged({ nick: "p1", game: DEFAULT_GAME, lines: ["a line"] })).toBe(204);
+
+    const rows = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM words").one().n);
+    expect(rows).toBe(0);
+  });
+
+  it("refuses what is no flag", async () => {
+    await withKey();
+
+    for (const flag of [{}, { nick: "p1" }, { nick: "p1", game: DEFAULT_GAME, lines: Array.from({ length: chatConfig.flag.lines + 1 }, () => "x") }]) {
+      expect(await flagged(flag)).toBe(400);
+    }
+  });
+
+  it("keeps a flag where the words were being kept before there were flags", async () => {
+    await withKey();
+    await runInDurableObject(directoryStub(), (object, state) => {
+      state.storage.sql.exec("DROP TABLE words");
+      state.storage.sql.exec("CREATE TABLE words (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, text TEXT NOT NULL, lang TEXT NOT NULL, build TEXT NOT NULL)");
+      state.storage.sql.exec("INSERT INTO words (at, text, lang, build) VALUES (1, 'written before', 'ko', 'abc1234')");
+      (object as unknown as { onStart(): void }).onStart();
+    });
+    const reader = await writer();
+
+    expect(await flagged({ nick: "p1", game: DEFAULT_GAME, lines: ["a line"] })).toBe(204);
+
+    const words = (await read(reader)) ?? [];
+    expect(words.map((word) => [word.text, word.flag?.nick])).toEqual([["a line", "p1"], ["written before", undefined]]);
+    reader.close();
+  });
+
+  it("writes to the log that a flag was kept, and nothing of who or what", async () => {
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    await withKey();
+
+    expect(await flagged({ nick: "theirs", game: DEFAULT_GAME, lines: ["a line of theirs"] })).toBe(204);
+
+    const lines = said.mock.calls.map((call) => call.join(" "));
+    said.mockRestore();
+    expect(lines).toContain("a flag kept");
+    expect(lines.join("\n")).not.toContain("theirs");
   });
 });
 

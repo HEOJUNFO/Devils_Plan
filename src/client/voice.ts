@@ -27,6 +27,8 @@ export interface Voice {
   /** Says again to the room that this page is in voice: after the connection to the room came back. */
   announce(): void;
   setMuted(muted: boolean): void;
+  /** Makes what the player in `slot` says unheard on this page, or heard again: nobody else's hearing of them changes. */
+  quiet(slot: number, on: boolean): void;
   /** The room said who is in voice. `me` is this player's own slot. */
   members(list: readonly VoiceMember[], me: number): void;
   /** Another player's signal, passed on by the room. */
@@ -63,6 +65,8 @@ export function createVoice(options: {
   let on = false;
   let muted = false;
   let me = -1;
+  /** The slots this page does not play the sound of (`quiet`). */
+  const quieted = new Set<number>();
   let local: MediaStream | null = null;
   let context: AudioContext | null = null;
   let own: AnalyserNode | null = null;
@@ -103,6 +107,7 @@ export function createVoice(options: {
     const pc = new RTCPeerConnection({ iceServers: [{ urls: options.config.stunUrls }] });
     const audio = new Audio();
     audio.autoplay = true;
+    audio.muted = quieted.has(slot);
     const peer: Peer = { pc, audio, analyser: null, early: [] };
     peers.set(slot, peer);
     // with no microphone, still ask to hear
@@ -241,6 +246,12 @@ export function createVoice(options: {
       // when the room says who is in.
       for (const slot of [...peers.keys()]) hangUp(slot);
       options.send({ type: "voice", on: true, muted });
+    },
+    quiet(slot: number, value: boolean): void {
+      if (value) quieted.add(slot);
+      else quieted.delete(slot);
+      const peer = peers.get(slot);
+      if (peer !== undefined) peer.audio.muted = value;
     },
     setMuted(value: boolean): void {
       if (!on || local === null) return;

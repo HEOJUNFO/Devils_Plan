@@ -73,6 +73,8 @@ export const PONG = "pong";
  * session description, which has its own, lower limit (`voice-config.json`).
  */
 export const MAX_CLIENT_MESSAGE_LENGTH = 8192;
+/** The most lines a message pointing a player out is read with (`flag`): the room takes fewer (`chat-config.json`). */
+const FLAG_LINES_MOST = 8;
 
 /** Server → client. */
 export type ServerMessage =
@@ -333,6 +335,12 @@ export type ClientMessage =
   /** Say one of the words that take one press (`QUICK_WORDS`) to everyone in the room. It counts as a line does. */
   | { type: "quick"; word: QuickWord }
   /**
+   * Point the player in `slot` out to whoever runs the site (`Flag`, `feedback.ts`), with the last lines this
+   * page has of theirs. The room adds the name they go by and passes it on; nobody in the room is told, and
+   * nothing is answered.
+   */
+  | { type: "flag"; slot: number; lines: string[] }
+  /**
    * Set how long a player has for a move in the games started in this room,
    * in seconds (0 for no limit); only the host may, and only one of the
    * lengths the room offers.
@@ -404,6 +412,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   }
   if (data.type === "quick") {
     return isQuickWord(data.word) ? { type: "quick", word: data.word } : null;
+  }
+  if (data.type === "flag") {
+    if (typeof data.slot !== "number" || !Number.isInteger(data.slot) || data.slot < 0) return null;
+    // a page of ours sends a few lines; what sends many more is no page of ours
+    if (!Array.isArray(data.lines) || data.lines.length > FLAG_LINES_MOST || !data.lines.every((line) => typeof line === "string")) return null;
+    return { type: "flag", slot: data.slot, lines: data.lines as string[] };
   }
   if (data.type === "clock") {
     return typeof data.seconds === "number" && Number.isFinite(data.seconds) ? { type: "clock", seconds: data.seconds } : null;
@@ -551,7 +565,11 @@ export function parseInboxAnswer(raw: unknown): InboxAnswer | null {
     const word = each as Record<string, unknown>;
     if (typeof word.id !== "number" || typeof word.at !== "number" || typeof word.text !== "string") continue;
     if (!isLang(word.lang) || typeof word.build !== "string") continue;
-    words.push({ id: word.id, at: word.at, text: word.text, lang: word.lang, build: word.build });
+    const kept: StoredWord = { id: word.id, at: word.at, text: word.text, lang: word.lang, build: word.build };
+    // a player pointed out in a room: who and in which game go with it, where both are said
+    const flag = typeof word.flag === "object" && word.flag !== null ? (word.flag as Record<string, unknown>) : null;
+    if (flag !== null && typeof flag.nick === "string" && typeof flag.game === "string") kept.flag = { nick: flag.nick, game: flag.game };
+    words.push(kept);
   }
   return { type: "inbox", words };
 }

@@ -62,6 +62,8 @@ const ko = {
     count: (count: number) => `의견 ${count}건, 새것부터`,
     /** Over each: when it was written, and the language and build of the page it was written on. */
     head: (when: string, lang: string, build: string) => `${when} · ${lang} · ${build}`,
+    /** Over a player pointed out in a room, in place of `head`: when, the name they went by, the game. Under it, the lines said to be theirs. */
+    flagHead: (when: string, nick: string, game: string) => `${when} · 신고 · ${nick} · ${game}`,
     drop: "지우기",
     dropConfirm: "한 번 더 누르면 지움",
   },
@@ -400,6 +402,25 @@ const ko = {
     toHint: (nick: string) => `${nick}에게만`,
     toGone: "그 사람이 지금 방에 없어 보내지 못했습니다. 이제 모두에게 말합니다.",
     toLeft: "밀담 상대가 나갔습니다. 이제 모두에게 말합니다.",
+    /** What a player can do about another, on the sheet a press of that player's name in the chat opens. */
+    who: {
+      /** On a name in the chat: what a press of it is for. */
+      label: (nick: string) => `${nick}: 눌러서 말을 숨기거나 신고합니다`,
+      help: "숨기면 이 사람의 말이 내 화면에서만 가려집니다.",
+      /** Under it where the site takes reports. */
+      helpFlag: "신고는 이 사람의 이름과 최근에 한 말을 운영자에게 보냅니다.",
+      hide: "말 숨기기",
+      unhide: "숨김 풀기",
+      flag: "신고",
+      flagConfirm: "한 번 더 누르면 신고",
+      flagged: "신고함",
+      close: "닫기",
+      /** In the chat, in place of a line of someone whose lines are covered. */
+      hiddenLine: "(숨긴 말)",
+      hid: (nick: string) => `${nick} 님의 말을 숨겼습니다. 이름을 누르면 다시 볼 수 있습니다.`,
+      shown: (nick: string) => `${nick} 님의 말을 다시 봅니다.`,
+      flaggedNote: (nick: string) => `${nick} 님을 운영자에게 신고했습니다.`,
+    },
   },
   /** Why the room would not let this page in. */
   reject: {
@@ -468,6 +489,7 @@ const en: typeof ko = {
     none: "Nothing has been written yet.",
     count: (count) => `${count} written, newest first`,
     head: (when, lang, build) => `${when} · ${lang} · ${build}`,
+    flagHead: (when, nick, game) => `${when} · Report · ${nick} · ${game}`,
     drop: "Delete",
     dropConfirm: "Press again to delete",
   },
@@ -728,6 +750,21 @@ const en: typeof ko = {
     toHint: (nick) => `To ${nick} only`,
     toGone: "They are not here now: not sent. You are talking to everyone again.",
     toLeft: "The person you were whispering to left. You are talking to everyone again.",
+    who: {
+      label: (nick) => `${nick}: press to hide what they say or report them`,
+      help: "Hiding covers what they say on your screen only.",
+      helpFlag: "A report sends their name and their latest lines to whoever runs the site.",
+      hide: "Hide their lines",
+      unhide: "Show their lines",
+      flag: "Report",
+      flagConfirm: "Press again to report",
+      flagged: "Reported",
+      close: "Close",
+      hiddenLine: "(hidden line)",
+      hid: (nick) => `You hid what ${nick} says. Press their name to see it again.`,
+      shown: (nick) => `You see what ${nick} says again.`,
+      flaggedNote: (nick) => `You reported ${nick} to whoever runs the site.`,
+    },
   },
   reject: {
     "full": "The room is full.",
