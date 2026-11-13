@@ -100,9 +100,12 @@ const ko = {
   entry: {
     sub: "방을 고르거나 만드세요",
     /** In its place for someone who opened a link to a room and has not gone in yet: two lines. */
-    invited: (code: string) => `초대받은 방 ${code}\n닉네임을 넣고 입장하세요`,
+    /** Where the link says when its people meet (`when`, `src/shared/appointment.ts`), the first line says that instead: the code is in the box under it. */
+    invited: (code: string, when: string | null) => `${when === null ? `초대받은 방 ${code}` : `약속 ${when}`}\n닉네임을 넣고 입장하세요`,
     /** The same, where the box holds a name the page offered (`suggestNick`): it can be gone in with as it is. */
-    invitedNamed: (code: string) => `초대받은 방 ${code}\n이름을 고치거나 입장하세요`,
+    invitedNamed: (code: string, when: string | null) => `${when === null ? `초대받은 방 ${code}` : `약속 ${when}`}\n이름을 고치거나 입장하세요`,
+    /** For someone whose name is kept, whom a link without a time takes straight in: a link whose time is still off waits for them, and says they need not. */
+    invitedEarly: (when: string) => `약속 ${when}\n지금 들어가도 됩니다`,
     /** Under the form, when the room a link led to is no more. It does not name the game: the list beside it is by then that game's, and says so. Two lines, as the others here are. */
     /** The room of the link has closed: a room made now is made under the link's own code (`src/shared/reopen.ts`). */
     // two lines of the form's column, on a phone as well: a third would lie on the bar under it
@@ -333,6 +336,31 @@ const ko = {
   },
   /** What each of the three lines at the top of a game's rules answers (`RulesBrief`). */
   brief: { goal: "목표", play: "하는 일", end: "끝" },
+  /** An invitation that says when (`src/shared/appointment.ts`): the link on a room's bar, the sheet it opens, and what is said of the time. */
+  when: {
+    open: "약속 잡기",
+    title: "약속 잡기: 언제 모일까요?",
+    help: "시간이 담긴 초대 링크입니다. 받은 사람도 달력에 넣습니다.",
+    today: "오늘",
+    /** A day to pick, other than today: the day of the week and the day of the month. */
+    day: (weekday: string, day: number) => `${weekday} ${day}`,
+    /** What the two buttons beside the time of day do, for a screen reader: they say − and +. */
+    earlier: (minutes: number) => `${minutes}분 앞으로`,
+    later: (minutes: number) => `${minutes}분 뒤로`,
+    /** A moment, on the reader's own clock: `monthName` is for a language that names its months. */
+    at: (weekday: string, month: number, _monthName: string, day: number, clock: string) => `${month}/${day}(${weekday}) ${clock}`,
+    past: "이미 지난 시간입니다. 뒤로 옮기세요.",
+    calendar: "달력에 넣기",
+    copy: "약속 링크 복사",
+    close: "닫기",
+    /** What goes with the link where it is passed on: `game` is empty where the room's game has no name here. */
+    invite: (game: string, when: string) => (game === "" ? `${when}에 같이 해요` : `${when}에 ${game} 같이 해요`),
+    /** In the chat of someone the link brought into the room, and of whoever copied one. */
+    note: (when: string) => `약속 시간: ${when}`,
+    made: (when: string) => `약속 링크를 복사했습니다: ${when}`,
+    /** What a calendar calls it, where the game is not known: with one it is the meeting's own word (`meet.event`). */
+    event: (site: string) => `${site} 약속`,
+  },
   game: {
     leave: "나가기",
     leaveConfirm: "한 번 더 누르면 나감",
@@ -541,8 +569,9 @@ const en: typeof ko = {
   },
   entry: {
     sub: "Pick a room or make one",
-    invited: (code) => `Invited to room ${code}\nAdd a nickname and join`,
-    invitedNamed: (code) => `Invited to room ${code}\nRename, or just join`,
+    invited: (code, when) => `${when === null ? `Invited to room ${code}` : `Meet ${when}`}\nAdd a nickname and join`,
+    invitedNamed: (code, when) => `${when === null ? `Invited to room ${code}` : `Meet ${when}`}\nRename, or just join`,
+    invitedEarly: (when) => `Meet ${when}\nYou can join now`,
     invitedGone: "Room closed. New room reopens the same link.",
     nick: "Nickname",
     // half a row now: the form it opens is headed the same
@@ -714,6 +743,24 @@ const en: typeof ko = {
     close: "Close",
   },
   brief: { goal: "Goal", play: "Play", end: "End" },
+  when: {
+    open: "Set a time",
+    title: "Set a time: when do you meet?",
+    help: "This link says when, and can go in a calendar.",
+    today: "Today",
+    day: (weekday, day) => `${weekday} ${day}`,
+    earlier: (minutes) => `${minutes} minutes earlier`,
+    later: (minutes) => `${minutes} minutes later`,
+    at: (weekday, _month, monthName, day, clock) => `${weekday} ${day} ${monthName} ${clock}`,
+    past: "That time has passed. Pick a later one.",
+    calendar: "Add to calendar",
+    copy: "Copy link",
+    close: "Close",
+    invite: (game, when) => (game === "" ? `Play with me: ${when}` : `Play ${game} with me: ${when}`),
+    note: (when) => `Meeting time: ${when}`,
+    made: (when) => `Link copied: ${when}`,
+    event: (site) => `${site} game night`,
+  },
   game: {
     leave: "Leave",
     leaveConfirm: "Press again to leave",

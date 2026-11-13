@@ -64,10 +64,12 @@ import meetConfig from "../shared/meet-config.json";
 import numbersConfig from "../shared/numbers-config.json";
 import { readDay, type DayNumbers } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
-import { meetNear, type MeetConfig } from "../shared/meet";
+import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
 import { afterRefusedMake } from "../shared/reopen";
-import { calendarOf } from "../shared/calendar";
+import { calendarOf, type CalendarEvent } from "../shared/calendar";
+import { firstDay, linkedOf, mayPlan, parseLinked, standing as appointmentStands, stepped, type AppointmentConfig } from "../shared/appointment";
+import appointmentConfigJson from "../shared/appointment-config.json";
 import { ORIGIN, SITE_NAME } from "../shared/site/words";
 import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
@@ -187,6 +189,21 @@ const teamButton = el<HTMLButtonElement>("team");
 const optionsOpen = el<HTMLButtonElement>("options-open");
 const optionsSheet = el<HTMLElement>("options-sheet");
 const optionsList = el<HTMLElement>("options-list");
+const whenOpen = el<HTMLButtonElement>("when-open");
+const whenSheet = el<HTMLElement>("when-sheet");
+const whenDays = el<HTMLElement>("when-days");
+const whenClock = el<HTMLElement>("when-clock");
+const whenSays = el<HTMLElement>("when-says");
+const whenCalendar = el<HTMLButtonElement>("when-calendar");
+const whenCopy = el<HTMLButtonElement>("when-copy");
+const appointmentConfig: AppointmentConfig = appointmentConfigJson;
+/**
+ * What the link that opened this page said of when the room's people meet
+ * (`src/shared/appointment.ts`): the room's code, the moment, and the game
+ * the link was for where it said. `null` where the link said no time, or one
+ * that no longer stands.
+ */
+let appointment: { code: string; at: number; game: GameId | null } | null = null;
 const chatBox = el<HTMLElement>("chat");
 const chatInput = el<HTMLInputElement>("chat-input");
 const voiceBox = el<HTMLElement>("voice");
@@ -315,6 +332,12 @@ function writeWords(): void {
     ["create-cancel", WORDS.newRoom.cancel],
     ["create-go", WORDS.newRoom.go],
     ["copy", WORDS.room.copy],
+    ["when-open", WORDS.when.open],
+    ["when-title", WORDS.when.title],
+    ["when-help", WORDS.when.help],
+    ["when-close", WORDS.when.close],
+    ["when-calendar", WORDS.when.calendar],
+    ["when-copy", WORDS.when.copy],
     ["start", WORDS.room.start],
     ["ready", WORDS.room.ready],
     ["swap", WORDS.room.swap],
@@ -708,6 +731,8 @@ const chat = createChat(
       if (note.kind === "knockout-again") return WORDS.room.knockoutAgain;
       if (note.kind === "to-gone") return WORDS.chat.toGone;
       if (note.kind === "to-left") return WORDS.chat.toLeft;
+      if (note.kind === "when") return WORDS.when.note(whenOf(note.at));
+      if (note.kind === "when-made") return WORDS.when.made(whenOf(note.at));
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
       if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
@@ -990,6 +1015,9 @@ function lobbyBar(): void {
 /** The picture of the room runs only while it can be seen: in a room, with no game over it. */
 function syncScene(): void {
   const seen = currentCode !== "" && table === null;
+  // the link for an invitation that says when is the waiting room's, on its bar
+  whenOpen.hidden = !seen;
+  if (!seen) showWhen(false);
   sceneCanvas.hidden = currentCode === "";
   scene?.setRunning(seen);
   renderSound();
@@ -1286,6 +1314,7 @@ function renderMeet(): void {
   const now = Date.now();
   const meet = meetNear(now, meetConfig);
   meetButton.hidden = meet === null;
+  syncCalendar();
   if (meet === null) return;
   const timeOf = (at: number): string => new Date(at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const minutes = Math.max(1, Math.ceil((meet.start - now) / 60_000));
@@ -1301,8 +1330,6 @@ function renderMeet(): void {
       : WORDS.meet.inTime(Math.floor(minutes / 60), minutes % 60);
   meetButton.classList.toggle("on", meet.on);
   meetButton.classList.toggle("up", said?.mine === true);
-  // whoever said they will come is offered the meeting for their calendar, among the links on the lobby's last line
-  calendarButton.hidden = said?.mine !== true;
   // a press before the hour says "I'll come", or takes it back: said to a screen reader as a button that is pressed or not
   if (meet.on) meetButton.removeAttribute("aria-pressed");
   else meetButton.setAttribute("aria-pressed", String(said?.mine === true));
@@ -1387,9 +1414,11 @@ const REMIND_MINUTES = 10;
 // Gives the meeting this player said they will come to as a file a calendar takes (`src/shared/calendar.ts`): the
 // browser saves it or hands it to the calendar, and the calendar does the reminding.
 calendarButton.addEventListener("click", () => {
-  const meet = meetNear(Date.now(), meetConfig);
-  if (meet === null || meet.on || myGoing !== meet.start) return;
-  const file = calendarOf({
+  const offer = calendarOffer(Date.now());
+  if (offer === null) return;
+  if (offer.kind === "appointment") return saveAppointment(offer.code, offer.at, offer.game);
+  const meet = offer.meet;
+  saveCalendar({
     uid: `meet-${meet.start}@${new URL(ORIGIN).host}`,
     stamp: Date.now(),
     start: meet.start,
@@ -1398,15 +1427,39 @@ calendarButton.addEventListener("click", () => {
     url: `${ORIGIN}/`,
     remindMinutes: (meetConfig as MeetConfig).remindMinutes ?? REMIND_MINUTES,
   });
+});
+
+/** Hands `event` to the browser as a file a calendar takes: it saves it or gives it to the calendar. */
+function saveCalendar(event: CalendarEvent): void {
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([file], { type: "text/calendar;charset=utf-8" }));
+  link.href = URL.createObjectURL(new Blob([calendarOf(event)], { type: "text/calendar;charset=utf-8" }));
   link.download = `${SITE_NAME}-meet.ics`;
   document.body.append(link);
   link.click();
   link.remove();
   // the browser has the file by the time this runs: the address made for it is given back
   setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
-});
+}
+
+/**
+ * What the calendar link on the lobby's last line is for, if anything: the
+ * time a link to a room said its people meet, while that is still to come
+ * and the link has not been let go of (the room it led to may have closed:
+ * it is then opened again under the same code, `reopenCode`); else the
+ * lobby's meeting, for someone who said they will come.
+ */
+function calendarOffer(now: number): { kind: "appointment"; code: string; at: number; game: GameId | null } | { kind: "meet"; meet: Meet } | null {
+  if (appointment !== null && (appointment.code === invitedCode || appointment.code === reopenCode) && mayPlan(appointment.at, now) && appointmentStands(appointment.at, now, appointmentConfig) !== null) {
+    return { kind: "appointment", ...appointment };
+  }
+  const meet = meetNear(now, meetConfig);
+  return meet !== null && !meet.on && myGoing === meet.start ? { kind: "meet", meet } : null;
+}
+
+/** Shows the calendar link while there is something to put in a calendar. */
+function syncCalendar(): void {
+  calendarButton.hidden = calendarOffer(Date.now()) === null;
+}
 
 // A press opens the meeting: it lists the rooms of the game people gather for (where they are, or where one is to
 // be made) and, before the hour, says that this player will come. The next press closes it: every game's rooms
@@ -2342,6 +2395,149 @@ function showOptions(shown: boolean): void {
 }
 
 optionsOpen.addEventListener("click", () => showOptions(optionsSheet.hidden === true));
+
+/** A moment in the reader's words and on their clock: "11/15(토) 21:00". */
+function whenOf(at: number): string {
+  const date = new Date(at);
+  return WORDS.when.at(
+    date.toLocaleDateString(lang, { weekday: "short" }),
+    date.getMonth() + 1,
+    date.toLocaleDateString(lang, { month: "short" }),
+    date.getDate(),
+    date.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" }),
+  );
+}
+
+/** The link to the room `code`, through the page that says which game it is for where that is known; with `at`, one that says when (`linkedOf`). */
+function roomLink(code: string, game: GameId | null, at: number | null): string {
+  return `${location.origin}${game === null ? "/" : invitePath(lang, game)}#${linkedOf(code, at)}`;
+}
+
+/** Gives the appointment at `at` in the room `code` to the reader's calendar: its address is the link itself, which at that hour opens the room. */
+function saveAppointment(code: string, at: number, game: GameId | null): void {
+  saveCalendar({
+    uid: `room-${code}-${at}@${new URL(ORIGIN).host}`,
+    stamp: Date.now(),
+    start: at,
+    end: at + appointmentConfig.lengthMinutes * 60_000,
+    summary: game === null ? WORDS.when.event(SITE_NAME) : WORDS.meet.event(GAMES[game].title[lang], SITE_NAME),
+    url: roomLink(code, game, at),
+    remindMinutes: appointmentConfig.remindMinutes,
+  });
+}
+
+/** Which of the days offered is picked on the sheet (0: today), and the time of day, in minutes after midnight. */
+let whenDay = 0;
+let whenMinutes = appointmentConfig.defaultMinutes;
+
+/** The moment picked on the sheet: that time of day, `whenDay` days on from today, on the reader's clock. */
+function whenPicked(): number {
+  const today = new Date();
+  return new Date(today.getFullYear(), today.getMonth(), today.getDate() + whenDay, 0, whenMinutes).getTime();
+}
+
+/** Writes the sheet as what is picked now stands: the day lit, the time of day, the moment in words, and nothing to copy for a time that has passed. */
+function renderWhen(): void {
+  const at = whenPicked();
+  const open = mayPlan(at, Date.now());
+  [...whenDays.children].forEach((button, day) => {
+    button.setAttribute("aria-pressed", String(day === whenDay));
+    button.classList.toggle("primary", day === whenDay);
+  });
+  whenClock.textContent = `${String(Math.floor(whenMinutes / 60)).padStart(2, "0")}:${String(whenMinutes % 60).padStart(2, "0")}`;
+  whenSays.textContent = open ? whenOf(at) : WORDS.when.past;
+  whenCalendar.disabled = !open;
+  whenCopy.disabled = !open;
+}
+
+/**
+ * Shows the sheet for an invitation that says when, or puts it away. It
+ * opens on the time the link that brought this player said, where it said
+ * one for this room that still stands; else on the time first offered.
+ */
+function showWhen(shown: boolean): void {
+  if (!shown || currentView === null || table !== null) {
+    if (whenSheet.hidden) return;
+    const within = whenSheet.contains(document.activeElement);
+    whenSheet.hidden = true;
+    if (within && !whenOpen.hidden) whenOpen.focus({ preventScroll: true });
+    return;
+  }
+  // one sheet at a time
+  showQuick(false);
+  showTo(false);
+  showOptions(false);
+  showSwap(false);
+  const now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const said = appointment !== null && appointment.code === currentCode && mayPlan(appointment.at, now.getTime()) ? new Date(appointment.at) : null;
+  // the day the link said, counted from today on the calendar (not in hours: a day the clocks change has 23 or 25)
+  const saidDay = said === null ? null : Math.round((new Date(said.getFullYear(), said.getMonth(), said.getDate()).getTime() - midnight) / 86_400_000);
+  if (said !== null && saidDay !== null && saidDay < appointmentConfig.days) {
+    whenDay = saidDay;
+    whenMinutes = said.getHours() * 60 + said.getMinutes();
+  } else {
+    whenDay = firstDay(now.getHours() * 60 + now.getMinutes(), appointmentConfig);
+    whenMinutes = appointmentConfig.defaultMinutes;
+  }
+  whenDays.replaceChildren(
+    ...Array.from({ length: appointmentConfig.days }, (_none, day) => {
+      const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() + day);
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = day === 0 ? WORDS.when.today : WORDS.when.day(date.toLocaleDateString(lang, { weekday: "short" }), date.getDate());
+      button.addEventListener("click", () => {
+        whenDay = day;
+        renderWhen();
+      });
+      return button;
+    }),
+  );
+  renderWhen();
+  whenSheet.hidden = false;
+  whenCopy.focus({ preventScroll: true });
+}
+
+whenOpen.addEventListener("click", () => showWhen(whenSheet.hidden === true));
+el<HTMLButtonElement>("when-close").addEventListener("click", () => showWhen(false));
+for (const [id, by, label] of [
+  ["when-earlier", -1, WORDS.when.earlier(appointmentConfig.stepMinutes)],
+  ["when-later", 1, WORDS.when.later(appointmentConfig.stepMinutes)],
+] as const) {
+  const button = el<HTMLButtonElement>(id);
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  button.addEventListener("click", () => {
+    whenMinutes = stepped(whenMinutes, by, appointmentConfig);
+    renderWhen();
+  });
+}
+whenCalendar.addEventListener("click", () => {
+  const at = whenPicked();
+  if (currentCode === "" || !mayPlan(at, Date.now())) return renderWhen();
+  saveAppointment(currentCode, at, currentView !== null && isGameId(currentView.game) ? currentView.game : null);
+});
+// The room's link with the time picked after its code: passed on as the room's own link is, with a line that says when
+// (a card drawn for the link shows the game and no time, so what is pasted says it too).
+whenCopy.addEventListener("click", () => {
+  const at = whenPicked();
+  if (currentCode === "" || !mayPlan(at, Date.now())) return renderWhen();
+  const game = currentView !== null && isGameId(currentView.game) ? currentView.game : null;
+  const link = roomLink(currentCode, game, at);
+  const line = WORDS.when.invite(game === null ? "" : GAMES[game].title[lang], whenOf(at));
+  passOn(
+    whenCopy,
+    WORDS.when.copy,
+    line,
+    link,
+    `${line}\n${link}`,
+    () => {
+      hint = WORDS.room.copyFailedHint(currentCode);
+      renderRoomBar();
+    },
+    () => chat.note({ kind: "when-made", at }),
+  );
+});
 el<HTMLButtonElement>("options-close").addEventListener("click", () => showOptions(false));
 
 chatToButton.addEventListener("click", () => showTo(toSheet.hidden === true));
@@ -2476,6 +2672,10 @@ function renderRoom(code: string, view: LobbyView): void {
     chat.open(code);
     // once for a room: a page loaded again has the line among those it kept
     if (!chat.noted("first-time")) tipRules(view.game);
+    // the link that led here said when the room's people meet: said once, where it stays to be read
+    if (appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null && !chat.noted("when")) {
+      chat.note({ kind: "when", at: appointment.at });
+    }
   } else if (currentView !== null) noteComings(currentView, view);
   currentCode = code;
   currentView = view;
@@ -3092,7 +3292,13 @@ function syncEntry(): void {
   joinButton.classList.toggle("primary", toRoom);
   createButton.classList.toggle("primary", !toRoom);
   const named = suggestedNick !== "" && nickInput.value === suggestedNick;
-  entrySub.textContent = toRoom && code === invitedCode ? (named ? WORDS.entry.invitedNamed(code) : WORDS.entry.invited(code)) : WORDS.entry.sub;
+  // a link that said when its people meet: the form says the time, while it stands
+  const when = appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null ? whenOf(appointment.at) : null;
+  // someone whose name is kept has nothing to put in: the link waited for them only because its time is still off
+  const kept = !named && normalizeNick(nickInput.value, config) !== null;
+  entrySub.textContent =
+    toRoom && code === invitedCode ? (named ? WORDS.entry.invitedNamed(code, when) : when !== null && kept ? WORDS.entry.invitedEarly(when) : WORDS.entry.invited(code, when)) : WORDS.entry.sub;
+  syncCalendar();
 }
 
 function joinFromInput(): void {
@@ -3255,7 +3461,15 @@ leaveGameButton.addEventListener("click", () => {
  * copying `pasted`, for the player to paste. `button` says for a moment how
  * it went, and `failed` is called when nothing could be copied.
  */
-function passOn(button: HTMLButtonElement, label: string, text: string, url: string, pasted: string, failed: () => void = () => undefined): void {
+function passOn(
+  button: HTMLButtonElement,
+  label: string,
+  text: string,
+  url: string,
+  pasted: string,
+  failed: () => void = () => undefined,
+  went: () => void = () => undefined,
+): void {
   const done = (said: string): void => {
     button.textContent = said;
     setTimeout(() => {
@@ -3266,7 +3480,10 @@ function passOn(button: HTMLButtonElement, label: string, text: string, url: str
     // no clipboard here (an old browser, or a page not served securely) is a failure like any other
     const copying = navigator.clipboard === undefined ? Promise.reject(new Error("no clipboard")) : navigator.clipboard.writeText(pasted);
     copying.then(
-      () => done(WORDS.room.copied),
+      () => {
+        done(WORDS.room.copied);
+        went();
+      },
       () => {
         done(WORDS.room.copyFailed);
         failed();
@@ -3274,7 +3491,7 @@ function passOn(button: HTMLButtonElement, label: string, text: string, url: str
     );
   };
   if (!TOUCH || typeof navigator.share !== "function") return copy();
-  navigator.share(text === "" ? { url } : { text, url }).catch((error: unknown) => {
+  navigator.share(text === "" ? { url } : { text, url }).then(went, (error: unknown) => {
     // the sheet put away by the player is no failure; a browser that would not open it copies instead
     if (!(error instanceof DOMException && error.name === "AbortError")) copy();
   });
@@ -3442,6 +3659,7 @@ const SHEETS: readonly (readonly [HTMLElement, () => void])[] = [
   [toSheet, () => showTo(false)],
   [whoSheet, () => showWho(null)],
   [optionsSheet, () => showOptions(false)],
+  [whenSheet, () => showWhen(false)],
   [feedbackSheet, () => showFeedback(false)],
   [recordSheet, () => showRecord(false)],
   [tallySheet, () => showTally(false)],
@@ -3556,12 +3774,15 @@ function followAddress(): void {
   // The address was changed under the page: the place the browser added for it is one the page knows from here on
   // (`src/shared/back.ts`). A browser that says so before this is heard has had it marked already.
   if (!isKnown(history.state)) history.replaceState(FIRST, "", location.href);
-  const linked = location.hash.slice(1).toUpperCase();
+  // the room's code, and after it the time its people meet, where the link says one (`src/shared/appointment.ts`)
+  const { code: linked, at } = parseLinked(location.hash.slice(1));
   if (linked === currentCode) return;
   if (!isValidRoomCode(linked, config)) {
     writeAddress(currentCode);
     return;
   }
+  const stands = at === null ? null : appointmentStands(at, Date.now(), appointmentConfig);
+  appointment = at === null || stands === null ? null : { code: linked, at, game: invitedGame };
   if (socket !== null) {
     // an invitation opened from inside another room: that room is left
     voice.leave();
@@ -3576,7 +3797,10 @@ function followAddress(): void {
   warmRest();
   const nick = normalizeNick(nickInput.value, config);
   // A name the page offered takes nobody into a room by itself: it is seen first, and one press goes in with it.
-  if (nick !== null && nickInput.value !== suggestedNick) connect(linked, false, nick);
+  // Nor does a link whose time is still some way off: the time is what it was opened for, and is read first
+  // (with the calendar link under it); the lit button goes in now all the same.
+  if (nick !== null && nickInput.value !== suggestedNick && stands !== "ahead") connect(linked, false, nick);
+  else if (nick !== null && nickInput.value !== suggestedNick) joinButton.focus({ preventScroll: true });
   else if (nick === null) nickInput.focus();
   else if (!TOUCH) {
     nickInput.focus();
@@ -3681,7 +3905,7 @@ document.addEventListener("visibilitychange", () => {
  * now) the page starts in the lobby as before.
  */
 function comeBack(): boolean {
-  const code = location.hash.slice(1).toUpperCase();
+  const { code } = parseLinked(location.hash.slice(1));
   const nick = normalizeNick(nickInput.value, config);
   if (nick === null || !isValidRoomCode(code, config)) return false;
   let stored: string | null = null;

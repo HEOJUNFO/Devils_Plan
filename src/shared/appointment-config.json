@@ -1,0 +1,9 @@
+{
+  "days": 7,
+  "defaultMinutes": 1260,
+  "stepMinutes": 30,
+  "earlyMinutes": 15,
+  "graceMinutes": 60,
+  "lengthMinutes": 90,
+  "remindMinutes": 10
+}

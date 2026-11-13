@@ -120,8 +120,11 @@
         <p id="bar-1"></p>
         <p id="bar-2" class="dim"></p>
         <button id="rules-open" type="button" hidden></button>
-        <!-- In a room where a game has been played to its end: opens what the room has counted for each player (`#tally-sheet`). -->
-        <button id="tally-open" type="button" aria-haspopup="dialog" hidden></button>
+        <!--
+          In a room, on the bar's third line. Where a game has been played to its end: opens what the room has
+          counted for each player (`#tally-sheet`). And an invitation that says when (`#when-sheet`).
+        -->
+        <p id="room-links" class="dim"><button id="tally-open" type="button" aria-haspopup="dialog" hidden></button><button id="when-open" type="button" aria-haspopup="dialog" hidden></button></p>
         <!-- The other language the page can be read in, named in that language; offered in the lobby. -->
         <button id="lang" type="button" hidden></button>
         <!-- In the lobby: the player's own record, once there is a game in it; the button for a word about the game, where one can be sent on; and which build the page is. -->
@@ -202,6 +205,24 @@
           <button id="who-hide" type="button"></button>
           <button id="who-flag" type="button"></button>
           <button id="who-close" type="button"></button>
+        </div>
+      </section>
+
+      <!-- An invitation that says when: a day and a time of day are picked, and the room's link is copied with them, or the time put in a calendar (`src/shared/appointment.ts`). -->
+      <section id="when-sheet" role="dialog" aria-labelledby="when-title" hidden>
+        <h2 id="when-title"></h2>
+        <p id="when-help" class="dim"></p>
+        <div id="when-days" role="group" aria-labelledby="when-title"></div>
+        <div id="when-time">
+          <button id="when-earlier" type="button">−</button>
+          <strong id="when-clock"></strong>
+          <button id="when-later" type="button">+</button>
+          <span id="when-says" role="status"></span>
+        </div>
+        <div class="row">
+          <button id="when-close" type="button"></button>
+          <button id="when-calendar" type="button"></button>
+          <button id="when-copy" type="button" class="primary"></button>
         </div>
       </section>
 

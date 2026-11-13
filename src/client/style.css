@@ -1041,17 +1041,21 @@ button.choice[aria-pressed="true"] {
   display: none;
 }
 
-/* In a room, on the bar's third line, where the lobby has its links: what the room has counted for each player. */
-#tally-open {
+/* In a room, on the bar's third line, where the lobby has its links: what the room has counted for each player, and an invitation that says when. */
+#room-links {
   position: absolute;
   left: 6px;
   bottom: 5px;
+  display: flex;
+  gap: 8px;
+  margin: 0;
 }
 
 /* The buttons for the player's own record and for a word about the game, and for someone who said they will come to a meeting the one that puts it in their calendar: among the bar's words, as plain as they are. The room's tally is a button like them. */
 #calendar,
 #record-open,
 #tally-open,
+#when-open,
 #feedback {
   height: auto;
   padding: 0;
@@ -1065,6 +1069,7 @@ button.choice[aria-pressed="true"] {
   #calendar:hover,
   #record-open:hover,
   #tally-open:hover,
+  #when-open:hover,
   #feedback:hover {
     color: var(--bone);
   }
@@ -1537,6 +1542,75 @@ button.choice[aria-pressed="true"] {
   justify-content: flex-end;
 }
 
+/* An invitation that says when: a sheet like the one of people to say a line to, and in its place. Seven days in a row, then the time of day between the two buttons that move it. */
+#when-sheet {
+  position: absolute;
+  left: 60px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 360px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#when-sheet[hidden] {
+  display: none;
+}
+
+#when-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#when-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+#when-days button {
+  padding: 0;
+  white-space: nowrap;
+}
+
+#when-time {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#when-time button {
+  width: 24px;
+  padding: 0;
+}
+
+#when-clock {
+  min-width: 34px;
+  color: var(--amber);
+  text-align: center;
+}
+
+#when-says {
+  margin-left: 6px;
+  color: var(--bone-dim);
+}
+
+#when-sheet .row {
+  justify-content: flex-end;
+}
+
+:root.touch #when-sheet button {
+  height: 24px;
+}
+
+:root.touch #when-sheet {
+  top: 40px;
+}
+
 :root.touch #options-sheet button {
   height: 24px;
 }
@@ -1858,6 +1932,7 @@ button.choice[aria-pressed="true"] {
 :root.touch #calendar,
 :root.touch #record-open,
 :root.touch #tally-open,
+:root.touch #when-open,
 :root.touch #feedback {
   position: relative;
 }
@@ -1865,6 +1940,7 @@ button.choice[aria-pressed="true"] {
 :root.touch #calendar::before,
 :root.touch #record-open::before,
 :root.touch #tally-open::before,
+:root.touch #when-open::before,
 :root.touch #feedback::before {
   position: absolute;
   inset: -8px -3px -3px;

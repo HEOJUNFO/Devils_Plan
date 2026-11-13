@@ -39,7 +39,9 @@ export type ChatNote =
   /** 탈락전: the host turned it on or off, or it starts over because too few were left in. */
   | { kind: "knockout-on" | "knockout-off" | "knockout-again" }
   /** This player covered what someone says on their own screen, or uncovered it; or pointed them out to whoever runs the site. */
-  | { kind: "hid" | "shown" | "flagged"; nick: string };
+  | { kind: "hid" | "shown" | "flagged"; nick: string }
+  /** The link that brought this player here says when the room's people meet (`when`), or this player copied a link that says so (`when-made`): the moment, put in the reader's words and clock when the note is shown (`src/shared/appointment.ts`). */
+  | { kind: "when" | "when-made"; at: number };
 
 /** The kinds of note that name a player, and those that do not. */
 const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked", "out", "champion", "top", "hid", "shown", "flagged"];
@@ -69,7 +71,8 @@ function isLine(value: unknown): value is Line {
   if (typeof line.text === "string") return true;
   if (line.quick !== undefined) return isQuickWord(line.quick) && typeof line.who === "string";
   if (typeof line.note !== "object" || line.note === null) return false;
-  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown; won?: unknown; all?: unknown };
+  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown; won?: unknown; all?: unknown; at?: unknown };
+  if (note.kind === "when" || note.kind === "when-made") return typeof note.at === "number";
   if (note.kind === "game") return typeof note.game === "string";
   if (note.kind === "pieces") return typeof note.nick === "string" && typeof note.won === "number" && typeof note.all === "number";
   return typeof note.kind === "string" && (PLAIN_NOTES.includes(note.kind) || (NAMED_NOTES.includes(note.kind) && typeof note.nick === "string"));
