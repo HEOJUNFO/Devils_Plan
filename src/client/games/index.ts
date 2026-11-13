@@ -79,10 +79,12 @@ export interface GameScreen {
    */
   verdict(): string | null;
   /**
-   * Whether the game now waits on this player alone: a turn that is theirs
-   * to take. Read off what the room last sent, not off what the screen has
-   * got to showing, so it is true in a tab that is not being drawn. A game
-   * everyone plays at once has no such moment and leaves this out.
+   * Whether the game now waits on this player: a turn that is theirs to
+   * take, or a choice put to everyone that they have not made, with a clock
+   * after which the room moves for them (`src/shared/waits.ts`). Read off
+   * what the room last sent, not off what the screen has got to showing, so
+   * it is true in a tab that is not being drawn. A game everyone plays at
+   * once from beginning to end has no such moment and leaves this out.
    */
   waits?(): boolean;
   /** Stops drawing and listening. */

@@ -10,6 +10,7 @@
  * the keys are a shorter way to the same.
  */
 import { STANDS, sumOf, type Chip, type Stand, type UnderAction, type UnderEvent } from "../../../shared/games/under-thirteen/rules";
+import { underWaits } from "../../../shared/waits";
 import { hits, type Box, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
@@ -51,6 +52,8 @@ export interface UnderScreen {
   press(code: string): void;
   /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
   verdict(): string | null;
+  /** Whether the game waits on this player by the room's last word (`GameScreen.waits`, `src/shared/waits.ts`). */
+  waits(): boolean;
   destroy(): void;
 }
 
@@ -323,6 +326,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     // The room marks the game it sends in answer to this page's move. What it sends meanwhile, for another
     // player's move, leaves this one on its way; a game that has gone on to another phase waits for nothing.
     const answered = message.answer === true || latest === null || latest.startedAt !== message.startedAt || latest.view.phase !== message.view.phase;
+    const wasAsked = asked();
     truth = message;
     if (answered) ahead = null;
     // a move still on its way is drawn over what the room sends meanwhile, which does not have it yet
@@ -331,6 +335,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (answered) pending = false;
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
+    // the rock to be placed has become this player's, and they are asked about it: the clock on their answer has begun
+    if (!wasAsked && asked()) sfx.turn();
   }
 
   // ---- Input -----------------------------------------------------------------------------------------
@@ -1047,6 +1053,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   return {
     update,
     verdict,
+    // by the room's last word, not by a move of this page's still on its way; a game that stands still waits on no one
+    waits: (): boolean => truth !== null && !truth.frozen && underWaits(truth.view),
     refused(reason: string): void {
       starting = false;
       pending = false;

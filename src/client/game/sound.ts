@@ -169,3 +169,19 @@ export const sfx = {
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, "triangle", 0.2, i * 0.11)),
   lose: () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.22, "sawtooth", 0.14, i * 0.16)),
 };
+
+/**
+ * Makes a phone buzz, briefly, where the browser can (`navigator.vibrate`:
+ * Android's browsers; Safari on a phone has none, and a desktop has nothing
+ * to shake). For a turn that has become the player's: a phone's sound is
+ * often off. The pattern is `turnBuzz` of the sound's settings, on and off in
+ * ms. Not held back by how loud the sound is set: someone who muted the game
+ * in a quiet place is who this is for.
+ */
+export function buzz(): void {
+  try {
+    navigator.vibrate?.(config.turnBuzz);
+  } catch {
+    // a browser that refuses: the turn is still said on the screen and by its sound
+  }
+}

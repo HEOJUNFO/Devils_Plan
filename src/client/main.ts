@@ -69,7 +69,7 @@ import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
-import { isMuted, sfx, soundLevel, startAudio, stepSound } from "./game/sound";
+import { buzz, isMuted, sfx, soundLevel, startAudio, stepSound } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
@@ -2500,7 +2500,11 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       if (over && shown.verdict() !== null) learn(message.game);
       // a turn that has just become this player's
       const waits = shown.waits?.() === true;
-      if (waits && !waited) call("turn");
+      if (waits && !waited) {
+        call("turn");
+        // a phone in the hand is felt as well as heard: its sound is often off
+        buzz();
+      }
       waited = waits;
       // whether the game is over, and with it whether there is a result to pass on
       syncShare();

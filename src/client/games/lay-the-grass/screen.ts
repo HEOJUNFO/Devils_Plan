@@ -45,6 +45,7 @@ import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { TOUCH } from "../../touch";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
 import { WORDS } from "./words";
+import { grassWaits } from "../../../shared/waits";
 
 /** What the room sends about a game of 잔디 깔기. */
 export type GrassMessage = Extract<ServerMessage, { type: "game"; game: "lay-the-grass" }>;
@@ -75,6 +76,8 @@ export interface GrassScreen {
   press(code: string): void;
   /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
   verdict(): string | null;
+  /** Whether the game waits on this player by the room's last word (`GameScreen.waits`, `src/shared/waits.ts`). */
+  waits(): boolean;
   destroy(): void;
 }
 
@@ -1523,6 +1526,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
   return {
     update,
     verdict,
+    // by the room's last word, not by a move of this page's still on its way; a game that stands still waits on no one
+    waits: (): boolean => truth !== null && !truth.frozen && grassWaits(truth.view),
     refused(reason: string): void {
       starting = false;
       pending = false;

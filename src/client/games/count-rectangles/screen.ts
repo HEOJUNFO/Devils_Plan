@@ -8,6 +8,7 @@
  */
 import { LIT_SECONDS, litSeconds } from "../../../shared/games/count-rectangles/reveal";
 import { GAP, type Card, type Option, type Rect, type RectEvent, type ScoreLine } from "../../../shared/games/count-rectangles/rules";
+import { rectWaits } from "../../../shared/waits";
 import { afterBuzz, typeAnswer } from "../../../shared/games/count-rectangles/typing";
 import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
@@ -64,6 +65,8 @@ export interface RectScreen {
   press(code: string): void;
   /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
   verdict(): string | null;
+  /** Whether the game waits on this player by the room's last word (`GameScreen.waits`, `src/shared/waits.ts`). */
+  waits(): boolean;
   destroy(): void;
 }
 
@@ -1144,6 +1147,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   return {
     update,
     verdict,
+    // by the room's last word; a game that stands still waits on no one
+    waits: (): boolean => truth !== null && !truth.frozen && rectWaits(truth.view),
     refused(reason: string): void {
       starting = false;
       pending = false;
