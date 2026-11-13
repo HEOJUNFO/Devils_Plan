@@ -66,6 +66,23 @@ rule has the user's own words, the history, and the detail. A part marked
   file, this wins. *Reading:* the type check stays (one command of a few
   seconds that cannot be pointed at a part), and CI still runs the whole suite
   on every push. What was not checked is said in the commit and in the report.
+- **The integration tests are not run here.** Nothing under
+  `tests/integration` is run on this machine. The user, 2026-11-13, when the
+  assistant had run that whole folder twice in one session after changing the
+  room and the directory, and single files of it several times more:
+  "통합테스트돌리지말라니까왜돌려또 프로젝트룰에추가해". "A change to the
+  server means running the integration tests" was a habit of the assistant's
+  own, never a rule, and is withdrawn. CI runs them on every push, and the
+  Cloudflare build runs them before it deploys, so a push that breaks one is
+  not deployed. *Reading:* one integration file run by name is not run either
+  (the user said "통합테스트", not "all of them"); a change to the server is
+  checked here by the type check, the unit tests of the files touched and the
+  screen; the commit and the report say the integration tests were not run
+  here; after a push, CI's result is read and reported, and a failure there is
+  fixed before anything else. An integration test that is added or changed is
+  pushed without having been seen to fail or pass here, and the report says
+  so. Where this differs from "watch it fail" in the test standards, this
+  wins.
 - **A screen is looked at with ego-browser or browser-skill.** Browser checks
   (a changed screen, a phone's size, touch) are done with the `ego-browser`
   skill or the `browser-skill` skill (`bsk`). The user, 2026-11-12, when the
