@@ -17,19 +17,23 @@ import {
 import { normalizeFeedback, type StoredWord } from "../shared/feedback";
 import { isLang } from "../shared/lang";
 import { isGameId, type GameId } from "../shared/games";
+import numbersConfig from "../shared/numbers-config.json";
+import { countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
-import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer, type WatchingNote } from "../shared/protocol";
+import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer, type NumbersAnswer, type WatchingNote } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
 import { ADDRESS_HEADER, countedAs } from "./address";
 import { inboxKey, sameKey, type InboxEnv } from "./inbox";
 
 const config: DirectoryConfig = directoryConfig;
 const rooms: RoomConfig = roomConfig;
+const numbers: NumbersConfig = numbersConfig;
 
-/** The path a room reports to, and the path it asks at whether one more room may be made. */
+/** The path a room reports to, the path it asks at whether one more room may be made, and the path it says at what happened in it that is counted by the day. */
 export const REPORT_PATH = "/report";
 export const MAKE_PATH = "/make";
+export const COUNT_PATH = "/count";
 /** The longest an address is written: an IPv6 address with an IPv4 one for its end. */
 const ADDRESS_MAX_LENGTH = 45;
 /** How long a word about the game counts against the day's limit, in ms. */
@@ -111,6 +115,10 @@ export class RoomDirectory extends Server<Env> {
     );
     // one row for each wrong key the inbox was tried with, kept for as long as the limit on them looks back
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS misses (at INTEGER NOT NULL)");
+    // the site's numbers by the day (`numbers.ts`): how many of each thing, and nothing of who
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS numbers (day INTEGER NOT NULL, what TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, what))");
+    // what the addresses that came today are counted as (`keyOf`), so that one person is one: thrown away when the day is over
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS seen (day INTEGER NOT NULL, key TEXT NOT NULL, PRIMARY KEY (day, key))");
     this.entries = new Map();
     const rows = this.ctx.storage.sql
       .exec<{ code: string; v: string; updated_at: number }>("SELECT code, v, updated_at FROM rooms")
@@ -125,8 +133,10 @@ export class RoomDirectory extends Server<Env> {
     const now = Date.now();
     connection.send(this.message(now, null, this.counts(now)));
     const from = context.request.headers.get(ADDRESS_HEADER);
-    if (from !== null) connection.setState({ from: await keyOf(from.slice(0, ADDRESS_MAX_LENGTH)) });
+    const key = from === null ? null : await keyOf(from.slice(0, ADDRESS_MAX_LENGTH));
+    if (key !== null) connection.setState({ from: key });
     this.tellWatching(connection, null);
+    this.countVisit(key, Date.now());
   }
 
   /**
@@ -140,6 +150,7 @@ export class RoomDirectory extends Server<Env> {
     const now = Date.now();
     if (request.type === "feedback") return this.takeFeedback(connection, request, now);
     if (request.type === "inbox") return this.readInbox(connection, request, now);
+    if (request.type === "numbers") return this.readNumbers(connection, request.key, now);
     // A page of ours asks once for each game picked; one that is not may not make the directory sort without end.
     const paced = pace(this.showPace.get(connection.id), now, config.showLimit.burst, config.showLimit.windowSeconds);
     this.showPace.set(connection.id, paced.pace);
@@ -229,22 +240,87 @@ export class RoomDirectory extends Server<Env> {
       const said: InboxAnswer = { type: "inbox", words };
       connection.send(JSON.stringify(said));
     };
-    const kept = this.inboxKey();
-    if (kept === null) return answer(null);
-    const limit = config.feedback.readLimit;
+    if (!(await this.opensWith(request.key, now))) return answer(null);
     const sql = this.ctx.storage.sql;
-    sql.exec("DELETE FROM misses WHERE at <= ?", now - limit.windowSeconds * 1000);
-    if (sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM misses").one().n >= limit.burst) return answer(null);
-    if (!(await sameKey(request.key, kept))) {
-      sql.exec("INSERT INTO misses (at) VALUES (?)", now);
-      console.log("inbox not opened: a wrong key");
-      return answer(null);
-    }
     if (request.drop !== undefined) sql.exec("DELETE FROM words WHERE id = ?", request.drop);
     const rows = sql
       .exec<{ id: number; at: number; text: string; lang: string; build: string }>("SELECT id, at, text, lang, build FROM words ORDER BY id DESC")
       .toArray();
     answer(rows.map((row) => ({ id: row.id, at: row.at, text: row.text, lang: isLang(row.lang) ? row.lang : ("en" as const), build: row.build })));
+  }
+
+  /**
+   * Whether `key` opens what is kept for whoever makes the game: the inbox
+   * and the numbers. Not with no key set, with a key that is not it, or
+   * after too many wrong keys from everyone together in a while (see
+   * {@link readInbox}); a wrong one is counted.
+   */
+  private async opensWith(key: string, now: number): Promise<boolean> {
+    const kept = this.inboxKey();
+    if (kept === null) return false;
+    const limit = config.feedback.readLimit;
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM misses WHERE at <= ?", now - limit.windowSeconds * 1000);
+    if (sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM misses").one().n >= limit.burst) return false;
+    if (await sameKey(key, kept)) return true;
+    sql.exec("INSERT INTO misses (at) VALUES (?)", now);
+    console.log("inbox not opened: a wrong key");
+    return false;
+  }
+
+  /**
+   * Sends whoever asked with the key the site's numbers by the day, the
+   * latest day first, as many days as are kept; or, where the key does not
+   * open them, that they were not given (as with the inbox, and counted with
+   * it).
+   */
+  private async readNumbers(connection: Connection<ViewerState>, key: string, now: number): Promise<void> {
+    const answer = (days: DayNumbers[] | null): void => {
+      const said: NumbersAnswer = { type: "numbers", days };
+      connection.send(JSON.stringify(said));
+    };
+    if (!(await this.opensWith(key, now))) return answer(null);
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM numbers WHERE day < ?", firstKept(dayOf(now, numbers), numbers));
+    const days = new Map<number, DayNumbers>();
+    for (const row of sql.exec<{ day: number; what: string; n: number }>("SELECT day, what, n FROM numbers ORDER BY day DESC").toArray()) {
+      const day = days.get(row.day) ?? { day: row.day, counts: {} };
+      day.counts[row.what] = row.n;
+      days.set(row.day, day);
+    }
+    answer([...days.values()]);
+  }
+
+  /** Adds `counts` to the numbers of the day `now` is on. */
+  private count(counts: readonly Count[], now: number): void {
+    const day = dayOf(now, numbers);
+    for (const { what, n, most } of counts) {
+      this.ctx.storage.sql.exec(
+        most === true
+          ? "INSERT INTO numbers (day, what, n) VALUES (?, ?, ?) ON CONFLICT(day, what) DO UPDATE SET n = MAX(n, excluded.n)"
+          : "INSERT INTO numbers (day, what, n) VALUES (?, ?, ?) ON CONFLICT(day, what) DO UPDATE SET n = n + excluded.n",
+        day,
+        what,
+        n,
+      );
+    }
+  }
+
+  /**
+   * Counts someone who has just come to the lobby: a visit, in its hour,
+   * and one more person where what their address is counted as (`key`) has
+   * not come today; with no address, a person each time. What addresses
+   * were counted as on days before today is thrown away here: it is kept to
+   * count a person once in a day and for nothing else.
+   */
+  private countVisit(key: string | null, now: number): void {
+    const day = dayOf(now, numbers);
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM seen WHERE day < ?", day);
+    const fresh = key === null || sql.exec("SELECT 1 FROM seen WHERE day = ? AND key = ?", day, key).toArray().length === 0;
+    if (fresh && key !== null) sql.exec("INSERT INTO seen (day, key) VALUES (?, ?)", day, key);
+    const looking = peopleLooking([...this.getConnections<ViewerState>()].map((viewer) => viewer.state?.from ?? null));
+    this.count(visitCounts(now, fresh, looking, numbers), now);
   }
 
   /** Whether a word about the game is taken here: where there is a key to read it with. */
@@ -259,8 +335,9 @@ export class RoomDirectory extends Server<Env> {
 
   /**
    * What a room asks of the directory, from inside the Worker: at
-   * `MAKE_PATH` whether one more room may be made, and anywhere else its
-   * report, how to list it or that it is off the list.
+   * `MAKE_PATH` whether one more room may be made, at `COUNT_PATH` to count
+   * something that happened in it, and anywhere else its report, how to
+   * list it or that it is off the list.
    */
   async onRequest(request: Request): Promise<Response> {
     if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
@@ -270,7 +347,14 @@ export class RoomDirectory extends Server<Env> {
     } catch {
       return new Response("Bad Request", { status: 400 });
     }
-    if (new URL(request.url).pathname === MAKE_PATH) return this.answerMake(raw);
+    const path = new URL(request.url).pathname;
+    if (path === MAKE_PATH) return this.answerMake(raw);
+    if (path === COUNT_PATH) {
+      const event = parseRoomEvent(raw);
+      if (event === null) return new Response("Bad Request", { status: 400 });
+      this.count(countsOf(event), Date.now());
+      return new Response(null, { status: 204 });
+    }
     const report = parseReport(raw, rooms);
     if (report === null) return new Response("Bad Request", { status: 400 });
 

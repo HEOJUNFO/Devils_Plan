@@ -40,6 +40,7 @@ import {
   type LobbyState,
   type RoomConfig,
 } from "../shared/lobby";
+import type { RoomEvent } from "../shared/numbers";
 import { pace, type Pace } from "../shared/pace";
 import {
   CLOSE_LEFT,
@@ -62,7 +63,7 @@ import roomConfig from "../shared/room-config.json";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
 import voiceConfigJson from "../shared/voice-config.json";
 import { ADDRESS_HEADER, withinLimit, type Limiter } from "./address";
-import { MAKE_PATH, REPORT_PATH } from "./directory";
+import { COUNT_PATH, MAKE_PATH, REPORT_PATH } from "./directory";
 import { Timers } from "./timers";
 
 const config: RoomConfig = roomConfig;
@@ -578,6 +579,7 @@ export class GameRoom extends Server<Env> {
     this.saveLobby(result.state);
     // For the log, which is all that counts rooms: which game, and whether on the list. Never the code or a name.
     if (made) console.log(`room made: ${result.state.game} ${result.state.listed ? "listed" : "unlisted"}`);
+    if (made) this.count({ type: "made", game: gameOf(result.state), listed: result.state.listed === true });
     connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings, parts: request.parts === true });
     // Also notes anyone whose connection ended without the room being told.
     this.saveLobby(markAway(result.state, this.connectedSlots(), now));
@@ -976,6 +978,7 @@ export class GameRoom extends Server<Env> {
     const tally = this.tally();
     this.save(TALLY_KEY, { ...tally, games: tally.games + 1, began: Date.now() } satisfies Tally);
     console.log(`game started: ${gameOf(lobby)} ${presence.connected.size} players`);
+    this.count({ type: "started", game: gameOf(lobby), players: presence.connected.size });
     await this.commitSession(result.session);
   }
 
@@ -1001,6 +1004,7 @@ export class GameRoom extends Server<Env> {
   private sayEmptied(lobby: LobbyState): void {
     const tally = this.tally();
     console.log(`room emptied: ${gameOf(lobby)} ${lobby.listed ? "listed" : "unlisted"} games ${tally.games} most ${tally.most}`);
+    this.count({ type: "emptied", game: gameOf(lobby), listed: lobby.listed === true, games: tally.games, most: tally.most });
     if (this.stored) this.save(TALLY_KEY, null);
   }
 
@@ -1050,6 +1054,7 @@ export class GameRoom extends Server<Env> {
       const tally = this.tally();
       const minutes = tally.began === null ? null : Math.max(0, Math.round((Date.now() - tally.began) / 60_000));
       console.log(`game ended: ${gameOf(this.lobby)}${minutes === null ? "" : ` ${minutes} min`}`);
+      this.count({ type: "ended", game: gameOf(this.lobby), minutes });
       if (tally.began !== null) this.save(TALLY_KEY, { ...tally, began: null } satisfies Tally);
       // What the game paid in pieces goes on the room's ledger: here, the one place a game ends, so once.
       const paid = next === null ? this.lobby : withPieces(this.lobby, gainsOf(this.host().pieces?.(next), ledgerConfig));
@@ -1134,6 +1139,21 @@ export class GameRoom extends Server<Env> {
       // Without the room's code: for a room off the list the code is all that keeps a stranger out, and logs are kept.
       console.error("a room could not report to the directory", error);
     }
+  }
+
+  /**
+   * Tells the directory of something that happened here that the site
+   * counts by the day (`src/shared/numbers.ts`): what the log is told, and
+   * as there, never the room's code or a name. Nothing in the room waits for
+   * it: a count is for whoever runs the site, and no player's join, move or
+   * leaving is held up by a word to the directory about it. Nothing that
+   * goes wrong here stops the room either; that count is then lost.
+   */
+  private count(event: RoomEvent): void {
+    const told = this.askDirectory(COUNT_PATH, JSON.stringify(event))
+      .then((response) => response.body?.cancel())
+      .catch(() => undefined);
+    this.ctx.waitUntil(told);
   }
 
   /**

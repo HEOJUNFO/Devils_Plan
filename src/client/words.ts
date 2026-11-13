@@ -65,6 +65,24 @@ const ko = {
     drop: "지우기",
     dropConfirm: "한 번 더 누르면 지움",
   },
+  /** The site's numbers by the day, for whoever runs it: on the inbox's sheet, where the lobby is opened with `?numbers`. */
+  numbers: {
+    title: "숫자",
+    none: "아직 센 것이 없습니다.",
+    /** Over the days: how many there are, and where a day and its hours are counted (`zone`: "UTC+9"). */
+    count: (days: number, zone: string) => `${days}일치, 최근 날부터 · 날짜와 시각은 ${zone}`,
+    weekdays: ["월", "화", "수", "목", "금", "토", "일"],
+    day: (date: string, weekday: string) => `${date} (${weekday})`,
+    lobby: (visits: number, people: number, peak: number) => `로비 방문 ${visits}회 · ${people}명(주소 기준) · 한때 최대 ${peak}명`,
+    rooms: (made: number, listed: number) => `만든 방 ${made}개 (공개 ${listed}개)`,
+    games: (started: number, ended: number) => `시작한 판 ${started} · 끝난 판 ${ended}`,
+    /** Rooms that stood empty with no game ever started: nobody else came, or people came and nothing was started. */
+    left: (alone: number, unplayed: number) => `혼자 기다리다 비운 방 ${alone} · 모였는데 시작 못 한 방 ${unplayed}`,
+    game: (name: string, started: number, ended: number, players: number | null, minutes: number | null) =>
+      `${name}: 시작 ${started} · 끝 ${ended}${players === null ? "" : ` · 평균 ${players}명`}${minutes === null ? "" : ` · 평균 ${minutes}분`}`,
+    hours: (list: string) => `시간대별 방문: ${list}`,
+    hour: (hour: number, visits: number) => `${hour}시 ${visits}`,
+  },
   entry: {
     sub: "방을 고르거나 만드세요",
     /** In its place for someone who opened a link to a room and has not gone in yet: two lines. */
@@ -422,6 +440,21 @@ const en: typeof ko = {
     head: (when, lang, build) => `${when} · ${lang} · ${build}`,
     drop: "Delete",
     dropConfirm: "Press again to delete",
+  },
+  numbers: {
+    title: "Numbers",
+    none: "Nothing has been counted yet.",
+    count: (days, zone) => `${days} ${days === 1 ? "day" : "days"}, latest first · days and hours are ${zone}`,
+    weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    day: (date, weekday) => `${date} (${weekday})`,
+    lobby: (visits, people, peak) => `Lobby: ${visits} ${visits === 1 ? "visit" : "visits"} · ${people} by address · ${peak} at once at most`,
+    rooms: (made, listed) => `Rooms made: ${made} (${listed} public)`,
+    games: (started, ended) => `Games started: ${started} · finished: ${ended}`,
+    left: (alone, unplayed) => `Rooms left after waiting alone: ${alone} · gathered, never started: ${unplayed}`,
+    game: (name, started, ended, players, minutes) =>
+      `${name}: ${started} started · ${ended} finished${players === null ? "" : ` · ${players} to a game`}${minutes === null ? "" : ` · ${minutes} min a game`}`,
+    hours: (list) => `Visits by hour: ${list}`,
+    hour: (hour, visits) => `${hour}h ${visits}`,
   },
   entry: {
     sub: "Pick a room or make one",

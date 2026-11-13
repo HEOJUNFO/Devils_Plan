@@ -15,6 +15,7 @@ import type { UnderHostRefusal, UnderSnapshot } from "./games/under-thirteen/hos
 import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
+import { parseDays, type DayNumbers } from "./numbers";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
 import { parseRtcSignal, type RtcSignal, type VoiceConfig, type VoiceMember } from "./voice";
@@ -228,7 +229,17 @@ export interface InboxAnswer {
 }
 
 /**
- * Client → directory, the three things it reads of what a viewer sends.
+ * Directory → client: the site's numbers by the day (`numbers.ts`), the
+ * latest day first, for whoever asked with the key; `null` where they were
+ * not given, for the reasons an inbox does not open.
+ */
+export interface NumbersAnswer {
+  type: "numbers";
+  days: DayNumbers[] | null;
+}
+
+/**
+ * Client → directory, the four things it reads of what a viewer sends.
  *
  * `show`: the rooms of this game only, or of every game (`null`, which is
  * what a viewer is shown until they ask). Asked again on every reconnect: a
@@ -242,11 +253,15 @@ export interface InboxAnswer {
  * are read with (`src/server/inbox.ts`). The key is in the message, never in
  * an address, as a player's token is. With `drop`, the word of that id is
  * thrown away first. Answered with an {@link InboxAnswer}.
+ *
+ * `numbers`: the site's numbers by the day, for whoever runs it, with the
+ * same key. Answered with a {@link NumbersAnswer}.
  */
 export type DirectoryRequest =
   | { type: "show"; game: GameId | null }
   | { type: "feedback"; text: string; lang: Lang; build: string }
-  | { type: "inbox"; key: string; drop?: number };
+  | { type: "inbox"; key: string; drop?: number }
+  | { type: "numbers"; key: string };
 
 /** The longest text the directory reads as a request: a word about the game at its longest fits, each of its letters written the long way. */
 export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
@@ -489,6 +504,15 @@ export function parseInboxAnswer(raw: unknown): InboxAnswer | null {
   return { type: "inbox", words };
 }
 
+/** Parses the directory's answer to a request for the numbers, returning `null` for anything else. */
+export function parseNumbersAnswer(raw: unknown): NumbersAnswer | null {
+  const data = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (data === null || data.type !== "numbers") return null;
+  if (data.days === null) return { type: "numbers", days: null };
+  const days = parseDays(data.days);
+  return days === null ? null : { type: "numbers", days };
+}
+
 /** Parses what a viewer sends the directory, returning `null` for anything unrecognised or oversized. */
 export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
   const data = parseObject(raw, MAX_DIRECTORY_REQUEST_LENGTH);
@@ -504,6 +528,10 @@ export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
     if (data.drop === undefined) return { type: "inbox", key: data.key };
     if (typeof data.drop !== "number" || !Number.isInteger(data.drop) || data.drop < 0) return null;
     return { type: "inbox", key: data.key, drop: data.drop };
+  }
+  if (data.type === "numbers") {
+    if (typeof data.key !== "string" || data.key === "" || data.key.length > MAX_KEY_LENGTH) return null;
+    return { type: "numbers", key: data.key };
   }
   if (data.type !== "show") return null;
   if (data.game !== null && !isGameId(data.game)) return null;

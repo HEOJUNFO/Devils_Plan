@@ -12,6 +12,7 @@ import {
   parseDirectoryRequest,
   parseFeedbackAnswer,
   parseInboxAnswer,
+  parseNumbersAnswer,
   parseServerMessage,
   parseWatchingNote,
 } from "../../../src/shared/protocol";
@@ -491,6 +492,16 @@ describe("parseDirectoryRequest", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "my key", drop: 12, more: 1 }))).toEqual({ type: "inbox", key: "my key", drop: 12 });
   });
 
+  it("reads a request for the numbers, with its key and nothing else", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "numbers", key: "my key", drop: 3 }))).toEqual({ type: "numbers", key: "my key" });
+  });
+
+  it("rejects a request for the numbers with no key, or a key too long to be one", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "numbers" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "numbers", key: "" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "numbers", key: "k".repeat(201) }))).toBeNull();
+  });
+
   it("rejects a request for the inbox with no key, a key too long to be one, or a word to throw away that names none", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "inbox" }))).toBeNull();
     expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "" }))).toBeNull();
@@ -529,5 +540,20 @@ describe("parseDirectoryRequest", () => {
   it("rejects text that is not JSON, and text too long to be a request", () => {
     expect(parseDirectoryRequest("show")).toBeNull();
     expect(parseDirectoryRequest(JSON.stringify({ type: "show", game: DEFAULT_GAME, pad: "x".repeat(MAX_DIRECTORY_REQUEST_LENGTH) }))).toBeNull();
+  });
+});
+
+describe("parseNumbersAnswer", () => {
+  it("reads the days sent, and that the numbers were not given", () => {
+    const day = { day: 20773, counts: { visits: 3, "hour:9": 3 } };
+
+    expect(parseNumbersAnswer(JSON.stringify({ type: "numbers", days: [day] }))).toEqual({ type: "numbers", days: [day] });
+    expect(parseNumbersAnswer(JSON.stringify({ type: "numbers", days: null }))).toEqual({ type: "numbers", days: null });
+  });
+
+  it("is nothing for another message, or for days that are not a list", () => {
+    expect(parseNumbersAnswer(JSON.stringify({ type: "inbox", words: null }))).toBeNull();
+    expect(parseNumbersAnswer(JSON.stringify({ type: "numbers" }))).toBeNull();
+    expect(parseNumbersAnswer(JSON.stringify({ type: "numbers", days: "none" }))).toBeNull();
   });
 });

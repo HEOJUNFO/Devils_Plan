@@ -14,7 +14,9 @@ import {
   type WatchingNote,
 } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
-import { MAKE_PATH } from "../../../src/server/directory";
+import numbersConfig from "../../../src/shared/numbers-config.json";
+import { dayOf, type DayNumbers } from "../../../src/shared/numbers";
+import { COUNT_PATH, MAKE_PATH } from "../../../src/server/directory";
 import { advanceClock, Inbox, join as open, socket, type TestClient } from "../support";
 
 /** The most players the list says a room of the first game can have. */
@@ -550,6 +552,7 @@ interface Answer {
   sent?: boolean;
   feedback?: boolean;
   words?: StoredWord[] | null;
+  days?: DayNumbers[] | null;
 }
 
 /** The key the inbox is read with in these tests. */
@@ -946,5 +949,174 @@ describe("RoomDirectory: a word about the game", () => {
     expect(lines.join("\n")).not.toContain("guess");
     expect(lines.join("\n")).not.toContain(KEY);
     inbox.close();
+  });
+});
+
+describe("RoomDirectory: the numbers of the day", () => {
+  afterEach(async () => {
+    await keyAsItIs();
+  });
+
+  /** Starts the directory with nothing counted and no address remembered. */
+  async function countFromNothing(): Promise<void> {
+    await runInDurableObject(directoryStub(), (_object, state) => {
+      for (const table of ["numbers", "seen"]) state.storage.sql.exec(`DELETE FROM ${table}`);
+    });
+  }
+
+  /** What is counted of the day `now` is on, as kept. */
+  async function counted(now: number = Date.now()): Promise<Record<string, number>> {
+    const rows = await runInDurableObject(directoryStub(), (_object, state) =>
+      state.storage.sql.exec<{ what: string; n: number }>("SELECT what, n FROM numbers WHERE day = ?", dayOf(now, numbersConfig)).toArray(),
+    );
+    return Object.fromEntries(rows.map((row) => [row.what, row.n]));
+  }
+
+  /** Says to the directory what a room says of something that happened in it. */
+  function say(event: unknown): Promise<Response> {
+    return directoryStub().fetch(`https://directory.internal${COUNT_PATH}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-partykit-room": DIRECTORY_NAME },
+      body: JSON.stringify(event),
+    });
+  }
+
+  /** Asks for the numbers with `key`, and gives what is answered: the days, or `null`. */
+  async function numbers(inbox: Inbox<Answer>, key: string = KEY): Promise<DayNumbers[] | null | undefined> {
+    const request: DirectoryRequest = { type: "numbers", key };
+    inbox.sendRaw(JSON.stringify(request));
+    return (await answerTo(inbox, "numbers")).days;
+  }
+
+  it("counts each coming to the lobby as a visit, and the comings of one address as one person", async () => {
+    await countFromNothing();
+
+    const first = await watch("203.0.113.7");
+    await first.next();
+    const again = await watch("203.0.113.7");
+    await again.next();
+    const other = await watch("203.0.113.8");
+    await other.next();
+
+    await vi.waitFor(async () => expect(await counted()).toMatchObject({ visits: 3, people: 2, peak: 2 }));
+    const hours = Object.entries(await counted()).filter(([what]) => what.startsWith("hour:"));
+    expect(hours).toHaveLength(1);
+    expect(hours[0][1]).toBe(3);
+    for (const viewer of [first, again, other]) viewer.close();
+  });
+
+  it("keeps what an address was counted as for its day only", async () => {
+    await countFromNothing();
+    const yesterday = dayOf(Date.now(), numbersConfig) - 1;
+    await runInDurableObject(directoryStub(), (_object, state) => {
+      state.storage.sql.exec("INSERT INTO seen (day, key) VALUES (?, ?)", yesterday, "what an address was counted as");
+    });
+
+    const viewer = await watch("203.0.113.9");
+    await viewer.next();
+
+    await vi.waitFor(async () => expect(await counted()).toMatchObject({ visits: 1 }));
+    const days = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ day: number }>("SELECT day FROM seen").toArray());
+    expect(days).toEqual([{ day: yesterday + 1 }]);
+    viewer.close();
+  });
+
+  it("adds up what rooms say happened in them", async () => {
+    await countFromNothing();
+
+    for (const event of [
+      { type: "made", game: "under-thirteen", listed: true },
+      { type: "started", game: "under-thirteen", players: 4 },
+      { type: "started", game: "under-thirteen", players: 2 },
+      { type: "ended", game: "under-thirteen", minutes: 11 },
+      { type: "emptied", game: "under-thirteen", listed: true, games: 2, most: 4 },
+      { type: "made", game: "count-cubes", listed: false },
+      { type: "emptied", game: "count-cubes", listed: false, games: 0, most: 1 },
+    ]) {
+      expect((await say(event)).status).toBe(204);
+    }
+
+    expect(await counted()).toEqual({
+      made: 2, "made-listed": 1, started: 2, "started:under-thirteen": 2, "players:under-thirteen": 6,
+      ended: 1, "ended:under-thirteen": 1, "timed:under-thirteen": 1, "minutes:under-thirteen": 11, emptied: 2, alone: 1,
+    });
+  });
+
+  it("counts nothing of what is not something a room says", async () => {
+    await countFromNothing();
+
+    expect((await say({ type: "made", game: "chess", listed: true })).status).toBe(400);
+    expect((await say({ type: "started", game: "count-cubes", players: -3 })).status).toBe(400);
+    expect((await say("made")).status).toBe(400);
+
+    expect(await counted()).toEqual({});
+  });
+
+  it("is told by a room that it was made, and that it stood empty with nobody else having come", async () => {
+    await countFromNothing();
+    const player = await open("NUMBR", { player: 70, create: true, listed: true });
+    await player.next();
+
+    player.send({ type: "leave" });
+    await player.closed;
+
+    await vi.waitFor(async () => expect(await counted()).toMatchObject({ made: 1, "made-listed": 1, emptied: 1, alone: 1 }));
+  });
+
+  it("gives the numbers by the day, the latest first, to whoever has the key and to nobody else", async () => {
+    await withKey();
+    await countFromNothing();
+    const today = dayOf(Date.now(), numbersConfig);
+    await runInDurableObject(directoryStub(), (_object, state) => {
+      state.storage.sql.exec("INSERT INTO numbers (day, what, n) VALUES (?, 'visits', 7), (?, 'made', 2)", today - 1, today - 1);
+    });
+    await say({ type: "started", game: "count-cubes", players: 1 });
+    const reader = await writer();
+
+    expect(await numbers(reader, "not the key")).toBeNull();
+    const days = await numbers(reader);
+
+    expect(days?.map((day) => day.day)).toEqual([today, today - 1]);
+    expect(days?.[0].counts).toMatchObject({ started: 1, "started:count-cubes": 1, "players:count-cubes": 1 });
+    expect(days?.[1].counts).toEqual({ visits: 7, made: 2 });
+    reader.close();
+  });
+
+  it("gives nobody the numbers where no key is set", async () => {
+    await withKey(null);
+    const reader = await writer();
+
+    expect(await numbers(reader)).toBeNull();
+    reader.close();
+  });
+
+  it("counts a wrong key for the numbers with the wrong keys for the inbox, and opens neither after too many", async () => {
+    await withKey();
+    const reader = await writer();
+
+    for (let n = 0; n < directoryConfig.feedback.readLimit.burst; n++) expect(await numbers(reader, `guess ${n}`)).toBeNull();
+
+    expect(await numbers(reader)).toBeNull();
+    expect(await read(reader)).toBeNull();
+    reader.close();
+  });
+
+  it("keeps no more days than are set, and throws the rest away when the numbers are read", async () => {
+    await withKey();
+    await countFromNothing();
+    const today = dayOf(Date.now(), numbersConfig);
+    const [last, gone] = [today - numbersConfig.keepDays + 1, today - numbersConfig.keepDays];
+    await runInDurableObject(directoryStub(), (_object, state) => {
+      state.storage.sql.exec("INSERT INTO numbers (day, what, n) VALUES (?, 'made', 1), (?, 'made', 1)", last, gone);
+    });
+    const reader = await writer();
+
+    const days = await numbers(reader);
+
+    expect(days?.map((day) => day.day)).not.toContain(gone);
+    expect(days?.map((day) => day.day)).toContain(last);
+    const kept = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec("SELECT day FROM numbers WHERE day = ?", gone).toArray());
+    expect(kept).toEqual([]);
+    reader.close();
   });
 });

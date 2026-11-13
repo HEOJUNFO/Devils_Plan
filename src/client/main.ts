@@ -39,6 +39,7 @@ import {
   parseDirectoryMessage,
   parseFeedbackAnswer,
   parseInboxAnswer,
+  parseNumbersAnswer,
   parseServerMessage,
   parseWatchingNote,
   type ClientMessage,
@@ -54,6 +55,8 @@ import { QUICK_WORDS } from "../shared/chat";
 import chatConfig from "../shared/chat-config.json";
 import directoryConfig from "../shared/directory-config.json";
 import meetConfig from "../shared/meet-config.json";
+import numbersConfig from "../shared/numbers-config.json";
+import { readDay, type DayNumbers } from "../shared/numbers";
 import { meetNear } from "../shared/meet";
 import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
@@ -82,6 +85,8 @@ const KEYBOARD_MARGIN = 8;
 const wantBots = new URLSearchParams(location.search).get("bots") === "1";
 /** `?inbox` opens the lobby with the sheet on which whoever makes the game reads what players wrote about it, with a key. */
 const wantInbox = new URLSearchParams(location.search).has("inbox");
+/** `?numbers` opens it with the same sheet and the same key, to read the site's numbers by the day instead (`src/shared/numbers.ts`). */
+const wantNumbers = new URLSearchParams(location.search).has("numbers");
 
 /**
  * `?fakemic=1`, on a development host only, puts a tone in place of the
@@ -273,7 +278,7 @@ function writeWords(): void {
     ["record-title", WORDS.record.title],
     ["record-hint", WORDS.record.hint],
     ["record-close", WORDS.record.close],
-    ["inbox-title", WORDS.inbox.title],
+    ["inbox-title", wantNumbers ? WORDS.numbers.title : WORDS.inbox.title],
     ["inbox-open", WORDS.inbox.open],
     ["inbox-close", WORDS.inbox.close],
     ["by-code", WORDS.entry.byCode],
@@ -773,7 +778,7 @@ function showLobbyLinks(shown: boolean): void {
   if (!shown) showFeedback(false);
   if (!shown) showRecord(false);
   if (!shown) showInbox(false);
-  else if (wantInbox && !inboxShown) {
+  else if ((wantInbox || wantNumbers) && !inboxShown) {
     inboxShown = true;
     showInbox(true);
   }
@@ -1166,6 +1171,8 @@ function watchRooms(): void {
     if (answer !== null) return feedbackAnswered(answer.sent);
     const inbox = parseInboxAnswer(event.data);
     if (inbox !== null) return inboxAnswered(inbox.words);
+    const counted = parseNumbersAnswer(event.data);
+    if (counted !== null) return numbersAnswered(counted.days);
     const note = parseWatchingNote(event.data);
     if (note !== null) {
       watching = note;
@@ -1331,7 +1338,11 @@ function sayInbox(text: string, failed: boolean, asking = false): void {
 function askInbox(drop?: number): void {
   if (inboxWait !== null || inboxKey.value === "") return;
   if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return sayInbox(WORDS.inbox.offline, true);
-  const request: DirectoryRequest = drop === undefined ? { type: "inbox", key: inboxKey.value } : { type: "inbox", key: inboxKey.value, drop };
+  const request: DirectoryRequest = wantNumbers
+    ? { type: "numbers", key: inboxKey.value }
+    : drop === undefined
+      ? { type: "inbox", key: inboxKey.value }
+      : { type: "inbox", key: inboxKey.value, drop };
   listSocket.send(JSON.stringify(request));
   sayInbox("", false, true);
   inboxWait = setTimeout(() => {
@@ -1371,6 +1382,44 @@ function inboxAnswered(words: StoredWord[] | null): void {
         drop.textContent = WORDS.inbox.dropConfirm;
       });
       head.append(drop);
+      row.append(head, text);
+      return row;
+    }),
+  );
+}
+
+/**
+ * The directory answered with the site's numbers: a day to a row, the latest
+ * first, each said in sentences; or that they were not given. A day is the
+ * day where the numbers are counted (`numbers-config.json`), not the
+ * reader's.
+ */
+function numbersAnswered(days: DayNumbers[] | null): void {
+  if (inboxWait !== null) clearTimeout(inboxWait);
+  inboxWait = null;
+  if (inboxSheet.hidden) return;
+  if (days === null) {
+    inboxList.replaceChildren();
+    return sayInbox(WORDS.inbox.refused, true);
+  }
+  const offset = numbersConfig.utcOffsetMinutes;
+  const zone = `UTC${offset < 0 ? "-" : "+"}${Math.floor(Math.abs(offset) / 60)}${offset % 60 === 0 ? "" : `:${String(Math.abs(offset) % 60).padStart(2, "0")}`}`;
+  sayInbox(days.length === 0 ? WORDS.numbers.none : WORDS.numbers.count(days.length, zone), false);
+  inboxList.replaceChildren(
+    ...days.map(readDay).map((day) => {
+      const row = document.createElement("li");
+      const head = document.createElement("p");
+      head.className = "dim";
+      head.textContent = WORDS.numbers.day(day.date, WORDS.numbers.weekdays[day.weekday]);
+      const text = document.createElement("p");
+      text.className = "word";
+      text.textContent = [
+        WORDS.numbers.lobby(day.visits, day.people, day.peak),
+        `${WORDS.numbers.rooms(day.made, day.listed)} · ${WORDS.numbers.games(day.started, day.ended)}`,
+        WORDS.numbers.left(day.alone, day.unplayed),
+        ...day.games.map((each) => WORDS.numbers.game(GAMES[each.game].title[lang], each.started, each.ended, each.players, each.minutes)),
+        ...(day.hours.length === 0 ? [] : [WORDS.numbers.hours(day.hours.map((each) => WORDS.numbers.hour(each.hour, each.visits)).join(" · "))]),
+      ].join("\n");
       row.append(head, text);
       return row;
     }),
