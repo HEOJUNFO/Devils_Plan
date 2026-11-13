@@ -898,7 +898,7 @@ button.choice[aria-pressed="true"] {
   color: var(--dim);
 }
 
-/* A line said to one player alone: quieter than one said to the room, its two names as they are. */
+/* A line said aside, to one player or a few: quieter than one said to the room, its names as they are. */
 #chat-log .aside {
   color: var(--bone-dim);
   font-style: italic;
@@ -1383,7 +1383,7 @@ button.choice[aria-pressed="true"] {
   top: 40px;
 }
 
-/* Who the next line is said to: small beside the box, a name cut short where it is long; lit while it is one player. */
+/* Who the next line is said to: small beside the box, a name cut short where it is long; lit while it is not everyone. */
 #chat-to {
   flex: none;
   overflow: hidden;

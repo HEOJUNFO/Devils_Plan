@@ -4,6 +4,7 @@
  * Shared by both sides so a change to the wire format is a type error on the
  * side that was not updated.
  */
+import { parseTo, type Hearer } from "./aside";
 import { isQuickWord, type QuickWord } from "./chat";
 import type { RoomCounts, RoomListing, Watching } from "./directory";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
@@ -21,6 +22,7 @@ import { parseWanting, type Wanting } from "./want";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
 import { parseRtcSignal, type RtcSignal, type VoiceConfig, type VoiceMember } from "./voice";
+import roomConfig from "./room-config.json";
 import voiceConfigJson from "./voice-config.json";
 
 const voiceConfig: VoiceConfig = voiceConfigJson;
@@ -76,6 +78,9 @@ export const MAX_CLIENT_MESSAGE_LENGTH = 8192;
 /** The most lines a message pointing a player out is read with (`flag`): the room takes fewer (`chat-config.json`). */
 const FLAG_LINES_MOST = 8;
 
+/** The most players one line can be said to aside: a full room but the speaker. */
+const CHAT_TO_MOST = roomConfig.maxPlayers - 1;
+
 /** Server → client. */
 export type ServerMessage =
   /**
@@ -120,12 +125,19 @@ export type ServerMessage =
       text: string;
       at: number;
       /**
-       * Where the line was said to one player only: that player's slot and
-       * nickname. Such a line is sent to the two of them and to nobody
-       * else; a line said to everyone has neither.
+       * Where the line was said aside (`aside.ts`), to one player or to a
+       * few: the slot and nickname of the first it went to. Such a line is
+       * sent to the speaker and to those it names, and to nobody else; a
+       * line said to everyone has neither.
        */
       to?: number;
       toNick?: string;
+      /**
+       * The others it went to, where it went to more than one, lowest slot
+       * first. Apart from `to` so that a page of an earlier build, which
+       * knows a line said to one player, still shows it as said aside.
+       */
+      toMore?: Hearer[];
     }
   /** One of the words said with one press (`QUICK_WORDS`), passed on as a line is: which word, for each page to put in its own language. */
   | { type: "quick"; room: string; from: number; nick: string; word: QuickWord; at: number }
@@ -330,8 +342,8 @@ export type ClientMessage =
   /** The host's page answers a `host-check`: its player is there. */
   | { type: "here" }
   /** Say a line to everyone in the room. */
-  /** A line for the room, or with `to` for the player in that slot alone. */
-  | { type: "chat"; text: string; to?: number }
+  /** A line for the room, or with `to` for the players in those slots and nobody else (`aside.ts`). */
+  | { type: "chat"; text: string; to?: number[] }
   /** Say one of the words that take one press (`QUICK_WORDS`) to everyone in the room. It counts as a line does. */
   | { type: "quick"; word: QuickWord }
   /**
@@ -407,8 +419,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "chat") {
     if (typeof data.text !== "string") return null;
     if (data.to === undefined) return { type: "chat", text: data.text };
-    // a line meant for one player and addressed to nobody is not said to everyone instead
-    return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "chat", text: data.text, to: data.to } : null;
+    // a line meant for some and addressed to nobody is not said to everyone instead
+    const to = parseTo(data.to, CHAT_TO_MOST);
+    return to === null ? null : { type: "chat", text: data.text, to };
   }
   if (data.type === "quick") {
     return isQuickWord(data.word) ? { type: "quick", word: data.word } : null;

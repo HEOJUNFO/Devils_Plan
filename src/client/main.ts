@@ -54,6 +54,7 @@ import { liftFor, placeFrame } from "../shared/frame";
 import { INVITED_GAME_KEY, invitePath } from "../shared/site/paths";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptRoom } from "../shared/resume";
+import { hearersOf, namesOf, teammatesOf, toggled, type ChatTo, type Hearer } from "../shared/aside";
 import { QUICK_WORDS } from "../shared/chat";
 import { suggestNick, type NickWords } from "../shared/nick";
 import nickWordsJson from "../shared/nick-config.json";
@@ -539,7 +540,7 @@ let pingTimes: number[] = [];
 /** Whether the game on show is still being played. */
 let gameOn = false;
 /** The slot of the one player the chat's next line is said to, or `null` when it is said to everyone. */
-let chatTo: number | null = null;
+let chatTo: ChatTo = { kind: "all" };
 /** Whether a press of the button that forgets the player's record does so: the press before it only asked. */
 let clearArmed = false;
 /** The other players whose lines this player covered on their own screen, in the room the page is in: each by slot and name (`personKey`). Kept for the tab, by room. */
@@ -672,8 +673,13 @@ const chat = createChat(
     storagePrefix: storageKey("chat"),
     labels: { send: WORDS.chat.send, quick: WORDS.chat.quickOpen },
     quickAsked: () => showQuick(quickSheet.hidden === true),
-    send: (text) => send(chatTo === null ? { type: "chat", text } : { type: "chat", text, to: chatTo }),
-    to: () => toNick(),
+    send: (text) => {
+      const people = toPeopleNow();
+      if (people === null) return send({ type: "chat", text });
+      // a line meant for some is never said to everyone because they have gone
+      return people.length > 0 && send({ type: "chat", text, to: people.map((person) => person.slot) });
+    },
+    to: () => toNames(),
     sendQuick: (word) => send({ type: "quick", word }),
     quickOf: (word) => WORDS.chat.quick[word],
     me: () => currentView?.players.find((p) => p.slot === currentView?.you)?.nick ?? "",
@@ -2146,32 +2152,50 @@ function showQuick(shown: boolean): void {
   quickWords.querySelector("button")?.focus({ preventScroll: true });
 }
 
-/** The nickname of the one player the chat's next line is said to; `null` when it is said to everyone. */
-function toNick(): string | null {
-  return chatTo === null ? null : (currentView?.players.find((p) => p.slot === chatTo)?.nick ?? null);
+/** Whom the chat's next line is said to, of those in the room as it stands; `null` when it is said to everyone. */
+function toPeopleNow(): Hearer[] | null {
+  return currentView === null ? null : hearersOf(chatTo, currentView.players, currentView.you);
+}
+
+/** Their names as the chat puts them after the speaker's; `null` when the line is said to everyone. */
+function toNames(): string | null {
+  const people = toPeopleNow();
+  return people === null || people.length === 0 ? null : namesOf(people.map((person) => person.nick));
 }
 
 /**
- * Says on the button beside the chat's box who the next line is said to, and
- * in the box itself while that is one player. A player spoken to who is no
- * longer in the room is no longer spoken to, and the chat says so.
+ * Says on the button beside the chat's box whom the next line is said to,
+ * and in the box itself while that is not everyone. Players spoken to who
+ * are no longer in the room are no longer spoken to; once none of them is
+ * left (or the team is no more) the next line is for everyone, and the chat
+ * says so.
  */
 function renderTo(): void {
-  if (chatTo !== null && toNick() === null) {
-    chatTo = null;
+  let people = toPeopleNow();
+  if (people !== null && people.length === 0) {
+    chatTo = { kind: "all" };
+    people = null;
     if (currentView !== null) chat.note({ kind: "to-left" });
   }
-  const nick = toNick();
-  chatToButton.textContent = nick ?? WORDS.chat.toAll;
-  chatToButton.classList.toggle("one", nick !== null);
-  chatToButton.setAttribute("aria-label", WORDS.chat.toLabel(nick));
-  chatToButton.title = WORDS.chat.toLabel(nick);
-  chatInput.placeholder = nick === null ? WORDS.chat.say : WORDS.chat.toHint(nick);
+  // whoever has gone is forgotten, so that nobody who takes their seat later is spoken to in their place
+  if (people !== null && chatTo.kind === "some") chatTo = { kind: "some", people };
+  const names = people === null ? null : namesOf(people.map((person) => person.nick));
+  const who = names === null ? null : chatTo.kind === "team" ? WORDS.chat.toMyTeam : names;
+  chatToButton.textContent =
+    people === null ? WORDS.chat.toAll : chatTo.kind === "team" ? WORDS.chat.toTeam : people.length === 1 ? (people[0]?.nick ?? "") : WORDS.chat.toSome(people.length);
+  chatToButton.classList.toggle("one", people !== null);
+  chatToButton.setAttribute("aria-label", WORDS.chat.toLabel(who));
+  chatToButton.title = WORDS.chat.toLabel(chatTo.kind === "team" && names !== null ? `${WORDS.chat.toMyTeam} (${names})` : who);
+  chatInput.placeholder = who === null ? WORDS.chat.say : chatTo.kind === "team" ? WORDS.chat.toTeamHint : WORDS.chat.toHint(who);
 }
 
 /**
- * Shows the people the chat's next line can be said to, everyone first, or
- * puts them away. The keys go to the first of them, and back to the box.
+ * Shows the people the chat's next line can be said to, or puts them away:
+ * everyone first, then the reader's team where they have one with someone
+ * else in it, then each player. A press of everyone or of the team is the
+ * whole answer and puts the sheet away; a press of a player adds them to
+ * those spoken to or takes them out, and the sheet stays for the next. The
+ * keys go to the first of them, and back to the box.
  */
 function showTo(shown: boolean): void {
   if (!shown || currentView === null) {
@@ -2186,27 +2210,45 @@ function showTo(shown: boolean): void {
   showQuick(false);
   showWho(null);
   const view = currentView;
-  const pick = (slot: number | null, label: string): HTMLButtonElement => {
+  /** Each button with whether it is pressed as things stand, so that a press of one shows on the others. */
+  const marks: (() => void)[] = [];
+  const pick = (label: string, pressed: () => boolean, press: () => void): HTMLButtonElement => {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
-    button.setAttribute("aria-pressed", String(slot === chatTo));
-    if (slot === chatTo) button.className = "primary";
-    button.addEventListener("click", () => {
-      chatTo = slot;
-      renderTo();
-      showTo(false);
+    marks.push(() => {
+      button.setAttribute("aria-pressed", String(pressed()));
+      button.classList.toggle("primary", pressed());
     });
+    button.addEventListener("click", press);
     return button;
   };
-  // a player whose connection is gone would not read it, and the room would refuse the line
+  const whole = (to: ChatTo): (() => void) => () => {
+    chatTo = to;
+    renderTo();
+    showTo(false);
+  };
+  // a player whose connection is gone would not read it, and the room would leave them out
   const others = view.players.filter((p) => p.slot !== view.you && p.connected);
   // two people of one name are told apart by their seats
   const twice = (nick: string): boolean => view.players.filter((p) => p.nick === nick).length > 1;
+  const spoken = (slot: number): boolean => toPeopleNow()?.some((person) => person.slot === slot) === true;
   toPeople.replaceChildren(
-    pick(null, WORDS.chat.toEveryone),
-    ...others.map((p) => pick(p.slot, twice(p.nick) ? `${p.nick} (${p.slot + 1})` : p.nick)),
+    pick(WORDS.chat.toEveryone, () => chatTo.kind === "all", whole({ kind: "all" })),
+    ...(teammatesOf(view.players, view.you).length > 0 ? [pick(WORDS.chat.toMyTeam, () => chatTo.kind === "team", whole({ kind: "team" }))] : []),
+    ...others.map((p) =>
+      pick(
+        twice(p.nick) ? `${p.nick} (${p.slot + 1})` : p.nick,
+        () => spoken(p.slot),
+        () => {
+          chatTo = toggled(toPeopleNow() ?? [], p);
+          renderTo();
+          for (const mark of marks) mark();
+        },
+      ),
+    ),
   );
+  for (const mark of marks) mark();
   // bots hold no seat a line can be sent to, so a room of one person and bots has nobody to pick
   toHelp.textContent = others.length === 0 ? WORDS.chat.toAlone : WORDS.chat.toHelp;
   toSheet.hidden = false;
@@ -2358,8 +2400,8 @@ function noteInput(): void {
 /** The room before a game: who is here, the code to share, the chat, and the start. */
 function renderRoom(code: string, view: LobbyView): void {
   if (currentCode !== code) {
-    // another room: whoever was spoken to alone was in the one before
-    chatTo = null;
+    // another room: whoever was spoken to aside was in the one before
+    chatTo = { kind: "all" };
     openHidden(code);
     chat.open(code);
     // once for a room: a page loaded again has the line among those it kept
@@ -2715,8 +2757,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       if (message.reason === "chat-too-fast") {
         chat.note({ kind: "too-fast" });
       } else if (message.reason === "chat-nobody") {
-        // the one spoken to went before the line reached the room: the line is back in the box, and is for everyone now
-        chatTo = null;
+        // those spoken to went before the line reached the room: the line is back in the box, and is for everyone now
+        chatTo = { kind: "all" };
         chat.note({ kind: "to-gone" });
         renderTo();
       } else if (message.reason === "voice-not-here") {
@@ -2765,7 +2807,11 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       const mine = currentView !== null && message.from === currentView.you;
       // one said with a press is put in this page's language here: the room said only which
       const text = message.type === "chat" ? message.text : WORDS.chat.quick[message.word];
-      if (message.type === "chat") chat.said(message.nick, text, mine, message.toNick, message.from);
+      if (message.type === "chat") {
+        // said aside: everyone it went to, as the room names them
+        const to = message.toNick === undefined ? undefined : namesOf([message.toNick, ...(message.toMore ?? []).map((person) => person.nick)]);
+        chat.said(message.nick, text, mine, to, message.from);
+      }
       else chat.saidQuick(message.nick, message.word, mine, message.from);
       // someone whose lines this player covered calls nobody back to the tab and says nothing over their seat
       if (!mine && !hiddenPeople.has(personKey(message.from, message.nick))) {

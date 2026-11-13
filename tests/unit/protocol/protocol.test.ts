@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { QUICK_WORDS } from "../../../src/shared/chat";
 import { DEFAULT_GAME } from "../../../src/shared/games";
 import { gameReader } from "../../../src/shared/parts";
+import roomConfig from "../../../src/shared/room-config.json";
 import {
   MAX_CLIENT_MESSAGE_LENGTH,
   MAX_DIRECTORY_REQUEST_LENGTH,
@@ -118,13 +119,19 @@ describe("parseClientMessage", () => {
     }
   });
 
-  it("reads a line said to one player only: who by their slot", () => {
-    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 3 }))).toEqual({ type: "chat", text: "psst", to: 3 });
-    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 0 }))).toEqual({ type: "chat", text: "psst", to: 0 });
+  it("reads a line said to one player only, as a page of an earlier build sends it: a list of the one slot", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 3 }))).toEqual({ type: "chat", text: "psst", to: [3] });
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 0 }))).toEqual({ type: "chat", text: "psst", to: [0] });
   });
 
-  it("rejects a line said to what is no slot, rather than say it to everyone", () => {
-    for (const to of [-1, 1.5, "2", null, {}]) expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to }))).toBeNull();
+  it("reads a line said to a few players: their slots, each once and lowest first", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: [4, 1, 4] }))).toEqual({ type: "chat", text: "psst", to: [1, 4] });
+  });
+
+  it("rejects a line said to what is no slot, to nobody, or to more than a room holds, rather than say it to everyone", () => {
+    const everySeat = Array.from({ length: roomConfig.maxPlayers }, (_none, slot) => slot);
+    for (const to of [-1, 1.5, "2", null, {}, [], [1, "2"], everySeat]) expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: everySeat.slice(1) }))).toEqual({ type: "chat", text: "psst", to: everySeat.slice(1) });
   });
 
   it("rejects a chat line that is not text", () => {

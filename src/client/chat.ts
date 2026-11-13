@@ -26,7 +26,7 @@ export type ChatNote =
   | { kind: "game"; game: string }
   /** A line could not be sent, or was sent too soon after the last; the voice chat was joined, joined without a microphone, or is not to be had here. */
   | { kind: "not-sent" | "too-fast" | "voice-joined" | "voice-listen-only" | "voice-not-here" }
-  /** The one player a line was said to is not in the room: the line was not passed on (`to-gone`), or they left while they were the one being spoken to (`to-left`). */
+  /** Nobody a line was said aside to is in the room to read it: the line was not passed on (`to-gone`); or those being spoken to aside have all gone, or the team has (`to-left`). */
   | { kind: "to-gone" | "to-left" }
   /** The room is for a game this player has not played here: where its rules are. */
   | { kind: "first-time" }
@@ -55,7 +55,7 @@ interface Line {
   text?: string;
   /** Said with one press: which of the words, put in the page's language when the line is shown. Such a line has no `text`. */
   quick?: QuickWord;
-  /** Said to one player alone: that player's nickname. Only the two of them have the line. */
+  /** Said aside (`src/shared/aside.ts`): the names of those it was said to, as the chat puts them after the speaker's. Only they and the speaker have the line. */
   to?: string;
   note?: ChatNote;
 }
@@ -127,7 +127,7 @@ export function createChat(
     quickAsked(): void;
     /** Sends a line; says whether it went. */
     send(text: string): boolean;
-    /** The nickname of the one player the next line is said to, or `null` when it is said to everyone. */
+    /** The names of those the next line is said aside to, as they are put after the speaker's, or `null` when it is said to everyone. */
     to(): string | null;
     /** Sends one of the words that take one press; says whether it went. */
     sendQuick(word: QuickWord): boolean;

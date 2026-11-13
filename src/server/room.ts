@@ -1,5 +1,6 @@
 import { Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import { BUILD } from "../shared/build";
+import { heardBy } from "../shared/aside";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace, type QuickWord } from "../shared/chat";
 import chatConfigJson from "../shared/chat-config.json";
 import type { Flag, FlagConfig } from "../shared/feedback";
@@ -662,14 +663,16 @@ export class GameRoom extends Server<Env> {
 
   /**
    * Passes a line on to everyone in the room, the speaker included; or,
-   * said to the player in the slot `to`, to that player and the speaker and
-   * nobody else. Nothing is stored: chat costs the room no writes, and a
-   * line is gone once sent. A line to one player counts with the rest
-   * against how fast its speaker may talk. In a room on the list, where
-   * whoever reads it may be a stranger, the words of `mask-config.json` are
-   * covered; in a room off it the line goes as it was said.
+   * said aside to the players in the slots `to` (`aside.ts`), to those of
+   * them who are here to read it and the speaker and nobody else, naming
+   * whom it went to. Nothing is stored: chat costs the room no writes, and a
+   * line is gone once sent. A line said aside counts with the rest against
+   * how fast its speaker may talk. In a room on the list, where whoever
+   * reads it may be a stranger, the words of `mask-config.json` are covered,
+   * in a line said aside as in any other; in a room off it the line goes as
+   * it was said.
    */
-  private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string, to?: number): void {
+  private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string, to?: number[]): void {
     const player = this.lobby?.players.find((p) => p.slot === slot);
     if (!player) return;
     const clean = normalizeChat(raw, chatConfig);
@@ -685,14 +688,25 @@ export class GameRoom extends Server<Env> {
       for (const [member] of this.members()) member.send(data);
       return;
     }
-    // said to one player: someone who has gone, or the speaker, is nobody to say it to;
-    // nor is a player whose seat is kept while no connection of theirs is here to read it
-    const other = to === slot ? undefined : this.lobby?.players.find((p) => p.slot === to);
+    // said aside: someone who has gone, or the speaker, is nobody to say it to; nor is a
+    // player whose seat is kept while no connection of theirs is here to read it
     const members = [...this.members()];
-    if (other === undefined || !members.some(([, seat]) => seat.slot === to)) return this.refuse(connection, "chat-nobody");
-    const message: ServerMessage = { type: "chat", room: this.name, from: slot, nick: player.nick, text, at: now, to, toNick: other.nick };
+    const [first, ...more] = heardBy(to, slot, this.lobby?.players ?? [], (other) => members.some(([, seat]) => seat.slot === other));
+    if (first === undefined) return this.refuse(connection, "chat-nobody");
+    const message: ServerMessage = {
+      type: "chat",
+      room: this.name,
+      from: slot,
+      nick: player.nick,
+      text,
+      at: now,
+      to: first.slot,
+      toNick: first.nick,
+      ...(more.length > 0 ? { toMore: more } : {}),
+    };
     const data = JSON.stringify(message);
-    for (const [member, seat] of members) if (seat.slot === slot || seat.slot === to) member.send(data);
+    const reads = new Set([slot, first.slot, ...more.map((other) => other.slot)]);
+    for (const [member, seat] of members) if (reads.has(seat.slot)) member.send(data);
   }
 
   /**
