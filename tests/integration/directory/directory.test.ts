@@ -1174,10 +1174,11 @@ describe("RoomDirectory: the numbers of the day", () => {
     await keyAsItIs();
   });
 
-  /** Starts the directory with nothing counted and no address remembered. */
+  /** Starts the directory with nothing counted and no address remembered, in what it keeps and in what it has in mind of what it wrote. */
   async function countFromNothing(): Promise<void> {
-    await runInDurableObject(directoryStub(), (_object, state) => {
+    await runInDurableObject(directoryStub(), (object, state) => {
       for (const table of ["numbers", "seen"]) state.storage.sql.exec(`DELETE FROM ${table}`);
+      (object as unknown as { mostKept: Map<string, unknown> }).mostKept.clear();
     });
   }
 
@@ -1335,6 +1336,52 @@ describe("RoomDirectory: the numbers of the day", () => {
     const kept = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec("SELECT day FROM numbers WHERE day = ?", gone).toArray());
     expect(kept).toEqual([]);
     reader.close();
+  });
+
+  it("shows the list to someone who comes while nothing can be counted", async () => {
+    // what a day's allowance of writes used up looks like from inside: every write to these tables is refused
+    await runInDurableObject(directoryStub(), (_object, state) => {
+      state.storage.sql.exec("ALTER TABLE numbers RENAME TO numbers_away");
+      state.storage.sql.exec("ALTER TABLE seen RENAME TO seen_away");
+    });
+    try {
+      const viewer = await watch("203.0.113.61");
+
+      expect(await viewer.next()).toMatchObject({ type: "rooms" });
+      // and goes on being told: the connection was not ended for it
+      const request: DirectoryRequest = { type: "show", game: null };
+      viewer.sendRaw(JSON.stringify(request));
+      expect(await viewer.next()).toMatchObject({ type: "rooms" });
+      viewer.close();
+    } finally {
+      await runInDurableObject(directoryStub(), (_object, state) => {
+        state.storage.sql.exec("ALTER TABLE numbers_away RENAME TO numbers");
+        state.storage.sql.exec("ALTER TABLE seen_away RENAME TO seen");
+      });
+    }
+  });
+
+  it("writes the most looking at once only when there are more than before", async () => {
+    await countFromNothing();
+    const first = await watch("203.0.113.62");
+    await first.next();
+    await vi.waitFor(async () => expect(await counted()).toMatchObject({ peak: 1 }));
+    // a mark where the number is kept: whatever writes it again wipes the mark
+    await runInDurableObject(directoryStub(), (_object, state) => {
+      state.storage.sql.exec("UPDATE numbers SET n = 0 WHERE what = 'peak'");
+    });
+
+    // the same address again: no more people are looking than before
+    const again = await watch("203.0.113.62");
+    await again.next();
+    await vi.waitFor(async () => expect(await counted()).toMatchObject({ visits: 2 }));
+    expect((await counted()).peak).toBe(0);
+
+    // another address: one more than before, and that is written
+    const other = await watch("203.0.113.63");
+    await other.next();
+    await vi.waitFor(async () => expect(await counted()).toMatchObject({ visits: 3, peak: 2 }));
+    for (const viewer of [first, again, other]) viewer.close();
   });
 });
 

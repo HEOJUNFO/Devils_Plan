@@ -57,6 +57,8 @@ export const FLAG_PATH = "/flag";
 const ADDRESS_MAX_LENGTH = 45;
 /** How long a word about the game counts against the day's limit, in ms. */
 const DAY_MS = 86_400_000;
+/** How often at most the log is told that the numbers could not be written, in ms: while they cannot, every visit fails alike. */
+const NOT_COUNTED_SAY_EVERY_MS = 60_000;
 
 /**
  * What is kept of an address that made a room: a digest of what it is
@@ -133,6 +135,10 @@ export class RoomDirectory extends Server<Env> {
   private readonly showPace = new Map<string, Pace>();
   /** What the viewers were last told of how many they are, as it was sent; nothing after the directory has slept, when it is worked out from who was there (`tellWatching`). */
   private watchingTold: string | null = null;
+  /** The most of each kind last written to the day's numbers, and for which day: a most that has not grown is not written again (`count`). Forgotten in sleep. */
+  private readonly mostKept = new Map<string, { day: number; n: number }>();
+  /** When the log was last told that something could not be counted, in ms since the epoch. */
+  private notCountedSaidAt = 0;
   /** What the viewers were last told of how many hands are up, as it was sent; nothing after the directory has slept, when everyone is told again. */
   private wantingTold: string | null = null;
   /** How many words about the game each viewer has sent lately, by connection id. Forgotten in sleep: the day's limit is kept. */
@@ -465,16 +471,37 @@ export class RoomDirectory extends Server<Env> {
   /** Adds `counts` to the numbers of the day `now` is on. */
   private count(counts: readonly Count[], now: number): void {
     const day = dayOf(now, numbers);
-    for (const { what, n, most } of counts) {
-      this.ctx.storage.sql.exec(
-        most === true
-          ? "INSERT INTO numbers (day, what, n) VALUES (?, ?, ?) ON CONFLICT(day, what) DO UPDATE SET n = MAX(n, excluded.n)"
-          : "INSERT INTO numbers (day, what, n) VALUES (?, ?, ?) ON CONFLICT(day, what) DO UPDATE SET n = n + excluded.n",
-        day,
-        what,
-        n,
-      );
+    try {
+      for (const { what, n, most } of counts) {
+        if (most === true) {
+          // A most that is no more than the one last written here is the same row written again: left alone.
+          // What was last written is forgotten when the directory sleeps, and the next is then written once.
+          const kept = this.mostKept.get(what);
+          if (kept !== undefined && kept.day === day && n <= kept.n) continue;
+        }
+        this.ctx.storage.sql.exec(
+          most === true
+            ? "INSERT INTO numbers (day, what, n) VALUES (?, ?, ?) ON CONFLICT(day, what) DO UPDATE SET n = MAX(n, excluded.n)"
+            : "INSERT INTO numbers (day, what, n) VALUES (?, ?, ?) ON CONFLICT(day, what) DO UPDATE SET n = n + excluded.n",
+          day,
+          what,
+          n,
+        );
+        if (most === true) this.mostKept.set(what, { day, n });
+      }
+    } catch (error) {
+      // The numbers are for whoever runs the site: no visitor is kept from the list, and no room from its
+      // answer, because one could not be written. What was not written is lost.
+      this.sayNotCounted(error);
     }
+  }
+
+  /** Says in the log that something could not be counted: once for a run of failures, not at every one. */
+  private sayNotCounted(error: unknown): void {
+    const now = Date.now();
+    if (now - this.notCountedSaidAt < NOT_COUNTED_SAY_EVERY_MS) return;
+    this.notCountedSaidAt = now;
+    console.error("the directory could not count", error);
   }
 
   /**
@@ -487,9 +514,16 @@ export class RoomDirectory extends Server<Env> {
   private countVisit(key: string | null, now: number): void {
     const day = dayOf(now, numbers);
     const sql = this.ctx.storage.sql;
-    sql.exec("DELETE FROM seen WHERE day < ?", day);
-    const fresh = key === null || sql.exec("SELECT 1 FROM seen WHERE day = ? AND key = ?", day, key).toArray().length === 0;
-    if (fresh && key !== null) sql.exec("INSERT INTO seen (day, key) VALUES (?, ?)", day, key);
+    let fresh = false;
+    try {
+      sql.exec("DELETE FROM seen WHERE day < ?", day);
+      fresh = key === null || sql.exec("SELECT 1 FROM seen WHERE day = ? AND key = ?", day, key).toArray().length === 0;
+      if (fresh && key !== null) sql.exec("INSERT INTO seen (day, key) VALUES (?, ?)", day, key);
+    } catch (error) {
+      // Nothing can be written (the day's allowance of writes is spent): the visit is still counted if it can be, as
+      // nobody new, and whoever came is shown the list all the same.
+      this.sayNotCounted(error);
+    }
     const looking = peopleLooking([...this.getConnections<ViewerState>()].map((viewer) => viewer.state?.from ?? null));
     this.count(visitCounts(now, fresh, looking, numbers), now);
   }

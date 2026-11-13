@@ -411,6 +411,15 @@ export class GameRoom extends Server<Env> {
   async onClose(connection: Connection<ConnectionState>): Promise<void> {
     this.sights.delete(connection.id);
     this.sent.delete(connection.id);
+    if (connection.state?.kind === "pending") {
+      // It never joined: a page opens a connection ahead of the press that makes or enters a room, and lets it go
+      // when the press does not come. A room nobody has made keeps nothing of it, unless someone else is at the
+      // door: every wake of a room leaves a row, and these would pile up without end.
+      const others = [...this.getConnections<ConnectionState>()].some((other) => other.id !== connection.id);
+      // (`stored`: a room already wiped has nothing to wipe, and is not wiped a second time.)
+      if (this.stored && this.lobby === null && !others && this.making === 0) await this.forget();
+      return;
+    }
     // one the room ended itself has been dealt with where it was ended
     if (connection.state?.kind !== "player") return;
     await this.dropped(connection.state.voice !== undefined);
@@ -591,8 +600,10 @@ export class GameRoom extends Server<Env> {
     if (made) console.log(`room made: ${result.state.game} ${result.state.listed ? "listed" : "unlisted"}`);
     if (made) this.count({ type: "made", game: gameOf(result.state), listed: result.state.listed === true });
     connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings, parts: request.parts === true });
-    // Also notes anyone whose connection ended without the room being told.
-    this.saveLobby(markAway(result.state, this.connectedSlots(), now));
+    // Also notes anyone whose connection ended without the room being told. With nobody to note it is the lobby
+    // just saved, and is not written a second time.
+    const noted = markAway(result.state, this.connectedSlots(), now);
+    if (noted !== result.state) this.saveLobby(noted);
     this.countHere();
     this.broadcastLobby();
     this.sendVoice(connection);

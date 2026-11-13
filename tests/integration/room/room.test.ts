@@ -1300,6 +1300,56 @@ describe("GameRoom", () => {
     expect(tables).not.toContain("room_state");
   });
 
+  it("leaves nothing stored when a connection opened ahead to a room nobody made is let go", async () => {
+    const stub = env.GameRoom.getByName("AAAH4");
+
+    // what a page does while its form for a new room is on show: a connection, and nothing said on it
+    const ahead = await connect("AAAH4");
+    ahead.close();
+    await ahead.closed;
+
+    const tables = await vi.waitFor(async () => {
+      const names = await runInDurableObject(stub, (_room, state) =>
+        state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'").toArray().map((row) => row.name),
+      );
+      expect(names.filter((name) => name === "room_state" || name === "timers")).toEqual([]);
+      return names;
+    });
+    expect(tables).not.toContain("room_state");
+  });
+
+  it("keeps a room nobody has made yet while another connection opened ahead to it is still open", async () => {
+    const first = await connect("AAAH2");
+    const second = await connect("AAAH2");
+    first.close();
+    await first.closed;
+
+    // the one still open makes the room, as if nothing had been let go beside it
+    second.send({ type: "join", token: "token-of-the-one-who-stayed", nick: "Stayed", create: true, game: DEFAULT_GAME, listed: false, pings: false });
+    expect(await second.next()).toMatchObject({ type: "lobby", you: 0 });
+    second.close();
+  });
+
+  it("keeps a room with someone in it when a connection that never joined is let go", async () => {
+    const stub = env.GameRoom.getByName("AAAH3");
+    const a = await open("AAAH3", { player: 0, create: true });
+    await a.next();
+
+    const ahead = await connect("AAAH3");
+    ahead.close();
+    await ahead.closed;
+
+    // the room answers its player as before, and what it kept is still there
+    const seconds = Math.min(...roomConfig.turnSecondsChoices.filter((choice) => choice > 0));
+    a.send({ type: "clock", seconds });
+    expect(await a.lobbyWhere((lobby) => lobby.turnSeconds === seconds)).toMatchObject({ you: 0 });
+    const kept = await runInDurableObject(stub, (_room, state) =>
+      state.storage.sql.exec<{ k: string }>("SELECT k FROM room_state").toArray().map((row) => row.k),
+    );
+    expect(kept).toContain("lobby");
+    a.close();
+  });
+
   it("can be made again under the same code after it has been wiped", async () => {
     const a = await open("AAAF6", { player: 0, create: true });
     await a.next();
