@@ -104,6 +104,8 @@ const SPOT_REACH: Reach = 3;
 const RING_DOT_DEGREES = 6;
 /** The stands' colours, and the rocks'. */
 const STAND_COLOURS: Record<Stand, string> = { red: "#e23b4a", green: "#3fbf5f", blue: "#3b82f6" };
+/** How wide the chip shown before a stand's name is. */
+const STAND_CHIP = 7;
 const ROCK = "#7c8296";
 const ROCK_TOP = "#aab0c2";
 
@@ -556,11 +558,26 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     pen.px(x + w - thick, y, thick, h, colour);
   }
 
-  /** A chip: a square of its colour, the rainbow one in three stripes. */
+  /**
+   * A chip: a square of its colour, the rainbow one in three stripes. A
+   * chip of one colour also has its stand's tally on it, dark and upright:
+   * one stroke for the first stand, two for the second, three for the third.
+   * Red and green are one colour to about one man in twelve, and the chips
+   * in a hand are told apart by nothing else; the stand shows the same chip
+   * beside its name, so the tally need not be learned.
+   */
   function drawChip(x: number, y: number, size: number, kind: Chip): void {
     pen.px(x - 1, y - 1, size + 2, size + 2, C.ink);
     if (kind !== "rainbow") {
       pen.px(x, y, size, size, STAND_COLOURS[kind]);
+      // strokes two wide on a chip of even width, where one of one could not stand in the middle
+      const wide = size % 2 === 0 ? 2 : 1;
+      const middle = (size - wide) / 2;
+      const strokes = STANDS.indexOf(kind) + 1;
+      // from one stroke's left edge to the next's: a gap of one between them, or of two where two wide strokes have the room
+      const apart = wide === 1 ? 2 : strokes === 2 ? 4 : 3;
+      const inset = size <= 7 ? 1 : 2;
+      for (let nth = 0; nth < strokes; nth++) pen.px(x + middle + (nth - (strokes - 1) / 2) * apart, y + inset, wide, size - 2 * inset, C.ink);
       return;
     }
     const stripe = Math.floor(size / 3);
@@ -599,7 +616,11 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
         pen.txt(`${weight}`, rx + Math.round(ROCK_W / 2), ry + 1, C.ink, "center");
       });
       pen.px(x, FLOOR_Y + 1, STAND_W, 5, colour);
-      pen.txt(WORDS.stand[stand], x + Math.round(STAND_W / 2), FLOOR_Y + 8, colour, "center");
+      // its name, and before it the chip that is bound for it: the tally on the chip is the stand's
+      const name = WORDS.stand[stand];
+      const nameX = x + Math.round(STAND_W / 2) + Math.round((STAND_CHIP + 3) / 2);
+      pen.txt(name, nameX, FLOOR_Y + 8, colour, "center");
+      drawChip(nameX - Math.ceil(pen.width(name) / 2) - STAND_CHIP - 3, FLOOR_Y + 11, STAND_CHIP, stand);
     });
   }
 

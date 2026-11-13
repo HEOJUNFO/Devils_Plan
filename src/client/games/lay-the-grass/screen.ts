@@ -865,12 +865,21 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     }
   }
 
-  /** Draws the cells of a tile lying on the park, with a dark line where it ends. */
+  /**
+   * Draws the cells of a tile lying on the park, with a dark line where it
+   * ends. On one of its cells, where a letter fits, is the first letter of
+   * its owner's name, in the tile's own dark shade: two players may pick the
+   * same tile, so its number does not say whose it is, and sixteen colours
+   * are not told apart by everyone (nor two greens by anyone, in a hurry).
+   */
   function drawLaid(placement: Placement, box: { x: number; y: number; cell: number }, colour: string, bright: boolean): void {
     const tile = shapeOf(placement.tile, placement.cut ?? []);
     if (tile === undefined) return;
     const cells = coveredBy(tile, placement.row, placement.col, placement.turns);
     const own = new Set(cells.map((cell) => `${cell.row},${cell.col}`));
+    // the first cell with nothing else on it, reading across and down
+    const plain = cells.filter((cell) => cell.kind !== "number" && cell.kind !== "hole").sort((a, b) => a.row - b.row || a.col - b.col)[0];
+    const initial = Array.from(nickOf(placement.player))[0] ?? "";
     for (const cell of cells) {
       const x = box.x + cell.col * box.cell;
       const y = box.y + cell.row * box.cell;
@@ -885,6 +894,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (!own.has(`${cell.row},${cell.col + 1}`)) pen.px(x + box.cell - 1, y, 1, box.cell, edge);
       if (cell.kind === "number" && box.cell >= 13) {
         pen.txt(`${placement.tile}`, x + Math.round(box.cell / 2), y + Math.round((box.cell - 13) / 2), C.ink, "center");
+      }
+      if (cell === plain && box.cell >= 13 && initial !== "") {
+        pen.txt(initial, x + Math.round(box.cell / 2), y + Math.round((box.cell - 13) / 2), edge, "center");
       }
       // a holed cell: the park shows through, with a rim of the tile's own shade
       if (cell.kind === "hole") {
