@@ -50,7 +50,7 @@ const ko = {
     browser: {
       heading: "이 브라우저에 두는 것",
       lines: [
-        "닉네임, 고른 언어, 소리 크기, 마지막에 고른 게임, 어떤 안내를 이미 봤는지를 이 브라우저의 저장소에 둡니다.",
+        "닉네임, 고른 언어, 소리 크기, 마지막에 고른 게임, 방 코드를 가릴지, 어떤 안내를 이미 봤는지를 이 브라우저의 저장소에 둡니다.",
         "게임별로 몇 판을 끝까지 했고 몇 번 1등을 했는지도 이 브라우저에만 둡니다. 서버로 보내지 않습니다.",
         "이 브라우저를 알아보는 임의의 값을 하나 만들어 둡니다. 연결이 끊겼다 돌아왔을 때 같은 자리에 앉히는 데 쓰고, 들어가는 방에 보냅니다.",
         "방의 최근 채팅과 마지막 모습은 새로 고침에 대비해 그 탭이 열려 있는 동안만 둡니다.",
@@ -125,7 +125,7 @@ const en: typeof ko = {
     browser: {
       heading: "What is kept in this browser",
       lines: [
-        "Your nickname, language, volume, the game you last picked and which notices you have already seen are kept in this browser's storage.",
+        "Your nickname, language, volume, the game you last picked, whether room codes are hidden and which notices you have already seen are kept in this browser's storage.",
         "How many games of each kind you have played to the end, and in how many you came first, are kept in this browser only. They are not sent to the server.",
         "A random value that tells this browser apart is made and kept. It puts you back in your seat when a connection drops and returns, and it is sent to the rooms you enter.",
         "A room's recent chat and how it last looked are kept only while that tab is open, in case the page is loaded again.",

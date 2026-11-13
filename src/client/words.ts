@@ -19,7 +19,7 @@ const ko = {
     description: SITE_WORDS.ko.app.description(GAME_IDS.length),
     turnDevice: "화면을 가로로 돌려 주세요",
     /** Over it, for someone a link to a room brought who has not gone in yet: what the link was to. `game` is `null` where the link did not say. */
-    turnInvited: (game: string | null, code: string) => (game === null ? `방 ${code}에 초대받았습니다` : `${game} 방에 초대받았습니다`),
+    turnInvited: (game: string | null, code: string | null) => (game !== null ? `${game} 방에 초대받았습니다` : code === null ? "방에 초대받았습니다" : `방 ${code}에 초대받았습니다`),
     /** Under that, where the link says when its people meet (`src/shared/appointment.ts`). */
     turnWhen: (when: string) => `약속 ${when}`,
     /** On the button that turns the page itself, where the browser can. */
@@ -105,9 +105,9 @@ const ko = {
     sub: "방을 고르거나 만드세요",
     /** In its place for someone who opened a link to a room and has not gone in yet: two lines. */
     /** Where the link says when its people meet (`when`, `src/shared/appointment.ts`), the first line says that instead: the code is in the box under it. */
-    invited: (code: string, when: string | null) => `${when === null ? `초대받은 방 ${code}` : `약속 ${when}`}\n닉네임을 넣고 입장하세요`,
+    invited: (code: string | null, when: string | null) => `${when !== null ? `약속 ${when}` : code === null ? "초대받은 방" : `초대받은 방 ${code}`}\n닉네임을 넣고 입장하세요`,
     /** The same, where the box holds a name the page offered (`suggestNick`): it can be gone in with as it is. */
-    invitedNamed: (code: string, when: string | null) => `${when === null ? `초대받은 방 ${code}` : `약속 ${when}`}\n이름을 고치거나 입장하세요`,
+    invitedNamed: (code: string | null, when: string | null) => `${when !== null ? `약속 ${when}` : code === null ? "초대받은 방" : `초대받은 방 ${code}`}\n이름을 고치거나 입장하세요`,
     /** For someone whose name is kept, whom a link without a time takes straight in: a link whose time is still off waits for them, and says they need not. */
     invitedEarly: (when: string) => `약속 ${when}\n지금 들어가도 됩니다`,
     /** Under the form, when the room a link led to is no more. It does not name the game: the list beside it is by then that game's, and says so. Two lines, as the others here are. */
@@ -216,6 +216,18 @@ const ko = {
     copied: "복사됨",
     copyFailed: "복사 실패",
     copyFailedHint: (code: string) => `링크를 복사하지 못했습니다. 방 코드 ${code}를 알려 주세요.`,
+    /** The same where this browser covers the code: the sentence does not put it back on the screen. */
+    copyFailedCovered: "링크 복사 실패. 「코드 보이기」를 누르고 방 코드를 알려 주세요.",
+    /**
+     * Covering the room's code on this screen, for whoever shows their screen to people who are not asked in:
+     * the button on the bar's third line, what stands where the code was (for a pointer at rest and a screen
+     * reader), and what the bar says once it is covered. The bar's lines end where the rules button begins:
+     * no more than 383 pixels.
+     */
+    hideCode: "코드 가리기",
+    showCode: "코드 보이기",
+    codeCovered: "방 코드 가림",
+    codeHiddenHint: "방 코드를 화면·탭 제목·주소창에서 가렸습니다. 링크 복사는 됩니다.",
     toUnlisted: "비공개로",
     toListed: "공개로",
     /** How the length of a turn is said on its button; `seconds` 0 is no limit. */
@@ -530,7 +542,7 @@ const en: typeof ko = {
     tab: SITE_WORDS.en.app.title,
     description: SITE_WORDS.en.app.description(GAME_IDS.length),
     turnDevice: "Turn your screen sideways",
-    turnInvited: (game, code) => (game === null ? `You are invited to room ${code}` : `You are invited to play ${game}`),
+    turnInvited: (game, code) => (game !== null ? `You are invited to play ${game}` : code === null ? "You are invited to a room" : `You are invited to room ${code}`),
     turnWhen: (when) => `Meet ${when}`,
     turnFull: "Go full screen, sideways",
     version: (build) => `Version ${build}`,
@@ -597,8 +609,8 @@ const en: typeof ko = {
   },
   entry: {
     sub: "Pick a room or make one",
-    invited: (code, when) => `${when === null ? `Invited to room ${code}` : `Meet ${when}`}\nAdd a nickname and join`,
-    invitedNamed: (code, when) => `${when === null ? `Invited to room ${code}` : `Meet ${when}`}\nRename, or just join`,
+    invited: (code, when) => `${when !== null ? `Meet ${when}` : code === null ? "Invited to a room" : `Invited to room ${code}`}\nAdd a nickname and join`,
+    invitedNamed: (code, when) => `${when !== null ? `Meet ${when}` : code === null ? "Invited to a room" : `Invited to room ${code}`}\nRename, or just join`,
     invitedEarly: (when) => `Meet ${when}\nYou can join now`,
     invitedGone: "Room closed. New room reopens the same link.",
     nick: "Nickname",
@@ -675,6 +687,11 @@ const en: typeof ko = {
     copied: "Copied",
     copyFailed: "Failed",
     copyFailedHint: (code) => `The link could not be copied. Tell people the room code: ${code}.`,
+    copyFailedCovered: "Could not copy. Press Show code and read the code out.",
+    hideCode: "Hide code",
+    showCode: "Show code",
+    codeCovered: "Room code hidden",
+    codeHiddenHint: "Code hidden: screen, tab title, address. Invite still works.",
     toUnlisted: "Go private",
     toListed: "Go public",
     clock: (seconds) => (seconds > 0 ? `Turn ${seconds}s` : "No turn limit"),

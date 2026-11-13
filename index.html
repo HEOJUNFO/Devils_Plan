@@ -122,9 +122,11 @@
         <button id="rules-open" type="button" hidden></button>
         <!--
           In a room, on the bar's third line. Where a game has been played to its end: opens what the room has
-          counted for each player (`#tally-sheet`). And an invitation that says when (`#when-sheet`).
+          counted for each player (`#tally-sheet`). And an invitation that says when (`#when-sheet`). Last, for
+          whoever shows their screen to people who are not asked in: covers the room's code on this screen, or
+          shows it again.
         -->
-        <p id="room-links" class="dim"><button id="tally-open" type="button" aria-haspopup="dialog" hidden></button><button id="when-open" type="button" aria-haspopup="dialog" hidden></button></p>
+        <p id="room-links" class="dim"><button id="tally-open" type="button" aria-haspopup="dialog" hidden></button><button id="when-open" type="button" aria-haspopup="dialog" hidden></button><button id="code-hide" type="button" aria-pressed="false" hidden></button></p>
         <!-- The other language the page can be read in, named in that language; offered in the lobby. -->
         <button id="lang" type="button" hidden></button>
         <!-- In the lobby: the player's own record, once there is a game in it; the button for a word about the game, where one can be sent on; and which build the page is. -->

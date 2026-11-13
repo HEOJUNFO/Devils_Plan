@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_GAME } from "../../../src/shared/games";
-import { keepRoom, keptRoom } from "../../../src/shared/resume";
+import { keepRoom, keptCode, keptRoom } from "../../../src/shared/resume";
 import shipped from "../../../src/shared/room-config.json";
 
 /** The room the page was in. */
@@ -108,5 +108,27 @@ describe("what is not this page's room", () => {
 
     expect(kept).not.toBeNull();
     expect(kept?.game).toBeNull();
+  });
+});
+
+describe("the room a page was in, where its address does not say", () => {
+  it("is the room that was put away", () => {
+    expect(keptCode(keepRoom(CODE, lobbyText(), null, PUT_AWAY))).toBe(CODE);
+    expect(keptCode(keepRoom(OTHER, lobbyText(OTHER), gameText(OTHER), PUT_AWAY))).toBe(OTHER);
+  });
+
+  it("is no room when nothing was kept, or what was kept is not this page's", () => {
+    expect(keptCode(null)).toBe("");
+    expect(keptCode("")).toBe("");
+    expect(keptCode("not json")).toBe("");
+    expect(keptCode("null")).toBe("");
+    expect(keptCode(JSON.stringify({ at: PUT_AWAY }))).toBe("");
+    expect(keptCode(JSON.stringify({ code: 12345 }))).toBe("");
+  });
+
+  it("names the room only: whether it is still shown is for keptRoom to say", () => {
+    const old = keepRoom(CODE, lobbyText(), null, PUT_AWAY);
+    expect(keptCode(old)).toBe(CODE);
+    expect(keptRoom(old, keptCode(old), PUT_AWAY + MAX_AGE_MS + 1, MAX_AGE)).toBeNull();
   });
 });

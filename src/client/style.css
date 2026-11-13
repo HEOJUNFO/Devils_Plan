@@ -788,6 +788,14 @@ button.choice[aria-pressed="true"] {
   white-space: nowrap;
 }
 
+/*
+ * A browser that covers its room's code (main.ts) covers the code typed or linked into the lobby's box too:
+ * each letter is a dot, as in a box for a password, and the box stays a plain one that no browser offers to keep.
+ */
+:root.code-hidden #code {
+  -webkit-text-security: disc;
+}
+
 /* A code of wide letters, which with the button would be wider than the column (main.ts). */
 .code-row.tight .room-code {
   letter-spacing: 0;
@@ -1086,6 +1094,7 @@ button.choice[aria-pressed="true"] {
 #record-open,
 #tally-open,
 #when-open,
+#code-hide,
 #feedback {
   height: auto;
   padding: 0;
@@ -1100,6 +1109,7 @@ button.choice[aria-pressed="true"] {
   #record-open:hover,
   #tally-open:hover,
   #when-open:hover,
+  #code-hide:hover,
   #feedback:hover {
     color: var(--bone);
   }
@@ -1995,6 +2005,7 @@ button.choice[aria-pressed="true"] {
 :root.touch #record-open,
 :root.touch #tally-open,
 :root.touch #when-open,
+:root.touch #code-hide,
 :root.touch #feedback {
   position: relative;
 }
@@ -2003,6 +2014,7 @@ button.choice[aria-pressed="true"] {
 :root.touch #record-open::before,
 :root.touch #tally-open::before,
 :root.touch #when-open::before,
+:root.touch #code-hide::before,
 :root.touch #feedback::before {
   position: absolute;
   inset: -8px -3px -3px;

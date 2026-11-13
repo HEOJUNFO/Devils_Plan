@@ -53,7 +53,7 @@ import {
 import { liftFor, placeFrame } from "../shared/frame";
 import { INVITED_GAME_KEY, invitePath } from "../shared/site/paths";
 import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
-import { keepRoom, keptRoom } from "../shared/resume";
+import { keepRoom, keptCode, keptRoom } from "../shared/resume";
 import { hearersOf, namesOf, teammatesOf, toggled, type ChatTo, type Hearer } from "../shared/aside";
 import { QUICK_WORDS } from "../shared/chat";
 import { suggestNick, type NickWords } from "../shared/nick";
@@ -255,6 +255,7 @@ const recordOpen = el<HTMLButtonElement>("record-open");
 const recordSheet = el<HTMLElement>("record-sheet");
 const recordList = el<HTMLUListElement>("record-list");
 const tallyOpen = el<HTMLButtonElement>("tally-open");
+const codeHide = el<HTMLButtonElement>("code-hide");
 const tallySheet = el<HTMLElement>("tally-sheet");
 const tallyList = el<HTMLUListElement>("tally-list");
 const recordClear = el<HTMLButtonElement>("record-clear");
@@ -554,6 +555,15 @@ let startAsked = false;
 let creating = false;
 /** The room this page is in, while it is in one. */
 let currentCode = "";
+/**
+ * Whether this browser covers its room's code: on the waiting room, in the
+ * tab's title, in the address and in the lobby's box. For whoever shows
+ * their screen to people who are not asked into the room; kept from visit to
+ * visit, so that the next room's code is covered from the first moment.
+ * Copying the link works as before: that goes to the clipboard, not the screen.
+ */
+let codeHidden = kept("hide-code") === "1";
+document.documentElement.classList.toggle("code-hidden", codeHidden);
 /** The room as last sent, while this page is in one. */
 let currentView: LobbyView | null = null;
 /** The game screen, while a game is on in the room this page is in. */
@@ -1763,6 +1773,20 @@ function showTally(open: boolean): void {
 }
 
 tallyOpen.addEventListener("click", () => showTally(true));
+codeHide.addEventListener("click", () => {
+  codeHidden = !codeHidden;
+  keep("hide-code", codeHidden ? "1" : null);
+  document.documentElement.classList.toggle("code-hidden", codeHidden);
+  if (currentCode === "" || currentView === null) return;
+  // the code, the title and the button are the room's to write; the address is this page's
+  renderRoom(currentCode, currentView);
+  writeAddress(currentCode);
+  if (codeHidden) {
+    // said once, where it was pressed: what is covered, and that the invitation still works
+    hint = WORDS.room.codeHiddenHint;
+    renderRoomBar();
+  }
+});
 el<HTMLButtonElement>("tally-close").addEventListener("click", () => showTally(false));
 el<HTMLButtonElement>("record-close").addEventListener("click", () => showRecord(false));
 recordClear.addEventListener("click", () => {
@@ -2105,6 +2129,7 @@ function showLobby(message = ""): void {
   currentCode = "";
   currentView = null;
   syncTally();
+  codeHide.hidden = true;
   hostAsked = false;
   showSeatMenu(null);
   swapSheet.hidden = true;
@@ -2585,7 +2610,7 @@ whenCopy.addEventListener("click", () => {
     link,
     `${line}\n${link}`,
     () => {
-      hint = WORDS.room.copyFailedHint(currentCode);
+      hint = codeHidden ? WORDS.room.copyFailedCovered : WORDS.room.copyFailedHint(currentCode);
       renderRoomBar();
     },
     () => chat.note({ kind: "when-made", at }),
@@ -2755,7 +2780,18 @@ function renderRoom(code: string, view: LobbyView): void {
   newRoom.hidden = true;
   room.hidden = false;
   showLobbyLinks(false);
-  roomCode.textContent = code;
+  // covered, it is as many dots as it has letters, and says in words what they are
+  roomCode.textContent = codeHidden ? "•".repeat(code.length) : code;
+  if (codeHidden) {
+    roomCode.title = WORDS.room.codeCovered;
+    roomCode.setAttribute("aria-label", WORDS.room.codeCovered);
+  } else {
+    roomCode.removeAttribute("title");
+    roomCode.removeAttribute("aria-label");
+  }
+  codeHide.hidden = false;
+  codeHide.textContent = codeHidden ? WORDS.room.showCode : WORDS.room.hideCode;
+  codeHide.setAttribute("aria-pressed", String(codeHidden));
   // A code of wide letters (W, M) and the button beside it are wider than the column: the letters then stand
   // closer (style.css). The room is on show by now, so the row can be measured.
   const codeRow = roomCode.closest<HTMLElement>(".code-row");
@@ -2846,7 +2882,8 @@ function renderRoom(code: string, view: LobbyView): void {
 
   // A room made by a newer server may be for a game this page has not heard of.
   const game = isGameId(view.game) ? GAMES[view.game] : null;
-  setTitle(`${game?.title[lang] ?? SITE_TITLE} · ${code}`);
+  // the tab's title is read off a shared screen as the page is: a covered code is not in it
+  setTitle(codeHidden ? (game?.title[lang] ?? SITE_TITLE) : `${game?.title[lang] ?? SITE_TITLE} · ${code}`);
   listingButton.hidden = !isHost;
   // what was asked for and is now so needs no saying ahead of the room any more
   if (asked.listed === view.listed) delete asked.listed;
@@ -3374,7 +3411,13 @@ function syncEntry(): void {
   // someone whose name is kept has nothing to put in: the link waited for them only because its time is still off
   const kept = !named && normalizeNick(nickInput.value, config) !== null;
   entrySub.textContent =
-    toRoom && code === invitedCode ? (named ? WORDS.entry.invitedNamed(code, when) : when !== null && kept ? WORDS.entry.invitedEarly(when) : WORDS.entry.invited(code, when)) : WORDS.entry.sub;
+    toRoom && code === invitedCode
+      ? named
+        ? WORDS.entry.invitedNamed(codeHidden ? null : code, when)
+        : when !== null && kept
+          ? WORDS.entry.invitedEarly(when)
+          : WORDS.entry.invited(codeHidden ? null : code, when)
+      : WORDS.entry.sub;
   syncCalendar();
   syncTurn();
 }
@@ -3392,7 +3435,7 @@ function syncTurn(): void {
   const invited = currentCode === "" && invitedCode !== "" && code === invitedCode;
   turnInvited.hidden = !invited;
   if (!invited) return;
-  const said = WORDS.site.turnInvited(invitedGame === null ? null : GAMES[invitedGame].title[lang], code);
+  const said = WORDS.site.turnInvited(invitedGame === null ? null : GAMES[invitedGame].title[lang], codeHidden ? null : code);
   const stands = appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null;
   turnInvited.textContent = stands && appointment !== null ? `${said}\n${WORDS.site.turnWhen(whenOf(appointment.at))}` : said;
 }
@@ -3601,8 +3644,8 @@ copyButton.addEventListener("click", () => {
   const game = invited === null ? "" : GAMES[invited].title[lang];
   // copied, it is the link alone, as an address is pasted; the sheet sends a line with it
   passOn(copyButton, WORDS.room.copy, game === "" ? "" : WORDS.share.invite(game), link, link, () => {
-    // the code is on screen to read out
-    hint = WORDS.room.copyFailedHint(currentCode);
+    // the code is on screen to read out, unless this browser covers it
+    hint = codeHidden ? WORDS.room.copyFailedCovered : WORDS.room.copyFailedHint(currentCode);
     renderRoomBar();
   });
 });
@@ -3911,9 +3954,14 @@ addEventListener("keydown", (event) => {
   else closeTop();
 });
 
-/** The page's own address: the room it is in after `#`, nothing after it in the lobby. */
+/**
+ * The page's own address: the room it is in after `#`, nothing after it in
+ * the lobby, and nothing in a room whose code this browser covers (the
+ * address is read off a shared screen like the page; loaded again, such a
+ * page finds its room in what the tab kept: `comeBack`).
+ */
 function addressOf(code: string): string {
-  return `${location.pathname}${location.search}${code === "" ? "" : `#${code}`}`;
+  return `${location.pathname}${location.search}${code === "" || codeHidden ? "" : `#${code}`}`;
 }
 
 /**
@@ -4123,15 +4171,17 @@ document.addEventListener("visibilitychange", () => {
  * now) the page starts in the lobby as before.
  */
 function comeBack(): boolean {
-  const { code } = parseLinked(location.hash.slice(1));
-  const nick = normalizeNick(nickInput.value, config);
-  if (nick === null || !isValidRoomCode(code, config)) return false;
   let stored: string | null = null;
   try {
     stored = sessionStorage.getItem(storageKey("room"));
   } catch {
     // a closed store: nothing was kept
   }
+  const linked = parseLinked(location.hash.slice(1)).code;
+  // a browser that covers its room's code has none in its address: the room is the one this tab put away
+  const code = linked === "" && codeHidden ? keptCode(stored) : linked;
+  const nick = normalizeNick(nickInput.value, config);
+  if (nick === null || !isValidRoomCode(code, config)) return false;
   // a room gives up the place of a player away for `awaySlotSeconds`: what is older than that is not this player's room
   const kept = keptRoom(stored, code, Date.now(), config.awaySlotSeconds);
   if (kept === null) return false;

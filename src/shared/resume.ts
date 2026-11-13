@@ -43,6 +43,23 @@ export function keepRoom(code: string, lobby: string, game: string | null, at: n
 }
 
 /**
+ * The code of the room that was put away, or "" where nothing was kept or
+ * what was kept is not this page's. A page that covers its room's code has
+ * no code in its address (`main.ts`), and loaded again it finds its room
+ * here. Whether that room is still shown is for {@link keptRoom} to say.
+ */
+export function keptCode(stored: string | null): string {
+  if (stored === null) return "";
+  try {
+    const kept: unknown = JSON.parse(stored);
+    const code = typeof kept === "object" && kept !== null ? (kept as Record<string, unknown>).code : null;
+    return typeof code === "string" ? code : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
  * What to show of the room `code` from what was put away, or `null` to show
  * nothing of it: nothing was kept, it was kept of another room, it is not
  * what this page would have kept (an older page's, or not ours at all), or it
