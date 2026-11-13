@@ -50,7 +50,7 @@ const ko = {
     browser: {
       heading: "이 브라우저에 두는 것",
       lines: [
-        "닉네임, 고른 언어, 소리 크기, 마지막에 고른 게임을 이 브라우저의 저장소에 둡니다.",
+        "닉네임, 고른 언어, 소리 크기, 마지막에 고른 게임, 어떤 안내를 이미 봤는지를 이 브라우저의 저장소에 둡니다.",
         "게임별로 몇 판을 끝까지 했고 몇 번 1등을 했는지도 이 브라우저에만 둡니다. 서버로 보내지 않습니다.",
         "이 브라우저를 알아보는 임의의 값을 하나 만들어 둡니다. 연결이 끊겼다 돌아왔을 때 같은 자리에 앉히는 데 쓰고, 들어가는 방에 보냅니다.",
         "방의 최근 채팅과 마지막 모습은 새로 고침에 대비해 그 탭이 열려 있는 동안만 둡니다.",
@@ -81,7 +81,7 @@ const ko = {
     voice: {
       heading: "음성 채팅",
       lines: [
-        "음성 채팅은 비공개 방에서만 켤 수 있습니다. 켜는 버튼을 누를 때 마이크 권한을 묻고, 거절하면 듣기만 합니다.",
+        "음성 채팅은 비공개 방에서만 켤 수 있습니다. 처음 켤 때 아래의 것을 먼저 알려 주고, 켜면 마이크 권한을 묻습니다. 거절하면 듣기만 합니다.",
         "소리는 서버를 거치지 않고 참가자들의 브라우저 사이를 바로 오갑니다. 서버는 소리를 받지도 저장하지도 않습니다.",
         "그래서 함께 음성을 켠 사람들은 서로의 접속 주소를 알 수 있습니다. 모르는 사람과는 켜지 않는 편이 좋습니다.",
         "연결을 맺을 때 브라우저가 Cloudflare와 Google의 서버에 물어 자기 주소를 확인합니다(STUN). 이때 두 회사의 서버가 접속 주소를 봅니다.",
@@ -124,7 +124,7 @@ const en: typeof ko = {
     browser: {
       heading: "What is kept in this browser",
       lines: [
-        "Your nickname, language, volume and the game you last picked are kept in this browser's storage.",
+        "Your nickname, language, volume, the game you last picked and which notices you have already seen are kept in this browser's storage.",
         "How many games of each kind you have played to the end, and in how many you came first, are kept in this browser only. They are not sent to the server.",
         "A random value that tells this browser apart is made and kept. It puts you back in your seat when a connection drops and returns, and it is sent to the rooms you enter.",
         "A room's recent chat and how it last looked are kept only while that tab is open, in case the page is loaded again.",
@@ -155,7 +155,7 @@ const en: typeof ko = {
     voice: {
       heading: "Voice chat",
       lines: [
-        "Voice chat can be turned on only in a private room. The microphone is asked for when you press the button, and if you refuse you only listen.",
+        "Voice chat can be turned on only in a private room. The first time, you are told what follows before it is on; then the microphone is asked for, and if you refuse you only listen.",
         "Sound goes straight between the players' browsers, not through the server. The server neither receives nor stores it.",
         "Because of that, people in voice chat together can learn each other's network addresses. It is better not to turn it on with strangers.",
         "To connect, your browser asks servers of Cloudflare and Google what its own address is (STUN). Those two companies' servers see your address then.",

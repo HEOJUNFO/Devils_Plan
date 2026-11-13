@@ -186,6 +186,17 @@
         </div>
       </section>
 
+      <!-- Before voice chat is first turned on in this browser: what the others in it can then learn. Over a room and over a game's menu alike. -->
+      <section id="voice-sheet" role="dialog" aria-modal="true" aria-labelledby="voice-ask-title" hidden>
+        <h2 id="voice-ask-title"></h2>
+        <p id="voice-ask-line"></p>
+        <p id="voice-ask-hint" class="dim"></p>
+        <div class="row">
+          <button id="voice-ask-off" type="button"></button>
+          <button id="voice-ask-on" type="button" class="primary"></button>
+        </div>
+      </section>
+
       <!-- What the host can do with another player: opened by a press on their figure in the scene. -->
       <!-- Who the chat's next line is said to: everyone, or one of the others in the room alone. -->
       <section id="to-sheet" role="dialog" aria-labelledby="to-title" hidden>

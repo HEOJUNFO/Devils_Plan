@@ -211,6 +211,9 @@ const chatInput = el<HTMLInputElement>("chat-input");
 const voiceBox = el<HTMLElement>("voice");
 const voiceMic = el<HTMLButtonElement>("voice-mic");
 const voiceToggle = el<HTMLButtonElement>("voice-toggle");
+const voiceSheet = el<HTMLElement>("voice-sheet");
+const voiceAskOn = el<HTMLButtonElement>("voice-ask-on");
+const voiceAskOff = el<HTMLButtonElement>("voice-ask-off");
 const voiceNote = el<HTMLElement>("voice-note");
 const tabs = el<HTMLElement>("tabs");
 const tabLog = el<HTMLButtonElement>("tab-log");
@@ -318,6 +321,11 @@ function writeWords(): void {
     ["record-title", WORDS.record.title],
     ["record-hint", WORDS.record.hint],
     ["record-close", WORDS.record.close],
+    ["voice-ask-title", WORDS.voice.ask.title],
+    ["voice-ask-line", WORDS.voice.ask.line],
+    ["voice-ask-hint", WORDS.voice.ask.hint],
+    ["voice-ask-on", WORDS.voice.ask.on],
+    ["voice-ask-off", WORDS.voice.ask.off],
     ["tally-open", WORDS.tally.open],
     ["tally-title", WORDS.tally.title],
     ["tally-hint", WORDS.tally.hint],
@@ -693,6 +701,8 @@ function renderVoice(): void {
   // during a game there is no room to say that a room has no voice: the controls are just not there
   voiceBox.hidden = currentCode === "" || view === null || (inGame && !offered);
   voiceBox.classList.toggle("in-game", inGame);
+  // the question before voice is first turned on has nothing left to ask once it is on, or is not to be had here
+  if (!offered || voice.on) showVoiceAsk(false);
   voiceNote.hidden = offered;
   voiceNote.textContent = WORDS.voice.unlistedOnly;
   voiceToggle.hidden = !offered;
@@ -3589,16 +3599,66 @@ tabShare.addEventListener("click", () => {
   passPicture(tabShare, WORDS.game.share, picture, said, address, `${said}\n${address}`, plain);
 });
 
+/** Where it is kept that this browser's player has been told what voice chat lets the others in it learn. */
+const VOICE_TOLD_KEY = storageKey("voice-told");
+
+/** Whether this browser's player has turned voice chat on after being told. A browser that keeps nothing is told each time. */
+function voiceTold(): boolean {
+  try {
+    return localStorage.getItem(VOICE_TOLD_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Opens what is said before voice chat is first turned on in this browser,
+ * or puts it away. Voice goes from one player's device straight to another's,
+ * so those in it together can learn each other's network address: that is
+ * the player's to know before it happens, not after.
+ */
+function showVoiceAsk(open: boolean): void {
+  if (voiceSheet.hidden === !open) return;
+  const within = voiceSheet.contains(document.activeElement);
+  voiceSheet.hidden = !open;
+  if (open) {
+    // the keys land on the answer that changes nothing: a key held down on the button that opened this turns nothing on
+    voiceAskOff.focus({ preventScroll: true });
+  } else if (within) {
+    if (voiceToggle.hidden || voiceBox.hidden) (document.activeElement as HTMLElement | null)?.blur();
+    else voiceToggle.focus({ preventScroll: true });
+  }
+}
+
+/** Comes into the room's voice chat, and says in the room's log how. Called from a press: the browser asks for the microphone only then. */
+function joinVoice(): void {
+  void voice.join().then(() => {
+    if (!voice.on) return;
+    chat.note({ kind: voice.hasMic ? "voice-joined" : "voice-listen-only" });
+  });
+}
+
 // The voice chat: in and out, and the microphone on and off.
 voiceToggle.addEventListener("click", () => {
   if (voice.on) {
     voice.leave();
     return;
   }
-  void voice.join().then(() => {
-    if (!voice.on) return;
-    chat.note({ kind: voice.hasMic ? "voice-joined" : "voice-listen-only" });
-  });
+  if (!voiceTold()) {
+    showVoiceAsk(true);
+    return;
+  }
+  joinVoice();
+});
+voiceAskOff.addEventListener("click", () => showVoiceAsk(false));
+voiceAskOn.addEventListener("click", () => {
+  try {
+    localStorage.setItem(VOICE_TOLD_KEY, "1");
+  } catch {
+    // a full or closed store only means it is said again next time
+  }
+  showVoiceAsk(false);
+  joinVoice();
 });
 voiceMic.addEventListener("click", () => voice.setMuted(!voice.muted));
 
@@ -3722,6 +3782,7 @@ addEventListener("keydown", (event) => {
 });
 /** The sheets that are laid over a screen one at a time, the one closed first named first, each with the way to close it. */
 const SHEETS: readonly (readonly [HTMLElement, () => void])[] = [
+  [voiceSheet, () => showVoiceAsk(false)],
   [seatMenu, () => showSeatMenu(null)],
   [swapSheet, () => showSwap(false)],
   [quickSheet, () => showQuick(false)],

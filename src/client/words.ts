@@ -417,6 +417,14 @@ const ko = {
     micOff: "마이크 끔",
     micOn: "마이크 켬",
     joined: "음성 채팅에 들어왔습니다. 음성은 방 사람들의 기기와 직접 주고받습니다.",
+    /** Before voice chat is first turned on in this browser: what the others in it can then learn (`#voice-sheet`). */
+    ask: {
+      title: "음성 채팅을 켜기 전에",
+      line: "음성은 서버를 거치지 않고 함께 켠 사람들의 기기끼리 바로 오갑니다. 그래서 함께 켠 사람은 서로의 접속 주소(IP)를 알 수 있습니다.",
+      hint: "아는 사람과만 켜세요. 한 번 켜면 다시 묻지 않습니다.",
+      on: "켜기",
+      off: "켜지 않기",
+    },
     listenOnly: "마이크를 쓸 수 없어 듣기만 합니다. 브라우저의 마이크 권한을 확인해 주세요.",
     notHere: "이 방에서는 음성 채팅을 쓸 수 없습니다.",
   },
@@ -807,6 +815,13 @@ const en: typeof ko = {
     micOff: "Mic off",
     micOn: "Mic on",
     joined: "You are in the voice chat. Voice goes straight between the devices of the people in the room.",
+    ask: {
+      title: "Before you turn voice chat on",
+      line: "Voice goes straight between the devices of the people who have it on, not through the server. So they can learn each other's network address (IP).",
+      hint: "Turn it on with people you know. Once you do, this is not asked again.",
+      on: "Turn on",
+      off: "Not now",
+    },
     listenOnly: "No microphone could be used, so you only listen. Check the browser's microphone permission.",
     notHere: "This room has no voice chat.",
   },

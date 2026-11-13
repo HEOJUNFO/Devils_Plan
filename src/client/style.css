@@ -1372,6 +1372,38 @@ button.choice[aria-pressed="true"] {
   top: 8px;
 }
 
+/* What turning voice chat on lets the others in it learn, said before it is first turned on: over the middle of the frame, in a room and over a game's menu alike. */
+#voice-sheet {
+  position: absolute;
+  left: 60px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 360px;
+  padding: 9px 12px;
+  border: 1px solid var(--amber);
+  background: var(--bar);
+  line-height: 15px;
+}
+
+#voice-sheet[hidden] {
+  display: none;
+}
+
+#voice-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+#voice-sheet .row {
+  justify-content: flex-end;
+}
+
+:root.touch #voice-sheet button {
+  height: 24px;
+}
+
 /* The words said with one press: over the middle of the frame, in a room and in a game alike. */
 #quick-sheet {
   position: absolute;
