@@ -9,6 +9,9 @@
   public/icon-180.png                  the page's pixel mark as a file with an
                                        address, which a search result and a
                                        phone's home screen take it from
+  public/icon-192.png, icon-512.png,   the same mark at the sizes the page's
+  public/icon-maskable-512.png         manifest names for a home screen
+                                       (`manifest` in src/shared/site/pages.ts)
 
 They are in public/ and not in assets/ because a link to them is written into
 every page's head (src/shared/site/pages.ts) and has to stay the same from
@@ -150,9 +153,11 @@ def invite(lang: str, game: dict) -> Image.Image:
     return picture
 
 
-def icon() -> Image.Image:
-    picture = Image.new("RGB", (180, 180), NIGHT)
-    mark(ImageDraw.Draw(picture), 30, 30, 10)
+def icon(size: int = 180, unit: int = 10) -> Image.Image:
+    """The pixel mark in the middle of a square of `size`, each of its 12 units `unit` wide."""
+    picture = Image.new("RGB", (size, size), NIGHT)
+    edge = (size - 12 * unit) // 2
+    mark(ImageDraw.Draw(picture), edge, edge, unit)
     return picture
 
 
@@ -163,5 +168,10 @@ if __name__ == "__main__":
         for game_id, game in GAMES.items():
             invite(lang, game).save(public / f"invite-{lang}-{SLUGS.get(game_id, game_id)}.png", optimize=True)
     icon().save(public / "icon-180.png", optimize=True)
+    # what a phone's home screen shows (the manifest of src/shared/site/pages.ts). A phone cuts the last to its
+    # own shape, a circle at the least, and keeps the middle four fifths: the mark is smaller there, corners inside.
+    icon(192, 12).save(public / "icon-192.png", optimize=True)
+    icon(512, 32).save(public / "icon-512.png", optimize=True)
+    icon(512, 24).save(public / "icon-maskable-512.png", optimize=True)
     for made in sorted(public.glob("*.png")):
         print(f"{made.relative_to(ROOT)}: {made.stat().st_size} bytes")

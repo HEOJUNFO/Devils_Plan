@@ -30,7 +30,7 @@ function sitePages(): Plugin {
     configureServer(server) {
       const files = new Map([...siteFiles(SITE_SHEETS, { font: SOURCE_FONT, style: DEV_STYLE }), ...inviteFiles()].map((file) => [`/${file.path}`, file.body]));
       files.set(DEV_STYLE, siteStyle(SOURCE_FONT));
-      const types: Record<string, string> = { html: "text/html", css: "text/css", xml: "application/xml", txt: "text/plain" };
+      const types: Record<string, string> = { html: "text/html", css: "text/css", xml: "application/xml", txt: "text/plain", webmanifest: "application/manifest+json" };
       server.middlewares.use((request, response, next) => {
         const asked = (request.url ?? "").split("?")[0] ?? "";
         const path = asked.endsWith("/") ? `${asked}index.html` : asked;

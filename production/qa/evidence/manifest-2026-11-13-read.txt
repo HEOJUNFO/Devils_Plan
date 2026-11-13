@@ -1,0 +1,12 @@
+Read by ego-browser (Ego Lite, Chromium) from the local server, 2026-11-13: Page.getAppManifest and Page.getInstallabilityErrors, and each icon decoded in the page.
+http://localhost:5273/?profile=manifest&lang=ko
+  url: http://localhost:5273/manifest.webmanifest | errors: []
+  name: brain-survival | start: / | display: fullscreen | orientation: landscape
+  installability errors: []
+  icons: /icon-192.png 192x192 (says 192x192); /icon-512.png 512x512 (says 512x512); /icon-maskable-512.png 512x512 (says 512x512)
+http://localhost:5273/en/
+  url: http://localhost:5273/manifest.webmanifest | errors: []
+  name: brain-survival | start: / | display: fullscreen | orientation: landscape
+  installability errors: []
+  icons: /icon-192.png 192x192 (says 192x192); /icon-512.png 512x512 (says 512x512); /icon-maskable-512.png 512x512 (says 512x512)
+

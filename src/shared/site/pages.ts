@@ -121,6 +121,8 @@ function headTags(page: { lang: Lang; path: string; title: string; description: 
     { tag: "link", attrs: { rel: "alternate", hreflang: "x-default", href: ORIGIN + page.fallback } },
     // a search result's small picture is taken from an address, which the mark drawn in the page itself does not have
     { tag: "link", attrs: { rel: "apple-touch-icon", href: "/icon-180.png" } },
+    // what a phone reads when the page is put on its home screen (`manifest`)
+    { tag: "link", attrs: { rel: "manifest", href: `/${MANIFEST_PATH}` } },
     { tag: "meta", attrs: { property: "og:type", content: "website" } },
     { tag: "meta", attrs: { property: "og:site_name", content: SITE_NAME } },
     { tag: "meta", attrs: { property: "og:title", content: page.title } },
@@ -437,11 +439,49 @@ export function inviteFiles(): SiteFile[] {
   return LANGS.flatMap((lang) => GAME_IDS.map((game) => ({ path: `${invitePath(lang, game).slice(1)}index.html`, body: invitePage(lang, game) })));
 }
 
-/** Every file of the site besides the game's own page: the pages, and what tells a crawler where they are. */
+/** Where the build writes what `manifest` gives. */
+const MANIFEST_PATH = "manifest.webmanifest";
+
+/** The colour behind everything on the page (`--night` of the style sheets), which a phone shows while the page opens. */
+const NIGHT = "#0d1020";
+
+/**
+ * What a phone reads when a player puts the page on their home screen: from
+ * there it opens the game's own page, in whichever language that page then
+ * finds to be the reader's, over the whole screen and turned sideways where
+ * the phone does that (the frame is wider than it is tall, and a browser's
+ * bars take a fifth of a phone held so). Nothing is kept on the phone for
+ * it: the game is played with other people and needs the network anyway.
+ *
+ * The name is the site's and no sentence is in it, so it is one file for
+ * both languages. The pictures are the page's pixel mark, drawn by
+ * `tools/share-picture.py`; the one a phone may cut to its own shape has the
+ * mark smaller, inside the part every shape keeps.
+ */
+function manifest(): string {
+  const icon = (name: string, size: number, purpose?: "maskable") => ({ src: `/${name}.png`, sizes: `${size}x${size}`, type: "image/png", ...(purpose === undefined ? {} : { purpose }) });
+  return `${JSON.stringify(
+    {
+      id: "/",
+      name: SITE_NAME,
+      start_url: "/",
+      scope: "/",
+      display: "fullscreen",
+      orientation: "landscape",
+      background_color: NIGHT,
+      theme_color: NIGHT,
+      icons: [icon("icon-192", 192), icon("icon-512", 512), icon("icon-maskable-512", 512, "maskable")],
+    },
+    null,
+    2,
+  )}\n`;
+}
+
+/** Every file of the site besides the game's own page: the pages, and what tells a crawler or a phone where they are. */
 export function siteFiles(sheets: Sheets, built: Built): SiteFile[] {
   const pages = LANGS.flatMap((lang) => [
     { path: `${lang}/index.html`, body: homePage(lang, built) },
     ...GAME_IDS.map((game) => ({ path: `${gamePath(lang, game).slice(1)}index.html`, body: gamePage(lang, game, sheets[game][lang], built) })),
   ]);
-  return [...pages, { path: "sitemap.xml", body: sitemap() }, { path: "robots.txt", body: robots() }, { path: "llms.txt", body: llms() }];
+  return [...pages, { path: "sitemap.xml", body: sitemap() }, { path: "robots.txt", body: robots() }, { path: "llms.txt", body: llms() }, { path: MANIFEST_PATH, body: manifest() }];
 }

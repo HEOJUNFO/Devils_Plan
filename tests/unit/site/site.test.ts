@@ -4,7 +4,7 @@ import { LANGS, type Lang } from "../../../src/shared/lang";
 import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
 import { invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
 import { siteStyle } from "../../../src/shared/site/style";
-import { ORIGIN, OWNER_CODES, SITE_WORDS } from "../../../src/shared/site/words";
+import { ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "../../../src/shared/site/words";
 
 /** The addresses a build gives the font and the style sheet. */
 const BUILT = { font: "/assets/font-abc.woff2", style: "/assets/site-abc.css" };
@@ -225,6 +225,33 @@ describe("the head of the game's own page", () => {
 
   it("links a reader without the script to the page about the games, in every language", () => {
     for (const lang of LANGS) expect(appNoScript()).toContain(`<a href="${homePath(lang)}">`);
+  });
+});
+
+describe("what a phone reads to keep the game on its home screen", () => {
+  const manifest = (): Record<string, unknown> => JSON.parse(file("manifest.webmanifest")) as Record<string, unknown>;
+  const LINK = '<link rel="manifest" href="/manifest.webmanifest" />';
+
+  it("opens the game's own page under the site's name, sideways and over the whole screen", () => {
+    expect(manifest()).toMatchObject({ name: SITE_NAME, start_url: "/", scope: "/", display: "fullscreen", orientation: "landscape" });
+  });
+
+  it("has a picture at each size a home screen asks for, and one a phone may cut to its own shape", () => {
+    const icons = manifest().icons as { src: string; sizes: string; type: string; purpose?: string }[];
+
+    expect(icons.filter((icon) => icon.purpose !== "maskable").map((icon) => icon.sizes)).toEqual(["192x192", "512x512"]);
+    expect(icons.filter((icon) => icon.purpose === "maskable").map((icon) => icon.sizes)).toEqual(["512x512"]);
+    for (const icon of icons) expect(icon).toMatchObject({ src: expect.stringMatching(/^\/icon-[a-z0-9-]+\.png$/), type: "image/png" });
+    expect(new Set(icons.map((icon) => icon.src)).size).toBe(icons.length);
+  });
+
+  it("is named in the head of the game's own page and of every page", () => {
+    expect(appHead().map(renderTag).join("\n")).toContain(LINK);
+    for (const page of pages()) expect(page.body).toContain(LINK);
+  });
+
+  it("does not name the show: its name is what stands under the picture on a home screen", () => {
+    expect(file("manifest.webmanifest")).not.toMatch(/데블스|Devil/);
   });
 });
 
