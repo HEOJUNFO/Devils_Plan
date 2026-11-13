@@ -450,7 +450,7 @@ const NIGHT = "#0d1020";
  * there it opens the game's own page, in whichever language that page then
  * finds to be the reader's, over the whole screen and turned sideways where
  * the phone does that (the frame is wider than it is tall, and a browser's
- * bars take a fifth of a phone held so). Nothing is kept on the phone for
+ * bars take height from a phone held so). Nothing is kept on the phone for
  * it: the game is played with other people and needs the network anyway.
  *
  * The name is the site's and no sentence is in it, so it is one file for
