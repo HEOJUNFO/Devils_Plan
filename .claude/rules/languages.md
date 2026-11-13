@@ -29,7 +29,9 @@ This is a project rule the user set on 2026-11-11, in their words:
   and what it is filled with, of a covered one only its shape.
 - The pages a search engine reads (`/ko/`, `/en/` and a page of rules for
   each game, written by the build: `src/shared/site/pages.ts`) are in both
-  languages too. Their own sentences are in `src/shared/site/words.ts`; a
+  languages too. Their own sentences are in `src/shared/site/words.ts` (the
+  notice of what is kept of a visitor has its own beside it,
+  `privacy-words.ts`, so that the game's script does not carry them); a
   game's name, summary and rules are taken from `games.json` and from the
   sheet in the game's `words.ts`, so they are written once. They are
   documents, not screens of 480 by 270: an English one is looked at in a

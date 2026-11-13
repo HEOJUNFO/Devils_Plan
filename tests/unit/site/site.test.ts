@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import { LANGS, type Lang } from "../../../src/shared/lang";
-import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
+import chatConfig from "../../../src/shared/chat-config.json";
+import directoryConfig from "../../../src/shared/directory-config.json";
+import roomConfig from "../../../src/shared/room-config.json";
+import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, privacyPath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
 import { INVITED_GAME_KEY, invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
 import { siteStyle } from "../../../src/shared/site/style";
+import voiceConfig from "../../../src/shared/voice-config.json";
 import { ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "../../../src/shared/site/words";
 
 /** The addresses a build gives the font and the style sheet. */
@@ -52,12 +56,13 @@ const canonical = (body: string): string => one(body, /<link rel="canonical" hre
 const alternate = (body: string, lang: string): string => one(body, new RegExp(`<link rel="alternate" hreflang="${lang}" href="([^"]*)"`));
 
 describe("the pages a search engine reads", () => {
-  it("are a page about the games and a page of rules for each game, in every language", () => {
+  it("are a page about the games, a page of rules for each game and the notice of what is kept, in every language", () => {
     const addresses = pages().map((page) => page.address);
 
-    expect(addresses).toHaveLength(LANGS.length * (GAME_IDS.length + 1));
+    expect(addresses).toHaveLength(LANGS.length * (GAME_IDS.length + 2));
     for (const lang of LANGS) {
       expect(addresses).toContain(homePath(lang));
+      expect(addresses).toContain(privacyPath(lang));
       for (const game of GAME_IDS) expect(addresses).toContain(gamePath(lang, game));
     }
   });
@@ -185,6 +190,47 @@ describe("the pages a search engine reads", () => {
       expect(page.body).toContain(`href="${BUILT.font}"`);
     }
     expect(siteStyle(BUILT.font)).toContain(`url("${BUILT.font}")`);
+  });
+});
+
+describe("the notice of what is kept of a visitor", () => {
+  /** The notice in `lang`, as text: its markup taken off. */
+  const notice = (lang: Lang): string => {
+    const found = pages().find((page) => page.address === privacyPath(lang));
+    if (found === undefined) throw new Error(`no notice in ${lang}`);
+    return unescape(found.body.replace(/<[^>]*>/g, " "));
+  };
+
+  it.each(pages())("$address links to it in its own language", ({ lang, body }) => {
+    expect(body).toContain(`<a href="${privacyPath(lang)}">`);
+  });
+
+  it("says how long an empty room is kept, as the room's settings have it", () => {
+    const hours = roomConfig.emptyRoomTtlMinutes / 60;
+
+    expect(notice("ko")).toContain(`${hours}시간`);
+    expect(notice("en")).toContain(`${hours} hours`);
+  });
+
+  it("says how many lines a report keeps and how many words to the maker are kept, as the settings have them", () => {
+    for (const lang of LANGS) {
+      expect(notice(lang)).toMatch(new RegExp(`\\b${chatConfig.flag.lines}\\b`));
+      expect(notice(lang)).toMatch(new RegExp(`\\b${directoryConfig.feedback.keep}\\b`));
+    }
+  });
+
+  it("names whose servers a browser asks when voice chat connects", () => {
+    // stun:stun.cloudflare.com:3478 is Cloudflare's, stun:stun.l.google.com:19302 Google's: a server added to the settings has to be named here too
+    const owners = voiceConfig.stunUrls.map((url) => url.split(":")[1]?.split(".").slice(-2)[0] ?? "");
+
+    expect(owners.every((owner) => owner !== "")).toBe(true);
+    for (const lang of LANGS) for (const owner of owners) expect(notice(lang).toLowerCase()).toContain(owner);
+  });
+
+  it("says voice chat is for rooms off the list only while that is so", () => {
+    expect(voiceConfig.listedRooms).toBe(false);
+    expect(notice("ko")).toContain("비공개 방에서만");
+    expect(notice("en")).toContain("only in a private room");
   });
 });
 

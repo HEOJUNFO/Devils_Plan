@@ -1,8 +1,9 @@
 /**
  * The pages a search engine reads, written when the client is built
- * (`vite.config.ts`): a page about the games and a page of rules for each
- * game, in every language, with the files that tell a crawler where they are
- * (`sitemap.xml`, `robots.txt`, `llms.txt`).
+ * (`vite.config.ts`): a page about the games, a page of rules for each game
+ * and the notice of what is kept of a visitor, in every language, with the
+ * files that tell a crawler where they are (`sitemap.xml`, `robots.txt`,
+ * `llms.txt`).
  *
  * The game's own page, `/`, is drawn by its script and has no sentence in its
  * markup, so a crawler that does not run the script finds nothing to read on
@@ -18,9 +19,13 @@
  * Pure: the sheets and the built addresses of the font and the style sheet
  * are handed in, and text comes out.
  */
+import chatConfig from "../chat-config.json";
+import directoryConfig from "../directory-config.json";
 import { GAMES, GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
+import roomConfig from "../room-config.json";
 import { INVITED_GAME_KEY, invitePath, invitePicture, slugOf } from "./paths";
+import { PRIVACY_PARTS, PRIVACY_WORDS, type PrivacyFacts } from "./privacy-words";
 import { LANG_NAMES, ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "./words";
 
 /** A game's rules as its sheet has them: a heading, the rules in three lines, then paragraphs and lists of points (`RulesSheet` of the client). */
@@ -70,6 +75,11 @@ export function homePath(lang: Lang): string {
 /** The address of a game's page of rules, in `lang`. */
 export function gamePath(lang: Lang, game: GameId): string {
   return `/${lang}/${slugOf(game)}/`;
+}
+
+/** The address of the notice of what is kept of a visitor, in `lang`. */
+export function privacyPath(lang: Lang): string {
+  return `/${lang}/privacy/`;
 }
 
 /** The address that opens the game itself in `lang`. */
@@ -220,7 +230,7 @@ ${spec.main}
 <footer class="foot">
 <p>${SITE_NAME} · ${escapeHtml(words.frame.footer)}</p>
 <p>${escapeHtml(words.frame.notTheShow)}</p>
-<p><a href="${homePath(lang)}">${escapeHtml(words.frame.home)}</a> · <a href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a> · ${otherLangs}</p>
+<p><a href="${homePath(lang)}">${escapeHtml(words.frame.home)}</a> · <a href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a> · <a href="${privacyPath(lang)}">${escapeHtml(PRIVACY_WORDS[lang].name)}</a> · ${otherLangs}</p>
 </footer>
 </body>
 </html>
@@ -338,6 +348,41 @@ ${gameList(lang, GAME_IDS.filter((other) => other !== game))}`;
   return page(built, { lang, path, title: words.game.title(name), description, others, fallback: others[FALLBACK_LANG], data, main });
 }
 
+/** The numbers the notice says, from the settings they are in. */
+const PRIVACY_FACTS: PrivacyFacts = {
+  roomHours: roomConfig.emptyRoomTtlMinutes / 60,
+  flagLines: chatConfig.flag.lines,
+  wordsKept: directoryConfig.feedback.keep,
+  madeMinutes: Math.max(...directoryConfig.makeLimits.map((limit) => limit.windowSeconds)) / 60,
+};
+
+/** The notice in each language. */
+const PRIVACIES = Object.fromEntries(LANGS.map((lang) => [lang, privacyPath(lang)])) as Record<Lang, string>;
+
+/** The notice of what is kept of a visitor, in `lang`: what the site keeps, where, for how long, and who sees it. */
+function privacyPage(lang: Lang, built: Built): string {
+  const words = SITE_WORDS[lang];
+  const notice = PRIVACY_WORDS[lang];
+  const parts = notice.parts(PRIVACY_FACTS);
+  const path = privacyPath(lang);
+  const sections = PRIVACY_PARTS.map((part) => `<h2>${escapeHtml(parts[part].heading)}</h2>\n<ul>\n${parts[part].lines.map((line) => `<li>${escapeHtml(line)}</li>`).join("\n")}\n</ul>`);
+  const main = `<nav class="trail" aria-label="${escapeHtml(words.frame.trail)}"><a href="${homePath(lang)}">${escapeHtml(words.frame.home)}</a> › ${escapeHtml(notice.name)}</nav>
+<h1>${escapeHtml(notice.name)}</h1>
+<p class="lead">${escapeHtml(notice.lead)}</p>
+${sections.join("\n")}`;
+  const data = [
+    { "@type": "WebPage", "@id": `${ORIGIN}${path}#page`, url: ORIGIN + path, name: notice.name, description: notice.description, inLanguage: lang, isPartOf: { "@id": SITE_ID } },
+    {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: words.frame.home, item: ORIGIN + homePath(lang) },
+        { "@type": "ListItem", position: 2, name: notice.name, item: ORIGIN + path },
+      ],
+    },
+  ];
+  return page(built, { lang, path, title: notice.title, description: notice.description, others: PRIVACIES, fallback: PRIVACIES[FALLBACK_LANG], data, main });
+}
+
 /** Every address a search engine is to index, each with the same page by language and the one for a reader of neither. */
 export function siteAddresses(): { path: string; others: Record<Lang, string>; fallback: string }[] {
   const games = GAME_IDS.map((game) => Object.fromEntries(LANGS.map((lang) => [lang, gamePath(lang, game)])) as Record<Lang, string>);
@@ -345,6 +390,7 @@ export function siteAddresses(): { path: string; others: Record<Lang, string>; f
     { path: "/", others: HOMES, fallback: "/" },
     ...LANGS.map((lang) => ({ path: HOMES[lang], others: HOMES, fallback: "/" })),
     ...games.flatMap((others) => LANGS.map((lang) => ({ path: others[lang], others, fallback: others[FALLBACK_LANG] }))),
+    ...LANGS.map((lang) => ({ path: PRIVACIES[lang], others: PRIVACIES, fallback: PRIVACIES[FALLBACK_LANG] })),
   ];
 }
 
@@ -375,7 +421,8 @@ function llms(): string {
   const section = (lang: Lang): string => {
     const words = SITE_WORDS[lang];
     const games = GAME_IDS.map((game) => `- [${GAMES[game].title[lang]}](${ORIGIN}${gamePath(lang, game)}): ${GAMES[game].summary[lang]} ${players(lang, game)}.`);
-    return `## ${words.home.games} (${LANG_NAMES[lang]})\n\n- [${words.home.heading(count)}](${ORIGIN}${homePath(lang)}): ${words.frame.footer}.\n${games.join("\n")}`;
+    const notice = PRIVACY_WORDS[lang];
+    return `## ${words.home.games} (${LANG_NAMES[lang]})\n\n- [${words.home.heading(count)}](${ORIGIN}${homePath(lang)}): ${words.frame.footer}.\n${games.join("\n")}\n- [${notice.name}](${ORIGIN}${privacyPath(lang)}): ${notice.description}`;
   };
   const first = SITE_WORDS[FALLBACK_LANG];
   return `# ${SITE_NAME}
@@ -489,6 +536,7 @@ export function siteFiles(sheets: Sheets, built: Built): SiteFile[] {
   const pages = LANGS.flatMap((lang) => [
     { path: `${lang}/index.html`, body: homePage(lang, built) },
     ...GAME_IDS.map((game) => ({ path: `${gamePath(lang, game).slice(1)}index.html`, body: gamePage(lang, game, sheets[game][lang], built) })),
+    { path: `${privacyPath(lang).slice(1)}index.html`, body: privacyPage(lang, built) },
   ]);
   return [...pages, { path: "sitemap.xml", body: sitemap() }, { path: "robots.txt", body: robots() }, { path: "llms.txt", body: llms() }, { path: MANIFEST_PATH, body: manifest() }];
 }
