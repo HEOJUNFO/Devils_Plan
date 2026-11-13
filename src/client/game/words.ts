@@ -137,7 +137,8 @@ const ko = {
     amount: (amount: number, need: number) => `조작에 ${amount}개 제출 · ${byInput("좌우 키로 개수", "- +로 개수")} · 모두 합쳐 ${need}이면 교체`,
     turn: (steps: number, letter: string, known: 0 | 1 | null, doubtful: boolean) =>
       `${steps}칸 회전: ${letter} 약실(${known === 1 ? "실탄" : known === 0 ? "빔" : "모름"}${doubtful ? "?" : ""})이 내 앞으로`,
-    watching: "관전 중입니다. 다음 판부터 함께할 수 있습니다.",
+    /** To someone watching: when they can play. Whoever the room's 탈락전 put out (`out`) cannot from the next game. */
+    watching: (out: boolean): string => (out ? "탈락해 구경 중입니다. 우승자가 나오면 모두 다시 참가합니다." : "관전 중입니다. 다음 판부터 함께할 수 있습니다."),
   },
   /** The small buttons: confirm and cancel 62 pixels wide inside, the two under the results 88. */
   button: {
@@ -292,7 +293,7 @@ const en: typeof ko = {
     amount: (amount, need) => `Put in ${amount} · ${byInput("left and right to change", "- and + to change")} · swap at ${need}`,
     turn: (steps, letter, known, doubtful) =>
       `Turn ${steps}: chamber ${letter} (${known === null ? "unknown" : `${doubtful ? "was " : ""}${known === 1 ? "live" : "empty"}`}) comes to you`,
-    watching: "You are watching. You can play from the next game.",
+    watching: (out) => (out ? "You are out, watching until someone wins." : "You are watching. You can play from the next game."),
   },
   button: {
     confirm: keyed("Enter", "OK"),

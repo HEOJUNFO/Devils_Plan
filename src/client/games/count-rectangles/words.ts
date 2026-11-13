@@ -127,7 +127,8 @@ const ko = {
     next: (how: { right: string } | "time" | "all-wrong", seconds: number) =>
       `${how === "time" ? "시간 종료" : how === "all-wrong" ? "모두 오답" : `${how.right} 정답!`} · 다음 문제까지 ${seconds}초`,
     over: "판이 끝났습니다",
-    watching: "관전 중입니다. 다음 판부터 함께할 수 있습니다",
+    /** To someone watching: when they can play. Whoever the room's 탈락전 put out (`out`) cannot from the next game. */
+    watching: (out: boolean): string => (out ? "탈락해 구경 중입니다. 우승자가 나오면 모두 다시 참가합니다" : "관전 중입니다. 다음 판부터 함께할 수 있습니다"),
     /** Between the names of those in the added contest. */
     versus: " 대 ",
     duelWatch: (names: string) => `추가 대결을 구경합니다: ${names}`,
@@ -336,7 +337,7 @@ const en: typeof ko = {
     answering: (who, seconds) => `${who} is answering · ${seconds}s`,
     next: (how, seconds) => `${how === "time" ? "Time is up" : how === "all-wrong" ? "All wrong" : `${how.right} is right!`} · next problem in ${seconds}s`,
     over: "The game is over",
-    watching: "You are watching. You can play from the next game",
+    watching: (out) => (out ? "You are out, watching until someone wins" : "You are watching. You can play from the next game"),
     versus: " vs ",
     duelWatch: (names) => `Watching the playoff: ${names}`,
     wrong: "Wrong: you cannot answer this problem again",

@@ -54,6 +54,7 @@ import {
   type SeatLayout,
 } from "./draw";
 import { CHAIR_DOWN, FIGURE_COUNT } from "./figures";
+import { makeRoom, type LabelBox, type LabelRoom } from "./labels";
 import { C } from "./palette";
 import * as fxlib from "./pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "./pointer";
@@ -76,6 +77,8 @@ export interface TableHandlers {
   voice(slot: number): VoiceMark;
   /** The rules sheet covers the whole screen, or has been put away. */
   covered(covered: boolean): void;
+  /** Whether the room's 탈락전 has put this player out (`GameHandlers.out`): they watch, and are told until when. */
+  out(): boolean;
 }
 
 /** The game screen. */
@@ -126,6 +129,14 @@ const LOG_ROW_H = 14;
 /** The lead's mark beside a name: a plate a pixel wider than its word on each side, and the gap before it. */
 const LEAD_MARK_EDGE = 2;
 const LEAD_MARK_GAP = 3;
+/**
+ * The room two names on the same lines leave each other (`labels.ts`): a gap
+ * that the voice mark before a name fits in, the height of a name with the
+ * line under it, and the picture's right edge.
+ */
+const LABEL_ROOM: LabelRoom = { gap: 4 + VOICE_MARK_W, lines: 26, edge: SCENE_W - 4 };
+/** The gap before what follows a name on its own line. */
+const AFTER_NAME_GAP = 5;
 
 interface Selection {
   mode: "pick" | "confirm" | "amount" | "swap";
@@ -1018,25 +1029,42 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     drawFigure(pen, latest.view.seats[seat].occupant % FIGURE_COUNT, at.x, at.y, at.back, at.side);
   }
 
+  /** The mark of whoever leads the round: its word is as long as the language makes it. */
+  const leadPlateWidth = (): number => pen.width(WORDS.seat.lead) + LEAD_MARK_EDGE;
+
+  /** The name of `seat` as it is drawn, in no more than `room` pixels, with the plate of whoever leads the round after it. */
+  function labelOf(seat: number, room: number): LabelBox & { name: string; lead: boolean } {
+    const at = layoutOf(seat);
+    const name = pen.fit(nickOf(seat), room);
+    const lead = latest !== null && latest.view.phase !== "ended" && deal <= 0 && mod(latest.view.round, seats()) === seat;
+    const width = pen.width(name) + (lead ? leadPlateWidth() + LEAD_MARK_GAP : 0);
+    return { name, lead, width, x: at.label.align === "center" ? at.label.x - Math.round(width / 2) : at.label.x, y: at.label.y };
+  }
+
   function drawLabels(): void {
     if (latest === null) return;
     const view = latest.view;
     const acts = lastActs();
     const waiting = settled() ? awaited() : null;
     const n = seats();
-    for (let seat = 0; seat < n; seat++) {
-      if (seat >= dealShown()) continue;
+    const shown = Math.min(n, dealShown());
+    const labels = Array.from({ length: shown }, (_, seat) => labelOf(seat, NAME_WIDTH));
+    // The far middle seat's name runs right from beside the seat, onto the lines of the name over the next
+    // seat round: that name moves over as far as the picture goes, and the far one is cut by what is still wanted.
+    const far = labels.findIndex((_, seat) => layoutOf(seat).label.align === "left");
+    for (let seat = 0; far !== -1 && seat < shown; seat++) {
+      if (seat === far) continue;
+      const { shift, cut } = makeRoom(labels[far], labels[seat], LABEL_ROOM);
+      labels[seat].x += shift;
+      if (cut > 0) labels[far] = labelOf(far, pen.width(labels[far].name) - cut);
+    }
+    for (let seat = 0; seat < shown; seat++) {
       const at = layoutOf(seat);
       const player = latest.players[seat];
       const info = view.seats[seat];
       const mine = seat === view.seat;
-      const name = pen.fit(player.nick, NAME_WIDTH);
-      const lead = view.phase !== "ended" && deal <= 0 && mod(view.round, n) === seat;
-      // the mark of whoever leads the round: its word is as long as the language makes it
-      const leadPlate = pen.width(WORDS.seat.lead) + LEAD_MARK_EDGE;
-      const width = pen.width(name) + (lead ? leadPlate + LEAD_MARK_GAP : 0);
-      const lx = at.label.align === "center" ? at.label.x - Math.round(width / 2) : at.label.x;
-      const ly = at.label.y;
+      const { name, lead, width, x: lx, y: ly } = labels[seat];
+      const leadPlate = leadPlateWidth();
       pen.txt(name, lx, ly, fallen[seat] ? C.dim : waiting === seat || (mine && deal > 0) ? C.amber : C.bone);
       // in the room's voice chat: a mark before the name
       // a seat whose player has left the room is nobody's: whoever holds that slot now is someone else
@@ -1048,8 +1076,13 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         pen.px(lx + width - leadPlate + 1, ly + 1, leadPlate - LEAD_MARK_EDGE, 11, C.ink);
         pen.txt(WORDS.seat.lead, lx + width - leadPlate + 1, ly + 1, C.amber);
       }
-      // under the name: what the table can tell of the seat. My own seat has no room for a second line.
-      const second = (text: string, colour: string) => pen.txt(text, mine ? lx + width + 5 : lx, mine ? ly : ly + 13, colour);
+      // Under the name: what the table can tell of the seat. The seat nearest the camera has the bar under
+      // it and no room for a second line, whoever sits there (my own seat, or seat 1 for someone watching):
+      // there it goes after the name.
+      const near = posOf(seat) === 0;
+      const sx = near ? lx + width + AFTER_NAME_GAP : lx;
+      const sy = near ? ly : ly + 13;
+      const second = (text: string, colour: string) => pen.txt(text, sx, sy, colour);
       if (fallen[seat]) second(WORDS.seat.shot, C.crim);
       else if (deal > 0) {
         // nothing yet
@@ -1058,9 +1091,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       else if (!player.connected) second(WORDS.seat.offline, C.dim);
       else if (!mine) {
         // credits left, as far as the table can count them
-        pen.px(lx, ly + 16, 5, 5, C.brassD);
-        pen.px(lx + 1, ly + 17, 3, 3, C.brass);
-        pen.txt(info.minCredits === info.maxCredits ? `${info.maxCredits}` : `${info.minCredits}~${info.maxCredits}`, lx + 8, ly + 13, C.boneD);
+        pen.px(sx, sy + 3, 5, 5, C.brassD);
+        pen.px(sx + 1, sy + 4, 3, 3, C.brass);
+        pen.txt(info.minCredits === info.maxCredits ? `${info.maxCredits}` : `${info.minCredits}~${info.maxCredits}`, sx + 8, sy, C.boneD);
       }
       // beside the head: the seat number at the draw, dots while the table waits for the seat, else its last move
       const bx = at.bubble.x;
@@ -1372,7 +1405,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (view.credits === null) {
       // someone watching has no credits to spend: where the actions would be, what the game is, and that they are watching it
       pen.txt(pen.fit(WORDS.sheet.brief.goal, W - 12), 6, 240, C.boneD);
-      pen.txt(WORDS.prompt.watching, 6, 254, C.boneD);
+      pen.txt(WORDS.prompt.watching(handlers.out()), 6, 254, C.boneD);
       return;
     }
     const names = WORDS.action.names;

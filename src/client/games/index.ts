@@ -60,6 +60,13 @@ export interface GameHandlers {
    * nothing changes under a game being played.
    */
   first: boolean;
+  /**
+   * Whether the room's 탈락전 has put this browser's player out: they watch
+   * the room's games until someone has won it. A screen that tells someone
+   * watching when they can play does not then say "from the next game". Asked
+   * each time, since the game that leaves one player in takes everyone back.
+   */
+  out(): boolean;
 }
 
 /** A game's screen, covering the frame while a game is on. */

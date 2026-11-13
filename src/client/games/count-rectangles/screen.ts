@@ -53,6 +53,8 @@ export interface RectHandlers {
   covered(covered: boolean): void;
   /** The game has more teams than the column lists above its moves, or no longer has. */
   crowded(crowded: boolean): void;
+  /** Whether the room's 탈락전 has put this player out (`GameHandlers.out`): they watch, and are told until when. */
+  out(): boolean;
 }
 
 /** The game screen. */
@@ -859,7 +861,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       return [WORDS.standing.next(how, seconds), view.outcome?.kind === "right" ? C.teal : C.boneD];
     }
     if (view.phase === "ended") return [WORDS.standing.over, C.amber];
-    if (me === null) return [WORDS.standing.watching, C.boneD];
+    if (me === null) return [WORDS.standing.watching(handlers.out()), C.boneD];
     if (view.duel !== null) {
       // the added contest: its players race, everyone else looks on
       const names = view.duel.players.map((player) => pen.fit(nickOf(player), LIST_NAME_WIDTH)).join(WORDS.standing.versus);

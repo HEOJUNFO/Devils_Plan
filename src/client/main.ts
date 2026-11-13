@@ -1133,6 +1133,7 @@ function showTable(game: GameId): GameScreen {
         syncChat();
       },
       first: (myRecord().games[game]?.played ?? 0) === 0,
+      out: () => currentView !== null && currentView.knockout === true && currentView.players.find((p) => p.slot === currentView?.you)?.out === true,
     });
     table.setHost(isHost);
   }
