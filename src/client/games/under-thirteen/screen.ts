@@ -951,7 +951,9 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     // which keys open the rules and mute the sound; under a finger, where the menu that does is
     const idle = TOUCH ? PAGE.menu.hint : WORDS.keys.idle;
     if (me() === null) {
-      pen.txt(idle, 6, 240, C.dim);
+      // someone watching is told what the game is, over the keys
+      pen.txt(pen.fit(WORDS.sheet.brief.goal, W - 12), 6, 240, C.boneD);
+      pen.txt(idle, 6, 254, C.dim);
       return;
     }
     if (view.phase === "spots") {

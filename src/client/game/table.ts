@@ -1370,7 +1370,9 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       if (sel.mode !== "swap") smallButton(NO_RECT, WORDS.button.cancel, false);
     }
     if (view.credits === null) {
-      pen.txt(WORDS.prompt.watching, 6, 248, C.boneD);
+      // someone watching has no credits to spend: where the actions would be, what the game is, and that they are watching it
+      pen.txt(pen.fit(WORDS.sheet.brief.goal, W - 12), 6, 240, C.boneD);
+      pen.txt(WORDS.prompt.watching, 6, 254, C.boneD);
       return;
     }
     const names = WORDS.action.names;

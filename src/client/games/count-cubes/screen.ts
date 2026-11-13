@@ -628,6 +628,11 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const [words, colour] = standing();
     pen.txt(pen.fit(words, W - 12), 6, 225, colour);
     if (me() !== null) drawEntry();
+    else {
+      // someone watching has nothing to enter: where the box and the figures would be, what the game is and what its players are doing
+      pen.txt(pen.fit(WORDS.sheet.brief.goal, W - 12), 6, 240, C.boneD);
+      pen.txt(pen.fit(WORDS.sheet.brief.play, W - 12), 6, 254, C.boneD);
+    }
   }
 
   function drawHelp(): void {

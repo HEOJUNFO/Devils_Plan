@@ -941,7 +941,13 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     pen.txt(pen.fit(words, W - 12), 6, 225, colour);
     const own = view.mine;
     const stock = chosen();
-    if (own === null || stock === undefined) return;
+    if (own === null) {
+      // someone watching has nothing to trade with: where the buttons would be, what the game is and what its players are doing
+      pen.txt(pen.fit(WORDS.sheet.brief.goal, W - 12), 6, 240, C.boneD);
+      pen.txt(pen.fit(WORDS.sheet.brief.play, W - 12), 6, 254, C.boneD);
+      return;
+    }
+    if (stock === undefined) return;
     const live = atWork() && sent === null;
     if (mode === "piece" && live) {
       button(THIRD_RECT, WORDS.button.peek, false, true);

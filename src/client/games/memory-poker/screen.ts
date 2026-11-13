@@ -674,7 +674,9 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     // which keys open the rules and mute the sound; under a finger, where the menu that does is
     const hint = TOUCH ? PAGE.menu.hint : WORDS.hint;
     if (!choosing) {
-      pen.txt(hint, 6, 240, C.dim);
+      // someone watching is told what the game is, over the keys; a player knows, and has the keys there
+      if (me() === null) pen.txt(pen.fit(WORDS.sheet.brief.goal, W - 12), 6, 240, C.boneD);
+      pen.txt(hint, 6, me() === null ? 254 : 240, C.dim);
       return;
     }
     pen.txt(pen.fit(WORDS.keys, LOCK_RECT[0] - 14), 6, 240, C.boneD);

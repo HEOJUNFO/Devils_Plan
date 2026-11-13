@@ -1377,6 +1377,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const six = optionOf(mine, 6);
       pen.txt(WORDS.hand.mine(tile.number, six === null ? null : optionName(6, six)), 40, 240, C.bone);
     }
+    // someone watching has no tile to show there: what the game is, over the line that says what is being done now
+    // (while tiles are picked the bar is the tiles, and has no room for it)
+    if (mine === null) pen.txt(pen.fit(WORDS.sheet.brief.goal, W - 46), 40, 240, C.boneD);
     if (view.phase === "choose") {
       pen.txt(WORDS.hand.cards, 40, 253, C.boneD);
     } else if (marking()) {
