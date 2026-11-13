@@ -489,7 +489,39 @@ export function hostOf(state: LobbyState, connectedSlots: ReadonlySet<number>): 
  */
 export function leaveLobby(state: LobbyState, token: string): LobbyState {
   if (!findPlayer(state, token)) return state;
-  return seriesSettled(withGone(state, new Set([token])));
+  return afterGoing(state, new Set([token]));
+}
+
+/**
+ * `state` once the players holding `tokens` have gone from it of themselves
+ * or by being away too long: without them, with everyone in again where that
+ * leaves nobody to play each other ({@link seriesSettled}), and with a host
+ * who is still in ({@link hostStillIn}).
+ */
+function afterGoing(state: LobbyState, tokens: ReadonlySet<string>): LobbyState {
+  const gone = state.players.filter((p) => tokens.has(p.token));
+  return hostStillIn(seriesSettled(withGone(state, tokens)), gone);
+}
+
+/**
+ * In a room playing 탈락전, whoever came first is the host ({@link hostOf})
+ * also while sitting out: the room is theirs. But when the players `gone`
+ * have just left it and that would make the first of those left someone
+ * sitting out, the first of those still in counts as having come before
+ * them: the room does not pass to someone who is not playing while someone
+ * is. Who is connected is not asked: the one it passes to may be away, and
+ * then {@link hostOf} goes on to the next connected as in any room.
+ */
+function hostStillIn(state: LobbyState, gone: readonly LobbyPlayer[]): LobbyState {
+  if (state.knockout !== true || state.players.length === 0) return state;
+  const earliest = (players: readonly LobbyPlayer[]): LobbyPlayer => players.reduce((a, b) => (seqOf(b) < seqOf(a) ? b : a));
+  const first = earliest(state.players);
+  // someone who was first already, and sits out, stays: only a place that has just come free passes them over
+  if (first.out !== true || !gone.some((p) => seqOf(p) < seqOf(first))) return state;
+  const stillIn = state.players.filter((p) => p.out !== true);
+  if (stillIn.length === 0) return state;
+  const next = earliest(stillIn);
+  return { ...state, players: state.players.map((p) => (p === next ? { ...p, seq: seqOf(first) - 1 } : p)) };
 }
 
 /** `state` without the players holding `tokens`; those of them who sat out are remembered as having ({@link LobbyState.outGone}). */
@@ -631,7 +663,7 @@ export function dropLapsed(
       .map((p) => p.token),
   );
   if (gone.size === 0) return state;
-  return seriesSettled(withGone(state, gone));
+  return afterGoing(state, gone);
 }
 
 /** How many teams a room of `game` can hold: as many as fit, each of the game's team size; 0 where there are none. */
@@ -742,14 +774,16 @@ export function waitingOnHost(state: LobbyState, connectedSlots: ReadonlySet<num
 
 /**
  * Who the room passes to when its host does not answer: of the connected
- * players who are ready, the one who came into the room first. `undefined`
- * when there is none.
+ * players who are ready, and not sitting out of its games, the one who came
+ * into the room first. `undefined` when there is none.
  */
 export function nextHost(state: LobbyState, connectedSlots: ReadonlySet<number>): LobbyPlayer | undefined {
   const host = hostOf(state, connectedSlots);
   let next: LobbyPlayer | undefined;
   for (const player of state.players) {
     if (player === host || player.ready !== true || !connectedSlots.has(player.slot)) continue;
+    // someone sitting out of a room's games is not handed the room, whatever their page said of being ready
+    if (state.knockout === true && player.out === true) continue;
     if (next === undefined || seqOf(player) < seqOf(next)) next = player;
   }
   return next;

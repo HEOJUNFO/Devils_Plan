@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { outsOf, placesByMost, type KnockoutConfig } from "../../../src/shared/knockout";
-import { createLobby, dropLapsed, joinLobby, kickPlayer, leaveLobby, markAway, playersIn, setKnockout, viewLobby, waitingOnHost, withOuts, type LobbyState } from "../../../src/shared/lobby";
+import { createLobby, dropLapsed, hostOf, joinLobby, kickPlayer, leaveLobby, markAway, nextHost, playersIn, setKnockout, viewLobby, waitingOnHost, withOuts, type LobbyState } from "../../../src/shared/lobby";
 import roomConfig from "../../../src/shared/room-config.json";
 
 const CONFIG: KnockoutConfig = { peopleAtLeast: 2 };
@@ -220,6 +220,43 @@ describe("a player who goes from the room while sitting out", () => {
     const back = joinLobby(leaveLobby(state, token(1)), { token: token(1), nick: "p1" }, roomConfig);
 
     expect(back.ok && outs(back.state)).toEqual([3]);
+  });
+});
+
+describe("the host of a room playing 탈락전", () => {
+  const ALL: ReadonlySet<number> = new Set([0, 1, 2, 3]);
+
+  it("is, once the host has gone, whoever came first of those still in: not someone sitting out", () => {
+    const state = withOuts(lobbyOf(4), [token(1)]).state;
+    const left = leaveLobby(state, token(0));
+    const lapsed = dropLapsed(markAway(state, new Set([1, 2, 3]), 0), Number.MAX_SAFE_INTEGER, roomConfig, () => false);
+
+    expect(hostOf(state, ALL)?.slot).toBe(0);
+    expect(hostOf(left, ALL)?.slot).toBe(2);
+    expect(hostOf(lapsed, ALL)?.slot).toBe(2);
+  });
+
+  it("stays the host who is put out, also when someone else goes", () => {
+    const state = withOuts(lobbyOf(4), [token(0)]).state;
+
+    expect(hostOf(state, ALL)?.slot).toBe(0);
+    expect(hostOf(leaveLobby(state, token(3)), ALL)?.slot).toBe(0);
+  });
+
+  it("is whoever came first, as in any room, once nobody sits out", () => {
+    const state = withOuts(lobbyOf(3), [token(1)]).state;
+
+    const settled = leaveLobby(state, token(0));
+
+    expect(outs(settled)).toEqual([]);
+    expect(hostOf(settled, ALL)?.slot).toBe(1);
+  });
+
+  it("does not pass, when the host does not answer, to someone sitting out", () => {
+    const state = withOuts(lobbyOf(4), [token(1)]).state;
+    const ready = { ...state, players: state.players.map((p) => (p.slot === 0 ? p : { ...p, ready: true as const })) };
+
+    expect(nextHost(ready, ALL)?.slot).toBe(2);
   });
 });
 
