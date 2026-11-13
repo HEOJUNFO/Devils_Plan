@@ -1,0 +1,10 @@
+{
+  "ko": {
+    "first": ["조용한", "빠른", "느긋한", "용감한", "수줍은", "똑똑한", "엉뚱한", "든든한", "반짝이는", "졸린", "씩씩한", "차분한", "날쌘", "꼼꼼한", "대담한", "배고픈"],
+    "second": ["수달", "고래", "여우", "너구리", "부엉이", "고양이", "다람쥐", "펭귄", "두루미", "호랑이", "토끼", "거북이", "판다", "올빼미", "사슴", "까치"]
+  },
+  "en": {
+    "first": ["Calm", "Quick", "Brave", "Shy", "Witty", "Bold", "Lucky", "Sly", "Keen", "Merry", "Dozy", "Jolly", "Swift", "Quiet", "Sharp", "Tidy"],
+    "second": ["Otter", "Whale", "Fox", "Owl", "Cat", "Panda", "Crane", "Tiger", "Rabbit", "Turtle", "Deer", "Magpie", "Badger", "Heron", "Lynx", "Seal"]
+  }
+}

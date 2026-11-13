@@ -55,6 +55,8 @@ import { INVITED_GAME_KEY, invitePath } from "../shared/site/paths";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptRoom } from "../shared/resume";
 import { QUICK_WORDS } from "../shared/chat";
+import { suggestNick, type NickWords } from "../shared/nick";
+import nickWordsJson from "../shared/nick-config.json";
 import chatConfig from "../shared/chat-config.json";
 import directoryConfig from "../shared/directory-config.json";
 import meetConfig from "../shared/meet-config.json";
@@ -81,6 +83,7 @@ import { createVoice } from "./voice";
 import { WORDS } from "./words";
 
 const config: RoomConfig = roomConfig;
+const nickWords: NickWords = nickWordsJson;
 
 /** How far above the on-screen keyboard a box being typed in is kept, in CSS pixels. */
 const KEYBOARD_MARGIN = 8;
@@ -1102,7 +1105,7 @@ function loadNewer(): void {
   if (newerBuild === null) return;
   if (table !== null || voice.on || creating || entering !== null || startAsked) return;
   // in the lobby: a code typed in, or a nickname other than the one kept, which a reload would put back
-  const typedInLobby = currentCode === "" && (codeInput.value.trim() !== "" || nickInput.value !== (localStorage.getItem(storageKey("nick")) ?? ""));
+  const typedInLobby = currentCode === "" && (codeInput.value.trim() !== "" || nickInput.value !== (localStorage.getItem(storageKey("nick")) ?? suggestedNick));
   if (chatInput.value !== "" || typedInLobby || !newRoom.hidden || feedbackText.value !== "" || feedbackWait !== null) return;
   // whoever is reading the inbox is not sent back to its key
   if (!inboxSheet.hidden) return;
@@ -2831,6 +2834,8 @@ function quickJoin(): void {
 
 /** The code a link brought, for as long as the box for a room's code holds it: an invitation not yet taken up. */
 let invitedCode = "";
+/** The name the page put in the box for a nickname because the player had none kept (`suggestNick`); empty where it put none. While the box still holds it, nobody has chosen it. */
+let suggestedNick = "";
 
 /**
  * The game the link was for, where the page it came through said
@@ -2881,7 +2886,8 @@ function syncEntry(): void {
   const toRoom = isValidRoomCode(code, config);
   joinButton.classList.toggle("primary", toRoom);
   createButton.classList.toggle("primary", !toRoom);
-  entrySub.textContent = toRoom && code === invitedCode ? WORDS.entry.invited(code) : WORDS.entry.sub;
+  const named = suggestedNick !== "" && nickInput.value === suggestedNick;
+  entrySub.textContent = toRoom && code === invitedCode ? (named ? WORDS.entry.invitedNamed(code) : WORDS.entry.invited(code)) : WORDS.entry.sub;
 }
 
 function joinFromInput(): void {
@@ -2926,6 +2932,8 @@ listedNo.addEventListener("click", () => {
 });
 joinButton.addEventListener("click", joinFromInput);
 codeInput.addEventListener("input", syncEntry);
+// what the form says of the name in the box holds only while the box holds the name the page offered
+nickInput.addEventListener("input", syncEntry);
 nickInput.addEventListener("keydown", (event) => {
   // Enter in the nickname box does what the box below it is ready for.
   if (event.key !== "Enter" || event.isComposing) return;
@@ -3344,8 +3352,13 @@ function followAddress(): void {
   invitedCode = linked;
   syncEntry();
   const nick = normalizeNick(nickInput.value, config);
-  if (nick !== null) connect(linked, false, nick);
-  else nickInput.focus();
+  // A name the page offered takes nobody into a room by itself: it is seen first, and one press goes in with it.
+  if (nick !== null && nickInput.value !== suggestedNick) connect(linked, false, nick);
+  else if (nick === null) nickInput.focus();
+  else if (!TOUCH) {
+    nickInput.focus();
+    nickInput.select();
+  }
 }
 // An invitation opened in a tab that already shows this page changes only the
 // part after `#`, which loads nothing.
@@ -3485,6 +3498,11 @@ addEventListener("pageshow", (event) => {
 nickInput.maxLength = config.nickMaxLength;
 codeInput.maxLength = config.roomCodeLength;
 nickInput.value = localStorage.getItem(storageKey("nick")) ?? "";
+// Someone with no name kept finds one in the box, to go in with as it is or to type their own over.
+if (nickInput.value === "") {
+  suggestedNick = suggestNick(lang, nickWords, Math.random, config.nickMaxLength);
+  nickInput.value = suggestedNick;
+}
 // Loaded again in a room, the room is on the screen at once; anywhere else, the lobby.
 if (!comeBack()) showLobby();
 followAddress();
@@ -3492,4 +3510,8 @@ followAddress();
 back.sync();
 // Ready to be typed in at once where there are keys. Under a finger a box that takes the focus by
 // itself brings the keyboard up over the list of rooms before anything has been read.
-if (socket === null && !TOUCH) nickInput.focus();
+if (socket === null && !TOUCH) {
+  nickInput.focus();
+  // an offered name is typed over, not added to
+  if (suggestedNick !== "" && nickInput.value === suggestedNick) nickInput.select();
+}
