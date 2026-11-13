@@ -40,6 +40,8 @@ export interface UnderHandlers {
   covered(covered: boolean): void;
   /** The game has more players than the column lists one to a row, or no longer has. */
   crowded(crowded: boolean): void;
+  /** Whether this is the player's first game of 무거운 13 (`GameHandlers.first`): the bar then says what the rock in hand would come to. */
+  first: boolean;
 }
 
 /** The game screen. */
@@ -743,6 +745,19 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     }
   }
 
+  /**
+   * What a rock of `weight` put on `stand` now would come to: the stand's sum
+   * with it, and the penalty for it (the rocks cleared, where the sum reaches
+   * the limit). Worked out from what everyone sees on the stands and the
+   * player's own card: said to a player in their first game, who has the
+   * numbers in front of them and not yet the habit of adding them.
+   */
+  function wouldBe(stand: Stand, weight: number): { total: number; points: number } {
+    const rocks = latest?.view.stands[stand] ?? [];
+    const total = sumOf([...rocks, weight]);
+    return { total, points: latest !== null && total >= latest.view.limit ? rocks.length : 0 };
+  }
+
   /** The words for where the game stands, and their colour. */
   function standing(): [string, string] {
     if (latest === null) return ["", C.boneD];
@@ -769,6 +784,13 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       if (mine === null) return [WORDS.standing.watchSubmit(have, of, clockOf(ms)), C.bone];
       if (view.submitted.includes(mine)) return [WORDS.standing.submitted(have, of, clockOf(ms)), C.teal];
       if (pending) return [WORDS.standing.sending, C.boneD];
+      if (handlers.first) {
+        // a first game: what the two pieces are for, and with both picked, what they would come to as the stands are now
+        if (card === null || chip === null) return [WORDS.coach.submit(view.limit, clockOf(ms)), C.amber];
+        if (chip === "rainbow") return [WORDS.coach.readyRainbow(clockOf(ms)), C.amber];
+        const { total, points } = wouldBe(chip, card);
+        return [WORDS.coach.ready(WORDS.stand[chip], total, points, clockOf(ms)), points > 0 ? C.crim : C.amber];
+      }
       return card !== null && chip !== null ? [WORDS.standing.ready(clockOf(ms)), C.amber] : [WORDS.standing.submit(clockOf(ms)), C.amber];
     }
     if (view.phase === "chips") return [WORDS.standing.chips, C.bone];
@@ -951,6 +973,15 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       return;
     }
     const live = !pending;
+    if (handlers.first) {
+      // a first game: beside the buttons, what a press of them does to the stand
+      const own = chipOf(me() as number);
+      if (own === "rainbow" || own === null) pen.txt(pen.fit(WORDS.coach.rainbow(view.limit), standButton(0)[0] - 12), 6, 240, C.bone);
+      else {
+        const { total, points } = wouldBe(own, cardOf(me() as number) ?? 0);
+        pen.txt(pen.fit(WORDS.coach.place(WORDS.stand[own], total, points, view.limit), PLACE_RECT[0] - 12), 6, 240, points > 0 ? C.crim : C.bone);
+      }
+    }
     if (chipOf(me() as number) === "rainbow") {
       STANDS.forEach((stand, index) => {
         const rect = standButton(index);

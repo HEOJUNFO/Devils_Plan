@@ -52,6 +52,14 @@ export interface GameHandlers {
    * list's way (see `panel.ts`).
    */
   crowded(crowded: boolean): void;
+  /**
+   * Whether this browser's player has yet to finish a game of this kind with
+   * other people (their record has none, `record.ts`). A screen that has
+   * something to tell such a player tells it: what the move in hand comes to,
+   * in the game's own terms. Read once, when the screen is made, so that
+   * nothing changes under a game being played.
+   */
+  first: boolean;
 }
 
 /** A game's screen, covering the frame while a game is on. */

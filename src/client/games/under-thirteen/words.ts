@@ -134,6 +134,22 @@ const ko = {
     roundOver: (round: number, seconds: number) => `라운드 ${round} 끝 · 다음 라운드까지 ${seconds}초`,
     lastOver: (seconds: number) => `마지막 라운드 끝 · 결과까지 ${seconds}초`,
   },
+  /**
+   * To a player in their first game of it, in place of some of `standing`
+   * and beside the buttons: what the pieces are for, and what the rock in
+   * hand would come to as the stands are now (`points` is the penalty, 0
+   * where the stand holds). The three with a clock are the bar's top line,
+   * 468 pixels; `place` has 278 beside the buttons and `rainbow` 164.
+   */
+  coach: {
+    submit: (limit: number, clock: string) => `칩의 색이 받침대, 카드의 숫자가 무게 · 합 ${limit} 이상을 만들면 벌점 · ${clock}`,
+    ready: (stand: string, total: number, points: number, clock: string) =>
+      `지금 그대로면 ${stand} 합 ${total}${points > 0 ? `: 무너져 벌점 ${points}` : ""} · ${byInput("Enter로 냅니다", "내기를 누르면 냅니다")} (못 바꿈) · ${clock}`,
+    readyRainbow: (clock: string) => `레인보우: 받침대는 내 차례에 고릅니다 · ${byInput("Enter로 냅니다", "내기를 누르면 냅니다")} (못 바꿈) · ${clock}`,
+    place: (stand: string, total: number, points: number, limit: number) =>
+      points > 0 ? `놓으면 ${stand} 합 ${total}: 무너져 벌점 ${points}` : `놓으면 ${stand} 합 ${total} · ${limit}부터 무너집니다`,
+    rainbow: (limit: number) => `합 ${limit} 이상이면 벌점`,
+  },
   /** Under the standing line: what the keys do, by what is asked. */
   keys: {
     spots: byInput("←→: 자리 · Enter: 서기 (눌러도 같음)", "자리를 누른 뒤 서기"),
@@ -270,6 +286,14 @@ const en: typeof ko = {
     theirTurn: (who, seconds) => `Placing ${who}'s rock · ${seconds}s`,
     roundOver: (round, seconds) => `Round ${round} over · next round in ${seconds}s`,
     lastOver: (seconds) => `Last round over · result in ${seconds}s`,
+  },
+  coach: {
+    submit: (limit, clock) => `Chip = stand, card = weight · reaching ${limit} on a stand: penalty · ${clock}`,
+    ready: (stand, total, points, clock) =>
+      `As it stands: ${stand} makes ${total}${points > 0 ? `, ${points} penalty` : ""} · ${byInput("Enter to put in", "tap Put in")} (final) · ${clock}`,
+    readyRainbow: (clock) => `Rainbow: you pick its stand on your turn · ${byInput("Enter to put in", "tap Put in")} (final) · ${clock}`,
+    place: (stand, total, points, limit) => (points > 0 ? `Placing makes ${stand} ${total}: ${points} penalty` : `Placing makes ${stand} ${total} · it falls at ${limit}`),
+    rainbow: (limit) => `${limit} or more: penalty`,
   },
   keys: {
     spots: byInput("←→: spot · Enter: take it (or click)", "Tap a spot, then Take"),

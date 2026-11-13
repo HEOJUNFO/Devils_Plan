@@ -1032,6 +1032,7 @@ function showTable(game: GameId): GameScreen {
         crowded = value;
         syncChat();
       },
+      first: (myRecord().games[game]?.played ?? 0) === 0,
     });
     table.setHost(isHost);
   }
