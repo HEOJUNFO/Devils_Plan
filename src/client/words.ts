@@ -374,6 +374,12 @@ const ko = {
     chat: (unread: number) => (unread > 0 ? `채팅 ${unread}` : "채팅"),
     /** Beside them once a game is over, for whoever played it: passes its result on. */
     share: "공유",
+    /** Beside it, once a game is over (`src/shared/again.ts`): what a player who is not the host presses to say they want another, with how many have. */
+    again: (count: number) => (count > 0 ? `한 판 더 ${count}` : "한 판 더"),
+    /** What it does, for a pointer at rest and a screen reader: to someone who can press it, and to someone it only tells (the host, who starts the next game). */
+    againHelp: (count: number, mine: boolean) =>
+      mine ? `한 판 더 하자고 했습니다. 다시 누르면 취소합니다 (지금 ${count}명)` : `방장에게 한 판 더 하자고 알립니다${count > 0 ? ` (지금 ${count}명)` : ""}`,
+    againTold: (count: number) => `한 판 더 하자는 사람 ${count}명`,
     shareHint: "내 결과를 그림으로 알리기",
     /** Said to a screen reader of the game's screen, which is a picture. */
     screen: "게임 화면",
@@ -787,6 +793,10 @@ const en: typeof ko = {
     standings: "Players",
     chat: (unread) => (unread > 0 ? `Chat ${unread}` : "Chat"),
     share: "Share",
+    again: (count) => (count > 0 ? `Again ${count}` : "Again"),
+    againHelp: (count, mine) =>
+      mine ? `You asked for another game. Press again to take it back (${count} so far)` : `Tell the host you want another game${count > 0 ? ` (${count} so far)` : ""}`,
+    againTold: (count) => (count === 1 ? "1 player wants another game" : `${count} players want another game`),
     shareHint: "Pass my result on as a picture",
     screen: "Game screen",
   },

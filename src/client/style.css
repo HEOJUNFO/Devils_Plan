@@ -1009,6 +1009,26 @@ button.choice[aria-pressed="true"] {
   padding: 0 5px;
 }
 
+/* Once a game is over a fourth stands in the row, with a number: all four are then as narrow as their words, so the row still holds them. */
+#tabs:has(#tab-again:not([hidden])) button {
+  min-width: 0;
+  padding: 0 2px;
+}
+
+#tabs #tab-again {
+  flex: none;
+  padding: 0 3px;
+  word-spacing: -2px;
+}
+
+/* Where it only tells (the host starts the next game, and reads here how many wait for it): as plain to read as where it is pressed. */
+#tabs #tab-again:disabled {
+  border-color: var(--teal);
+  color: var(--teal);
+  opacity: 1;
+  cursor: default;
+}
+
 /* The bar under both. */
 #bar {
   position: absolute;

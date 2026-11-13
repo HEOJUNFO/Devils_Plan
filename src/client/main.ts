@@ -66,6 +66,7 @@ import { readDay, type DayNumbers } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
+import { againOf } from "../shared/again";
 import { afterRefusedMake } from "../shared/reopen";
 import { calendarOf, type CalendarEvent } from "../shared/calendar";
 import { firstDay, linkedOf, mayPlan, parseLinked, standing as appointmentStands, stepped, type AppointmentConfig } from "../shared/appointment";
@@ -235,6 +236,7 @@ const rulesSheet = el<HTMLElement>("rules-sheet");
 const langButton = el<HTMLButtonElement>("lang");
 const quickButton = el<HTMLButtonElement>("quick");
 const tabShare = el<HTMLButtonElement>("tab-share");
+const tabAgain = el<HTMLButtonElement>("tab-again");
 const about = el<HTMLElement>("about");
 const feedbackButton = el<HTMLButtonElement>("feedback");
 const feedbackSheet = el<HTMLElement>("feedback-sheet");
@@ -886,7 +888,33 @@ function syncChat(): void {
 /** Beside the tabs: the result of a game that is over, to pass on, for whoever played it. Not there while one is played, nor for someone who watched. */
 function syncShare(): void {
   tabShare.hidden = table === null || gameOn || table.verdict() === null;
+  syncAgain();
 }
+
+/**
+ * Beside that, over the results of a game that is over: a player who is not
+ * the host says they want another (the room's "ready", said from here), and
+ * everyone reads how many have; to the host, who starts it, it only tells
+ * (`src/shared/again.ts`). Not there while a game is played.
+ */
+function syncAgain(): void {
+  const view = currentView;
+  const again = table === null || gameOn || view === null ? null : againOf(view.players, view.you, isHost, view.knockout === true, asked.ready);
+  tabAgain.hidden = again === null;
+  if (again === null) return;
+  tabAgain.textContent = WORDS.game.again(again.count);
+  tabAgain.disabled = !again.press;
+  tabAgain.setAttribute("aria-pressed", String(again.mine));
+  const help = again.press ? WORDS.game.againHelp(again.count, again.mine) : WORDS.game.againTold(again.count);
+  tabAgain.title = help;
+  tabAgain.setAttribute("aria-label", help);
+}
+tabAgain.addEventListener("click", () => {
+  const view = currentView;
+  if (view === null || table === null || gameOn) return;
+  const ready = !(asked.ready ?? view.players.find((p) => p.slot === view.you)?.ready ?? false);
+  askRoom({ type: "ready", ready }, { ready });
+});
 
 /** During a game: shows the chat or the moves in the right-hand column. */
 function openChat(open: boolean): void {
@@ -2780,6 +2808,8 @@ function renderRoom(code: string, view: LobbyView): void {
   readyButton.hidden = isHost;
   readyButton.textContent = amReady ? WORDS.room.unready : WORDS.room.ready;
   readyButton.setAttribute("aria-pressed", String(amReady));
+  // the same word, where it is said from the results of a game that is over
+  syncAgain();
   renderStatus();
   syncChat();
 
@@ -3719,7 +3749,7 @@ tabChat.addEventListener("click", () => openChat(true));
 // from the keyboard (no mouse: `detail` is 0) they keep it, and the key is theirs.
 // The chat's own button is one of them: after a line is sent with the mouse it would stay under the
 // keys with the box empty, where a press of it asks for the words said with one press.
-for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, tabShare, chatSend, chatToButton, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
+for (const button of [leaveGameButton, voiceToggle, voiceMic, tabLog, tabChat, tabShare, tabAgain, chatSend, chatToButton, menuOpen, menuRules, menuSound, menuFull, menuClose]) {
   button.addEventListener("click", (event) => {
     if (event.detail > 0 && !tableCanvas.hidden) button.blur();
   });
