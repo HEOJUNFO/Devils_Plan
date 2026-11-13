@@ -43,6 +43,11 @@ const opened = (rounds: number[], between: string): [string, string] => [rounds.
 const ko = {
   sheet: {
     title: "미스터리 거래소: 규칙",
+    brief: {
+      goal: "주식을 사고팔아 자산(현금과 주식)을 가장 많이 만듭니다.",
+      play: "라운드마다 주식을 사고팔며, 차츰 열리는 주가 규칙을 읽습니다.",
+      end: "24라운드가 끝나면 자산이 가장 많은 사람이 1위입니다.",
+    },
     parts: [
       "일곱 회사의 주식을 24라운드 동안 사고팝니다. 모두 가상 현금 100,000원으로 시작하고, 24라운드가 끝났을 때 자산(현금과 주식)이 가장 많은 사람이 1위입니다.",
       [
@@ -234,6 +239,11 @@ const ko = {
 const en: typeof ko = {
   sheet: {
     title: "Mystery Stock Market: rules",
+    brief: {
+      goal: "Trade stocks to end with the most assets (cash and shares).",
+      play: "Buy and sell each round; read the price rules as they open.",
+      end: "After round 24, whoever has the most assets wins.",
+    },
     parts: [
       "Trade the stocks of seven companies over 24 rounds. Everyone starts with 100,000 won of virtual cash, and whoever has the most assets (cash and shares) after round 24 wins.",
       [

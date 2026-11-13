@@ -700,6 +700,11 @@ button.choice[aria-pressed="true"] {
   margin-top: -1px;
 }
 
+/* Over their neighbours and nothing else: a sheet laid over the panel (the rules) covers them all. */
+:root[lang="en"] #game-choices {
+  isolation: isolate;
+}
+
 /* The one picked, and the one pointed at, show their whole edge over their neighbours'. */
 :root[lang="en"] #game-choices button[aria-pressed="true"],
 :root[lang="en"] #game-choices button:focus-visible {
@@ -1628,6 +1633,24 @@ button.choice[aria-pressed="true"] {
 #rules ul {
   margin: 0 0 6px 12px;
   color: var(--bone-dim);
+}
+
+/* The rules in three lines, before the sheet itself: what each answers in a narrow column, and a rule under the last. */
+#rules .brief {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0 8px;
+  margin-bottom: 7px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--edge);
+}
+
+#rules .brief dt {
+  color: var(--amber);
+}
+
+#rules .brief dd {
+  margin: 0;
 }
 
 #rules-close {

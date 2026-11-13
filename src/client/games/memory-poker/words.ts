@@ -27,6 +27,11 @@ export interface HelpNumbers {
 const ko = {
   sheet: {
     title: "기억 포커: 규칙",
+    brief: {
+      goal: "기억해 둔 카드 두 장으로 상대보다 높은 족보를 만듭니다.",
+      play: "16장을 20초 동안 외우고, 뒤집힌 뒤 60초 안에 두 장을 고릅니다.",
+      end: "기본 다섯 라운드를 하고, 이긴 횟수로 순위를 정합니다.",
+    },
     parts: [
       "카드 16장이 20초 동안 펼쳐졌다가 뒤집힙니다. 어디에 무엇이 있었는지 기억해, 뒤집힌 카드 가운데 두 장을 고릅니다.",
       [
@@ -176,6 +181,11 @@ const ko = {
 const en: typeof ko = {
   sheet: {
     title: "Memory Poker: rules",
+    brief: {
+      goal: "Beat your opponent's hand with two cards from memory.",
+      play: "Memorise 16 cards in 20 seconds, then pick two within 60.",
+      end: "Five rounds by default; players are ranked by rounds won.",
+    },
     parts: [
       "Sixteen cards lie face up for 20 seconds, then are turned over. Remember what was where, and pick two of the face-down cards.",
       [

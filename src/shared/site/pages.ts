@@ -23,9 +23,10 @@ import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
 import { INVITED_GAME_KEY, invitePath, invitePicture, slugOf } from "./paths";
 import { LANG_NAMES, ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "./words";
 
-/** A game's rules as its sheet has them: a heading, then paragraphs and lists of points (`RulesSheet` of the client). */
+/** A game's rules as its sheet has them: a heading, the rules in three lines, then paragraphs and lists of points (`RulesSheet` of the client). */
 export interface Sheet {
   title: string;
+  brief: { goal: string; play: string; end: string };
   parts: readonly (string | readonly string[])[];
 }
 
@@ -287,6 +288,8 @@ function gamePage(lang: Lang, game: GameId, sheet: Sheet, built: Built): string 
   const facts: [string, string][] = [[words.game.players, count]];
   if (info.teamSize > 0) facts.push([words.game.team, words.game.teamOf(info.teamSize)]);
   if (info.variants.length > 0) facts.push([words.game.variants, info.variants.map((variant) => variant.title[lang]).join(", ")]);
+  // the rules in three lines first, as the game's own sheet has them
+  const brief = (["goal", "play", "end"] as const).map((line) => `<div><dt>${escapeHtml(words.game.brief[line])}</dt><dd>${escapeHtml(sheet.brief[line])}</dd></div>`);
   const rules = sheet.parts.map((part) =>
     typeof part === "string" ? `<p>${escapeHtml(part)}</p>` : `<ul>\n${part.map((point) => `<li>${escapeHtml(point)}</li>`).join("\n")}\n</ul>`,
   );
@@ -297,6 +300,9 @@ function gamePage(lang: Lang, game: GameId, sheet: Sheet, built: Built): string 
 ${facts.map(([what, value]) => `<div><dt>${escapeHtml(what)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("\n")}
 </dl>
 <h2>${escapeHtml(words.game.rules)}</h2>
+<dl class="facts brief">
+${brief.join("\n")}
+</dl>
 ${rules.join("\n")}
 <h2>${escapeHtml(words.game.start)}</h2>
 <p>${escapeHtml(words.game.startHow)}</p>

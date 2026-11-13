@@ -12,6 +12,11 @@ import { byInput, keyed } from "../touch";
 const ko = {
   sheet: {
     title: "러시안 룰렛: 규칙",
+    brief: {
+      goal: "마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.",
+      play: "차례마다 크레딧을 써서 조사, 회전, 조작 중 하나를 합니다.",
+      end: "절반이 크레딧을 다 쓰면 자리마다 한 발씩 격발하고 끝납니다.",
+    },
     parts: [
       "약실 중 몇 칸에 실탄이 있습니다 (6명이면 여섯 칸 중 두 칸). 한 자리에 약실 한 칸이 마주 보고, 마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.",
       "내 차례에는 다섯 가지 중 하나를 합니다. 크레딧은 16개로 시작합니다.",
@@ -186,6 +191,11 @@ const ko = {
 const en: typeof ko = {
   sheet: {
     title: "Russian Roulette: rules",
+    brief: {
+      goal: "Have an empty chamber in front of you at the last volley.",
+      play: "On your turn, spend credits to check, turn or tamper.",
+      end: "When half are out of credits, one shot is fired at each seat.",
+    },
     parts: [
       "Some of the chambers hold a live round (with 6 players, two of the six). Each seat faces one chamber, and you live if the chamber in front of you is empty at the last volley.",
       "On your turn, do one of five things. You start with 16 credits.",

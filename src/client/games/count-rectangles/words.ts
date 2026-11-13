@@ -13,6 +13,11 @@ import { byInput, keyed } from "../../touch";
 const ko = {
   sheet: {
     title: "네모 세기: 규칙",
+    brief: {
+      goal: "숫자를 더하면 타깃이 되는 네모가 몇 개인지 먼저 맞힙니다.",
+      play: "다 세었으면 버저를 누르고 10초 안에 개수를 답합니다.",
+      end: "두 번 맞히면 승리이고, 전체 팀의 절반이 승리하면 끝납니다.",
+    },
     parts: [
       "숫자가 적힌 칸과 빈칸으로 된 판, 그리고 타깃 넘버가 나옵니다. 안의 숫자를 더하면 타깃이 되는 네모가 모두 몇 개인지 셉니다.",
       [
@@ -231,6 +236,11 @@ const ko = {
 const en: typeof ko = {
   sheet: {
     title: "Count the Rectangles: rules",
+    brief: {
+      goal: "Be first to say how many rectangles add up to the target.",
+      play: "Press the buzzer, then give your count within 10 seconds.",
+      end: "Two right answers win. Over when half the teams have won.",
+    },
     parts: [
       "A board of numbered cells and blank cells comes up, with a target number. Count how many rectangles there are whose numbers add up to the target.",
       [

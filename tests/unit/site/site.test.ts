@@ -14,9 +14,13 @@ const TITLE_WIDTH: Record<Lang, number> = { ko: 40, en: 60 };
 /** The same for the line under it. */
 const DESCRIPTION_WIDTH: Record<Lang, number> = { ko: 110, en: 160 };
 
-/** A sheet for every game: a paragraph, then two points, one of which has signs that mean something in markup. */
+/** A sheet for every game: its three lines, a paragraph, then two points, one of which has signs that mean something in markup. */
 function sheets(): Sheets {
-  const sheet = (game: GameId, lang: Lang) => ({ title: `${game} ${lang}`, parts: [`paragraph of ${game} in ${lang}`, [`point of ${game}`, `a < b & "c" > d`]] });
+  const sheet = (game: GameId, lang: Lang) => ({
+    title: `${game} ${lang}`,
+    brief: { goal: `goal of ${game} in ${lang}`, play: `play of ${game} & <more>`, end: `end of ${game} in ${lang}` },
+    parts: [`paragraph of ${game} in ${lang}`, [`point of ${game}`, `a < b & "c" > d`]],
+  });
   const written: Partial<Sheets> = {};
   for (const game of GAME_IDS) written[game] = { ko: sheet(game, "ko"), en: sheet(game, "en") };
   return written as Sheets;
@@ -112,6 +116,19 @@ describe("the pages a search engine reads", () => {
     expect(body).toContain(`<li>point of ${game}</li>`);
     // what a sheet says is words, never markup
     expect(body).toContain("<li>a &lt; b &amp; &quot;c&quot; &gt; d</li>");
+  });
+
+  it.each(GAME_IDS.flatMap((game) => LANGS.map((lang) => ({ game, lang }))))("the page of $game in $lang says the rules in three lines before the sheet: goal, play, end", ({ game, lang }) => {
+    const body = file(`${gamePath(lang, game).slice(1)}index.html`);
+    const words = SITE_WORDS[lang].game.brief;
+
+    const lines = all(body, /<div><dt>([^<]*)<\/dt><dd>[^<]*<\/dd><\/div>/g);
+    const told = all(body, /<div><dt>[^<]*<\/dt><dd>([^<]*)<\/dd><\/div>/g);
+    // after how many play (and the like), which come first on the page
+    expect(lines.slice(-3)).toEqual([words.goal, words.play, words.end]);
+    expect(told.slice(-3)).toEqual([`goal of ${game} in ${lang}`, `play of ${game} &amp; &lt;more&gt;`, `end of ${game} in ${lang}`]);
+    expect(body.indexOf(`end of ${game} in ${lang}`)).toBeLessThan(body.indexOf(`<p>paragraph of ${game} in ${lang}</p>`));
+    expect(body.indexOf(`goal of ${game} in ${lang}`)).toBeGreaterThan(body.indexOf(`<h2>${SITE_WORDS[lang].game.rules}</h2>`));
   });
 
   it.each(GAME_IDS.flatMap((game) => LANGS.map((lang) => ({ game, lang }))))("the page of $game in $lang links to every other game and to the page about them", ({ game, lang }) => {

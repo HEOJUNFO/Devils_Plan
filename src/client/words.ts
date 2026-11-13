@@ -320,6 +320,8 @@ const ko = {
     rules: "규칙 보기",
     close: "닫기",
   },
+  /** What each of the three lines at the top of a game's rules answers (`RulesBrief`). */
+  brief: { goal: "목표", play: "하는 일", end: "끝" },
   game: {
     leave: "나가기",
     leaveConfirm: "한 번 더 누르면 나감",
@@ -692,6 +694,7 @@ const en: typeof ko = {
     rules: "Rules",
     close: "Close",
   },
+  brief: { goal: "Goal", play: "Play", end: "End" },
   game: {
     leave: "Leave",
     leaveConfirm: "Press again to leave",

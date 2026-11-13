@@ -113,6 +113,8 @@ const ko = {
     teamOf: (size: number) => `${size}명이 한 팀을 맺을 수 있습니다`,
     variants: "방장이 고르는 방식",
     rules: "규칙",
+    /** What each of the three lines the rules open with answers (a sheet's `brief`). */
+    brief: { goal: "목표", play: "하는 일", end: "끝" },
     start: "시작하기",
     startHow: "로비에서 방을 만들 때 게임 목록에서 고르면 됩니다. 초대 링크를 보내고, 인원이 모이면 방장이 시작합니다.",
     others: "다른 게임",
@@ -190,6 +192,7 @@ const en: typeof ko = {
     teamOf: (size: number) => `${size} players can form a team`,
     variants: "Host's options",
     rules: "Rules",
+    brief: { goal: "Goal", play: "Play", end: "End" },
     start: "Start a game",
     startHow: "Make a room in the lobby and pick the game from the list. Send the invite link, and the host starts when enough players are in.",
     others: "Other games",

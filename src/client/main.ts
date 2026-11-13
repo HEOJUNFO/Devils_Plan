@@ -3336,6 +3336,13 @@ rulesOpen.addEventListener("click", () => {
   const sheet = CLIENTS[game].sheet;
   const title = document.createElement("h2");
   title.textContent = sheet.title;
+  // the rules in three lines first, each under what it answers; the sheet itself follows
+  const brief = document.createElement("dl");
+  brief.className = "brief";
+  for (const line of ["goal", "play", "end"] as const) {
+    brief.appendChild(document.createElement("dt")).textContent = WORDS.brief[line];
+    brief.appendChild(document.createElement("dd")).textContent = sheet.brief[line];
+  }
   const parts = sheet.parts.map((part) => {
     if (typeof part === "string") {
       const paragraph = document.createElement("p");
@@ -3346,7 +3353,7 @@ rulesOpen.addEventListener("click", () => {
     for (const point of part) list.appendChild(document.createElement("li")).textContent = point;
     return list;
   });
-  rulesSheet.replaceChildren(title, ...parts);
+  rulesSheet.replaceChildren(title, brief, ...parts);
   rulesSheet.scrollTop = 0;
   rules.hidden = false;
   el<HTMLButtonElement>("rules-close").focus();

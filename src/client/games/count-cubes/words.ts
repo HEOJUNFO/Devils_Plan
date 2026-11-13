@@ -13,6 +13,11 @@ import { byInput, keyed } from "../../touch";
 const ko = {
   sheet: {
     title: "큐브 세기: 규칙",
+    brief: {
+      goal: "쌓인 큐브가 모두 몇 개인지 남보다 먼저 맞힙니다.",
+      play: "그림을 돌려 가며 세어 수를 입력합니다. 틀리면 20초 쉽니다.",
+      end: "한 명만 남기고 모두 맞히거나 시간이 다 되면 끝납니다.",
+    },
     parts: [
       "큐브를 쌓아 만든 입체가 나옵니다. 큐브가 모두 몇 개인지 세어, 그 수를 각자 입력합니다.",
       [
@@ -133,6 +138,11 @@ const ko = {
 const en: typeof ko = {
   sheet: {
     title: "Count the Cubes: rules",
+    brief: {
+      goal: "Count the solid's cubes and be right before the others.",
+      play: "Turn it, count, enter a number. A miss costs 20 seconds.",
+      end: "Over when all but one are right, or when time runs out.",
+    },
     parts: [
       "A solid built of stacked cubes comes up. Count how many cubes there are in all, and enter the number, each player for themselves.",
       [

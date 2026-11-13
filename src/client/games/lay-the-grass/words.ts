@@ -18,6 +18,11 @@ const signed = (value: number): string => (value > 0 ? `+${value}` : `${value}`)
 const ko = {
   sheet: {
     title: "잔디 깔기: 규칙",
+    brief: {
+      goal: "공원에 잔디 타일을 놓아 타일 번호만큼 승점을 얻습니다.",
+      play: "타일 하나를 고르고, 번호가 작은 타일부터 공원에 놓습니다.",
+      end: "모두가 놓기를 마치면 끝납니다. 놓을 자리가 없으면 0점입니다.",
+    },
     parts: [
       "공원 위에 내 잔디 타일을 놓아 승점을 얻습니다. 타일은 일곱 종류이고, 타일에 적힌 번호가 곧 승점입니다.",
       [
@@ -278,6 +283,11 @@ const ko = {
 const en: typeof ko = {
   sheet: {
     title: "Lay the Grass: rules",
+    brief: {
+      goal: "Lay a grass tile on the park to score the number on it.",
+      play: "Pick one tile, then lay it. Smaller numbers are laid first.",
+      end: "Over when everyone has laid. A tile with no place scores 0.",
+    },
     parts: [
       "Lay your grass tile on the park to score points. There are seven kinds of tile, and the number on a tile is the points it scores.",
       [

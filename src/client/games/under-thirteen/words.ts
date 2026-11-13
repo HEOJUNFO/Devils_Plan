@@ -28,6 +28,11 @@ export interface HelpNumbers {
 const ko = {
   sheet: {
     title: "무거운 13: 규칙",
+    brief: {
+      goal: "내 바위로 받침대 합이 13 이상이 되면 벌점. 적을수록 좋습니다.",
+      play: "바위 카드와 칩을 몰래 내고, 차례에 바위를 놓거나 패스합니다.",
+      end: "14라운드를 하면 끝나고, 벌점이 가장 적은 사람이 1위입니다.",
+    },
     parts: [
       "모두가 0~6이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다. 칩의 색은 바위를 올릴 받침대를, 카드의 숫자는 바위의 무게를 정합니다. 내는 시간은 3분입니다.",
       [
@@ -199,6 +204,11 @@ const ko = {
 const en: typeof ko = {
   sheet: {
     title: "Heavy 13: rules",
+    brief: {
+      goal: "Avoid penalty points: don't take a stand to 13 or more.",
+      play: "Secretly play a rock card and a chip, then place or pass.",
+      end: "After 14 rounds, the fewest penalty points wins.",
+    },
     parts: [
       "Everyone secretly puts in one rock card, numbered 0 to 6, and one color chip. The chip's color says which stand the rock goes on; the card's number is the rock's weight. You have 3 minutes.",
       [
