@@ -1,3 +1,4 @@
+import type { GameId } from "./games";
 import type { Meet } from "./meet";
 
 /**
@@ -84,4 +85,23 @@ export function comingTo(near: Meet | null, told: Coming | null, mine: number | 
   const heard = told !== null && told.meet === near.start ? told : null;
   const count = Math.max(own ? 1 : 0, heard?.count ?? 0);
   return count === 0 ? null : { count, more: heard?.more ?? false, mine: own };
+}
+
+/**
+ * What a press on the meeting's line does. The line opens and closes: the
+ * first press lists the rooms of the meeting's game (`list`) and, before
+ * the hour, says that the reader will come (`going` true); the next press
+ * puts it back as it was, every game's rooms (`list` `null`) and the word
+ * taken back (`going` false). While the meeting is on no word is given or
+ * taken (`going` `null`), and the line is open while its game is the one
+ * listed. Before the hour it is open while the reader's word stands, so a
+ * reader who comes back to a lobby that says they are coming takes that
+ * back with one press. `listed` is the game whose rooms are listed (`null`:
+ * every game), `mine` the start of the meeting the reader gave their word
+ * for.
+ */
+export function meetPress(near: Meet, listed: GameId | null, mine: number | null): { going: boolean | null; list: GameId | null } {
+  if (near.on) return { going: null, list: listed === near.game ? null : near.game };
+  const open = mine === near.start;
+  return { going: !open, list: open ? null : near.game };
 }

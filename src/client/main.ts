@@ -62,7 +62,7 @@ import numbersConfig from "../shared/numbers-config.json";
 import { readDay, type DayNumbers } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear, type MeetConfig } from "../shared/meet";
-import { comingTo, isWho, newWho, type Coming } from "../shared/going";
+import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
 import { calendarOf } from "../shared/calendar";
 import { ORIGIN, SITE_NAME } from "../shared/site/words";
 import { gameReader } from "../shared/parts";
@@ -1249,13 +1249,17 @@ calendarButton.addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
 });
 
-// A press lists the rooms of the game people gather for: where they are, or where one is to be made. Before the
-// hour it also says that this player will come, and a second press takes that back.
+// A press opens the meeting: it lists the rooms of the game people gather for (where they are, or where one is to
+// be made) and, before the hour, says that this player will come. The next press closes it: every game's rooms
+// again, and the word taken back (`meetPress`).
 meetButton.addEventListener("click", () => {
   const meet = meetNear(Date.now(), meetConfig);
   if (meet === null) return;
-  if (!meet.on) sayGoing(meet.start, myGoing !== meet.start);
-  pickGame(meet.game);
+  const press = meetPress(meet, listedGame, myGoing);
+  if (press.going !== null) sayGoing(meet.start, press.going);
+  pickGame(press.list);
+  // picking a game leaves the keyboard on the games to pick from: the press was on this line, and the next one is too
+  meetButton.focus({ preventScroll: true });
   renderMeet();
 });
 setInterval(() => {

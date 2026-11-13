@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { comingOf, comingTo, isWho, mayAnswer, mayGiveAnother, newWho, type GoingConfig } from "../../../src/shared/going";
+import { comingOf, comingTo, isWho, mayAnswer, mayGiveAnother, meetPress, newWho, type GoingConfig } from "../../../src/shared/going";
 import type { Meet } from "../../../src/shared/meet";
 
 const CONFIG: GoingConfig = { perAddress: 4, most: 20 };
@@ -78,5 +78,26 @@ describe("comingTo", () => {
     expect(comingTo(meet(), { meet: START - 86_400_000, count: 5, more: false }, null)).toBeNull();
     expect(comingTo(meet(), null, START - 86_400_000)).toBeNull();
     expect(comingTo(meet(), { meet: START, count: 2, more: false }, NEXT)).toEqual({ count: 2, more: false, mine: false });
+  });
+});
+
+describe("meetPress", () => {
+  it("opens the line before the hour: the reader will come, and the meeting's game is listed", () => {
+    expect(meetPress(meet(), null, null)).toEqual({ going: true, list: "under-thirteen" });
+    // whatever was listed, and though a word was given for another meeting
+    expect(meetPress(meet(), "count-cubes", NEXT)).toEqual({ going: true, list: "under-thirteen" });
+    expect(meetPress(meet(), "under-thirteen", null)).toEqual({ going: true, list: "under-thirteen" });
+  });
+
+  it("closes it with the next press: the word is taken back, and every game is listed again", () => {
+    expect(meetPress(meet(), "under-thirteen", START)).toEqual({ going: false, list: null });
+    // a reader who came back to a lobby that says they are coming: one press takes it back
+    expect(meetPress(meet(), null, START)).toEqual({ going: false, list: null });
+  });
+
+  it("gives and takes no word while the meeting is on, and lists its game or every game again", () => {
+    expect(meetPress(meet(true), null, null)).toEqual({ going: null, list: "under-thirteen" });
+    expect(meetPress(meet(true), "count-cubes", START)).toEqual({ going: null, list: "under-thirteen" });
+    expect(meetPress(meet(true), "under-thirteen", START)).toEqual({ going: null, list: null });
   });
 });
