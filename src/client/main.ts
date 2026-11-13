@@ -441,10 +441,17 @@ let listSocket: PartySocket | null = null;
 let entering: string | null = null;
 /**
  * A connection opened ahead to the room whose row the pointer or the keyboard
- * is on, so that a press finds it open (`warmUp`). Nothing is sent on it: to
- * the room it is nobody until `connect` takes it and joins.
+ * is on, or to the room about to be made while its form is on show, so that
+ * a press finds it open (`warmUp`). Nothing is sent on it: to the room it is
+ * nobody until `connect` takes it and joins.
  */
 let warm: { code: string; socket: PartySocket } | null = null;
+/**
+ * The code the next room will be made under, picked when the form for a new
+ * room opens and not at the press that makes it: the connection to it can
+ * then be opened while the player is choosing a game. `null` with no form open.
+ */
+let nextCode: string | null = null;
 /** The wait before a connection is opened ahead, while one is running. */
 let warming: ReturnType<typeof setTimeout> | null = null;
 /**
@@ -1694,6 +1701,15 @@ function warmUp(code: string): void {
   }, config.warmUpMs);
 }
 
+/**
+ * With the pointer on no row: the room about to be made is the one kept open
+ * ahead while its form is on show, and otherwise none is.
+ */
+function warmRest(): void {
+  if (!newRoom.hidden && nextCode !== null) warmUp(nextCode);
+  else coolDown();
+}
+
 /** The code of the room whose row `target` is in, if that room can be entered. */
 function rowCode(target: EventTarget | null): string | null {
   const row = target instanceof Element ? target.closest<HTMLButtonElement>(".room-row") : null;
@@ -1704,11 +1720,11 @@ function rowCode(target: EventTarget | null): string | null {
 roomList.addEventListener("pointerover", (event) => {
   if (event.pointerType !== "mouse") return;
   const code = rowCode(event.target);
-  if (code === null) coolDown();
+  if (code === null) warmRest();
   else warmUp(code);
 });
 roomList.addEventListener("pointerleave", (event) => {
-  if (event.pointerType === "mouse") coolDown();
+  if (event.pointerType === "mouse") warmRest();
 });
 roomList.addEventListener("focusin", (event) => {
   const code = rowCode(event.target);
@@ -1795,6 +1811,10 @@ function showNewRoom(): void {
   notice.textContent = "";
   entry.hidden = true;
   newRoom.hidden = false;
+  // Making a room opens a new connection, which is several trips to the server and back and, far from it, most of
+  // the wait after the press. It is opened now, to a code picked now; the press then only has to say "make it".
+  nextCode = generateRoomCode(Math.random, config);
+  warmUp(nextCode);
   showLobbyLinks(false);
   renderNewRoom();
   el<HTMLButtonElement>("create-go").focus();
@@ -1804,6 +1824,9 @@ function closeNewRoom(): void {
   // a room on its way is not waited for: the form is put away, and so is the asking
   if (creating) disconnect();
   setCreating(false);
+  // the room that was going to be made is not: the connection opened to it is let go
+  nextCode = null;
+  coolDown();
   newRoom.hidden = true;
   entry.hidden = false;
   rules.hidden = true;
@@ -2347,7 +2370,7 @@ function disconnect(): void {
  */
 function connect(code: string, create: boolean, nick: string, attemptsLeft = 0): void {
   // a connection opened ahead to this very room is the one used; one to any other room is let go
-  const ahead = !create && warm?.code === code ? warm.socket : null;
+  const ahead = warm?.code === code ? warm.socket : null;
   if (ahead !== null) warm = null;
   coolDown();
   disconnect();
@@ -2593,7 +2616,10 @@ function createRoom(): void {
   setEntering(null);
   localStorage.setItem(storageKey("game"), chosenGame);
   localStorage.setItem(storageKey("listed"), chosenListed ? "1" : "0");
-  connect(generateRoomCode(Math.random, config), true, nick, CREATE_ATTEMPTS - 1);
+  // under the code the form picked when it opened, which a connection may be open to already
+  const code = nextCode ?? generateRoomCode(Math.random, config);
+  nextCode = null;
+  connect(code, true, nick, CREATE_ATTEMPTS - 1);
   setCreating(true);
 }
 
