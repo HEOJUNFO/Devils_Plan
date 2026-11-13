@@ -227,6 +227,7 @@ const menuSound = el<HTMLButtonElement>("menu-sound");
 const menuFull = el<HTMLButtonElement>("menu-full");
 const menuClose = el<HTMLButtonElement>("menu-close");
 const turnFull = el<HTMLButtonElement>("turn-full");
+const turnInvited = el<HTMLElement>("turn-invited");
 const rulesSheet = el<HTMLElement>("rules-sheet");
 const langButton = el<HTMLButtonElement>("lang");
 const quickButton = el<HTMLButtonElement>("quick");
@@ -2674,6 +2675,8 @@ function renderRoom(code: string, view: LobbyView): void {
     chat.open(code);
     // once for a room: a page loaded again has the line among those it kept
     if (!chat.noted("first-time")) tipRules(view.game);
+    // the invitation is taken up: the notice a phone held upright shows says no more of it
+    turnInvited.hidden = true;
     // the link that led here said when the room's people meet: said once, where it stays to be read
     if (appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null && !chat.noted("when")) {
       chat.note({ kind: "when", at: appointment.at });
@@ -3301,6 +3304,25 @@ function syncEntry(): void {
   entrySub.textContent =
     toRoom && code === invitedCode ? (named ? WORDS.entry.invitedNamed(code, when) : when !== null && kept ? WORDS.entry.invitedEarly(when) : WORDS.entry.invited(code, when)) : WORDS.entry.sub;
   syncCalendar();
+  syncTurn();
+}
+
+/**
+ * Says on the notice a phone held upright shows, over the words that ask for
+ * the turn, what the link that brought the reader is to: the game where the
+ * link said, else the room's code, and under it when its people meet where
+ * it says that. The notice covers the whole page, so without this someone
+ * who tapped a friend's link sees no sign that it led anywhere. Said while
+ * the invitation is not yet taken up: in a room there is nothing to add.
+ */
+function syncTurn(): void {
+  const code = codeInput.value.trim().toUpperCase();
+  const invited = currentCode === "" && invitedCode !== "" && code === invitedCode;
+  turnInvited.hidden = !invited;
+  if (!invited) return;
+  const said = WORDS.site.turnInvited(invitedGame === null ? null : GAMES[invitedGame].title[lang], code);
+  const stands = appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null;
+  turnInvited.textContent = stands && appointment !== null ? `${said}\n${WORDS.site.turnWhen(whenOf(appointment.at))}` : said;
 }
 
 function joinFromInput(): void {

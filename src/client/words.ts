@@ -18,6 +18,10 @@ const ko = {
     tab: SITE_WORDS.ko.app.title,
     description: SITE_WORDS.ko.app.description(GAME_IDS.length),
     turnDevice: "화면을 가로로 돌려 주세요",
+    /** Over it, for someone a link to a room brought who has not gone in yet: what the link was to. `game` is `null` where the link did not say. */
+    turnInvited: (game: string | null, code: string) => (game === null ? `방 ${code}에 초대받았습니다` : `${game} 방에 초대받았습니다`),
+    /** Under that, where the link says when its people meet (`src/shared/appointment.ts`). */
+    turnWhen: (when: string) => `약속 ${when}`,
     /** On the button that turns the page itself, where the browser can. */
     turnFull: "가로 전체 화면으로 보기",
     /** In the lobby's bar: which build the page is, to name when something is reported. */
@@ -506,6 +510,8 @@ const en: typeof ko = {
     tab: SITE_WORDS.en.app.title,
     description: SITE_WORDS.en.app.description(GAME_IDS.length),
     turnDevice: "Turn your screen sideways",
+    turnInvited: (game, code) => (game === null ? `You are invited to room ${code}` : `You are invited to play ${game}`),
+    turnWhen: (when) => `Meet ${when}`,
     turnFull: "Go full screen, sideways",
     version: (build) => `Version ${build}`,
     feedback: "Send feedback",

@@ -84,6 +84,16 @@ body {
     text-align: center;
   }
 
+  /* What the link that was opened is to, over the words that ask for the turn: a line, or two where it says a time. */
+  #turn-invited {
+    color: #ffb43c;
+    white-space: pre-line;
+  }
+
+  #turn-invited[hidden] {
+    display: none;
+  }
+
   /* Where the browser can turn the page itself (main.ts shows the button there): large enough for a thumb. */
   #turn-full {
     height: auto;

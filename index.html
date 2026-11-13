@@ -310,8 +310,12 @@
         <button id="rules-close" type="button" class="primary"></button>
       </section>
     </div>
-    <!-- On a phone held upright the frame would be a strip too small to read. Where the browser can turn the page itself, a button does. -->
+    <!--
+      On a phone held upright the frame would be a strip too small to read. Where the browser can turn the page itself, a button does.
+      Someone a link brought is told first what it was to (and when its people meet, where it says): this is all they see of the page.
+    -->
     <div id="turn-device" role="status">
+      <p id="turn-invited" hidden></p>
       <p id="turn-words"></p>
       <button id="turn-full" type="button" hidden></button>
     </div>
