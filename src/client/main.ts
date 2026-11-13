@@ -12,6 +12,7 @@
  * written here or in the markup: the page's own are in `words.ts`.
  */
 import { PartySocket } from "partysocket";
+import { backTrail } from "../shared/back";
 import { BUILD, outOfDate } from "../shared/build";
 import { newlyOpen, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
 import { louder, titleFor, type Call } from "../shared/calling";
@@ -2393,7 +2394,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // The room let this player go without this page asking: they left in
       // another window, or were away so long that their place was given up.
       disconnect();
-      history.replaceState(null, "", `${location.pathname}${location.search}`);
+      writeAddress("");
       showLobby(WORDS.room.left);
       return;
     }
@@ -2422,12 +2423,15 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // second "make" would be refused as a stranger's once the room has let
       // this player's slot go.
       join = { ...join, create: false };
-      history.replaceState(null, "", `${location.pathname}${location.search}#${code}`);
       if (typeof event.data === "string") lastLobby = event.data;
       staleSince = null;
       returning = false;
       quickRest = null;
       renderRoom(code, message);
+      // The room has a place of its own in the browser's history, above the lobby's, where the player pressed
+      // their way in (`src/shared/back.ts`); the address of the place the page is at then names the room.
+      back.sync();
+      writeAddress(code);
       // the first time is measured as soon as the room is there, not a whole wait for a ping later
       if (pingTimes.length === 0 && pingSentAt === null) pingRoom();
       renderPing();
@@ -2559,7 +2563,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       return;
     }
     quickRest = null;
-    history.replaceState(null, "", `${location.pathname}${location.search}`);
+    writeAddress("");
     if (message.reason === "not-found" && code === invitedCode) {
       invitationGone();
       return;
@@ -2720,7 +2724,7 @@ function leaveRoom(): void {
   voice.leave();
   send({ type: "leave" });
   disconnect();
-  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  writeAddress("");
   codeInput.value = "";
   syncEntry();
   showLobby();
@@ -3030,24 +3034,114 @@ el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
 addEventListener("keydown", (event) => {
   if (event.code === "KeyH" && table !== null && tableGame !== null && !isBox(event.target)) learn(tableGame);
 });
+/** The sheets that are laid over a screen one at a time, the one closed first named first, each with the way to close it. */
+const SHEETS: readonly (readonly [HTMLElement, () => void])[] = [
+  [seatMenu, () => showSeatMenu(null)],
+  [swapSheet, () => showSwap(false)],
+  [quickSheet, () => showQuick(false)],
+  [toSheet, () => showTo(false)],
+  [optionsSheet, () => showOptions(false)],
+  [feedbackSheet, () => showFeedback(false)],
+  [recordSheet, () => showRecord(false)],
+  [inboxSheet, () => showInbox(false)],
+  [
+    rules,
+    () => {
+      rules.hidden = true;
+    },
+  ],
+  [newRoom, closeNewRoom],
+  [
+    roomsGames,
+    () => {
+      showGamePicks(false);
+      roomsPick.focus();
+    },
+  ],
+];
+
+/** Closes the topmost sheet that is open, and says whether there was one. */
+function closeTop(): boolean {
+  const top = SHEETS.find(([sheet]) => !sheet.hidden);
+  top?.[1]();
+  return top !== undefined;
+}
+
 addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!gameMenu.hidden) openMenu(false);
-  else if (!seatMenu.hidden) showSeatMenu(null);
-  else if (!swapSheet.hidden) showSwap(false);
-  else if (!quickSheet.hidden) showQuick(false);
-  else if (!toSheet.hidden) showTo(false);
-  else if (!optionsSheet.hidden) showOptions(false);
-  else if (!feedbackSheet.hidden) showFeedback(false);
-  else if (!recordSheet.hidden) showRecord(false);
-  else if (!inboxSheet.hidden) showInbox(false);
-  else if (!rules.hidden) rules.hidden = true;
-  else if (!newRoom.hidden) closeNewRoom();
-  else if (!roomsGames.hidden) {
-    showGamePicks(false);
-    roomsPick.focus();
-  }
+  else closeTop();
 });
+
+/** The page's own address: the room it is in after `#`, nothing after it in the lobby. */
+function addressOf(code: string): string {
+  return `${location.pathname}${location.search}${code === "" ? "" : `#${code}`}`;
+}
+
+/**
+ * Writes the address of `code`'s room (of the lobby for "") on the place in
+ * the browser's history the page is at, keeping what is kept with that place:
+ * it is how the page knows its own places (`src/shared/back.ts`).
+ */
+function writeAddress(code: string): void {
+  history.replaceState(history.state, "", addressOf(code));
+}
+
+/** Whether anything has been pressed or typed on the page since the browser last moved it through its history. */
+let touchedSinceMoved = false;
+
+/**
+ * The browser's back button, and a phone's back gesture, inside the page
+ * (`src/shared/back.ts`): a step to the screen before, and out of the site
+ * only from the lobby with nothing open.
+ *
+ * A room is one step from the lobby and a game one more; each sheet that is
+ * open is one more again. A step back closes the topmost sheet; with none
+ * open it leaves a waiting room for the lobby, and in a game it asks first,
+ * as the game's own way out does: the first press says "once more to leave"
+ * (under a finger in the menu, where that button is), the next one leaves.
+ */
+const back = backTrail(
+  {
+    state: () => history.state as unknown,
+    hold: (held) => history.pushState(held, "", addressOf(currentCode)),
+    go: (by) => history.go(by),
+    settle: () => writeAddress(currentCode),
+    touched: () => touchedSinceMoved,
+  },
+  {
+    depth: () => (currentCode === "" ? 0 : table === null ? 1 : 2) + SHEETS.filter(([sheet]) => !sheet.hidden).length,
+    step: () => {
+      if (closeTop() || currentCode === "") return;
+      if (table === null) return leaveRoom();
+      if (leaveArmed !== null) {
+        disarmLeave();
+        leaveRoom();
+        return;
+      }
+      // the game's own way out, pressed once: it says a second press leaves. Under a finger it is in the menu.
+      if (TOUCH) openMenu(true);
+      leaveGameButton.click();
+    },
+  },
+);
+addEventListener("popstate", () => {
+  touchedSinceMoved = false;
+  back.arrived();
+});
+// What was pressed opens or closes something only after this has heard of the press: a place is added for it at once.
+for (const pressed of ["pointerup", "keydown"]) {
+  addEventListener(
+    pressed,
+    () => {
+      touchedSinceMoved = true;
+      back.sync();
+    },
+    true,
+  );
+}
+// Every screen and sheet is shown and put away by its `hidden`: whatever changes one may have changed how deep the page is.
+new MutationObserver(() => back.sync()).observe(frame, { attributes: true, attributeFilter: ["hidden"], subtree: true });
 
 /**
  * Goes to the room the address names after `#`, if it names one this page is
@@ -3059,7 +3153,7 @@ function followAddress(): void {
   const linked = location.hash.slice(1).toUpperCase();
   if (linked === currentCode) return;
   if (!isValidRoomCode(linked, config)) {
-    history.replaceState(null, "", `${location.pathname}${location.search}${currentCode ? `#${currentCode}` : ""}`);
+    writeAddress(currentCode);
     return;
   }
   if (socket !== null) {
@@ -3217,6 +3311,8 @@ nickInput.value = localStorage.getItem(storageKey("nick")) ?? "";
 // Loaded again in a room, the room is on the screen at once; anywhere else, the lobby.
 if (!comeBack()) showLobby();
 followAddress();
+// Loaded again, the browser has kept the places this page held before: those there are too many of are stepped off.
+back.sync();
 // Ready to be typed in at once where there are keys. Under a finger a box that takes the focus by
 // itself brings the keyboard up over the list of rooms before anything has been read.
 if (socket === null && !TOUCH) nickInput.focus();
