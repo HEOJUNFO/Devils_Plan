@@ -75,6 +75,9 @@ const READY_MARK_W = 10;
 /** The room before the mark of a player's pieces, and the mark with that room and the one before its number. */
 const PIECE_MARK_GAP = 3;
 const PIECE_MARK_W = PIECE_MARK_GAP + 6;
+/** The mark of a player who was at the top of the room's last game, a crown: the room before it, and how wide it is with that room. */
+const TOP_MARK_GAP = 3;
+const TOP_MARK_W = TOP_MARK_GAP + 7;
 /** A figure as a press finds it: how far to each side of its middle, and how far over and under its shoulders. */
 const FIGURE_REACH = { side: 14, over: 22, under: 14 };
 /** How far the lamp's light reaches over the rows of chairs, against 1 over a table: nobody sits in the dark. */
@@ -189,7 +192,9 @@ export function createLobbyScene(
       const lead = place.slot === host;
       // after the name: the host's mark, or the tick of someone ready (the host is never that: the host starts)
       // last of all: the pieces they have won in this room, where they have any
-      const pieces = player.pieces > 0 ? PIECE_MARK_W + pen.width(String(player.pieces)) : 0;
+      // (the crown of the last game's top comes after them; a room from before the mark sends none)
+      const top = player.top === true ? TOP_MARK_W : 0;
+      const pieces = (player.pieces > 0 ? PIECE_MARK_W + pen.width(String(player.pieces)) : 0) + top;
       const after = (lead ? HOST_MARK_W : player.ready ? READY_MARK_W : 0) + pieces;
       const y = place.at.label.y;
       drawn.push({
@@ -211,7 +216,8 @@ export function createLobbyScene(
         if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
         if (lead) drawHostMark(x + width - pieces - (HOST_MARK_W - HOST_MARK_GAP), y);
         else if (player.ready) drawReadyMark(x + width - pieces - (READY_MARK_W - HOST_MARK_GAP), y);
-        if (pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
+        if (player.pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
+        if (top > 0) drawTopMark(x + width - top, y);
         drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
         const beside = place.at.y - 6;
         if (!player.connected) pen.txt(WORDS.scene.offline, place.at.x + 15, beside, C.dim);
@@ -227,7 +233,8 @@ export function createLobbyScene(
       if (mark !== "out") drawVoiceMark(pen, x - VOICE_MARK_W, y, mark, time);
       if (lead) drawHostMark(x + width - pieces - (HOST_MARK_W - HOST_MARK_GAP), y);
       else if (player.ready) drawReadyMark(x + width - pieces - (READY_MARK_W - HOST_MARK_GAP), y);
-      if (pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
+      if (player.pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
+      if (top > 0) drawTopMark(x + width - top, y);
       drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
       if (!player.connected) pen.txt(WORDS.scene.offline, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
       else if (player.out) pen.txt(WORDS.scene.out, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.crim);
@@ -277,6 +284,18 @@ export function createLobbyScene(
     // five rows, widest in the middle
     [1, 3, 5, 3, 1].forEach((w, row) => pen.px(left + (5 - w) / 2, y + 4 + row, w, 1, C.amber));
     pen.txt(String(pieces), left + 6, y, C.amber);
+  }
+
+  /** The mark of a player who was at the top of the room's last game, a crown: the room before it starts at `x`, on the name's line at `y`. */
+  function drawTopMark(x: number, y: number): void {
+    const left = x + TOP_MARK_GAP;
+    // three points over a band, seven pixels wide
+    ["X..X..X", "XX.X.XX", "XXXXXXX", "XXXXXXX"].forEach((row, dy) => {
+      [...row].forEach((dot, dx) => {
+        if (dot === "X") pen.px(left + dx, y + 3 + dy, 1, 1, C.brassH);
+      });
+    });
+    pen.px(left, y + 7, 7, 2, C.brass);
   }
 
   function drawReadyMark(x: number, y: number): void {

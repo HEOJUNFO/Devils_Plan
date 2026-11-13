@@ -55,6 +55,14 @@ async function piecesSeen(client: TestClient): Promise<number[]> {
   return lobby.players.map((p) => p.pieces);
 }
 
+/** Whether each player is marked as the top of the last game, as the room shows it to `client` when it next sends the lobby, by slot. */
+async function topsSeen(client: TestClient): Promise<boolean[]> {
+  // the room answers a word about being ready with the lobby as it stands
+  client.send({ type: "ready", ready: true });
+  const lobby = await client.lobbyWhere((seen) => seen.players.some((p) => p.ready));
+  return lobby.players.map((p) => p.top);
+}
+
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -72,6 +80,20 @@ describe("GameRoom: the ledger of pieces", () => {
 
     expect(first.length).toBeGreaterThan(0);
     expect(lobby.players.map((p) => p.pieces)).toEqual([0, 1].map((slot) => (first.includes(slot) ? Math.floor(FIRST / first.length) : 0)));
+    closeAll(clients);
+  });
+
+  it("marks whoever was first in a game played to its end, for everyone in the room to see", async () => {
+    const stub = env.GameRoom.getByName("LDAAD");
+    const clients = await players("LDAAD", 2);
+    clients[0].send({ type: "start", bots: false });
+    await Promise.all(clients.map((client) => client.underWhere()));
+
+    const over = await playedOut(stub, clients[0]);
+    const first = over.view.standings.filter((each) => each.place === 1).map((each) => each.player);
+
+    // (two who end level have no top between them: nobody is marked)
+    expect(await topsSeen(clients[1])).toEqual([0, 1].map((slot) => first.length < 2 && first.includes(slot)));
     closeAll(clients);
   });
 

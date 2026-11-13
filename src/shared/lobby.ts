@@ -190,6 +190,12 @@ export interface LobbyPlayer {
    * its winner, and when the host turns 탈락전 off.
    */
   out?: true;
+  /**
+   * There while the player is one of those who did best in the game last
+   * played to its end in this room (`tops.ts`). Taken back when the next
+   * such game names others. It goes with the player who leaves.
+   */
+  top?: true;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -245,6 +251,8 @@ export interface PublicPlayer {
   pieces: number;
   /** Whether they sit the room's games out: put out by a game of 탈락전. */
   out: boolean;
+  /** Whether they were at the top of the game last played to its end in this room. */
+  top: boolean;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -599,6 +607,26 @@ export function withOuts(state: LobbyState, tokens: readonly string[]): Knocked 
 }
 
 /**
+ * Marks as the top of the room's last game the players whose tokens are in
+ * `tops`, and nobody else: what a game just over says of who did best
+ * (`topsOf` of `tops.ts`). `null` is a game that says nothing, and leaves the
+ * marks as they were. A token that is no longer in the room marks nobody.
+ * Returns the state unchanged when no mark changes. The input state is not
+ * modified.
+ */
+export function withTops(state: LobbyState, tops: ReadonlySet<string> | null): LobbyState {
+  if (tops === null || state.players.every((p) => (p.top === true) === tops.has(p.token))) return state;
+  return {
+    ...state,
+    players: state.players.map((p) => {
+      if ((p.top === true) === tops.has(p.token)) return p;
+      const { top: _top, ...rest } = p;
+      return tops.has(p.token) ? { ...rest, top: true as const } : rest;
+    }),
+  };
+}
+
+/**
  * Adds to each player's pieces what `gains` has for their token: what a game
  * just over paid them (`gainsOf` of `ledger.ts`). A token that is no longer
  * in the room gains nothing. Returns the state unchanged when nobody gains.
@@ -828,6 +856,7 @@ export function viewLobby(
       ready: p.ready === true && p !== host && connectedSlots.has(p.slot),
       pieces: p.pieces ?? 0,
       out: p.out === true,
+      top: p.top === true,
     })),
   };
 }

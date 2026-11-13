@@ -40,6 +40,7 @@ import {
   viewLobby,
   withOuts,
   withPieces,
+  withTops,
   waitingOnHost,
   type LobbyState,
   type RoomConfig,
@@ -62,6 +63,8 @@ import {
 import knockoutConfig from "../shared/knockout-config.json";
 import { outsOf } from "../shared/knockout";
 import ledgerConfig from "../shared/ledger-config.json";
+import { topsOf } from "../shared/tops";
+import topsConfig from "../shared/tops-config.json";
 import { gainsOf } from "../shared/ledger";
 import roomConfig from "../shared/room-config.json";
 import { voiceOffered, type RtcSignal, type VoiceConfig, type VoiceMember } from "../shared/voice";
@@ -1123,8 +1126,10 @@ export class GameRoom extends Server<Env> {
       if (tally.began !== null) this.save(TALLY_KEY, { ...tally, began: null } satisfies Tally);
       // What the game paid in pieces goes on the room's ledger: here, the one place a game ends, so once.
       const paid = next === null ? this.lobby : withPieces(this.lobby, gainsOf(this.host().pieces?.(next), ledgerConfig));
-      if (paid !== this.lobby) {
-        this.saveLobby(paid);
+      // Who did best in it is marked in the room until the next game played to its end (`tops.ts`): with the pieces, in one lobby.
+      const marked = next === null ? paid : withTops(paid, topsOf(this.host().places?.(next), topsConfig));
+      if (marked !== this.lobby) {
+        this.saveLobby(marked);
         this.broadcastLobby();
       }
       // In a room playing 탈락전 the game's last place sits the next games out; everyone is told who, and who

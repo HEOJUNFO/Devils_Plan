@@ -691,6 +691,7 @@ const chat = createChat(
       if (note.kind === "pieces") return WORDS.room.wonPieces(note.nick, note.won, note.all);
       if (note.kind === "out") return WORDS.room.knockedOut(note.nick);
       if (note.kind === "champion") return WORDS.room.champion(note.nick);
+      if (note.kind === "top") return WORDS.room.tops(note.nick);
       if (note.kind === "knockout-on") return WORDS.room.knockoutTurnedOn;
       if (note.kind === "knockout-off") return WORDS.room.knockoutTurnedOff;
       if (note.kind === "knockout-again") return WORDS.room.knockoutAgain;
@@ -2091,6 +2092,11 @@ function noteComings(before: LobbyView, after: LobbyView): void {
     const won = (p.pieces ?? 0) - (had.get(p.slot) ?? p.pieces ?? 0);
     if (won > 0) chat.note({ kind: "pieces", nick: p.nick, won, all: p.pieces });
   }
+  // who did best in a game just over: said once, when the marks beside the names change to them
+  // (a room from before the marks tells of none; marks that only went, with a player or a level game, are not said)
+  const tops = after.players.filter((p) => p.top === true);
+  const topBefore = new Set(before.players.filter((p) => p.top === true).map((p) => p.slot));
+  if (tops.some((p) => !topBefore.has(p.slot) && was.has(p.slot))) chat.note({ kind: "top", nick: tops.map((p) => p.nick).join(", ") });
   // The room has another host with both of them here before and after: it was passed on, by the host or by the
   // room for a host who did not answer. Not said when a host's connection drops and comes back: the room goes
   // to the next player and returns by itself, and a line for each way would fill the chat of a room on a bad line.
@@ -2448,7 +2454,7 @@ function renderRoom(code: string, view: LobbyView): void {
     const player = bySlot.get(slot);
     const row = document.createElement("li");
     const words = player
-      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready, player.pieces ?? 0, player.out === true)
+      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready, player.pieces ?? 0, player.out === true, player.top === true)
       : WORDS.room.emptySeat(slot + 1);
     if (player !== undefined && hosting && slot !== view.you) {
       const pick = document.createElement("button");
