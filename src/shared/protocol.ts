@@ -16,6 +16,7 @@ import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
 import { parseDays, type DayNumbers } from "./numbers";
+import { isWho, type Coming } from "./going";
 import { parseWanting, type Wanting } from "./want";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
@@ -262,13 +263,21 @@ export interface NumbersAnswer {
  * (`null`). One hand a connection: a hand for another game takes the first
  * down. Asked again on every reconnect, as a new connection has none up.
  * Everyone looking is then told how many are up (a {@link WantingNote}).
+ *
+ * `going`: this browser says it will come to the meeting that starts at
+ * `meet` (`going.ts`), or with `on` false takes that back. `who` is the
+ * number the browser is known by for this and nothing else. Said once: the
+ * directory keeps it until the meeting is over, whatever becomes of the
+ * connection. Everyone looking is then told how many are coming (a
+ * {@link ComingNote}).
  */
 export type DirectoryRequest =
   | { type: "show"; game: GameId | null }
   | { type: "feedback"; text: string; lang: Lang; build: string }
   | { type: "inbox"; key: string; drop?: number }
   | { type: "numbers"; key: string }
-  | { type: "want"; game: GameId | null };
+  | { type: "want"; game: GameId | null }
+  | { type: "going"; meet: number; who: string; on: boolean };
 
 /** The longest text the directory reads as a request: a word about the game at its longest fits, each of its letters written the long way. */
 export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
@@ -490,6 +499,24 @@ export interface WantingNote {
   games: Wanting;
 }
 
+/**
+ * How many have said they will come to the next meeting (`going.ts`), sent
+ * to everyone looking at the list whenever it changes, and to someone who
+ * has just come where anyone has.
+ */
+export interface ComingNote extends Coming {
+  type: "coming";
+}
+
+/** Parses the directory's word on how many are coming to a meeting, returning `null` for anything else. */
+export function parseComingNote(raw: unknown): ComingNote | null {
+  const data = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (data === null || data.type !== "coming") return null;
+  if (typeof data.meet !== "number" || !Number.isSafeInteger(data.meet)) return null;
+  if (typeof data.count !== "number" || !Number.isInteger(data.count) || data.count < 0) return null;
+  return { type: "coming", meet: data.meet, count: data.count, more: data.more === true };
+}
+
 /** Parses the directory's word on how many hands are up, returning `null` for anything else. */
 export function parseWantingNote(raw: unknown): WantingNote | null {
   const data = parseObject(raw, Number.POSITIVE_INFINITY);
@@ -561,6 +588,10 @@ export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
   if (data.type === "want") {
     if (data.game !== null && !isGameId(data.game)) return null;
     return { type: "want", game: data.game };
+  }
+  if (data.type === "going") {
+    if (typeof data.meet !== "number" || !Number.isSafeInteger(data.meet) || !isWho(data.who) || typeof data.on !== "boolean") return null;
+    return { type: "going", meet: data.meet, who: data.who, on: data.on };
   }
   if (data.type !== "show") return null;
   if (data.game !== null && !isGameId(data.game)) return null;

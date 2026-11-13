@@ -9,6 +9,7 @@
  * and run inside the directory's Durable Object.
  */
 import type { FeedbackConfig } from "./feedback";
+import type { GoingConfig } from "./going";
 import { GAME_IDS, isGameId, type GameId } from "./games";
 import {
   capacityOf,
@@ -53,6 +54,8 @@ export interface DirectoryConfig {
    * is told of each coming and going.
    */
   watchingMost: number;
+  /** A word given for the next meeting, "I'll come": how many from one address, and how many are told (`going.ts`). */
+  going: GoingConfig;
 }
 
 /** How many people are looking at the list, as it is told to them: the number, and whether there are more than it says. */

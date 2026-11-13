@@ -13,6 +13,7 @@ import {
   parseFeedbackAnswer,
   parseInboxAnswer,
   parseNumbersAnswer,
+  parseComingNote,
   parseWantingNote,
   parseServerMessage,
   parseWatchingNote,
@@ -503,6 +504,23 @@ describe("parseDirectoryRequest", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "want" }))).toBeNull();
   });
 
+  it("reads a word given for a meeting, and one taken back", () => {
+    const who = "000102030405060708090a0b0c0d0e0f";
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: 1_800_000_000_000, who, on: true, more: 1 }))).toEqual({ type: "going", meet: 1_800_000_000_000, who, on: true });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: 1_800_000_000_000, who, on: false }))).toEqual({ type: "going", meet: 1_800_000_000_000, who, on: false });
+  });
+
+  it("rejects a word for no meeting, from nobody, or that says neither yes nor no", () => {
+    const who = "000102030405060708090a0b0c0d0e0f";
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", who, on: true }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: 1.5, who, on: true }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: "1800000000000", who, on: true }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: 1_800_000_000_000, who: "me", on: true }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: 1_800_000_000_000, on: true }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: 1_800_000_000_000, who }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "going", meet: 1_800_000_000_000, who, on: 1 }))).toBeNull();
+  });
+
   it("reads a request for the numbers, with its key and nothing else", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "numbers", key: "my key", drop: 3 }))).toEqual({ type: "numbers", key: "my key" });
   });
@@ -566,6 +584,22 @@ describe("parseNumbersAnswer", () => {
     expect(parseNumbersAnswer(JSON.stringify({ type: "inbox", words: null }))).toBeNull();
     expect(parseNumbersAnswer(JSON.stringify({ type: "numbers" }))).toBeNull();
     expect(parseNumbersAnswer(JSON.stringify({ type: "numbers", days: "none" }))).toBeNull();
+  });
+});
+
+describe("parseComingNote", () => {
+  it("reads how many are coming to a meeting, and whether there are more than it says", () => {
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false, who: "x" }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false });
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 20, more: true }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 20, more: true });
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 0 }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 0, more: false });
+  });
+
+  it("is nothing for another message, with no meeting, or with a count that is not one", () => {
+    expect(parseComingNote(JSON.stringify({ type: "watching", count: 2 }))).toBeNull();
+    expect(parseComingNote(JSON.stringify({ type: "coming", count: 2 }))).toBeNull();
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000 }))).toBeNull();
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: -1 }))).toBeNull();
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 1.5 }))).toBeNull();
   });
 });
 

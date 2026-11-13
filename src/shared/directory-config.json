@@ -5,6 +5,7 @@
   "showLimit": { "burst": 20, "windowSeconds": 10 },
   "feedback": { "maxLength": 500, "viewerLimit": { "burst": 2, "windowSeconds": 600 }, "dayLimit": 60, "keep": 200, "readLimit": { "burst": 10, "windowSeconds": 600 } },
   "watchingMost": 20,
+  "going": { "perAddress": 4, "most": 20 },
   "makeLimits": [
     { "burst": 12, "windowSeconds": 60 },
     { "burst": 120, "windowSeconds": 3600 }

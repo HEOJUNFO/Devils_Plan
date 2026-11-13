@@ -75,6 +75,7 @@ function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryCon
     feedback: { maxLength: 40, viewerLimit: { burst: 2, windowSeconds: 60 }, dayLimit: 5, keep: 5, readLimit: { burst: 2, windowSeconds: 60 } },
     makeLimits: MAKE_LIMITS,
     watchingMost: 3,
+    going: { perAddress: 4, most: 20 },
     ...overrides,
   };
 }

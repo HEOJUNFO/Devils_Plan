@@ -9,6 +9,7 @@ import {
   DIRECTORY_NAME,
   DIRECTORY_PARTY,
   PARTY_NAME,
+  type ComingNote,
   type DirectoryMessage,
   type DirectoryRequest,
   type WantingNote,
@@ -16,6 +17,7 @@ import {
 } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
 import type { Wanting } from "../../../src/shared/want";
+import type { Meet } from "../../../src/shared/meet";
 import numbersConfig from "../../../src/shared/numbers-config.json";
 import { dayOf, type DayNumbers } from "../../../src/shared/numbers";
 import { COUNT_PATH, MAKE_PATH } from "../../../src/server/directory";
@@ -1254,6 +1256,222 @@ describe("RoomDirectory: hands raised for a game", () => {
 
     await b.until({ "count-cubes": 1 });
     expect(b.told()).toEqual([{ "count-cubes": 1 }]);
+    a.close();
+    b.close();
+  });
+});
+
+describe("RoomDirectory: words given for the next meeting", () => {
+  /** The meeting the directory is told is next, and the one after it. */
+  const START = 1_800_000_000_000;
+  const NEXT: Meet = { start: START, end: START + 3_600_000, game: "under-thirteen", on: false };
+  const AFTER: Meet = { start: START + 86_400_000, end: START + 90_000_000, game: "count-cubes", on: false };
+  /** The number a browser is known by: one for each `n`. */
+  const who = (n: number): string => n.toString(16).padStart(32, "0");
+
+  /** Someone in the lobby who reads what the directory says of who is coming. */
+  class Guest extends Inbox<{ type: string }> {
+    /** Says the browser `n` will come to the meeting that starts at `meet`, or takes that back. */
+    going(n: number, on = true, meet = START): void {
+      const request: DirectoryRequest = { type: "going", meet, who: who(n), on };
+      this.ws.send(JSON.stringify(request));
+    }
+
+    /** What the directory has said of who is coming, each time it said so, oldest first. */
+    told(): ComingNote[] {
+      return this.raw.map((text) => JSON.parse(text) as { type: string }).filter((message): message is ComingNote => message.type === "coming");
+    }
+
+    /** Waits until the last thing said is that `count` are coming to the meeting that starts at `meet`. */
+    async until(count: number, meet = START): Promise<void> {
+      await vi.waitFor(() => expect(this.told().at(-1)).toMatchObject({ meet, count }));
+    }
+
+    /** Waits until the directory has dealt with everything this viewer has sent: it answers a request for the list, and in order. */
+    async heard(): Promise<void> {
+      const lists = (): number => this.raw.filter((text) => text.includes('"type":"rooms"')).length;
+      const before = lists();
+      const request: DirectoryRequest = { type: "show", game: null };
+      this.ws.send(JSON.stringify(request));
+      await vi.waitFor(() => expect(lists()).toBeGreaterThan(before));
+    }
+  }
+
+  async function guest(from?: string): Promise<Guest> {
+    const viewer = new Guest(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`, from));
+    // the list comes first, to everyone who connects
+    await viewer.next();
+    return viewer;
+  }
+
+  /** Tells the directory which meeting is next, and starts it with no word given. */
+  async function withMeet(meet: Meet | null = NEXT): Promise<void> {
+    await runInDurableObject(directoryStub(), (object, state) => {
+      state.storage.sql.exec("DELETE FROM going");
+      (object as unknown as { meetNear(now: number): Meet | null }).meetNear = () => meet;
+    });
+  }
+
+  afterEach(async () => {
+    await runInDurableObject(directoryStub(), (object, state) => {
+      state.storage.sql.exec("DELETE FROM going");
+      delete (object as unknown as Record<string, unknown>).meetNear;
+    });
+  });
+
+  it("tells everyone looking how many are coming when someone says they will", async () => {
+    await withMeet();
+    const [a, b] = [await guest(), await guest()];
+
+    a.going(1);
+
+    await a.until(1);
+    await b.until(1);
+    expect(b.told().at(-1)).toEqual({ type: "coming", meet: START, count: 1, more: false });
+    a.close();
+    b.close();
+  });
+
+  it("keeps a word after its viewer has left, and tells someone who comes later", async () => {
+    await withMeet();
+    const [a, b] = [await guest(), await guest()];
+    a.going(1);
+    await b.until(1);
+
+    a.close();
+    const late = await guest();
+
+    await late.until(1);
+    expect(b.told()).toHaveLength(1);
+    b.close();
+    late.close();
+  });
+
+  it("says nothing of who is coming to someone who comes when nobody has said so", async () => {
+    await withMeet();
+    const a = await guest();
+    const b = await guest();
+    // what is said to the first of how many are looking has come by now: the second came after
+    await vi.waitFor(() => expect(a.raw.filter((text) => text.includes('"watching"')).length).toBeGreaterThan(1));
+
+    expect(a.told()).toEqual([]);
+    expect(b.told()).toEqual([]);
+    a.close();
+    b.close();
+  });
+
+  it("counts a browser once however often it says so, and not at all once it takes its word back", async () => {
+    await withMeet();
+    const [a, b] = [await guest(), await guest()];
+    a.going(1);
+    a.going(1);
+    b.going(2);
+    await a.until(2);
+
+    a.going(1, false);
+    await b.until(1);
+    a.going(1, false);
+    b.going(2, false);
+
+    await a.until(0);
+    expect(a.told().map((note) => note.count)).toEqual([1, 2, 1, 0]);
+    a.close();
+    b.close();
+  });
+
+  it("takes no word for a meeting other than the next, and none where there is no meeting", async () => {
+    await withMeet();
+    const [a, b] = [await guest(), await guest()];
+
+    a.going(1, true, AFTER.start);
+    a.going(2);
+    await b.until(1);
+    await runInDurableObject(directoryStub(), (object) => {
+      (object as unknown as { meetNear(now: number): Meet | null }).meetNear = () => null;
+    });
+    a.going(3);
+    await a.heard();
+
+    // one word was taken of the three: the one for the next meeting, given while there was one
+    expect(b.told().map((note) => note.count)).toEqual([1]);
+    const rows = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ who: string }>("SELECT who FROM going").toArray());
+    expect(rows).toEqual([{ who: who(2) }]);
+    a.close();
+    b.close();
+  });
+
+  it("throws the words for a meeting away once the next one is another", async () => {
+    await withMeet();
+    const a = await guest();
+    a.going(1);
+    a.going(2);
+    await a.until(2);
+    await runInDurableObject(directoryStub(), (object) => {
+      (object as unknown as { meetNear(now: number): Meet | null }).meetNear = () => AFTER;
+    });
+
+    a.going(1, true, AFTER.start);
+
+    await a.until(1, AFTER.start);
+    const rows = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ meet: number }>("SELECT meet FROM going").toArray());
+    expect(rows).toEqual([{ meet: AFTER.start }]);
+    a.close();
+  });
+
+  it("takes no more words from one address than are set, and takes them from another", async () => {
+    await withMeet();
+    const most = directoryConfig.going.perAddress;
+    const [a, b] = [await guest("203.0.113.7"), await guest("203.0.113.8")];
+
+    for (let n = 1; n <= most + 2; n++) a.going(n);
+    await a.until(most);
+    b.going(99);
+
+    await a.until(most + 1);
+    expect(a.told().map((note) => note.count)).toEqual([...Array.from({ length: most }, (_each, at) => at + 1), most + 1]);
+    a.close();
+    b.close();
+  });
+
+  it("tells no more than the most, and that there are more", async () => {
+    await withMeet();
+    const most = directoryConfig.going.most;
+    // two viewers say it for the browsers between them: one may not ask so often (`showLimit`)
+    const [a, b] = [await guest(), await guest()];
+
+    for (let n = 1; n <= most + 1; n++) (n % 2 === 0 ? a : b).going(n);
+
+    await vi.waitFor(() => expect(a.told().at(-1)).toEqual({ type: "coming", meet: START, count: most, more: true }));
+    a.close();
+    b.close();
+  });
+
+  it("counts a word given in the day's numbers by the meeting's game, once for a browser", async () => {
+    await withMeet();
+    await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec("DELETE FROM numbers"));
+    const a = await guest();
+
+    a.going(1);
+    a.going(1);
+    a.going(2);
+    await a.until(2);
+
+    const rows = await runInDurableObject(directoryStub(), (_object, state) =>
+      state.storage.sql.exec<{ n: number }>("SELECT n FROM numbers WHERE what = 'going:under-thirteen' AND day = ?", dayOf(Date.now(), numbersConfig)).toArray(),
+    );
+    expect(rows).toEqual([{ n: 2 }]);
+    a.close();
+  });
+
+  it("reads nothing of a word that names no browser", async () => {
+    await withMeet();
+    const [a, b] = [await guest(), await guest()];
+
+    a.sendRaw(JSON.stringify({ type: "going", meet: START, who: "me", on: true }));
+    a.going(1);
+
+    await b.until(1);
+    expect(b.told()).toHaveLength(1);
     a.close();
     b.close();
   });

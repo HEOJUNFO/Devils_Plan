@@ -15,13 +15,26 @@ import {
   type DirectoryEntry,
 } from "../shared/directory";
 import { normalizeFeedback, type StoredWord } from "../shared/feedback";
+import { comingOf, mayAnswer, mayGiveAnother } from "../shared/going";
 import { isLang } from "../shared/lang";
 import { isGameId, type GameId } from "../shared/games";
+import meetConfig from "../shared/meet-config.json";
+import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import numbersConfig from "../shared/numbers-config.json";
 import { countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
-import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer, type NumbersAnswer, type WantingNote, type WatchingNote } from "../shared/protocol";
+import {
+  parseDirectoryRequest,
+  type ComingNote,
+  type DirectoryMessage,
+  type DirectoryRequest,
+  type FeedbackAnswer,
+  type InboxAnswer,
+  type NumbersAnswer,
+  type WantingNote,
+  type WatchingNote,
+} from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
 import { wantingOf } from "../shared/want";
 import { ADDRESS_HEADER, countedAs } from "./address";
@@ -30,6 +43,7 @@ import { inboxKey, sameKey, type InboxEnv } from "./inbox";
 const config: DirectoryConfig = directoryConfig;
 const rooms: RoomConfig = roomConfig;
 const numbers: NumbersConfig = numbersConfig;
+const meets: MeetConfig = meetConfig;
 
 /** The path a room reports to, the path it asks at whether one more room may be made, and the path it says at what happened in it that is counted by the day. */
 export const REPORT_PATH = "/report";
@@ -87,6 +101,10 @@ interface ViewerState {
  * the rooms and their makers are: a count kept by each running copy of the
  * Worker, as Cloudflare's rate limiting binding keeps it, is not.
  *
+ * It keeps as well who has said they will come to the next meeting
+ * (`going.ts`): a row each until the meeting is over, told to those looking
+ * as a number.
+ *
  * Like a room, the directory hibernates between events, so the entries are
  * kept in SQLite and read back on each wake.
  */
@@ -125,6 +143,9 @@ export class RoomDirectory extends Server<Env> {
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS numbers (day INTEGER NOT NULL, what TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (day, what))");
     // what the addresses that came today are counted as (`keyOf`), so that one person is one: thrown away when the day is over
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS seen (day INTEGER NOT NULL, key TEXT NOT NULL, PRIMARY KEY (day, key))");
+    // one row for each "I'll come" given for a meeting (`going.ts`): the meeting's start, the number the browser is known by, and
+    // what its address is counted as (`keyOf`) where it came with one. Thrown away when the meeting is over.
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS going (meet INTEGER NOT NULL, who TEXT NOT NULL, key TEXT, PRIMARY KEY (meet, who))");
     this.entries = new Map();
     const rows = this.ctx.storage.sql
       .exec<{ code: string; v: string; updated_at: number }>("SELECT code, v, updated_at FROM rooms")
@@ -143,13 +164,15 @@ export class RoomDirectory extends Server<Env> {
     if (key !== null) connection.setState({ from: key });
     this.tellWatching(connection, null);
     this.tellWanting(connection, null);
+    this.tellComing(connection, Date.now());
     this.countVisit(key, Date.now());
   }
 
   /**
    * A viewer picked a game, or every game again: they are sent that list now
-   * and from now on. Or a viewer wrote a word about the game, which is sent
-   * on. Anything else a viewer sends is not read.
+   * and from now on. Or a viewer wrote a word about the game, which is kept;
+   * raised or lowered a hand for a game; or said they will come to the next
+   * meeting. Anything else a viewer sends is not read.
    */
   async onMessage(connection: Connection<ViewerState>, message: WSMessage): Promise<void> {
     const request = parseDirectoryRequest(message);
@@ -165,6 +188,7 @@ export class RoomDirectory extends Server<Env> {
     // what the viewer's address is counted as stays with the connection, whichever game is asked for; so does a hand that is up
     const { from, want, game } = connection.state ?? {};
     const kept = { ...(from === undefined ? {} : { from }), ...(want === undefined ? {} : { want }) };
+    if (request.type === "going") return this.takeGoing(request, from, now);
     if (request.type === "want") {
       // a hand up or down: the game whose rooms are listed stays the one it was
       connection.setState({ ...(game === undefined ? {} : { game }), ...(from === undefined ? {} : { from }), ...(request.game === null ? {} : { want: request.game }) });
@@ -210,6 +234,59 @@ export class RoomDirectory extends Server<Env> {
     this.wantingTold = data;
     const any = data !== noteOf([]);
     for (const viewer of viewers) if (data !== told || (viewer.id === came?.id && any)) viewer.send(data);
+  }
+
+  /** The meeting that is on at `now`, or else the next one (`meetNear`). A method of its own so that a test can set one. */
+  meetNear(now: number): Meet | null {
+    return meetNear(now, meets);
+  }
+
+  /**
+   * Keeps a browser's word that it will come to the next meeting, or takes
+   * it back (`going.ts`), and tells everyone looking how many are coming
+   * now. Not for a meeting other than the one that is on or next; not a
+   * second time for the same browser; and not past so many from one address
+   * (`from`: what it is counted as, where the viewer came with one). None of
+   * which is told to the viewer: their page counts its own word. A word
+   * newly given is counted in the day's numbers by its game, for whoever
+   * runs the site to set against how many came.
+   */
+  private takeGoing(request: Extract<DirectoryRequest, { type: "going" }>, from: string | undefined, now: number): void {
+    const near = this.meetNear(now);
+    if (near === null || !mayAnswer(near, request.meet)) return;
+    // Nothing is waited for from here to the rows, so no other word comes between the count and the row.
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM going WHERE meet < ?", near.start);
+    const given = sql.exec("SELECT 1 FROM going WHERE meet = ? AND who = ?", near.start, request.who).toArray().length > 0;
+    if (request.on === given) return;
+    if (request.on) {
+      const fromHere = from === undefined ? 0 : sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM going WHERE meet = ? AND key = ?", near.start, from).one().n;
+      if (!mayGiveAnother(fromHere, config.going)) return;
+      sql.exec("INSERT INTO going (meet, who, key) VALUES (?, ?, ?)", near.start, request.who, from ?? null);
+      this.count([{ what: `going:${near.game}`, n: 1 }], now);
+    } else {
+      sql.exec("DELETE FROM going WHERE meet = ? AND who = ?", near.start, request.who);
+    }
+    this.tellComing(null, now);
+  }
+
+  /**
+   * Tells the viewers how many have said they will come to the meeting that
+   * is on or next: all of them (`came` is `null`: the number has just
+   * changed), or `came` alone, who has just come, where anyone has said so
+   * (a page takes nobody to be coming until it hears). How many, never who.
+   */
+  private tellComing(came: Connection<ViewerState> | null, now: number): void {
+    const near = this.meetNear(now);
+    if (near === null) return;
+    const rows = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM going WHERE meet = ?", near.start).one().n;
+    const note: ComingNote = { type: "coming", ...comingOf(near.start, rows, config.going) };
+    const data = JSON.stringify(note);
+    if (came !== null) {
+      if (rows > 0) came.send(data);
+      return;
+    }
+    for (const viewer of this.getConnections<ViewerState>()) viewer.send(data);
   }
 
   /**
