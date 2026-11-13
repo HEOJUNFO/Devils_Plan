@@ -399,9 +399,16 @@ ul {
   display: none;
 }
 
-/* When people are asked to gather: a row like a room's, over the rooms, its hour in amber; lit while the hour is on. */
+/* When people are asked to gather: one line over the rooms, the hour and the game in amber on the left and how long until then on the right; lit while the hour is on. */
 #meet {
   flex: none;
+  /* one line where a room's row has two; a finger still has the height of a button to press */
+  height: 18px;
+}
+
+:root.touch #meet {
+  height: 24px;
+  align-items: center;
 }
 
 #meet[hidden] {
@@ -410,14 +417,6 @@ ul {
 
 #meet .room-host {
   color: var(--amber);
-}
-
-/* Its second line has the row's whole width: the game and what to do then are one sentence. */
-#meet .room-game {
-  grid-column: 1 / -1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 #meet.on {

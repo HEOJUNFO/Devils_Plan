@@ -815,13 +815,14 @@ function setBar(first: string, second: string, withRules: boolean): void {
 }
 
 /**
- * The lobby's two lines under the frame. While others are looking at the
- * list too, the second says how many: two people each waiting for a room to
- * appear do not know of each other otherwise, and neither makes one.
+ * The lobby's line under the frame. While others are looking at the list
+ * too, it says how many: two people each waiting for a room to appear do not
+ * know of each other otherwise, and neither makes one. With nobody else it
+ * says nothing: what to do is said once, over the form.
  */
 function lobbyBar(): void {
   const others = watching === null ? 0 : watching.count - 1;
-  setBar(WORDS.bar.lobby[0], others >= 1 && watching !== null ? WORDS.bar.others(others, watching.more) : WORDS.bar.lobby[1], false);
+  setBar(others >= 1 && watching !== null ? WORDS.bar.others(others, watching.more) : "", "", false);
   lobbyBarShown = true;
 }
 
@@ -995,14 +996,10 @@ function standing(listing: RoomListing, game: GameId): string {
 /** The game whose rooms the lobby lists, `null` for every game: what the player last picked while the page has been open. */
 let listedGame: GameId | null = null;
 /** The list of rooms as the directory last sent it; `null` while it is not known (connecting, or the connection dropped). */
-/** The games one player can start by themselves, by name: said to someone who finds the lobby empty. */
-const ALONE_GAMES = GAME_IDS.filter((id) => GAMES[id].minPlayers === 1)
-  .map((id) => GAMES[id].title[lang])
-  .join(", ");
 let roomsSent: DirectoryMessage | null = null;
 /** How many are looking at the list of rooms, this page among them, as the directory last said; `null` before it has, and while the list is not connected. */
 let watching: Watching | null = null;
-/** Whether the bar under the frame shows the lobby's own two lines (`lobbyBar`), and not a game's or a room's. */
+/** Whether the bar under the frame is the lobby's own (`lobbyBar`), and not a game's or a room's. */
 let lobbyBarShown = false;
 
 /**
@@ -1060,8 +1057,9 @@ const meetButton = el<HTMLButtonElement>("meet");
 const MEET_EVERY_MS = 20_000;
 
 /**
- * Says over the rooms when the next gathering is and for which game, in the
- * reader's own time, or that one is on. Nothing where none is set.
+ * Says over the rooms, in one line, when the next gathering is and for which
+ * game, in the reader's own time, or that one is on. Nothing where none is
+ * set. The day is not named: how long until then says it.
  */
 function renderMeet(): void {
   const now = Date.now();
@@ -1069,16 +1067,11 @@ function renderMeet(): void {
   meetButton.hidden = meet === null;
   if (meet === null) return;
   const timeOf = (at: number): string => new Date(at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  // today or tomorrow by the reader's own calendar: the hour is held in one place and read in every other
-  const dayOf = (at: number): number => {
-    const date = new Date(at);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  };
   const minutes = Math.max(1, Math.ceil((meet.start - now) / 60_000));
-  const [title, when, what] = [...meetButton.children];
-  title.textContent = meet.on ? WORDS.meet.now : WORDS.meet.title(dayOf(meet.start) > dayOf(now) ? WORDS.meet.tomorrow : WORDS.meet.today, timeOf(meet.start));
+  const [title, when] = [...meetButton.children];
+  const game = GAMES[meet.game].title[lang];
+  title.textContent = meet.on ? WORDS.meet.now(game) : WORDS.meet.title(timeOf(meet.start), game);
   when.textContent = meet.on ? WORDS.meet.until(timeOf(meet.end)) : WORDS.meet.inTime(Math.floor(minutes / 60), minutes % 60);
-  what.textContent = WORDS.meet.what(GAMES[meet.game].title[lang]);
   meetButton.classList.toggle("on", meet.on);
   meetButton.dataset.game = meet.game;
 }
@@ -1220,7 +1213,7 @@ function renderRooms(): void {
       : known.length > 0
         ? ""
         : listedGame === null
-          ? WORDS.rooms.none(ALONE_GAMES)
+          ? WORDS.rooms.none
           : WORDS.rooms.noneOf(GAMES[listedGame].title[lang]);
   roomsPick.textContent = `${listedGame === null ? WORDS.rooms.everyGame : GAMES[listedGame].title[lang]} ▾`;
   for (const pick of gamePicks) {

@@ -109,8 +109,8 @@ const ko = {
     /** Beside the heading, which says what is counted: in English the number alone, so the widest name of a game fits on the button beside it. */
     total: (rooms: number) => `${rooms}개`,
     loading: "방 목록을 불러오는 중입니다.",
-    /** With no room on the list. `alone` names the games one player can start, for someone who came by themselves; empty where there is none. */
-    none: (alone: string) => `열린 방이 없습니다. 공개 방을 만들면 여기에 올라와 누구나 들어올 수 있습니다.${alone === "" ? "" : ` 혼자서도 시작할 수 있는 게임: ${alone}.`}`,
+    /** With no room on the list: one line, as everything over the rooms is. What a public room is, is said where one is made. */
+    none: "열린 방이 없습니다. 방을 만들어 보세요.",
     of: (host: string) => `${host}의 방`,
     full: "가득 참",
     playing: "게임 중 · 들어가면 관전",
@@ -122,22 +122,21 @@ const ko = {
     everyGame: "모든 게임",
     /** What the games to pick from are, said to a screen reader. */
     pick: "게임별로 보기",
-    noneOf: (game: string) => `${game}의 열린 방이 없습니다. 공개 방을 만들면 여기에 올라옵니다.`,
+    noneOf: (game: string) => `${game}의 열린 방이 없습니다.`,
     /** Under the last row, when there are more rooms than the list holds: of every game, and of the game picked. */
     moreOfAll: (rooms: number) => `${rooms}개 더 있습니다. 위에서 게임을 골라 좁혀 보세요.`,
     moreOfGame: (rooms: number) => `${rooms}개 더 있습니다. 들어가기 좋은 방부터 보여 줍니다.`,
   },
-  /** Over the rooms: the hour at which people are asked to gather for a game, in the reader's own time. */
+  /**
+   * Over the rooms: the hour at which people are asked to gather for a game, in the reader's own time. One line,
+   * the hour and the game on the left and how long until then on the right, which says the day as well.
+   */
   meet: {
-    today: "오늘",
-    tomorrow: "내일",
-    title: (day: string, time: string) => `${day} ${time} 모임`,
+    title: (time: string, game: string) => `${time} ${game} 모임`,
     /** While it is on, with when it ends. */
-    now: "지금 모이는 시간",
+    now: (game: string) => `지금 ${game} 모임`,
     until: (time: string) => `${time}까지`,
     inTime: (hours: number, minutes: number) => (hours > 0 ? `${hours}시간 ${minutes}분 뒤` : `${minutes}분 뒤`),
-    /** Under it: which game, and what to do then. */
-    what: (game: string) => `${game} · 이 시간에 공개 방으로 모여요`,
   },
   /**
    * Under the meeting: a hand raised for a game (`src/shared/want.ts`). One line, what it says on the left and a
@@ -299,8 +298,7 @@ const ko = {
     team: (team: number) => `팀 ${team}`,
   },
   bar: {
-    lobby: ["열린 방에 들어가거나, 방을 만들어 사람들을 모으세요.", "친구끼리만 하려면 비공개 방을 만들고 초대 링크를 보내세요."],
-    /** In place of the lobby's second line while others are in the lobby too: how many besides the reader, and "or more" past the most that is counted. */
+    /** The lobby's one line, while others are in the lobby too: how many besides the reader, and "or more" past the most that is counted. With nobody else there is no line: the form says what to do. */
     others: (count: number, more: boolean) => `지금 로비에 다른 사람 ${count}명${more ? " 이상" : ""}. 공개 방을 만들어 보세요.`,
     rules: "규칙 보기",
     close: "닫기",
@@ -499,7 +497,7 @@ const en: typeof ko = {
     count: (rooms) => (rooms === 1 ? "1 room" : `${rooms} rooms`),
     total: (rooms) => String(rooms),
     loading: "Loading the rooms.",
-    none: (alone) => `No open rooms. Make a public room and it is listed here for anyone to join.${alone === "" ? "" : ` One player can start: ${alone}.`}`,
+    none: "No open rooms. Make one.",
     of: (host) => `${host}'s room`,
     full: "Full",
     playing: "Playing · join to watch",
@@ -508,18 +506,16 @@ const en: typeof ko = {
     entering: "Entering…",
     everyGame: "Every game",
     pick: "Rooms by game",
-    noneOf: (game) => `No open rooms of ${game}. Make a public one and it is listed here.`,
+    noneOf: (game) => `No open rooms of ${game}.`,
     moreOfAll: (rooms) => `${rooms} more. Pick a game above.`,
     moreOfGame: (rooms) => `${rooms} more. The best to join are shown first.`,
   },
   meet: {
-    today: "Today",
-    tomorrow: "Tomorrow",
-    title: (day, time) => `${day} ${time} meet-up`,
-    now: "Meet-up on now",
+    // the widest name of a game and the longest wait have one line of the list's width between them: 284 px
+    title: (time, game) => `${game} at ${time}`,
+    now: (game) => `${game} on now`,
     until: (time) => `until ${time}`,
-    inTime: (hours, minutes) => (hours > 0 ? `in ${hours} h ${minutes} min` : `in ${minutes} min`),
-    what: (game) => `${game} · meet in public rooms`,
+    inTime: (hours, minutes) => (hours > 0 ? `in ${hours}h ${minutes}m` : `in ${minutes} min`),
   },
   want: {
     others: (game) => `Hands up for ${game}`,
@@ -645,7 +641,6 @@ const en: typeof ko = {
     team: (team) => `Team ${team}`,
   },
   bar: {
-    lobby: ["Join an open room, or make one and gather people.", "Friends only? Make a private room and send the invite link."],
     others: (count, more) =>
       `${more ? `${count}+ others are` : count === 1 ? "1 other is" : `${count} others are`} here now. A public room lets them join.`,
     rules: "Rules",
