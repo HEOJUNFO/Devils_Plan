@@ -11,9 +11,11 @@ import {
   PARTY_NAME,
   type DirectoryMessage,
   type DirectoryRequest,
+  type WantingNote,
   type WatchingNote,
 } from "../../../src/shared/protocol";
 import roomConfig from "../../../src/shared/room-config.json";
+import type { Wanting } from "../../../src/shared/want";
 import numbersConfig from "../../../src/shared/numbers-config.json";
 import { dayOf, type DayNumbers } from "../../../src/shared/numbers";
 import { COUNT_PATH, MAKE_PATH } from "../../../src/server/directory";
@@ -1118,5 +1120,141 @@ describe("RoomDirectory: the numbers of the day", () => {
     const kept = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec("SELECT day FROM numbers WHERE day = ?", gone).toArray());
     expect(kept).toEqual([]);
     reader.close();
+  });
+});
+
+describe("RoomDirectory: hands raised for a game", () => {
+  /** Someone in the lobby who reads what the directory says of the hands that are up. */
+  class Hand extends Inbox<{ type: string }> {
+    /** Raises this viewer's hand for `game`, or lowers it. */
+    want(game: GameId | null): void {
+      const request: DirectoryRequest = { type: "want", game };
+      this.ws.send(JSON.stringify(request));
+    }
+
+    /** What the directory has said of the hands, each time it said so, oldest first. */
+    told(): Wanting[] {
+      return this.raw.map((text) => JSON.parse(text) as { type: string }).filter((message): message is WantingNote => message.type === "wanting").map((note) => note.games);
+    }
+
+    /** Waits until the last thing said of the hands is `games`. */
+    async until(games: Wanting): Promise<void> {
+      await vi.waitFor(() => expect(this.told().at(-1)).toEqual(games));
+    }
+  }
+
+  async function hand(): Promise<Hand> {
+    const viewer = new Hand(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`));
+    // the list comes first, to everyone who connects
+    await viewer.next();
+    return viewer;
+  }
+
+  it("tells everyone looking how many hands are up for a game when one goes up", async () => {
+    const [a, b] = [await hand(), await hand()];
+
+    a.want("under-thirteen");
+
+    await a.until({ "under-thirteen": 1 });
+    await b.until({ "under-thirteen": 1 });
+    a.close();
+    b.close();
+  });
+
+  it("counts the hands of two connections as two, and a hand moved to another game as one there", async () => {
+    const [a, b] = [await hand(), await hand()];
+    a.want("under-thirteen");
+    b.want("under-thirteen");
+    await a.until({ "under-thirteen": 2 });
+
+    b.want("count-cubes");
+
+    await a.until({ "under-thirteen": 1, "count-cubes": 1 });
+    a.close();
+    b.close();
+  });
+
+  it("takes a hand down when its viewer says so, and when its viewer leaves", async () => {
+    const [a, b, c] = [await hand(), await hand(), await hand()];
+    a.want("memory-poker");
+    b.want("memory-poker");
+    await c.until({ "memory-poker": 2 });
+
+    a.want(null);
+    await c.until({ "memory-poker": 1 });
+    b.close();
+
+    await c.until({});
+    a.close();
+    c.close();
+  });
+
+  it("tells someone who has just come of the hands that are up, and says nothing of hands where none are", async () => {
+    const a = await hand();
+    const quiet = await hand();
+    // what is said to the first of how many are looking has come by now: the second came after
+    await vi.waitFor(() => expect(a.raw.filter((text) => text.includes('"watching"')).length).toBeGreaterThan(1));
+    expect(quiet.told()).toEqual([]);
+    a.want("lay-the-grass");
+    await a.until({ "lay-the-grass": 1 });
+
+    const late = await hand();
+
+    await late.until({ "lay-the-grass": 1 });
+    for (const viewer of [a, quiet, late]) viewer.close();
+  });
+
+  it("keeps the game whose rooms a viewer asked for when their hand goes up, and their hand when they ask for another game's rooms", async () => {
+    const viewer = await watch();
+    await viewer.next();
+    const other = await hand();
+    viewer.show(OTHER_GAME);
+    expect((await viewer.next()).of).toBe(OTHER_GAME);
+
+    viewer.sendRaw(JSON.stringify({ type: "want", game: OTHER_GAME } satisfies DirectoryRequest));
+    await other.until({ [OTHER_GAME]: 1 });
+    // a room of that game is made: the list its coming brings this viewer is still that game's
+    const player = await open("HANDS", { player: 91, create: true, listed: true, game: OTHER_GAME });
+    const list = await viewer.next();
+    expect(list.of).toBe(OTHER_GAME);
+
+    viewer.show(null);
+    expect((await viewer.next()).of).toBeNull();
+    // the hand is still up: someone who comes now is told of it
+    const late = await hand();
+    await late.until({ [OTHER_GAME]: 1 });
+    player.close();
+    for (const each of [viewer, other, late]) each.close();
+  });
+
+  it("counts a hand raised in the day's numbers, once for each time it goes up for a game", async () => {
+    await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec("DELETE FROM numbers"));
+    const a = await hand();
+
+    a.want("under-thirteen");
+    await a.until({ "under-thirteen": 1 });
+    a.want("under-thirteen");
+    a.want(null);
+    await a.until({});
+    a.want("under-thirteen");
+    await a.until({ "under-thirteen": 1 });
+
+    const rows = await runInDurableObject(directoryStub(), (_object, state) =>
+      state.storage.sql.exec<{ n: number }>("SELECT n FROM numbers WHERE what = 'wanted:under-thirteen' AND day = ?", dayOf(Date.now(), numbersConfig)).toArray(),
+    );
+    expect(rows).toEqual([{ n: 2 }]);
+    a.close();
+  });
+
+  it("reads nothing of a hand for a game there is not", async () => {
+    const [a, b] = [await hand(), await hand()];
+
+    a.sendRaw(JSON.stringify({ type: "want", game: "chess" }));
+    a.want("count-cubes");
+
+    await b.until({ "count-cubes": 1 });
+    expect(b.told()).toEqual([{ "count-cubes": 1 }]);
+    a.close();
+    b.close();
   });
 });

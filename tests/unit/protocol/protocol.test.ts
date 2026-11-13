@@ -13,6 +13,7 @@ import {
   parseFeedbackAnswer,
   parseInboxAnswer,
   parseNumbersAnswer,
+  parseWantingNote,
   parseServerMessage,
   parseWatchingNote,
 } from "../../../src/shared/protocol";
@@ -492,6 +493,16 @@ describe("parseDirectoryRequest", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "my key", drop: 12, more: 1 }))).toEqual({ type: "inbox", key: "my key", drop: 12 });
   });
 
+  it("reads a hand going up for a game, and going down", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "want", game: "under-thirteen", more: 1 }))).toEqual({ type: "want", game: "under-thirteen" });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "want", game: null }))).toEqual({ type: "want", game: null });
+  });
+
+  it("rejects a hand for a game there is not, or for none said", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "want", game: "chess" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "want" }))).toBeNull();
+  });
+
   it("reads a request for the numbers, with its key and nothing else", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "numbers", key: "my key", drop: 3 }))).toEqual({ type: "numbers", key: "my key" });
   });
@@ -555,5 +566,18 @@ describe("parseNumbersAnswer", () => {
     expect(parseNumbersAnswer(JSON.stringify({ type: "inbox", words: null }))).toBeNull();
     expect(parseNumbersAnswer(JSON.stringify({ type: "numbers" }))).toBeNull();
     expect(parseNumbersAnswer(JSON.stringify({ type: "numbers", days: "none" }))).toBeNull();
+  });
+});
+
+describe("parseWantingNote", () => {
+  it("reads how many hands are up for each game, and that none are", () => {
+    expect(parseWantingNote(JSON.stringify({ type: "wanting", games: { "under-thirteen": 2, chess: 1 } }))).toEqual({ type: "wanting", games: { "under-thirteen": 2 } });
+    expect(parseWantingNote(JSON.stringify({ type: "wanting", games: {} }))).toEqual({ type: "wanting", games: {} });
+  });
+
+  it("is nothing for another message, or with no count by game", () => {
+    expect(parseWantingNote(JSON.stringify({ type: "watching", count: 2 }))).toBeNull();
+    expect(parseWantingNote(JSON.stringify({ type: "wanting" }))).toBeNull();
+    expect(parseWantingNote(JSON.stringify({ type: "wanting", games: [1] }))).toBeNull();
   });
 });

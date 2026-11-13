@@ -7,11 +7,12 @@
 
 /**
  * What a player is called back for, the quietest first: in the lobby, a room
- * opening that can be joined; in a room, a line of chat, someone coming in,
+ * opening that can be joined, and enough hands going up for the game the
+ * player raised theirs for (`want.ts`); in a room, a line of chat, someone coming in,
  * a game starting, the room asking its host whether they are there, and a
  * turn that is the player's own.
  */
-export const CALLS = ["room", "said", "came", "started", "host", "turn"] as const;
+export const CALLS = ["room", "gathered", "said", "came", "started", "host", "turn"] as const;
 
 /** One of the things a player is called back for. */
 export type Call = (typeof CALLS)[number];

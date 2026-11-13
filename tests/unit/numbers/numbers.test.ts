@@ -99,14 +99,17 @@ describe("readDay", () => {
       day: MONDAY_DAY,
       counts: {
         visits: 40, people: 31, peak: 6, made: 12, "made-listed": 9, started: 3, ended: 2, emptied: 11, alone: 5, unplayed: 2,
-        "started:under-thirteen": 3, "players:under-thirteen": 13, "ended:under-thirteen": 2, "timed:under-thirteen": 2, "minutes:under-thirteen": 25,
+        "wanted:under-thirteen": 6, "wanted:memory-poker": 1, "started:under-thirteen": 3, "players:under-thirteen": 13, "ended:under-thirteen": 2, "timed:under-thirteen": 2, "minutes:under-thirteen": 25,
         "hour:9": 30, "hour:21": 10,
       },
     });
 
     expect(day).toEqual({
       date: "2026-11-16", weekday: 0, visits: 40, people: 31, peak: 6, made: 12, listed: 9, started: 3, ended: 2, alone: 5, unplayed: 2,
-      games: [{ game: "under-thirteen", started: 3, ended: 2, players: 4.3, minutes: 12.5 }],
+      games: [
+        { game: "memory-poker", wanted: 1, started: 0, ended: 0, players: null, minutes: null },
+        { game: "under-thirteen", wanted: 6, started: 3, ended: 2, players: 4.3, minutes: 12.5 },
+      ],
       hours: [{ hour: 9, visits: 30 }, { hour: 21, visits: 10 }],
     });
   });
@@ -115,7 +118,7 @@ describe("readDay", () => {
     const day = readDay({ day: MONDAY_DAY + 6, counts: { "ended:count-cubes": 1 } });
 
     expect(day).toMatchObject({ date: "2026-11-22", weekday: 6, visits: 0, made: 0, hours: [] });
-    expect(day.games).toEqual([{ game: "count-cubes", started: 0, ended: 1, players: null, minutes: null }]);
+    expect(day.games).toEqual([{ game: "count-cubes", wanted: 0, started: 0, ended: 1, players: null, minutes: null }]);
   });
 });
 

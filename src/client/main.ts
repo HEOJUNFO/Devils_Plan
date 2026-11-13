@@ -40,6 +40,7 @@ import {
   parseFeedbackAnswer,
   parseInboxAnswer,
   parseNumbersAnswer,
+  parseWantingNote,
   parseServerMessage,
   parseWatchingNote,
   type ClientMessage,
@@ -57,6 +58,7 @@ import directoryConfig from "../shared/directory-config.json";
 import meetConfig from "../shared/meet-config.json";
 import numbersConfig from "../shared/numbers-config.json";
 import { readDay, type DayNumbers } from "../shared/numbers";
+import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear } from "../shared/meet";
 import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
@@ -1034,6 +1036,8 @@ function pickGame(game: GameId | null): void {
   roomsPick.focus();
   if (game === listedGame) return;
   listedGame = game;
+  // a hand is for the game being looked at: looking at another takes it down
+  if (myWant !== null && myWant !== game) sayWant(null);
   askForGame();
   // the rows of that game already sent are shown at once; the directory's answer has the rest
   renderRooms();
@@ -1079,6 +1083,79 @@ function renderMeet(): void {
   meetButton.dataset.game = meet.game;
 }
 
+/** The row under it: a hand raised for a game, and how many are up (`src/shared/want.ts`). */
+const wantButton = el<HTMLButtonElement>("want");
+/** How many hands the directory last said are up for each game. */
+let wanting: Wanting = {};
+/** The game this player's hand is up for; `null` while it is down. One hand, and it is this connection's: the directory forgets it when the lobby is left. */
+let myWant: GameId | null = null;
+/** What the row last said, to tell when it comes to say there are enough: that is what a tab behind others is called back for. */
+let wantKind: WantRow["kind"] | null = null;
+
+/** What the row says and does now. */
+function wantNow(): WantRow {
+  const rooms = roomsSent?.rooms ?? [];
+  return wantRow(listedGame, myWant, wanting, (game) => quickPicks(rooms.filter((room) => room.game === game))[0] ?? null);
+}
+
+/** Tells the directory this player's hand is up for `game`, or down, over the connection the lobby has to it. */
+function sayWant(game: GameId | null): void {
+  myWant = game;
+  if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return;
+  const request: DirectoryRequest = { type: "want", game };
+  listSocket.send(JSON.stringify(request));
+}
+
+/** Writes the row of hands: what it says goes by what is listed, whose hand is up, and how many are. */
+function renderWant(): void {
+  const row = wantNow();
+  const nameOf = (game: GameId): string => GAMES[game].title[lang];
+  const [said, count] = ((): [string, string] => {
+    switch (row.kind) {
+      case "pick":
+        return [WORDS.want.pick, WORDS.want.pickGo];
+      case "others":
+        return [WORDS.want.others(nameOf(row.game)), WORDS.want.othersCount(row.count)];
+      case "offer":
+        return [WORDS.want.offer(nameOf(row.game)), WORDS.want.offerCount(row.count)];
+      case "raised":
+        return [WORDS.want.raised(row.need - row.count), WORDS.want.raisedCount(row.count, row.need)];
+      case "gathered":
+        return [WORDS.want.gathered(row.count), ""];
+      case "open":
+        return [WORDS.want.open, ""];
+    }
+  })();
+  const [left, right] = [...wantButton.children];
+  left.textContent = said;
+  right.textContent = count;
+  wantButton.hidden = false;
+  wantButton.classList.toggle("up", myWant !== null);
+  wantButton.classList.toggle("on", row.kind === "gathered" || row.kind === "open");
+  // enough hands are up now, and were not: whoever raised theirs has likely gone to another tab to wait
+  if (row.kind === "gathered" && wantKind !== "gathered") call("gathered");
+  wantKind = row.kind;
+}
+
+wantButton.addEventListener("click", () => {
+  const row = wantNow();
+  if (row.kind === "pick") {
+    showGamePicks(true);
+    return;
+  }
+  if (row.kind === "others") return pickGame(row.game);
+  if (row.kind === "offer") sayWant(row.game);
+  else if (row.kind === "raised") sayWant(null);
+  else if (row.kind === "open") return joinRoom(row.code);
+  else {
+    // enough are here: this player opens the room the others are waiting for, a public one of that game
+    chosenGame = row.game;
+    chosenListed = true;
+    return createRoom();
+  }
+  renderWant();
+});
+
 // a press lists the rooms of the game people gather for: where they are, or where one is to be made
 meetButton.addEventListener("click", () => {
   const game = meetButton.dataset.game;
@@ -1091,6 +1168,7 @@ setInterval(() => {
 /** Draws the list of rooms as last sent, for the game picked. */
 function renderRooms(): void {
   renderMeet();
+  renderWant();
   // what is shown is worked out from what was sent: a newer server may list a game this page has not heard of, which cannot be played here
   const shown = roomsSent === null ? null : roomsShown(roomsSent.rooms, roomsSent.counts, listedGame);
   const known = shown?.rooms ?? [];
@@ -1164,6 +1242,8 @@ function watchRooms(): void {
   current.addEventListener("open", () => {
     // every connection starts with the rooms of every game, a reconnection too: the game picked is asked for again
     if (listSocket === current && listedGame !== null) askForGame();
+    // and so is a hand that was up: a new connection has none
+    if (listSocket === current && myWant !== null) sayWant(myWant);
   });
   current.addEventListener("message", (event) => {
     if (listSocket !== current) return;
@@ -1173,6 +1253,12 @@ function watchRooms(): void {
     if (inbox !== null) return inboxAnswered(inbox.words);
     const counted = parseNumbersAnswer(event.data);
     if (counted !== null) return numbersAnswered(counted.days);
+    const hands = parseWantingNote(event.data);
+    if (hands !== null) {
+      wanting = hands.games;
+      renderWant();
+      return;
+    }
     const note = parseWatchingNote(event.data);
     if (note !== null) {
       watching = note;
@@ -1197,6 +1283,7 @@ function watchRooms(): void {
     if (listSocket !== current) return;
     roomsSent = null;
     watching = null;
+    wanting = {};
     if (lobbyBarShown) lobbyBar();
     renderRooms();
     // a word sent on the connection that dropped is not going to be answered
@@ -1417,7 +1504,7 @@ function numbersAnswered(days: DayNumbers[] | null): void {
         WORDS.numbers.lobby(day.visits, day.people, day.peak),
         `${WORDS.numbers.rooms(day.made, day.listed)} · ${WORDS.numbers.games(day.started, day.ended)}`,
         WORDS.numbers.left(day.alone, day.unplayed),
-        ...day.games.map((each) => WORDS.numbers.game(GAMES[each.game].title[lang], each.started, each.ended, each.players, each.minutes)),
+        ...day.games.map((each) => WORDS.numbers.game(GAMES[each.game].title[lang], each.wanted, each.started, each.ended, each.players, each.minutes)),
         ...(day.hours.length === 0 ? [] : [WORDS.numbers.hours(day.hours.map((each) => WORDS.numbers.hour(each.hour, each.visits)).join(" · "))]),
       ].join("\n");
       row.append(head, text);
@@ -1439,6 +1526,10 @@ feedbackSend.addEventListener("click", sendFeedback);
 function unwatchRooms(): void {
   listSocket?.close();
   listSocket = null;
+  // the hand was that connection's
+  myWant = null;
+  wanting = {};
+  wantKind = null;
   watching = null;
   coolDown();
 }

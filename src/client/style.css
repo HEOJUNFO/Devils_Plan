@@ -229,6 +229,7 @@ ul {
 #rooms-note,
 #rooms-games,
 #meet,
+#want,
 #room-list {
   position: relative;
 }
@@ -286,6 +287,7 @@ ul {
 #rooms-games[hidden],
 #rooms.picking #rooms-note,
 #rooms.picking #meet,
+#rooms.picking #want,
 #rooms.picking #room-list {
   display: none;
 }
@@ -419,6 +421,34 @@ ul {
 }
 
 #meet.on {
+  background: #3a2a12;
+}
+
+/* A hand raised for a game: one line under the meeting, what it says on the left and a number on the right; lit when a press would open a room or go into one. */
+#want {
+  flex: none;
+  /* one line where a room's row has two; a finger still has the height of a button to press */
+  height: 18px;
+}
+
+:root.touch #want {
+  height: 24px;
+  align-items: center;
+}
+
+#want[hidden] {
+  display: none;
+}
+
+#want .room-host {
+  color: var(--teal);
+}
+
+#want.up .room-host {
+  color: var(--amber);
+}
+
+#want.on {
   background: #3a2a12;
 }
 

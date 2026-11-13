@@ -21,8 +21,9 @@ import numbersConfig from "../shared/numbers-config.json";
 import { countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
-import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer, type NumbersAnswer, type WatchingNote } from "../shared/protocol";
+import { parseDirectoryRequest, type DirectoryMessage, type DirectoryRequest, type FeedbackAnswer, type InboxAnswer, type NumbersAnswer, type WantingNote, type WatchingNote } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
+import { wantingOf } from "../shared/want";
 import { ADDRESS_HEADER, countedAs } from "./address";
 import { inboxKey, sameKey, type InboxEnv } from "./inbox";
 
@@ -55,12 +56,15 @@ async function keyOf(from: string): Promise<string> {
  * rooms they asked for, where they asked for one, and what the address they
  * came from is counted as (`keyOf`: a digest, not the address), where they
  * came with one, so that the tabs of one person are counted as one looking
- * (`peopleLooking`). Kept with the connection and no longer than it, and so
- * still known after the directory has slept.
+ * (`peopleLooking`); and the game their hand is up for. Kept with the
+ * connection and no longer than it, and so still known after the directory
+ * has slept.
  */
 interface ViewerState {
   game?: GameId;
   from?: string;
+  /** The game this viewer's hand is up for (`want.ts`), where it is up. */
+  want?: GameId;
 }
 
 /**
@@ -95,6 +99,8 @@ export class RoomDirectory extends Server<Env> {
   private readonly showPace = new Map<string, Pace>();
   /** What the viewers were last told of how many they are, as it was sent; nothing after the directory has slept, when it is worked out from who was there (`tellWatching`). */
   private watchingTold: string | null = null;
+  /** What the viewers were last told of how many hands are up, as it was sent; nothing after the directory has slept, when everyone is told again. */
+  private wantingTold: string | null = null;
   /** How many words about the game each viewer has sent lately, by connection id. Forgotten in sleep: the day's limit is kept. */
   private readonly feedbackPace = new Map<string, Pace>();
 
@@ -136,6 +142,7 @@ export class RoomDirectory extends Server<Env> {
     const key = from === null ? null : await keyOf(from.slice(0, ADDRESS_MAX_LENGTH));
     if (key !== null) connection.setState({ from: key });
     this.tellWatching(connection, null);
+    this.tellWanting(connection, null);
     this.countVisit(key, Date.now());
   }
 
@@ -155,9 +162,17 @@ export class RoomDirectory extends Server<Env> {
     const paced = pace(this.showPace.get(connection.id), now, config.showLimit.burst, config.showLimit.windowSeconds);
     this.showPace.set(connection.id, paced.pace);
     if (!paced.ok) return;
-    // what the viewer's address is counted as stays with the connection, whichever game is asked for
-    const from = connection.state?.from;
-    connection.setState({ ...(request.game === null ? {} : { game: request.game }), ...(from === undefined ? {} : { from }) });
+    // what the viewer's address is counted as stays with the connection, whichever game is asked for; so does a hand that is up
+    const { from, want, game } = connection.state ?? {};
+    const kept = { ...(from === undefined ? {} : { from }), ...(want === undefined ? {} : { want }) };
+    if (request.type === "want") {
+      // a hand up or down: the game whose rooms are listed stays the one it was
+      connection.setState({ ...(game === undefined ? {} : { game }), ...(from === undefined ? {} : { from }), ...(request.game === null ? {} : { want: request.game }) });
+      // counted for whoever runs the site: which game people came wanting
+      if (request.game !== null && request.game !== want) this.count([{ what: `wanted:${request.game}`, n: 1 }], now);
+      return this.tellWanting(null, null, { id: connection.id, was: want });
+    }
+    connection.setState({ ...(request.game === null ? {} : { game: request.game }), ...kept });
     connection.send(this.message(now, request.game, this.counts(now)));
   }
 
@@ -165,6 +180,36 @@ export class RoomDirectory extends Server<Env> {
     this.showPace.delete(connection.id);
     this.feedbackPace.delete(connection.id);
     this.tellWatching(null, connection);
+    this.tellWanting(null, connection);
+  }
+
+  /**
+   * Tells the viewers how many hands are up for each game (`want.ts`): all
+   * of them when that has changed, and `came`, who has just come, where any
+   * are up (a page takes none to be up until it hears). `gone` has just left
+   * and its hand is not counted. A hand is a connection's, not an address's:
+   * two people in one house who both want a game are two. How many, never
+   * whose; and none counted past `watchingMost`, as with those looking.
+   * `moved` is the viewer whose hand has just gone up or down, with the game
+   * it was up for before.
+   */
+  private tellWanting(came: Connection<ViewerState> | null, gone: Connection<ViewerState> | null, moved?: { id: string; was: GameId | undefined }): void {
+    const viewers = [...this.getConnections<ViewerState>()].filter((viewer) => viewer.id !== gone?.id);
+    const noteOf = (hands: readonly (GameId | undefined)[]): string => {
+      const note: WantingNote = { type: "wanting", games: wantingOf(hands, config.watchingMost) };
+      return JSON.stringify(note);
+    };
+    const data = noteOf(viewers.map((viewer) => viewer.state?.want));
+    // After a sleep what was last told is not remembered: it is what was true before this coming, going or hand.
+    const told =
+      this.wantingTold ??
+      noteOf([
+        ...viewers.filter((viewer) => viewer.id !== came?.id).map((viewer) => (viewer.id === moved?.id ? moved.was : viewer.state?.want)),
+        ...(gone === null ? [] : [gone.state?.want]),
+      ]);
+    this.wantingTold = data;
+    const any = data !== noteOf([]);
+    for (const viewer of viewers) if (data !== told || (viewer.id === came?.id && any)) viewer.send(data);
   }
 
   /**

@@ -78,8 +78,9 @@ const ko = {
     games: (started: number, ended: number) => `시작한 판 ${started} · 끝난 판 ${ended}`,
     /** Rooms that stood empty with no game ever started: nobody else came, or people came and nothing was started. */
     left: (alone: number, unplayed: number) => `혼자 기다리다 비운 방 ${alone} · 모였는데 시작 못 한 방 ${unplayed}`,
-    game: (name: string, started: number, ended: number, players: number | null, minutes: number | null) =>
-      `${name}: 시작 ${started} · 끝 ${ended}${players === null ? "" : ` · 평균 ${players}명`}${minutes === null ? "" : ` · 평균 ${minutes}분`}`,
+    /** A game's line: hands raised for it in the lobby, games started and ended, and a game's players and minutes on average. */
+    game: (name: string, wanted: number, started: number, ended: number, players: number | null, minutes: number | null) =>
+      `${name}: 손 든 횟수 ${wanted} · 시작 ${started} · 끝 ${ended}${players === null ? "" : ` · 평균 ${players}명`}${minutes === null ? "" : ` · 평균 ${minutes}분`}`,
     hours: (list: string) => `시간대별 방문: ${list}`,
     hour: (hour: number, visits: number) => `${hour}시 ${visits}`,
   },
@@ -137,6 +138,28 @@ const ko = {
     inTime: (hours: number, minutes: number) => (hours > 0 ? `${hours}시간 ${minutes}분 뒤` : `${minutes}분 뒤`),
     /** Under it: which game, and what to do then. */
     what: (game: string) => `${game} · 이 시간에 공개 방으로 모여요`,
+  },
+  /**
+   * Under the meeting: a hand raised for a game (`src/shared/want.ts`). One line, what it says on the left and a
+   * number on the right; `game` is a game's name, the longest of which has to fit beside the number.
+   */
+  want: {
+    /** Every game's rooms are listed and no hand is up: a press shows the games. */
+    pick: "하고 싶은 게임에 손 들기",
+    pickGo: "게임 고르기",
+    /** Hands are up for a game: a press shows it. */
+    others: (game: string) => `${game} 하려는 사람`,
+    othersCount: (count: number) => `${count}명`,
+    /** One game's rooms are listed: a press raises a hand for it. */
+    offer: (game: string) => `${game} 하고 싶어요`,
+    offerCount: (count: number) => (count > 0 ? `${count}명 기다림` : "손 들기"),
+    /** The player's hand is up and more are needed: a press lowers it. */
+    raised: (more: number) => `손 들었음 · ${more}명 더 오면 방 열기`,
+    raisedCount: (count: number, need: number) => `${count}/${need}명`,
+    /** There are enough: a press opens a public room of the game. */
+    gathered: (count: number) => `${count}명 모임 · 눌러서 공개 방 열기`,
+    /** A room of the game is waiting for players: a press goes in. */
+    open: "방이 열렸습니다 · 눌러서 들어가기",
   },
   newRoom: {
     title: "새 방",
@@ -254,6 +277,8 @@ const ko = {
   call: {
     /** In the lobby: a room opened that can be joined. */
     room: "새 방",
+    /** In the lobby: enough hands are up for the game this player raised theirs for. */
+    gathered: "모였습니다",
     said: "새 채팅",
     came: "누가 들어옴",
     started: "게임 시작",
@@ -451,8 +476,8 @@ const en: typeof ko = {
     rooms: (made, listed) => `Rooms made: ${made} (${listed} public)`,
     games: (started, ended) => `Games started: ${started} · finished: ${ended}`,
     left: (alone, unplayed) => `Rooms left after waiting alone: ${alone} · gathered, never started: ${unplayed}`,
-    game: (name, started, ended, players, minutes) =>
-      `${name}: ${started} started · ${ended} finished${players === null ? "" : ` · ${players} to a game`}${minutes === null ? "" : ` · ${minutes} min a game`}`,
+    game: (name, wanted, started, ended, players, minutes) =>
+      `${name}: ${wanted} hands raised · ${started} started · ${ended} finished${players === null ? "" : ` · ${players} to a game`}${minutes === null ? "" : ` · ${minutes} min a game`}`,
     hours: (list) => `Visits by hour: ${list}`,
     hour: (hour, visits) => `${hour}h ${visits}`,
   },
@@ -497,6 +522,18 @@ const en: typeof ko = {
     until: (time) => `until ${time}`,
     inTime: (hours, minutes) => (hours > 0 ? `in ${hours} h ${minutes} min` : `in ${minutes} min`),
     what: (game) => `${game} · meet in public rooms`,
+  },
+  want: {
+    pick: "Raise a hand for a game",
+    pickGo: "Pick a game",
+    others: (game) => `Hands up for ${game}`,
+    othersCount: (count) => `${count}`,
+    offer: (game) => `Hand up for ${game}?`,
+    offerCount: (count) => (count > 0 ? `${count} waiting` : "Raise"),
+    raised: (more) => `Hand up · ${more} more to open a room`,
+    raisedCount: (count, need) => `${count}/${need}`,
+    gathered: (count) => `${count} here · press to open a public room`,
+    open: "A room is open · press to join",
   },
   newRoom: {
     title: "New room",
@@ -592,6 +629,7 @@ const en: typeof ko = {
   },
   call: {
     room: "New room",
+    gathered: "Enough players",
     said: "New chat",
     came: "Someone came",
     started: "Game started",

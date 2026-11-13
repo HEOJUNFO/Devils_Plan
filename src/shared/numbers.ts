@@ -137,9 +137,10 @@ export function firstKept(today: number, config: NumbersConfig): number {
   return today - config.keepDays + 1;
 }
 
-/** A game's part of a day: games started and ended, the players of a started game on average, and the minutes of an ended one. `null` where nothing was counted to work one out from. */
+/** A game's part of a day: hands raised for it in the lobby (`want.ts`), games started and ended, the players of a started game on average, and the minutes of an ended one. `null` where nothing was counted to work one out from. */
 export interface GameRead {
   game: GameId;
+  wanted: number;
   started: number;
   ended: number;
   players: number | null;
@@ -160,7 +161,7 @@ export interface DayRead {
   ended: number;
   alone: number;
   unplayed: number;
-  /** The games something was started or ended of, in the order the games are listed in. */
+  /** The games a hand was raised for or something was started or ended of, in the order the games are listed in. */
   games: GameRead[];
   /** The hours somebody came in, earliest first, with how many visits. */
   hours: { hour: number; visits: number }[];
@@ -175,11 +176,12 @@ export function readDay(numbers: DayNumbers): DayRead {
   const mean = (sum: number, over: number): number | null => (over > 0 ? Math.round((sum / over) * 10) / 10 : null);
   const games = GAME_IDS.map((game) => ({
     game,
+    wanted: of(`wanted:${game}`),
     started: of(`started:${game}`),
     ended: of(`ended:${game}`),
     players: mean(of(`players:${game}`), of(`started:${game}`)),
     minutes: mean(of(`minutes:${game}`), of(`timed:${game}`)),
-  })).filter((each) => each.started > 0 || each.ended > 0);
+  })).filter((each) => each.started > 0 || each.ended > 0 || each.wanted > 0);
   const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, visits: of(`hour:${hour}`) })).filter((each) => each.visits > 0);
   return {
     date: new Date(numbers.day * DAY_MS).toISOString().slice(0, 10),

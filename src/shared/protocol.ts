@@ -16,6 +16,7 @@ import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
 import { parseDays, type DayNumbers } from "./numbers";
+import { parseWanting, type Wanting } from "./want";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
 import { parseRtcSignal, type RtcSignal, type VoiceConfig, type VoiceMember } from "./voice";
@@ -239,7 +240,7 @@ export interface NumbersAnswer {
 }
 
 /**
- * Client → directory, the four things it reads of what a viewer sends.
+ * Client → directory, the five things it reads of what a viewer sends.
  *
  * `show`: the rooms of this game only, or of every game (`null`, which is
  * what a viewer is shown until they ask). Asked again on every reconnect: a
@@ -256,12 +257,18 @@ export interface NumbersAnswer {
  *
  * `numbers`: the site's numbers by the day, for whoever runs it, with the
  * same key. Answered with a {@link NumbersAnswer}.
+ *
+ * `want`: this viewer's hand is up for this game (`want.ts`), or down
+ * (`null`). One hand a connection: a hand for another game takes the first
+ * down. Asked again on every reconnect, as a new connection has none up.
+ * Everyone looking is then told how many are up (a {@link WantingNote}).
  */
 export type DirectoryRequest =
   | { type: "show"; game: GameId | null }
   | { type: "feedback"; text: string; lang: Lang; build: string }
   | { type: "inbox"; key: string; drop?: number }
-  | { type: "numbers"; key: string };
+  | { type: "numbers"; key: string }
+  | { type: "want"; game: GameId | null };
 
 /** The longest text the directory reads as a request: a word about the game at its longest fits, each of its letters written the long way. */
 export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
@@ -473,6 +480,24 @@ export interface WatchingNote extends Watching {
   type: "watching";
 }
 
+/**
+ * How many hands are up in the lobby for each game (`want.ts`), sent to
+ * everyone looking at the list whenever it changes, and to someone who has
+ * just come where any are up.
+ */
+export interface WantingNote {
+  type: "wanting";
+  games: Wanting;
+}
+
+/** Parses the directory's word on how many hands are up, returning `null` for anything else. */
+export function parseWantingNote(raw: unknown): WantingNote | null {
+  const data = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (data === null || data.type !== "wanting") return null;
+  const games = parseWanting(data.games);
+  return games === null ? null : { type: "wanting", games };
+}
+
 /** Parses the directory's word on how many are looking at the list, returning `null` for anything else. */
 export function parseWatchingNote(raw: unknown): WatchingNote | null {
   const data = parseObject(raw, Number.POSITIVE_INFINITY);
@@ -532,6 +557,10 @@ export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
   if (data.type === "numbers") {
     if (typeof data.key !== "string" || data.key === "" || data.key.length > MAX_KEY_LENGTH) return null;
     return { type: "numbers", key: data.key };
+  }
+  if (data.type === "want") {
+    if (data.game !== null && !isGameId(data.game)) return null;
+    return { type: "want", game: data.game };
   }
   if (data.type !== "show") return null;
   if (data.game !== null && !isGameId(data.game)) return null;
