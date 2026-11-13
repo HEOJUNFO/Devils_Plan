@@ -48,7 +48,7 @@ export function parseWanting(raw: unknown): Wanting | null {
  * What the lobby's row of hands says and does, by what the player is looking
  * at and whether their own hand is up:
  *
- * - `pick`: every game's rooms, and no hand up anywhere: a press shows the games.
+ * - `pick`: every game's rooms, and no hand up anywhere: the row is not shown.
  * - `others`: every game's rooms, and hands are up for `game` (the game with
  *   the most): a press shows that game.
  * - `offer`: one game's rooms, the player's hand down: a press raises it.

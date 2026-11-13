@@ -424,7 +424,7 @@ ul {
   background: #3a2a12;
 }
 
-/* A hand raised for a game: one line under the meeting, what it says on the left and a number on the right; lit when a press would open a room or go into one. */
+/* A hand raised for a game: one line under the meeting, in a room row's own colours, what it says on the left and a number on the right; amber once the player's hand is up, lit when a press would open a room or go into one. */
 #want {
   flex: none;
   /* one line where a room's row has two; a finger still has the height of a button to press */
@@ -438,10 +438,6 @@ ul {
 
 #want[hidden] {
   display: none;
-}
-
-#want .room-host {
-  color: var(--teal);
 }
 
 #want.up .room-host {

@@ -1113,7 +1113,7 @@ function renderWant(): void {
   const [said, count] = ((): [string, string] => {
     switch (row.kind) {
       case "pick":
-        return [WORDS.want.pick, WORDS.want.pickGo];
+        return ["", ""];
       case "others":
         return [WORDS.want.others(nameOf(row.game)), WORDS.want.othersCount(row.count)];
       case "offer":
@@ -1129,7 +1129,9 @@ function renderWant(): void {
   const [left, right] = [...wantButton.children];
   left.textContent = said;
   right.textContent = count;
-  wantButton.hidden = false;
+  // With every game listed and no hand up anywhere the line has nothing to say, and says nothing: the lobby
+  // already has the meeting and the list to read. It is there once a game is picked, or a hand is up for one.
+  wantButton.hidden = row.kind === "pick";
   wantButton.classList.toggle("up", myWant !== null);
   wantButton.classList.toggle("on", row.kind === "gathered" || row.kind === "open");
   // enough hands are up now, and were not: whoever raised theirs has likely gone to another tab to wait
@@ -1139,10 +1141,7 @@ function renderWant(): void {
 
 wantButton.addEventListener("click", () => {
   const row = wantNow();
-  if (row.kind === "pick") {
-    showGamePicks(true);
-    return;
-  }
+  if (row.kind === "pick") return;
   if (row.kind === "others") return pickGame(row.game);
   if (row.kind === "offer") sayWant(row.game);
   else if (row.kind === "raised") sayWant(null);

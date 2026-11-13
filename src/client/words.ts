@@ -141,12 +141,10 @@ const ko = {
   },
   /**
    * Under the meeting: a hand raised for a game (`src/shared/want.ts`). One line, what it says on the left and a
-   * number on the right; `game` is a game's name, the longest of which has to fit beside the number.
+   * number on the right; `game` is a game's name, the longest of which has to fit beside the number. With every
+   * game listed and no hand up anywhere there is no line.
    */
   want: {
-    /** Every game's rooms are listed and no hand is up: a press shows the games. */
-    pick: "하고 싶은 게임에 손 들기",
-    pickGo: "게임 고르기",
     /** Hands are up for a game: a press shows it. */
     others: (game: string) => `${game} 하려는 사람`,
     othersCount: (count: number) => `${count}명`,
@@ -524,8 +522,6 @@ const en: typeof ko = {
     what: (game) => `${game} · meet in public rooms`,
   },
   want: {
-    pick: "Raise a hand for a game",
-    pickGo: "Pick a game",
     others: (game) => `Hands up for ${game}`,
     othersCount: (count) => `${count}`,
     offer: (game) => `Hand up for ${game}?`,
