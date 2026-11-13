@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createLobby, joinLobby, viewLobby, withTops, type LobbyState } from "../../../src/shared/lobby";
+import { createLobby, joinLobby, viewLobby, withResult, type LobbyState } from "../../../src/shared/lobby";
 import roomConfig from "../../../src/shared/room-config.json";
-import { topsOf, type TopsConfig } from "../../../src/shared/tops";
+import { resultOf, type GameResult, type TopsConfig } from "../../../src/shared/tops";
 
 const CONFIG: TopsConfig = { on: true, peopleAtLeast: 2 };
 const token = (n: number): string => `player-token-${String(n).padStart(4, "0")}`;
@@ -17,6 +17,11 @@ function lobbyOf(count: number): LobbyState {
   return state;
 }
 
+/** A game played by players `played`, of whom players `tops` did best. */
+function game(played: number[], tops: number[]): GameResult {
+  return { played: new Set(played.map(token)), tops: new Set(tops.map(token)) };
+}
+
 /** The slots marked as the top, as everyone sees them. */
 function topSlots(state: LobbyState): number[] {
   return viewLobby(state, new Set(), 0, roomConfig)
@@ -24,15 +29,20 @@ function topSlots(state: LobbyState): number[] {
     .map((p) => p.slot);
 }
 
-describe("topsOf", () => {
-  it("names whoever ended at the best place", () => {
+/** Each player's games counted in the room and how many of them they were at the top of, by slot, as everyone sees them. */
+function tallies(state: LobbyState): [number, number][] {
+  return viewLobby(state, new Set(), 0, roomConfig).players.map((p) => [p.games, p.wins]);
+}
+
+describe("resultOf", () => {
+  it("names whoever ended at the best place, and everyone who played", () => {
     const lines = [
       { token: token(0), place: 2 },
       { token: token(1), place: 1 },
       { token: token(2), place: 3 },
     ];
 
-    expect([...(topsOf(lines, CONFIG) ?? [])]).toEqual([token(1)]);
+    expect(resultOf(lines, CONFIG)).toEqual(game([0, 1, 2], [1]));
   });
 
   it("names everyone who shares the best place", () => {
@@ -42,21 +52,21 @@ describe("topsOf", () => {
       { token: token(2), place: 2 },
     ];
 
-    expect([...(topsOf(lines, CONFIG) ?? [])]).toEqual([token(0), token(1)]);
+    expect(resultOf(lines, CONFIG)).toEqual(game([0, 1, 2], [0, 1]));
   });
 
-  it("names nobody where everyone ended level", () => {
+  it("names nobody at the top where everyone ended level", () => {
     const lines = [
       { token: token(0), place: 1 },
       { token: token(1), place: 1 },
     ];
 
-    expect(topsOf(lines, CONFIG)).toEqual(new Set());
+    expect(resultOf(lines, CONFIG)).toEqual(game([0, 1], []));
   });
 
   it("says nothing for a game cut short, or one that tells no places", () => {
-    expect(topsOf(null, CONFIG)).toBeNull();
-    expect(topsOf(undefined, CONFIG)).toBeNull();
+    expect(resultOf(null, CONFIG)).toBeNull();
+    expect(resultOf(undefined, CONFIG)).toBeNull();
   });
 
   it("says nothing for a game a bot played in", () => {
@@ -65,11 +75,11 @@ describe("topsOf", () => {
       { token: null, place: 2 },
     ];
 
-    expect(topsOf(lines, CONFIG)).toBeNull();
+    expect(resultOf(lines, CONFIG)).toBeNull();
   });
 
   it("says nothing for a game of fewer people than the room counts", () => {
-    expect(topsOf([{ token: token(0), place: 1 }], CONFIG)).toBeNull();
+    expect(resultOf([{ token: token(0), place: 1 }], CONFIG)).toBeNull();
   });
 
   it("says nothing where rooms keep no mark", () => {
@@ -78,54 +88,100 @@ describe("topsOf", () => {
       { token: token(1), place: 2 },
     ];
 
-    expect(topsOf(lines, { ...CONFIG, on: false })).toBeNull();
+    expect(resultOf(lines, { ...CONFIG, on: false })).toBeNull();
   });
 });
 
-describe("withTops", () => {
+describe("withResult: the mark of the last game's top", () => {
   it("marks the players named, as everyone sees them", () => {
-    const state = withTops(lobbyOf(3), new Set([token(1)]));
+    const state = withResult(lobbyOf(3), game([0, 1, 2], [1]));
 
     expect(topSlots(state)).toEqual([1]);
   });
 
   it("takes the mark from whoever had it when the next game names someone else", () => {
-    const first = withTops(lobbyOf(3), new Set([token(1)]));
+    const first = withResult(lobbyOf(3), game([0, 1, 2], [1]));
 
-    const second = withTops(first, new Set([token(0), token(2)]));
+    const second = withResult(first, game([0, 1, 2], [0, 2]));
 
     expect(topSlots(second)).toEqual([0, 2]);
   });
 
   it("takes every mark away after a game everyone ended level in", () => {
-    const first = withTops(lobbyOf(3), new Set([token(1)]));
+    const first = withResult(lobbyOf(3), game([0, 1, 2], [1]));
 
-    expect(topSlots(withTops(first, new Set()))).toEqual([]);
+    expect(topSlots(withResult(first, game([0, 1, 2], [])))).toEqual([]);
   });
 
-  it("leaves the marks as they were after a game that says nothing", () => {
-    const first = withTops(lobbyOf(3), new Set([token(1)]));
+  it("leaves everything as it was after a game that says nothing", () => {
+    const first = withResult(lobbyOf(3), game([0, 1, 2], [1]));
 
-    expect(withTops(first, null)).toBe(first);
-  });
-
-  it("returns the same state when nothing changes, and does not modify its input", () => {
-    const before = lobbyOf(2);
-    const marked = withTops(before, new Set([token(0)]));
-
-    expect(withTops(marked, new Set([token(0)]))).toBe(marked);
-    expect(topSlots(before)).toEqual([]);
+    expect(withResult(first, null)).toBe(first);
   });
 
   it("marks nobody for a token that is no longer in the room", () => {
-    expect(topSlots(withTops(lobbyOf(2), new Set([token(9)])))).toEqual([]);
+    expect(topSlots(withResult(lobbyOf(2), game([0, 9], [9])))).toEqual([]);
   });
 
   it("keeps the mark of a player who comes back with the same token", () => {
-    const marked = withTops(lobbyOf(2), new Set([token(1)]));
+    const marked = withResult(lobbyOf(2), game([0, 1], [1]));
 
     const back = joinLobby(marked, { token: token(1), nick: "again" }, roomConfig);
 
     expect(back.ok && topSlots(back.state)).toEqual([1]);
+  });
+});
+
+describe("withResult: the room's tally", () => {
+  it("counts the game for everyone who played it, and a win for those at its top", () => {
+    const state = withResult(lobbyOf(3), game([0, 1, 2], [1]));
+
+    expect(tallies(state)).toEqual([
+      [1, 0],
+      [1, 1],
+      [1, 0],
+    ]);
+  });
+
+  it("adds each game played to its end to what was counted before", () => {
+    const first = withResult(lobbyOf(3), game([0, 1, 2], [1]));
+
+    const second = withResult(first, game([0, 1, 2], [1, 2]));
+
+    expect(tallies(second)).toEqual([
+      [2, 0],
+      [2, 2],
+      [2, 1],
+    ]);
+  });
+
+  it("counts a game everyone ended level in, and a win for nobody", () => {
+    const state = withResult(lobbyOf(2), game([0, 1], []));
+
+    expect(tallies(state)).toEqual([
+      [1, 0],
+      [1, 0],
+    ]);
+  });
+
+  it("counts nothing for someone in the room who did not play the game", () => {
+    const state = withResult(lobbyOf(3), game([0, 1], [0]));
+
+    expect(tallies(state)).toEqual([
+      [1, 1],
+      [1, 0],
+      [0, 0],
+    ]);
+  });
+
+  it("does not modify its input", () => {
+    const before = lobbyOf(2);
+
+    withResult(before, game([0, 1], [0]));
+
+    expect(tallies(before)).toEqual([
+      [0, 0],
+      [0, 0],
+    ]);
   });
 });

@@ -226,6 +226,9 @@ const feedbackSend = el<HTMLButtonElement>("feedback-send");
 const recordOpen = el<HTMLButtonElement>("record-open");
 const recordSheet = el<HTMLElement>("record-sheet");
 const recordList = el<HTMLUListElement>("record-list");
+const tallyOpen = el<HTMLButtonElement>("tally-open");
+const tallySheet = el<HTMLElement>("tally-sheet");
+const tallyList = el<HTMLUListElement>("tally-list");
 const recordClear = el<HTMLButtonElement>("record-clear");
 
 /** What the page is called while no room is open. */
@@ -295,6 +298,10 @@ function writeWords(): void {
     ["record-title", WORDS.record.title],
     ["record-hint", WORDS.record.hint],
     ["record-close", WORDS.record.close],
+    ["tally-open", WORDS.tally.open],
+    ["tally-title", WORDS.tally.title],
+    ["tally-hint", WORDS.tally.hint],
+    ["tally-close", WORDS.tally.close],
     ["inbox-title", wantNumbers ? WORDS.numbers.title : WORDS.inbox.title],
     ["inbox-open", WORDS.inbox.open],
     ["inbox-close", WORDS.inbox.close],
@@ -1018,6 +1025,8 @@ function showScene(view: LobbyView | null): void {
 /** Shows the screen of `game` over the frame, making it on first use. */
 function showTable(game: GameId): GameScreen {
   showOptions(false);
+  // the room's tally is the waiting room's: a game that starts is not played under it
+  showTally(false);
   // the game asked for is here: the button under it is the start button again
   if (startAsked) unask();
   showSeatMenu(null);
@@ -1602,6 +1611,53 @@ function showRecord(open: boolean): void {
 }
 
 recordOpen.addEventListener("click", () => showRecord(true));
+
+// ---- What the room has counted ---------------------------------------------------------------------
+
+/**
+ * Offers the room's tally in the waiting room once the room has counted a game for someone in it, and keeps an
+ * open sheet as the room last sent it. A room from before the tally counts nothing, and is offered none.
+ */
+function syncTally(): void {
+  const view = currentView;
+  tallyOpen.hidden = view === null || !view.players.some((p) => (p.games ?? 0) > 0);
+  if (tallyOpen.hidden) showTally(false);
+  else if (!tallySheet.hidden) fillTally();
+}
+
+/** Writes the lines of the room's tally: a player to a line, whoever was at the top most often first, then whoever played most, then by seat. */
+function fillTally(): void {
+  const view = currentView;
+  if (view === null) return;
+  const rows = [...view.players].sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0) || (b.games ?? 0) - (a.games ?? 0) || a.slot - b.slot);
+  tallyList.replaceChildren(
+    ...rows.map((player) => {
+      const row = document.createElement("li");
+      const name = document.createElement("span");
+      name.textContent = `${player.nick}${player.slot === view.you ? WORDS.tally.me : ""}`;
+      const count = document.createElement("span");
+      count.textContent = WORDS.tally.row(player.games ?? 0, player.wins ?? 0, player.pieces ?? 0);
+      row.append(name, count);
+      return row;
+    }),
+  );
+}
+
+/** Opens the sheet with what the room has counted for each player on it, or puts it away. */
+function showTally(open: boolean): void {
+  // the keys go back to the button that opened the sheet, where it is still there
+  const within = tallySheet.contains(document.activeElement);
+  tallySheet.hidden = !open;
+  if (!open) {
+    if (within && !tallyOpen.hidden) tallyOpen.focus({ preventScroll: true });
+    return;
+  }
+  fillTally();
+  el<HTMLButtonElement>("tally-close").focus({ preventScroll: true });
+}
+
+tallyOpen.addEventListener("click", () => showTally(true));
+el<HTMLButtonElement>("tally-close").addEventListener("click", () => showTally(false));
 el<HTMLButtonElement>("record-close").addEventListener("click", () => showRecord(false));
 recordClear.addEventListener("click", () => {
   // forgetting cannot be taken back: the first press asks, the second does it
@@ -1942,6 +1998,7 @@ function showLobby(message = ""): void {
   keptTable = false;
   currentCode = "";
   currentView = null;
+  syncTally();
   hostAsked = false;
   showSeatMenu(null);
   swapSheet.hidden = true;
@@ -2422,6 +2479,7 @@ function renderRoom(code: string, view: LobbyView): void {
   } else if (currentView !== null) noteComings(currentView, view);
   currentCode = code;
   currentView = view;
+  syncTally();
   // who the chat's next line is said to, as the room now stands
   renderTo();
   // whose voice is not played here: those whose lines are covered, and nobody who has since taken the seat of one of them
@@ -3386,6 +3444,7 @@ const SHEETS: readonly (readonly [HTMLElement, () => void])[] = [
   [optionsSheet, () => showOptions(false)],
   [feedbackSheet, () => showFeedback(false)],
   [recordSheet, () => showRecord(false)],
+  [tallySheet, () => showTally(false)],
   [inboxSheet, () => showInbox(false)],
   [
     rules,

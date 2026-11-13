@@ -1041,9 +1041,17 @@ button.choice[aria-pressed="true"] {
   display: none;
 }
 
-/* The buttons for the player's own record and for a word about the game, and for someone who said they will come to a meeting the one that puts it in their calendar: among the bar's words, as plain as they are. */
+/* In a room, on the bar's third line, where the lobby has its links: what the room has counted for each player. */
+#tally-open {
+  position: absolute;
+  left: 6px;
+  bottom: 5px;
+}
+
+/* The buttons for the player's own record and for a word about the game, and for someone who said they will come to a meeting the one that puts it in their calendar: among the bar's words, as plain as they are. The room's tally is a button like them. */
 #calendar,
 #record-open,
+#tally-open,
 #feedback {
   height: auto;
   padding: 0;
@@ -1056,13 +1064,15 @@ button.choice[aria-pressed="true"] {
 @media (hover: hover) {
   #calendar:hover,
   #record-open:hover,
+  #tally-open:hover,
   #feedback:hover {
     color: var(--bone);
   }
 }
 
-/* A word about the game: a sheet over the lobby, as the rules are, with a box to write in. The player's own record is a sheet like it. */
+/* A word about the game: a sheet over the lobby, as the rules are, with a box to write in. The player's own record is a sheet like it, and so is a room's tally. */
 #record-sheet,
+#tally-sheet,
 #feedback-sheet {
   position: absolute;
   left: 60px;
@@ -1079,11 +1089,13 @@ button.choice[aria-pressed="true"] {
 }
 
 #record-sheet[hidden],
+#tally-sheet[hidden],
 #feedback-sheet[hidden] {
   display: none;
 }
 
 #record-sheet h2,
+#tally-sheet h2,
 #feedback-sheet h2 {
   color: var(--amber);
   font-size: 12px;
@@ -1119,19 +1131,22 @@ button.choice[aria-pressed="true"] {
 }
 
 #record-sheet .row,
+#tally-sheet .row,
 #feedback-sheet .row {
   justify-content: flex-end;
 }
 
 /* The record's sheet is taller than the one it is like: a line for each of the games has to fit over its buttons, under a finger too. */
-#record-sheet {
+#record-sheet,
+#tally-sheet {
   top: 6px;
   height: 212px;
   padding: 7px 12px;
 }
 
 /* The record: a line for each game played, its name at the left and its counts at the right; the room left over is under them. */
-#record-list {
+#record-list,
+#tally-list {
   flex: 1;
   min-height: 0;
   margin: 0;
@@ -1140,14 +1155,16 @@ button.choice[aria-pressed="true"] {
   list-style: none;
 }
 
-#record-list li {
+#record-list li,
+#tally-list li {
   display: flex;
   justify-content: space-between;
   gap: 8px;
   border-bottom: 1px solid var(--edge);
 }
 
-#record-list li span:last-child {
+#record-list li span:last-child,
+#tally-list li span:last-child {
   color: var(--amber);
   white-space: nowrap;
 }
@@ -1709,6 +1726,7 @@ button.choice[aria-pressed="true"] {
 }
 
 :root.touch #record-sheet button,
+:root.touch #tally-sheet button,
 :root.touch #feedback-sheet button {
   height: 24px;
 }
@@ -1839,12 +1857,14 @@ button.choice[aria-pressed="true"] {
 /* The links on the lobby's last line stay words among words, and take a finger from as far off as a button is tall: over them the bar's second line, which takes none. */
 :root.touch #calendar,
 :root.touch #record-open,
+:root.touch #tally-open,
 :root.touch #feedback {
   position: relative;
 }
 
 :root.touch #calendar::before,
 :root.touch #record-open::before,
+:root.touch #tally-open::before,
 :root.touch #feedback::before {
   position: absolute;
   inset: -8px -3px -3px;

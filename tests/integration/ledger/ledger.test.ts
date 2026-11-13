@@ -55,12 +55,12 @@ async function piecesSeen(client: TestClient): Promise<number[]> {
   return lobby.players.map((p) => p.pieces);
 }
 
-/** Whether each player is marked as the top of the last game, as the room shows it to `client` when it next sends the lobby, by slot. */
-async function topsSeen(client: TestClient): Promise<boolean[]> {
+/** What the room remembers of its games for each player, as it shows it to `client` when it next sends the lobby, by slot: whether they are marked as the top of the last game, the games counted for them, and their wins. */
+async function talliesSeen(client: TestClient): Promise<{ top: boolean; games: number; wins: number }[]> {
   // the room answers a word about being ready with the lobby as it stands
   client.send({ type: "ready", ready: true });
   const lobby = await client.lobbyWhere((seen) => seen.players.some((p) => p.ready));
-  return lobby.players.map((p) => p.top);
+  return lobby.players.map((p) => ({ top: p.top, games: p.games, wins: p.wins }));
 }
 
 afterEach(() => {
@@ -83,7 +83,7 @@ describe("GameRoom: the ledger of pieces", () => {
     closeAll(clients);
   });
 
-  it("marks whoever was first in a game played to its end, for everyone in the room to see", async () => {
+  it("marks whoever was first in a game played to its end and counts the game for both, for everyone in the room to see", async () => {
     const stub = env.GameRoom.getByName("LDAAD");
     const clients = await players("LDAAD", 2);
     clients[0].send({ type: "start", bots: false });
@@ -92,8 +92,9 @@ describe("GameRoom: the ledger of pieces", () => {
     const over = await playedOut(stub, clients[0]);
     const first = over.view.standings.filter((each) => each.place === 1).map((each) => each.player);
 
-    // (two who end level have no top between them: nobody is marked)
-    expect(await topsSeen(clients[1])).toEqual([0, 1].map((slot) => first.length < 2 && first.includes(slot)));
+    // (two who end level have no top between them: nobody is marked, and nobody has a win)
+    const top = (slot: number): boolean => first.length < 2 && first.includes(slot);
+    expect(await talliesSeen(clients[1])).toEqual([0, 1].map((slot) => ({ top: top(slot), games: 1, wins: top(slot) ? 1 : 0 })));
     closeAll(clients);
   });
 

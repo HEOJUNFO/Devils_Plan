@@ -120,6 +120,8 @@
         <p id="bar-1"></p>
         <p id="bar-2" class="dim"></p>
         <button id="rules-open" type="button" hidden></button>
+        <!-- In a room where a game has been played to its end: opens what the room has counted for each player (`#tally-sheet`). -->
+        <button id="tally-open" type="button" aria-haspopup="dialog" hidden></button>
         <!-- The other language the page can be read in, named in that language; offered in the lobby. -->
         <button id="lang" type="button" hidden></button>
         <!-- In the lobby: the player's own record, once there is a game in it; the button for a word about the game, where one can be sent on; and which build the page is. -->
@@ -249,6 +251,16 @@
       </section>
 
       <!-- The player's own record: the games this browser has played to the end. Kept in the browser and read from there. -->
+      <!-- What the room has counted for each player in it: the games played to their end there, and who was at the top of how many. -->
+      <section id="tally-sheet" role="dialog" aria-modal="true" aria-labelledby="tally-title" hidden>
+        <h2 id="tally-title"></h2>
+        <p id="tally-hint" class="dim"></p>
+        <ul id="tally-list"></ul>
+        <div class="row">
+          <button id="tally-close" type="button" class="primary"></button>
+        </div>
+      </section>
+
       <section id="record-sheet" role="dialog" aria-modal="true" aria-labelledby="record-title" hidden>
         <h2 id="record-title"></h2>
         <p id="record-hint" class="dim"></p>

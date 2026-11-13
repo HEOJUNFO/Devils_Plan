@@ -203,6 +203,13 @@ export interface LobbyPlayer {
    * such game names others. It goes with the player who leaves.
    */
   top?: true;
+  /**
+   * The games the player has played to their end in this room, and how many
+   * of them they were at the top of (`tops.ts`); absent for none. They go
+   * with the player who leaves.
+   */
+  games?: number;
+  wins?: number;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -260,6 +267,9 @@ export interface PublicPlayer {
   out: boolean;
   /** Whether they were at the top of the game last played to its end in this room. */
   top: boolean;
+  /** The games they have played to their end in this room, and how many of them they were at the top of. */
+  games: number;
+  wins: number;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -614,21 +624,22 @@ export function withOuts(state: LobbyState, tokens: readonly string[]): Knocked 
 }
 
 /**
- * Marks as the top of the room's last game the players whose tokens are in
- * `tops`, and nobody else: what a game just over says of who did best
- * (`topsOf` of `tops.ts`). `null` is a game that says nothing, and leaves the
- * marks as they were. A token that is no longer in the room marks nobody.
- * Returns the state unchanged when no mark changes. The input state is not
- * modified.
+ * Puts what a game played to its end leaves in the room (`resultOf` of
+ * `tops.ts`) on its players: those who did best are marked as the top of the
+ * room's last game, and nobody else is; everyone who played has one game
+ * more, and those who did best one win more. `null` is a game that says
+ * nothing, and leaves the state as it was. A token that is no longer in the
+ * room marks and counts nobody. The input state is not modified.
  */
-export function withTops(state: LobbyState, tops: ReadonlySet<string> | null): LobbyState {
-  if (tops === null || state.players.every((p) => (p.top === true) === tops.has(p.token))) return state;
+export function withResult(state: LobbyState, result: { played: ReadonlySet<string>; tops: ReadonlySet<string> } | null): LobbyState {
+  if (result === null) return state;
   return {
     ...state,
     players: state.players.map((p) => {
-      if ((p.top === true) === tops.has(p.token)) return p;
       const { top: _top, ...rest } = p;
-      return tops.has(p.token) ? { ...rest, top: true as const } : rest;
+      const marked: LobbyPlayer = result.tops.has(p.token) ? { ...rest, top: true as const } : rest;
+      if (!result.played.has(p.token)) return marked;
+      return { ...marked, games: (p.games ?? 0) + 1, ...(result.tops.has(p.token) ? { wins: (p.wins ?? 0) + 1 } : {}) };
     }),
   };
 }
@@ -864,6 +875,8 @@ export function viewLobby(
       pieces: p.pieces ?? 0,
       out: p.out === true,
       top: p.top === true,
+      games: p.games ?? 0,
+      wins: p.wins ?? 0,
     })),
   };
 }

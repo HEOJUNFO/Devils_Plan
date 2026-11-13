@@ -49,6 +49,17 @@ const ko = {
     clearSure: "정말 지우기",
     close: "닫기",
   },
+  /** What a room has counted for each player in it: opened from the waiting room once a game has been played to its end there. */
+  tally: {
+    open: "방 전적",
+    title: "이 방의 전적",
+    hint: "이 방에서 둘 이상이 끝까지 한 판만 셉니다. 방을 나가면 그 사람의 줄은 사라집니다.",
+    /** One player's line: the games counted for them, how many they were at the top of, and their pieces where they have any. */
+    row: (games: number, wins: number, pieces: number) => `${games}판 · 1위 ${wins}번${pieces > 0 ? ` · 피스 ${pieces}개` : ""}`,
+    /** After the name on the reader's own line. */
+    me: " (나)",
+    close: "닫기",
+  },
   /** What players have written about the game, for whoever makes it: opened with `?inbox` and the key. */
   inbox: {
     title: "의견함",
@@ -488,6 +499,14 @@ const en: typeof ko = {
     kinds: { alive: "Alive", won: "Won", first: "1st" },
     clear: "Clear record",
     clearSure: "Really clear",
+    close: "Close",
+  },
+  tally: {
+    open: "Room tally",
+    title: "This room so far",
+    hint: "Games two or more played to the end in this room. A player who leaves takes their line along.",
+    row: (games, wins, pieces) => `${games} played · top ${wins}${pieces > 0 ? ` · ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}`,
+    me: " (you)",
     close: "Close",
   },
   inbox: {
