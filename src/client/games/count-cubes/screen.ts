@@ -60,6 +60,8 @@ export interface CubesScreen {
   press(code: string): void;
   /** What this player came out of the game with, once it is over (`GameScreen.verdict`). */
   verdict(): string | null;
+  /** The canvas with the solid on it, while it is on show (`GameScreen.under`). */
+  under(): { canvas: HTMLCanvasElement; width: number; height: number } | null;
   destroy(): void;
 }
 
@@ -774,6 +776,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   return {
     update,
     verdict,
+    under: () => (sceneCanvas.hidden ? null : { canvas: sceneCanvas, width: SCENE_W, height: BAR_Y }),
     refused(reason: string): void {
       starting = false;
       pending = false;

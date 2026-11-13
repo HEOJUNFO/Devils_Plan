@@ -87,6 +87,14 @@ export interface GameScreen {
    */
   verdict(): string | null;
   /**
+   * A canvas of its own that the screen keeps under the frame's, where it has
+   * one on show now: how much of the frame it covers from the top left, in
+   * the frame's pixels. The page lays it under the frame's canvas in the
+   * picture of a result (`picture.ts`). Absent for a screen that is all on
+   * the frame's canvas.
+   */
+  under?(): { canvas: HTMLCanvasElement; width: number; height: number } | null;
+  /**
    * Whether the game now waits on this player: a turn that is theirs to
    * take, or a choice put to everyone that they have not made, with a clock
    * after which the room moves for them (`src/shared/waits.ts`). Read off

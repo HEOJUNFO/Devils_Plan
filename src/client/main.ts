@@ -75,11 +75,13 @@ import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
+import { C } from "./game/palette";
 import { buzz, isMuted, sfx, soundLevel, startAudio, stepSound } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
 import { OTHER_LANGS, lang, switchLang } from "./lang";
 import { drawLobbyArt } from "./lobby-art";
 import { knows, learn } from "./known";
+import { pictureOf } from "./picture";
 import { clearRecord, myRecord, noteFinish } from "./record";
 import { storageKey } from "./storage";
 import { TOUCH } from "./touch";
@@ -3511,13 +3513,58 @@ copyButton.addEventListener("click", () => {
   });
 });
 
-// The result of the game that is over, in a line, with where the game is played: never the room's code, which is not for everyone.
+/** The picture of a result: three of its pixels to one of the frame's, and under the frame a strip a line of the bar tall. */
+const PICTURE = { scale: 3, stripHeight: 16, name: "brain-survival.png" };
+
+/**
+ * Passes the picture of a result on with its line `text` and the address
+ * `url`: under a finger by the phone's own sheet, where that takes a file;
+ * else onto the clipboard beside `pasted`, so that what is pasted into a
+ * messenger is the picture and what is pasted into a box of words is the
+ * line. Where the picture cannot go either way, `plain` passes the line on
+ * alone.
+ */
+function passPicture(button: HTMLButtonElement, label: string, picture: Blob, text: string, url: string, pasted: string, plain: () => void): void {
+  if (TOUCH && typeof navigator.share === "function") {
+    const file = new File([picture], PICTURE.name, { type: "image/png" });
+    if (typeof navigator.canShare !== "function" || !navigator.canShare({ files: [file] })) return plain();
+    navigator.share({ files: [file], text, url }).catch((error: unknown) => {
+      // the sheet put away by the player is no failure
+      if (!(error instanceof DOMException && error.name === "AbortError")) plain();
+    });
+    return;
+  }
+  if (navigator.clipboard === undefined || typeof navigator.clipboard.write !== "function" || typeof ClipboardItem === "undefined") return plain();
+  navigator.clipboard.write([new ClipboardItem({ "image/png": picture, "text/plain": new Blob([pasted], { type: "text/plain" }) })]).then(() => {
+    button.textContent = WORDS.share.pictureCopied;
+    setTimeout(() => {
+      button.textContent = label;
+    }, 1500);
+  }, plain);
+}
+
+// The result of the game that is over, as a picture of its screen and in a line, with where the game is played:
+// never the room's code, which is not for everyone and is on no game's screen.
 tabShare.addEventListener("click", () => {
   const verdict = table?.verdict() ?? null;
-  if (verdict === null || tableGame === null) return;
+  if (table === null || verdict === null || tableGame === null) return;
   const said = `${WORDS.share.result(GAMES[tableGame].title[lang], verdict)} · ${WORDS.share.come}`;
   const address = `${location.origin}/`;
-  passOn(tabShare, WORDS.game.share, said, address, `${said}\n${address}`);
+  const plain = (): void => passOn(tabShare, WORDS.game.share, said, address, `${said}\n${address}`);
+  // made in the press itself: a browser hands a file on only in the press that asked for it
+  const under = table.under?.() ?? null;
+  const picture = pictureOf(
+    [...(under === null ? [] : [{ ...under, smooth: true }]), { canvas: tableCanvas, width: tableCanvas.width, height: tableCanvas.height, smooth: false }],
+    {
+      width: tableCanvas.width,
+      height: tableCanvas.height,
+      scale: PICTURE.scale,
+      ground: C.night,
+      strip: { height: PICTURE.stripHeight, ground: C.bar, ink: C.boneD, text: location.host },
+    },
+  );
+  if (picture === null) return plain();
+  passPicture(tabShare, WORDS.game.share, picture, said, address, `${said}\n${address}`, plain);
 });
 
 // The voice chat: in and out, and the microphone on and off.

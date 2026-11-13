@@ -370,7 +370,7 @@ const ko = {
     chat: (unread: number) => (unread > 0 ? `채팅 ${unread}` : "채팅"),
     /** Beside them once a game is over, for whoever played it: passes its result on. */
     share: "공유",
-    shareHint: "내 결과를 복사해 알리기",
+    shareHint: "내 결과를 그림으로 알리기",
     /** Said to a screen reader of the game's screen, which is a picture. */
     screen: "게임 화면",
   },
@@ -386,6 +386,8 @@ const ko = {
     result: (game: string, verdict: string) => `${game}에서 ${verdict}`,
     /** After the result, before the address of the game. */
     come: "같이 한 판 해요",
+    /** On the button for a moment, once the picture of the result is on the clipboard with that line. */
+    pictureCopied: "그림 복사됨",
   },
   /** Under a finger, during a game: the button over the game, and what it opens. */
   menu: {
@@ -769,13 +771,14 @@ const en: typeof ko = {
     standings: "Players",
     chat: (unread) => (unread > 0 ? `Chat ${unread}` : "Chat"),
     share: "Share",
-    shareHint: "Copy my result to pass on",
+    shareHint: "Pass my result on as a picture",
     screen: "Game screen",
   },
   share: {
     invite: (game) => `Play ${game} with me`,
     result: (game, verdict) => `${game}: ${verdict}`,
     come: "Come play a round",
+    pictureCopied: "Image copied",
   },
   menu: {
     open: "Menu",
