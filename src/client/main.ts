@@ -65,6 +65,7 @@ import { readDay, type DayNumbers } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
+import { afterRefusedMake } from "../shared/reopen";
 import { calendarOf } from "../shared/calendar";
 import { ORIGIN, SITE_NAME } from "../shared/site/words";
 import { gameReader } from "../shared/parts";
@@ -1995,7 +1996,8 @@ function showNewRoom(): void {
   newRoom.hidden = false;
   // Making a room opens a new connection, which is several trips to the server and back and, far from it, most of
   // the wait after the press. It is opened now, to a code picked now; the press then only has to say "make it".
-  nextCode = generateRoomCode(Math.random, config);
+  // a link whose room has closed is opened again under its own code
+  nextCode = reopenCode ?? generateRoomCode(Math.random, config);
   warmRest();
   showLobbyLinks(false);
   renderNewRoom();
@@ -2560,6 +2562,9 @@ function disconnect(): void {
  * may be tried if this is a create and the code turns out to be in use.
  */
 function connect(code: string, create: boolean, nick: string, attemptsLeft = 0): void {
+  // whether this is a link's room being opened again under its code; going anywhere else lets that offer go
+  const reopening = create && code === reopenCode;
+  if (!reopening) reopenCode = null;
   // a connection opened ahead to this very room is the one used; one to any other room is let go
   const ahead = warm !== null && warm.code === code && isFresh(warm) ? warm.socket : null;
   if (ahead !== null) warm = null;
@@ -2641,6 +2646,9 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // second "make" would be refused as a stranger's once the room has let
       // this player's slot go.
       join = { ...join, create: false };
+      // a link's room that was to be opened again is open, by this player or by another before them
+      reopenCode = null;
+      reopenJoined = null;
       if (typeof event.data === "string") lastLobby = event.data;
       staleSince = null;
       returning = false;
@@ -2773,8 +2781,18 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       return;
     }
     disconnect();
-    if (message.reason === "code-taken" && create && attemptsLeft > 0) {
+    const then = create ? afterRefusedMake(message.reason, reopening, attemptsLeft) : "tell";
+    if (then === "another-code") {
       connect(generateRoomCode(Math.random, config), true, nick, attemptsLeft - 1);
+      return;
+    }
+    if (then === "join") {
+      // Someone else opened the link's room first: theirs is where the link leads now, and this player goes in.
+      // Not under another code, which would be a room the link does not lead to.
+      reopenCode = null;
+      reopenJoined = code;
+      setCreating(false);
+      connect(code, false, nick);
       return;
     }
     // A quick join found the room full or gone by the time it got there: the next one waiting is tried.
@@ -2789,6 +2807,13 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     writeAddress("");
     if (message.reason === "not-found" && code === invitedCode) {
       invitationGone();
+      return;
+    }
+    if (message.reason === "not-found" && code === reopenJoined) {
+      // The room could not be opened again and there is none to go into either (the limit on rooms made, most
+      // likely): said as a room that could not be made, which is what was asked for.
+      reopenJoined = null;
+      showLobby(REJECT_TEXT["code-taken"]);
       return;
     }
     showLobby(REJECT_TEXT[message.reason]);
@@ -2881,6 +2906,14 @@ function quickJoin(): void {
 
 /** The code a link brought, for as long as the box for a room's code holds it: an invitation not yet taken up. */
 let invitedCode = "";
+/**
+ * The code of a link whose room has closed, for as long as the lobby offers to open the room again under it
+ * (`src/shared/reopen.ts`): the next room made here is made under this code, so the link leads to it. Let go once
+ * the player goes anywhere else.
+ */
+let reopenCode: string | null = null;
+/** The code of a room this page went into after it could not open it again, until the room has answered: whether there was one to go into. */
+let reopenJoined: string | null = null;
 /** The name the page put in the box for a nickname because the player had none kept (`suggestNick`); empty where it put none. While the box still holds it, nobody has chosen it. */
 let suggestedNick = "";
 
@@ -2908,10 +2941,14 @@ let invitedGame: GameId | null = readInvitedGame();
  * the room has closed and what there is instead. The dead code is taken out
  * of the box, so the lit button is the one that makes a room; where the link
  * said which game it was for, the rooms listed are that game's and a new
- * room starts as one of it.
+ * room starts as one of it. The room made is made under the link's own code
+ * (`reopenCode`), so the link the others have leads to it; and as a room for
+ * whoever has the link, not one on the list, unless its maker says otherwise.
  */
 function invitationGone(): void {
   const game = invitedGame;
+  reopenCode = invitedCode === "" ? null : invitedCode;
+  chosenListed = false;
   invitedCode = "";
   invitedGame = null;
   codeInput.value = "";

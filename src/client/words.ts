@@ -93,7 +93,9 @@ const ko = {
     /** The same, where the box holds a name the page offered (`suggestNick`): it can be gone in with as it is. */
     invitedNamed: (code: string) => `초대받은 방 ${code}\n이름을 고치거나 입장하세요`,
     /** Under the form, when the room a link led to is no more. It does not name the game: the list beside it is by then that game's, and says so. Two lines, as the others here are. */
-    invitedGone: "초대받은 방은 닫혔습니다. 방을 고르거나 만드세요.",
+    /** The room of the link has closed: a room made now is made under the link's own code (`src/shared/reopen.ts`). */
+    // two lines of the form's column, on a phone as well: a third would lie on the bar under it
+    invitedGone: "닫힌 방입니다. 방 만들기로 같은 링크에 다시 엽니다.",
     nick: "닉네임",
     create: "방 만들기",
     /** Beside it: straight into an open room that is waiting for players. */
@@ -514,7 +516,7 @@ const en: typeof ko = {
     sub: "Pick a room or make one",
     invited: (code) => `Invited to room ${code}\nAdd a nickname and join`,
     invitedNamed: (code) => `Invited to room ${code}\nRename, or just join`,
-    invitedGone: "That room is closed. Join or make another.",
+    invitedGone: "Room closed. New room reopens the same link.",
     nick: "Nickname",
     // half a row now: the form it opens is headed the same
     create: "New room",
