@@ -60,8 +60,10 @@ import meetConfig from "../shared/meet-config.json";
 import numbersConfig from "../shared/numbers-config.json";
 import { readDay, type DayNumbers } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
-import { meetNear } from "../shared/meet";
+import { meetNear, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, newWho, type Coming } from "../shared/going";
+import { calendarOf } from "../shared/calendar";
+import { ORIGIN, SITE_NAME } from "../shared/site/words";
 import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
@@ -1055,6 +1057,9 @@ function askForGame(): void {
 
 /** The row over the rooms that says when people are asked to gather. */
 const meetButton = el<HTMLButtonElement>("meet");
+/** On the lobby's last line, for someone who said they will come: puts the meeting in their calendar. */
+const calendarButton = el<HTMLButtonElement>("calendar");
+calendarButton.textContent = WORDS.meet.calendar;
 /** How often that row is written again while the lobby is on show, in ms: it counts the minutes down. */
 const MEET_EVERY_MS = 20_000;
 
@@ -1136,6 +1141,8 @@ function renderMeet(): void {
       : WORDS.meet.inTime(Math.floor(minutes / 60), minutes % 60);
   meetButton.classList.toggle("on", meet.on);
   meetButton.classList.toggle("up", said?.mine === true);
+  // whoever said they will come is offered the meeting for their calendar, among the links on the lobby's last line
+  calendarButton.hidden = said?.mine !== true;
   // a press before the hour says "I'll come", or takes it back: said to a screen reader as a button that is pressed or not
   if (meet.on) meetButton.removeAttribute("aria-pressed");
   else meetButton.setAttribute("aria-pressed", String(said?.mine === true));
@@ -1212,6 +1219,33 @@ wantButton.addEventListener("click", () => {
     return createRoom();
   }
   renderWant();
+});
+
+/** How long before a meeting a calendar reminds whoever put it there, in minutes, where the meetings' settings do not say. */
+const REMIND_MINUTES = 10;
+
+// Gives the meeting this player said they will come to as a file a calendar takes (`src/shared/calendar.ts`): the
+// browser saves it or hands it to the calendar, and the calendar does the reminding.
+calendarButton.addEventListener("click", () => {
+  const meet = meetNear(Date.now(), meetConfig);
+  if (meet === null || meet.on || myGoing !== meet.start) return;
+  const file = calendarOf({
+    uid: `meet-${meet.start}@${new URL(ORIGIN).host}`,
+    stamp: Date.now(),
+    start: meet.start,
+    end: meet.end,
+    summary: WORDS.meet.event(GAMES[meet.game].title[lang], SITE_NAME),
+    url: `${ORIGIN}/`,
+    remindMinutes: (meetConfig as MeetConfig).remindMinutes ?? REMIND_MINUTES,
+  });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([file], { type: "text/calendar;charset=utf-8" }));
+  link.download = `${SITE_NAME}-meet.ics`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  // the browser has the file by the time this runs: the address made for it is given back
+  setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
 });
 
 // A press lists the rooms of the game people gather for: where they are, or where one is to be made. Before the

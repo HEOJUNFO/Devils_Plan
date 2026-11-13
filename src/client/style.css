@@ -1011,7 +1011,8 @@ button.choice[aria-pressed="true"] {
   display: none;
 }
 
-/* The buttons for the player's own record and for a word about the game: among the bar's words, as plain as they are. */
+/* The buttons for the player's own record and for a word about the game, and for someone who said they will come to a meeting the one that puts it in their calendar: among the bar's words, as plain as they are. */
+#calendar,
 #record-open,
 #feedback {
   height: auto;
@@ -1023,6 +1024,7 @@ button.choice[aria-pressed="true"] {
 }
 
 @media (hover: hover) {
+  #calendar:hover,
   #record-open:hover,
   #feedback:hover {
     color: var(--bone);
@@ -1747,12 +1749,14 @@ button.choice[aria-pressed="true"] {
   line-height: 24px;
 }
 
-/* The two links on the lobby's last line stay words among words, and take a finger from as far off as a button is tall: over them the bar's second line, which takes none. */
+/* The links on the lobby's last line stay words among words, and take a finger from as far off as a button is tall: over them the bar's second line, which takes none. */
+:root.touch #calendar,
 :root.touch #record-open,
 :root.touch #feedback {
   position: relative;
 }
 
+:root.touch #calendar::before,
 :root.touch #record-open::before,
 :root.touch #feedback::before {
   position: absolute;

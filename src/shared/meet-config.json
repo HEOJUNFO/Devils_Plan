@@ -3,6 +3,7 @@
   "utcOffsetMinutes": 540,
   "times": [{"hour": 21, "minute": 0}],
   "lengthMinutes": 60,
+  "remindMinutes": 10,
   "games": ["under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass", "mystery-stock-market", "russian-roulette"],
   "spans": [
     { "from": "2026-11-16", "to": "2026-11-16", "lengthMinutes": 30, "times": [{"hour": 9, "minute": 0}, {"hour": 10, "minute": 0}, {"hour": 11, "minute": 0}, {"hour": 12, "minute": 0}, {"hour": 13, "minute": 0}, {"hour": 14, "minute": 0}, {"hour": 15, "minute": 0}, {"hour": 16, "minute": 0}, {"hour": 17, "minute": 0}, {"hour": 18, "minute": 0}, {"hour": 19, "minute": 0}, {"hour": 20, "minute": 0}, {"hour": 21, "minute": 0}, {"hour": 22, "minute": 0}, {"hour": 23, "minute": 0}] },

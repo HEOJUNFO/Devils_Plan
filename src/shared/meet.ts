@@ -34,6 +34,8 @@ export interface MeetSpan {
  * of the week, Monday first; a day's second meeting is for the next day's
  * game, its third for the one after, so a day of many has many games.
  * `spans`: days with times of their own (the week the site opens).
+ * `remindMinutes`: how long before a meeting the calendar of someone who
+ * put it there reminds them (`calendar.ts`); ten minutes where none is set.
  */
 export interface MeetConfig {
   on: boolean;
@@ -42,6 +44,7 @@ export interface MeetConfig {
   lengthMinutes: number;
   games: readonly string[];
   spans?: readonly MeetSpan[];
+  remindMinutes?: number;
 }
 
 /** A meeting: when it starts and ends, in ms since the epoch, which game it is for, and whether it is on now. */

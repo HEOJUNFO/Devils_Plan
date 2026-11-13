@@ -142,6 +142,10 @@ const ko = {
      * the most that is counted, and for a reader who is one of them (`mine`) their own word first.
      */
     coming: (count: number, more: boolean, mine: boolean) => (mine ? `갈게요 · ${count}명${more ? " 이상" : ""}` : `${count}명${more ? " 이상" : ""} 온대요`),
+    /** On the lobby's last line, for someone who said they will come: gives the meeting as a file their calendar takes. */
+    calendar: "달력에 넣기",
+    /** What the meeting is called in that calendar: the game, and the site's name. */
+    event: (game: string, site: string) => `${game} 모임 (${site})`,
   },
   /**
    * Under the meeting: a hand raised for a game (`src/shared/want.ts`). One line, what it says on the left and a
@@ -522,6 +526,8 @@ const en: typeof ko = {
     until: (time) => `until ${time}`,
     inTime: (hours, minutes) => (hours > 0 ? `in ${hours}h ${minutes}m` : `in ${minutes} min`),
     coming: (count, more, mine) => (mine ? `I'm in · ${count}${more ? "+" : ""}` : `${count}${more ? "+" : ""} coming`),
+    calendar: "Add to calendar",
+    event: (game, site) => `${game} meet-up (${site})`,
   },
   want: {
     others: (game) => `Hands up for ${game}`,
