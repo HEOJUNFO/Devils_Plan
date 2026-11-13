@@ -347,6 +347,8 @@ export type ClientMessage =
   | { type: "pick"; game: GameId }
   /** Say that one is ready for the next game, or no longer; the host does not, the host starts. */
   | { type: "ready"; ready: boolean }
+  /** Say that one has the rules of the room's game open in its waiting room, or no longer (`reading.ts`). */
+  | { type: "reading"; reading: boolean }
   /** Make the player in slot `to` the host; only the host may, and only to someone connected. */
   | { type: "host"; to: number }
   /** Send the player in `slot` out of the room, not to be let back in; only the host may, and not during a game. */
@@ -406,6 +408,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "here") return { type: "here" };
   if (data.type === "pick") return isGameId(data.game) ? { type: "pick", game: data.game } : null;
   if (data.type === "ready") return typeof data.ready === "boolean" ? { type: "ready", ready: data.ready } : null;
+  if (data.type === "reading") return typeof data.reading === "boolean" ? { type: "reading", reading: data.reading } : null;
   if (data.type === "host") {
     return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "host", to: data.to } : null;
   }

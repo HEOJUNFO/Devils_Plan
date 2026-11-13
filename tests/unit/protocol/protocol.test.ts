@@ -85,6 +85,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: false }))).toEqual({ type: "listing", listed: false });
     expect(parseClientMessage(JSON.stringify({ type: "ready", ready: true }))).toEqual({ type: "ready", ready: true });
     expect(parseClientMessage(JSON.stringify({ type: "ready", ready: false }))).toEqual({ type: "ready", ready: false });
+    expect(parseClientMessage(JSON.stringify({ type: "reading", reading: true }))).toEqual({ type: "reading", reading: true });
+    expect(parseClientMessage(JSON.stringify({ type: "reading", reading: false }))).toEqual({ type: "reading", reading: false });
     expect(parseClientMessage(JSON.stringify({ type: "host", to: 3 }))).toEqual({ type: "host", to: 3 });
     expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0 }))).toEqual({ type: "kick", slot: 0 });
     expect(parseClientMessage(JSON.stringify({ type: "here", extra: 1 }))).toEqual({ type: "here" });
@@ -197,6 +199,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "listing", listed: "true" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "ready" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "ready", ready: 1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "reading" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "reading", reading: "yes" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "host" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "host", to: -1 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "host", to: 1.5 }))).toBeNull();

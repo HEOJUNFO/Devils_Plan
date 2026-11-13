@@ -7,6 +7,7 @@
  * for; seats at the table are drawn when a game starts, not when players join.
  */
 import { DEFAULT_GAME, GAMES, type GameId } from "./games";
+import { readersFor } from "./reading";
 import { cleanLine, cutTo } from "./text";
 
 /** Tunable lobby values. Loaded from `room-config.json`. */
@@ -293,6 +294,8 @@ export interface LobbyView {
   /** The slot of the host, who starts games and sets the room; `null` when nobody is connected. */
   host: number | null;
   players: PublicPlayer[];
+  /** How many of the others have the rules open (`reading.ts`); not there for none. */
+  reading?: number;
 }
 
 /** Why a join was refused. */
@@ -844,7 +847,9 @@ export function setListed(state: LobbyState, listed: boolean): LobbyState {
 
 /**
  * The lobby as the player in `viewerSlot` may see it: every player's slot,
- * nickname and connection status, and no tokens.
+ * nickname and connection status, and no tokens. `reading` are the slots
+ * with a connection that said its player has the rules open: the viewer is
+ * told how many of the others, not who (`reading.ts`).
  */
 export function viewLobby(
   state: LobbyState,
@@ -852,9 +857,13 @@ export function viewLobby(
   viewerSlot: number,
   config: RoomConfig,
   voice = false,
+  reading?: ReadonlySet<number>,
 ): LobbyView {
   const leaders = leadersOf(state, connectedSlots);
   const host = hostOf(state, connectedSlots);
+  // of those who hold a seat: a connection whose seat has passed to someone else speaks for nobody
+  const seated = new Set(state.players.map((p) => p.slot));
+  const readers = reading === undefined ? 0 : readersFor(new Set([...reading].filter((slot) => seated.has(slot))), connectedSlots, viewerSlot);
   return {
     you: viewerSlot,
     maxPlayers: capacityOf(gameOf(state), config),
@@ -878,5 +887,6 @@ export function viewLobby(
       games: p.games ?? 0,
       wins: p.wins ?? 0,
     })),
+    ...(readers > 0 ? { reading: readers } : {}),
   };
 }

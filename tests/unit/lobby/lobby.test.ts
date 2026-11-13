@@ -249,6 +249,34 @@ describe("viewLobby", () => {
     expect(view).toMatchObject({ you: 1, maxPlayers: config.maxPlayers });
   });
 
+  it("tells each viewer how many of the others have the rules open, and not who", () => {
+    const config = testConfig();
+    const state = lobbyWith(3, config);
+    const there = new Set([0, 1, 2]);
+
+    expect(viewLobby(state, there, 0, config, false, new Set([1, 2])).reading).toBe(2);
+    expect(viewLobby(state, there, 1, config, false, new Set([1, 2])).reading).toBe(1);
+    expect(JSON.stringify(viewLobby(state, there, 0, config, false, new Set([1])))).not.toContain("[1]");
+  });
+
+  it("says nothing of the rules while nobody else has them open", () => {
+    const config = testConfig();
+    const state = lobbyWith(3, config);
+    const there = new Set([0, 1, 2]);
+
+    expect("reading" in viewLobby(state, there, 0, config)).toBe(false);
+    expect("reading" in viewLobby(state, there, 0, config, false, new Set())).toBe(false);
+    expect("reading" in viewLobby(state, there, 1, config, false, new Set([1]))).toBe(false);
+  });
+
+  it("does not count as reading a seat nobody holds, or one whose connection is gone", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+
+    expect("reading" in viewLobby(state, new Set([0, 1, 2]), 0, config, false, new Set([2]))).toBe(false);
+    expect("reading" in viewLobby(state, new Set([0]), 0, config, false, new Set([1]))).toBe(false);
+  });
+
   it("marks who leads each team, of those connected", () => {
     const config = testConfig({ maxPlayers: TEAM_SIZE * 2 });
     let state = roomOf(TEAM_GAME, 3, config);

@@ -67,12 +67,14 @@ import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
 import { againOf, hostCallDue, waitsOnHost } from "../shared/again";
+import { readingNow } from "../shared/reading";
 import { afterRefusedMake } from "../shared/reopen";
 import { calendarOf, type CalendarEvent } from "../shared/calendar";
 import { firstDay, linkedOf, mayPlan, parseLinked, standing as appointmentStands, stepped, type AppointmentConfig } from "../shared/appointment";
 import appointmentConfigJson from "../shared/appointment-config.json";
 import { ORIGIN, SITE_NAME } from "../shared/site/words";
 import { gameReader } from "../shared/parts";
+import readingConfig from "../shared/reading-config.json";
 import roomConfig from "../shared/room-config.json";
 import soundConfig from "../shared/sound-config.json";
 import voiceConfig from "../shared/voice-config.json";
@@ -270,6 +272,10 @@ let waited = false;
 let hostWaited = false;
 /** When this player was last called for that in the room they are in (ms), or `null`: not again at once (`hostCallDue`). */
 let hostCalledAt: number | null = null;
+/** Whether the room has been told, on the connection now open, that this player has the rules open (`syncReading`). */
+let readingSaid = false;
+/** The wait before the room is told that has changed, while one runs. */
+let readingTimer: ReturnType<typeof setTimeout> | undefined;
 
 /** Writes the page's title: its own, or with what calls the player back at its head. */
 function writeTitle(): void {
@@ -2819,6 +2825,8 @@ function renderRoom(code: string, view: LobbyView): void {
   readyButton.setAttribute("aria-pressed", String(amReady));
   // the same word, where it is said from the results of a game that is over
   syncAgain();
+  // the rules, if they are open over this room, are said to be
+  syncReading();
   // Everyone else has said so, and the room now waits on this player alone. A host who went to another tab while the
   // room filled, or while the others read the results, is called back, and a phone in the hand is felt: the room itself
   // asks only a minute on, and then passes to someone else.
@@ -2918,6 +2926,8 @@ function renderRoom(code: string, view: LobbyView): void {
         : isHost
           ? allReady
             ? WORDS.room.hostAllReady
+            : (view.reading ?? 0) > 0
+              ? WORDS.room.hostReading(view.reading ?? 0)
             : view.players.length > 1 && !wantBots
               ? WORDS.room.hostOthers
               : WORDS.room.hostReady(wantBots, alone)
@@ -2973,6 +2983,9 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // a connection that came back is a new one to the room: say again that this page is in voice
     voice.announce();
     online = true;
+    // and, if the rules are still open, that they are: the room kept that with the connection that is gone
+    readingSaid = false;
+    syncReading();
     roomDown = null;
     live = opened(Date.now());
     renderStatus();
@@ -3825,6 +3838,32 @@ rulesOpen.addEventListener("click", () => {
 el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
   rules.hidden = true;
 });
+
+/**
+ * Says to the room that this player has the rules open in its waiting room,
+ * or no longer, once that has stood for a moment (`src/shared/reading.ts`):
+ * the host is told how many are reading, and can give them the time. Called
+ * wherever what it goes by may have changed; it sends nothing while the
+ * room knows already.
+ */
+function syncReading(): void {
+  const now = (): boolean => readingNow(!rules.hidden, !room.hidden && currentView !== null, table !== null);
+  if (now() === readingSaid) {
+    clearTimeout(readingTimer);
+    readingTimer = undefined;
+    return;
+  }
+  if (readingTimer !== undefined) return;
+  readingTimer = setTimeout(() => {
+    readingTimer = undefined;
+    const reading = now();
+    if (reading === readingSaid) return;
+    // not sent while the connection is down: the next one starts with nothing said, and says it then
+    if (send({ type: "reading", reading })) readingSaid = reading;
+  }, readingConfig.settleSeconds * 1000);
+}
+// the sheet is shut from several places (its button, Esc, a press outside it, leaving the room): its being shown is what is watched
+new MutationObserver(syncReading).observe(rules, { attributes: true, attributeFilter: ["hidden"] });
 // H during a game opens the game's own rules (each game's screen takes the key): whoever pressed it has seen where they are.
 addEventListener("keydown", (event) => {
   if (event.code === "KeyH" && table !== null && tableGame !== null && !isBox(event.target)) learn(tableGame);

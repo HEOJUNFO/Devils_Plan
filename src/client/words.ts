@@ -290,6 +290,8 @@ const ko = {
     /** To the host with others in the room: what a press on one of them does. */
     hostOthers: "준비되면 시작하세요. 인물을 누르면 방장을 넘기거나 내보냅니다.",
     hostAllReady: "모두 준비했습니다. 게임을 시작하세요.",
+    /** To the host, while others have the rules open in the waiting room (`src/shared/reading.ts`): how many, not who. */
+    hostReading: (count: number) => `${count}명이 규칙을 읽는 중입니다. 잠시 뒤 시작하세요.`,
     /** To the host, when the room has asked whether they are there and nothing was pressed lately. */
     hostAsked: "자리에 계신가요? 아무 곳이나 누르면 방장으로 남습니다.",
     pressReady: "준비되면 준비를 눌러 주세요.",
@@ -728,6 +730,7 @@ const en: typeof ko = {
     hostReady: (bots, alone) => `${bots ? "Bots fill the empty seats (development). " : ""}${alone ? "You can play alone. " : ""}Start when ready.`,
     hostOthers: "Start when ready. Press a player to pass host or remove.",
     hostAllReady: "Everyone is ready. Start the game.",
+    hostReading: (count) => (count === 1 ? "1 player is reading the rules. Give them a moment." : `${count} players are reading the rules. Give them a moment.`),
     hostAsked: "Still there? Press anywhere to stay the host.",
     pressReady: "Press Ready when you are.",
     waitHost: "Waiting for the host to start.",

@@ -1501,6 +1501,34 @@ describe("GameRoom: being ready, and the host", () => {
     b.close();
   });
 
+  it("tells the others how many have the rules open, and whoever has them open nothing of it", async () => {
+    const a = await open("RDYRA", { player: 0, create: true });
+    const b = await open("RDYRA", { player: 1 });
+    await a.lobbyOf(2);
+
+    b.send({ type: "reading", reading: true });
+
+    expect((await a.lobbyWhere((l) => l.reading !== undefined)).reading).toBe(1);
+    expect((await b.lobbyWhere()).reading).toBeUndefined();
+    b.send({ type: "reading", reading: false });
+    expect((await a.lobbyWhere((l) => l.reading === undefined)).reading).toBeUndefined();
+    a.close();
+    b.close();
+  });
+
+  it("no longer says someone has the rules open once their connection is gone", async () => {
+    const a = await open("RDYRB", { player: 0, create: true });
+    const b = await open("RDYRB", { player: 1 });
+    await a.lobbyOf(2);
+    b.send({ type: "reading", reading: true });
+    await a.lobbyWhere((l) => l.reading === 1);
+
+    b.close();
+
+    expect((await a.lobbyWhere((l) => l.players.some((p) => !p.connected))).reading).toBeUndefined();
+    a.close();
+  });
+
   it("does not take the host's word that they are ready: the host starts", async () => {
     const a = await open("RDYAB", { player: 0, create: true });
     const b = await open("RDYAB", { player: 1 });

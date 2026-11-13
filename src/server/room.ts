@@ -122,6 +122,8 @@ interface Seat {
   parts: boolean;
   /** There while this connection is in the room's voice chat. */
   voice?: { muted: boolean };
+  /** There while its page has the rules open in the waiting room (`reading.ts`). Kept here and not in storage. */
+  reading?: true;
 }
 
 /**
@@ -412,7 +414,7 @@ export class GameRoom extends Server<Env> {
         ? "setting"
         : parsed.type === "rtc"
           ? "signal"
-          : parsed.type === "team" || parsed.type === "ready"
+          : parsed.type === "team" || parsed.type === "ready" || parsed.type === "reading"
             ? "choice"
             : "other";
     if (parsed.type !== "chat" && parsed.type !== "quick" && parsed.type !== "leave" && !this.withinPace(seat.slot, sort)) {
@@ -437,6 +439,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "poke") this.handlePoke();
     else if (parsed.type === "team") this.handleTeam(connection, seat, parsed.team);
     else if (parsed.type === "ready") await this.handleReady(seat, parsed.ready);
+    else if (parsed.type === "reading") this.handleReading(connection, seat, parsed.reading);
     else if (parsed.type === "host") await this.handleHost(connection, seat.slot, parsed.to);
     else if (parsed.type === "kick") await this.handleKick(connection, seat.slot, parsed.slot);
     else if (parsed.type === "here") await this.handleHere(seat.slot);
@@ -890,6 +893,28 @@ export class GameRoom extends Server<Env> {
     await this.scheduleHost();
   }
 
+  /**
+   * Notes that a connection's player has the rules open, or no longer, and
+   * tells the others how many do (`reading.ts`). Kept with the connection:
+   * nothing is written, and it goes when the connection does.
+   */
+  private handleReading(connection: Connection<ConnectionState>, seat: Seat, reading: boolean): void {
+    if (this.lobby === null || (seat.reading === true) === reading) return;
+    const { reading: _reading, ...plain } = seat;
+    connection.setState(reading ? { ...plain, reading: true } : plain);
+    // nobody is told it during a game: it is said again when the room is next sent
+    if (!this.playing()) this.broadcastLobby();
+  }
+
+  /** The slots with a connection whose page has the rules open. */
+  private readingSlots(): Set<number> {
+    return new Set(
+      this.members()
+        .filter(([, seat]) => seat.reading === true)
+        .map(([, seat]) => seat.slot),
+    );
+  }
+
   /** Makes the player in slot `to` the host, if the one asking is the host and `to` is someone else who is connected. */
   private async handleHost(connection: Connection<ConnectionState>, slot: number, to: number): Promise<void> {
     const lobby = this.lobby;
@@ -971,7 +996,10 @@ export class GameRoom extends Server<Env> {
     if (!this.voiceOffered()) {
       // Strangers may now come in: nobody is left connected directly to anybody.
       for (const [member, seat] of this.members()) {
-        if (seat.voice !== undefined) member.setState({ kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings, parts: seat.parts });
+        if (seat.voice !== undefined) {
+          const { voice: _voice, ...plain } = seat;
+          member.setState(plain);
+        }
       }
     }
     this.broadcastLobby();
@@ -987,7 +1015,7 @@ export class GameRoom extends Server<Env> {
   /** Brings a connection into the room's voice chat or takes it out, and tells everyone who is in it now. */
   private handleVoice(connection: Connection<ConnectionState>, seat: Seat, on: boolean, muted: boolean): void {
     if (on && !this.voiceOffered()) return this.refuse(connection, "voice-not-here");
-    const plain: Seat = { kind: "player", slot: seat.slot, token: seat.token, since: seat.since, pings: seat.pings, parts: seat.parts };
+    const { voice: _voice, ...plain } = seat;
     connection.setState(on ? { ...plain, voice: { muted } } : plain);
     this.broadcastVoice();
   }
@@ -1396,12 +1424,14 @@ export class GameRoom extends Server<Env> {
     if (lobby === null) return;
     const members = this.members();
     const connected = new Set(members.map(([, seat]) => seat.slot));
+    // who has the rules open is said in a waiting room, where a start is waited for, and not over a game
+    const reading = this.playing() ? undefined : this.readingSlots();
     for (const [member, seat] of members) {
       const message: ServerMessage = {
         type: "lobby",
         room: this.name,
         build: BUILD,
-        ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered()),
+        ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered(), reading),
       };
       member.send(JSON.stringify(message));
     }
