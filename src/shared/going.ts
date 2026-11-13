@@ -42,9 +42,11 @@ export function isWho(raw: unknown): raw is string {
   return typeof raw === "string" && WHO_PATTERN.test(raw);
 }
 
-/** A new number for a browser to be known by, from `fill`, which fills the bytes it is given with random ones (`crypto.getRandomValues`). */
-export function newWho(fill: (bytes: Uint8Array) => Uint8Array): string {
-  return [...fill(new Uint8Array(WHO_DIGITS / 2))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+/** A new number for a browser to be known by, from `fill`, which fills the bytes it is given, where they are, with random ones (`crypto.getRandomValues`). */
+export function newWho(fill: (bytes: Uint8Array<ArrayBuffer>) => unknown): string {
+  const bytes = new Uint8Array(WHO_DIGITS / 2);
+  fill(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 /**

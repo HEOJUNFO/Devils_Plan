@@ -8,7 +8,7 @@ const START = 1_800_000_000_000;
 const NEXT = START + 86_400_000;
 const meet = (on = false): Meet => ({ start: START, end: START + 3_600_000, game: "under-thirteen", on });
 /** Fills with bytes that count up from 0: what is made of them is known. */
-const counting = (bytes: Uint8Array): Uint8Array => bytes.map((_byte, at) => at);
+const counting = (bytes: Uint8Array): void => bytes.forEach((_byte, at) => bytes.fill(at, at, at + 1));
 
 describe("newWho and isWho", () => {
   it("makes a number of thirty-two hexadecimal digits out of the random bytes it is given", () => {

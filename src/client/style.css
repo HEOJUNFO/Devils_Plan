@@ -423,6 +423,11 @@ ul {
   background: #3a2a12;
 }
 
+/* The reader has said they will come: their word on the right is in the hour's amber. */
+#meet.up .room-count {
+  color: var(--amber);
+}
+
 /* A hand raised for a game: one line under the meeting, in a room row's own colours, what it says on the left and a number on the right; amber once the player's hand is up, lit when a press would open a room or go into one. */
 #want {
   flex: none;

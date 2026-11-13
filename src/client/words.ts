@@ -137,6 +137,11 @@ const ko = {
     now: (game: string) => `지금 ${game} 모임`,
     until: (time: string) => `${time}까지`,
     inTime: (hours: number, minutes: number) => (hours > 0 ? `${hours}시간 ${minutes}분 뒤` : `${minutes}분 뒤`),
+    /**
+     * In place of the wait, once anyone has said they will come (`src/shared/going.ts`): how many, "or more" past
+     * the most that is counted, and for a reader who is one of them (`mine`) their own word first.
+     */
+    coming: (count: number, more: boolean, mine: boolean) => (mine ? `갈게요 · ${count}명${more ? " 이상" : ""}` : `${count}명${more ? " 이상" : ""} 온대요`),
   },
   /**
    * Under the meeting: a hand raised for a game (`src/shared/want.ts`). One line, what it says on the left and a
@@ -516,6 +521,7 @@ const en: typeof ko = {
     now: (game) => `${game} on now`,
     until: (time) => `until ${time}`,
     inTime: (hours, minutes) => (hours > 0 ? `in ${hours}h ${minutes}m` : `in ${minutes} min`),
+    coming: (count, more, mine) => (mine ? `I'm in · ${count}${more ? "+" : ""}` : `${count}${more ? "+" : ""} coming`),
   },
   want: {
     others: (game) => `Hands up for ${game}`,

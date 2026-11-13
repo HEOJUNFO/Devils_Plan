@@ -40,6 +40,7 @@ import {
   parseFeedbackAnswer,
   parseInboxAnswer,
   parseNumbersAnswer,
+  parseComingNote,
   parseWantingNote,
   parseServerMessage,
   parseWatchingNote,
@@ -60,6 +61,7 @@ import numbersConfig from "../shared/numbers-config.json";
 import { readDay, type DayNumbers } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear } from "../shared/meet";
+import { comingTo, isWho, newWho, type Coming } from "../shared/going";
 import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
 import voiceConfig from "../shared/voice-config.json";
@@ -1056,10 +1058,64 @@ const meetButton = el<HTMLButtonElement>("meet");
 /** How often that row is written again while the lobby is on show, in ms: it counts the minutes down. */
 const MEET_EVERY_MS = 20_000;
 
+/** How many the directory last said are coming to a meeting (`src/shared/going.ts`); `null` before it has, and while the list is not connected. */
+let coming: Coming | null = null;
+
+/** Reads what this browser keeps under `name`, or `null` where it keeps nothing or may not be asked. */
+function kept(name: string): string | null {
+  try {
+    return localStorage.getItem(storageKey(name));
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps `value` in this browser under `name`, or with `null` keeps it no longer. Where the browser keeps nothing, the page goes on without. */
+function keep(name: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(storageKey(name));
+    else localStorage.setItem(storageKey(name), value);
+  } catch {
+    // a browser that keeps nothing: the word is still given, and forgotten with the page
+  }
+}
+
+/** The start of the meeting this browser said it will come to, or `null`: kept in the browser, since it is said hours before. */
+let myGoing: number | null = ((): number | null => {
+  const start = Number(kept("going") ?? "");
+  return Number.isSafeInteger(start) && start > 0 ? start : null;
+})();
+
+/** The number this browser is known by where it says it will come, made the first time it does and kept. */
+function goingWho(): string {
+  const had = kept("going-who");
+  if (isWho(had)) return had;
+  const who = newWho((bytes) => crypto.getRandomValues(bytes));
+  keep("going-who", who);
+  return who;
+}
+
+/**
+ * Tells the directory that this browser will come to the meeting that starts
+ * at `meet`, or with `on` false takes that back, and keeps which it is. Over
+ * a connection that is not open nothing is sent: it is said when one opens
+ * (`watchRooms`).
+ */
+function sayGoing(meet: number, on: boolean): void {
+  myGoing = on ? meet : null;
+  keep("going", on ? String(meet) : null);
+  if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return;
+  const request: DirectoryRequest = { type: "going", meet, who: goingWho(), on };
+  listSocket.send(JSON.stringify(request));
+}
+
 /**
  * Says over the rooms, in one line, when the next gathering is and for which
  * game, in the reader's own time, or that one is on. Nothing where none is
- * set. The day is not named: how long until then says it.
+ * set. The day is not named: how long until then says it. Once anyone has
+ * said they will come, how many have is said where the wait was (the hour
+ * is still on the left), and the line is lit for a reader who is one of
+ * them.
  */
 function renderMeet(): void {
   const now = Date.now();
@@ -1070,9 +1126,19 @@ function renderMeet(): void {
   const minutes = Math.max(1, Math.ceil((meet.start - now) / 60_000));
   const [title, when] = [...meetButton.children];
   const game = GAMES[meet.game].title[lang];
+  // while it is on, what matters is the rooms there are now: who said they would come is not said
+  const said = meet.on ? null : comingTo(meet, coming, myGoing);
   title.textContent = meet.on ? WORDS.meet.now(game) : WORDS.meet.title(timeOf(meet.start), game);
-  when.textContent = meet.on ? WORDS.meet.until(timeOf(meet.end)) : WORDS.meet.inTime(Math.floor(minutes / 60), minutes % 60);
+  when.textContent = meet.on
+    ? WORDS.meet.until(timeOf(meet.end))
+    : said !== null
+      ? WORDS.meet.coming(said.count, said.more, said.mine)
+      : WORDS.meet.inTime(Math.floor(minutes / 60), minutes % 60);
   meetButton.classList.toggle("on", meet.on);
+  meetButton.classList.toggle("up", said?.mine === true);
+  // a press before the hour says "I'll come", or takes it back: said to a screen reader as a button that is pressed or not
+  if (meet.on) meetButton.removeAttribute("aria-pressed");
+  else meetButton.setAttribute("aria-pressed", String(said?.mine === true));
   meetButton.dataset.game = meet.game;
 }
 
@@ -1148,10 +1214,14 @@ wantButton.addEventListener("click", () => {
   renderWant();
 });
 
-// a press lists the rooms of the game people gather for: where they are, or where one is to be made
+// A press lists the rooms of the game people gather for: where they are, or where one is to be made. Before the
+// hour it also says that this player will come, and a second press takes that back.
 meetButton.addEventListener("click", () => {
-  const game = meetButton.dataset.game;
-  if (isGameId(game)) pickGame(game);
+  const meet = meetNear(Date.now(), meetConfig);
+  if (meet === null) return;
+  if (!meet.on) sayGoing(meet.start, myGoing !== meet.start);
+  pickGame(meet.game);
+  renderMeet();
 });
 setInterval(() => {
   if (listSocket !== null) renderMeet();
@@ -1236,6 +1306,9 @@ function watchRooms(): void {
     if (listSocket === current && listedGame !== null) askForGame();
     // and so is a hand that was up: a new connection has none
     if (listSocket === current && myWant !== null) sayWant(myWant);
+    // a word given for the next meeting is said again, in case it was given while no connection was open: the directory counts it once
+    const near = meetNear(Date.now(), meetConfig);
+    if (listSocket === current && near !== null && myGoing === near.start) sayGoing(near.start, true);
   });
   current.addEventListener("message", (event) => {
     if (listSocket !== current) return;
@@ -1249,6 +1322,12 @@ function watchRooms(): void {
     if (hands !== null) {
       wanting = hands.games;
       renderWant();
+      return;
+    }
+    const guests = parseComingNote(event.data);
+    if (guests !== null) {
+      coming = guests;
+      renderMeet();
       return;
     }
     const note = parseWatchingNote(event.data);
@@ -1276,6 +1355,7 @@ function watchRooms(): void {
     roomsSent = null;
     watching = null;
     wanting = {};
+    coming = null;
     if (lobbyBarShown) lobbyBar();
     renderRooms();
     // a word sent on the connection that dropped is not going to be answered
