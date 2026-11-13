@@ -66,7 +66,7 @@ import { readDay, type DayNumbers } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
-import { againOf } from "../shared/again";
+import { againOf, hostCallDue, waitsOnHost } from "../shared/again";
 import { afterRefusedMake } from "../shared/reopen";
 import { calendarOf, type CalendarEvent } from "../shared/calendar";
 import { firstDay, linkedOf, mayPlan, parseLinked, standing as appointmentStands, stepped, type AppointmentConfig } from "../shared/appointment";
@@ -74,6 +74,7 @@ import appointmentConfigJson from "../shared/appointment-config.json";
 import { ORIGIN, SITE_NAME } from "../shared/site/words";
 import { gameReader } from "../shared/parts";
 import roomConfig from "../shared/room-config.json";
+import soundConfig from "../shared/sound-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
 import { C } from "./game/palette";
@@ -265,6 +266,10 @@ let ownTitle = SITE_TITLE;
 let calling: Call | null = null;
 /** Whether the game on the table was waiting on this player when the room last spoke: a turn is called once, when it comes. */
 let waited = false;
+/** Whether the room was waiting on this player alone, its host, when it last spoke: they are called once, when it comes to that. */
+let hostWaited = false;
+/** When this player was last called for that in the room they are in (ms), or `null`: not again at once (`hostCallDue`). */
+let hostCalledAt: number | null = null;
 
 /** Writes the page's title: its own, or with what calls the player back at its head. */
 function writeTitle(): void {
@@ -2715,6 +2720,9 @@ function renderRoom(code: string, view: LobbyView): void {
     if (!chat.noted("first-time")) tipRules(view.game);
     // the invitation is taken up: the notice a phone held upright shows says no more of it
     turnInvited.hidden = true;
+    // another room waits on its host anew
+    hostWaited = false;
+    hostCalledAt = null;
     // the link that led here said when the room's people meet: said once, where it stays to be read
     if (appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null && !chat.noted("when")) {
       chat.note({ kind: "when", at: appointment.at });
@@ -2810,6 +2818,16 @@ function renderRoom(code: string, view: LobbyView): void {
   readyButton.setAttribute("aria-pressed", String(amReady));
   // the same word, where it is said from the results of a game that is over
   syncAgain();
+  // Everyone else has said so, and the room now waits on this player alone. A host who went to another tab while the
+  // room filled, or while the others read the results, is called back, and a phone in the hand is felt: the room itself
+  // asks only a minute on, and then passes to someone else.
+  const waits = isHost && !gameOn && isGameId(view.game) && waitsOnHost(view.players, view.host, view.knockout, GAMES[view.game].minPlayers);
+  if (waits && !hostWaited && hostCallDue(Date.now(), hostCalledAt, soundConfig.hostCallGapSeconds)) {
+    hostCalledAt = Date.now();
+    call("ready");
+    buzz();
+  }
+  hostWaited = waits;
   renderStatus();
   syncChat();
 

@@ -13,9 +13,15 @@ describe("louder", () => {
   it("gives way to a call that asks more of the player", () => {
     expect(louder("room", "said")).toBe("said");
     expect(louder("said", "came")).toBe("came");
-    expect(louder("came", "started")).toBe("started");
+    expect(louder("came", "ready")).toBe("ready");
+    expect(louder("ready", "started")).toBe("started");
     expect(louder("started", "host")).toBe("host");
     expect(louder("host", "turn")).toBe("turn");
+  });
+
+  it("keeps everyone being ready in the host's title when a line of chat comes after it", () => {
+    expect(louder("ready", "said")).toBe("ready");
+    expect(louder("ready", "came")).toBe("ready");
   });
 
   it("keeps the same call when it comes again", () => {

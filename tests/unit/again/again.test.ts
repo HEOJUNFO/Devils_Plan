@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { againOf, type AgainPlayer } from "../../../src/shared/again";
+import { againOf, hostCallDue, waitsOnHost, type AgainPlayer, type WaitingPlayer } from "../../../src/shared/again";
+import roomConfig from "../../../src/shared/room-config.json";
+import shipped from "../../../src/shared/sound-config.json";
 
 /** A room of four: the host in slot 0, slot 2 ready, slot 3 sitting the games out. */
 const ROOM: AgainPlayer[] = [
@@ -51,5 +53,74 @@ describe("againOf", () => {
   it("shows someone who is not of the room only the count", () => {
     expect(againOf(ROOM, 9, false, false)).toEqual({ count: 1, mine: false, press: false });
     expect(againOf(QUIET, 9, false, false)).toBeNull();
+  });
+});
+
+describe("waitsOnHost", () => {
+  /** The room with everyone connected; slot 3 sits out only where the room plays 탈락전. */
+  const THERE: WaitingPlayer[] = ROOM.map((player) => ({ ...player, connected: true }));
+  /** Everyone but the host ready, the one sitting out too little as it matters. */
+  const ready = (slots: number[], players: WaitingPlayer[] = THERE): WaitingPlayer[] => players.map((player) => ({ ...player, ready: slots.includes(player.slot) }));
+  /** A game one player can start, and one that takes two. */
+  const ONE = 1;
+  const TWO = 2;
+
+  it("does once everyone else who is there has said so", () => {
+    expect(waitsOnHost(ready([1, 2]), HOST, false, TWO)).toBe(false);
+    expect(waitsOnHost(ready([1, 2, 3]), HOST, false, TWO)).toBe(true);
+  });
+
+  it("does not wait for someone sitting the games out of a room playing 탈락전", () => {
+    expect(waitsOnHost(ready([1, 2]), HOST, true, TWO)).toBe(true);
+    expect(waitsOnHost(ready([1]), HOST, true, TWO)).toBe(false);
+  });
+
+  it("does not wait for someone whose connection is gone", () => {
+    const gone = ready([1, 2]).map((player) => (player.slot === 3 ? { ...player, connected: false } : player));
+
+    expect(waitsOnHost(gone, HOST, false, TWO)).toBe(true);
+  });
+
+  it("does not while the host is alone, or the room has no host", () => {
+    const alone = THERE.filter((player) => player.slot === HOST);
+    const others = ready([1, 2, 3]).map((player) => (player.slot === HOST ? player : { ...player, connected: false, ready: false }));
+
+    expect(waitsOnHost(alone, HOST, false, ONE)).toBe(false);
+    expect(waitsOnHost(others, HOST, false, ONE)).toBe(false);
+    expect(waitsOnHost(ready([1, 2, 3]), null, false, ONE)).toBe(false);
+  });
+
+  it("does not while fewer are there than the game takes: the host could not start it either", () => {
+    const two = ready([1], THERE.filter((player) => player.slot <= 1));
+
+    expect(waitsOnHost(two, HOST, false, TWO)).toBe(true);
+    expect(waitsOnHost(two, HOST, false, TWO + 1)).toBe(false);
+  });
+
+  it("counts a host who sits the games out as not playing", () => {
+    const hostOut = ready([1], THERE.filter((player) => player.slot <= 1)).map((player) => (player.slot === HOST ? { ...player, out: true } : player));
+
+    expect(waitsOnHost(hostOut, HOST, true, TWO)).toBe(false);
+    expect(waitsOnHost(hostOut, HOST, true, ONE)).toBe(true);
+  });
+});
+
+describe("hostCallDue", () => {
+  /** A moment, and the gap between two calls in seconds. */
+  const NOW = 1_000_000;
+  const GAP = 30;
+
+  it("is for a host who has not been called in this room", () => {
+    expect(hostCallDue(NOW, null, GAP)).toBe(true);
+  });
+
+  it("is not again until the gap has passed", () => {
+    expect(hostCallDue(NOW + GAP * 1000 - 1, NOW, GAP)).toBe(false);
+    expect(hostCallDue(NOW + GAP * 1000, NOW, GAP)).toBe(true);
+  });
+
+  it("ships with a gap that is some seconds and shorter than the room's own wait for its host", () => {
+    expect(shipped.hostCallGapSeconds).toBeGreaterThan(0);
+    expect(shipped.hostCallGapSeconds).toBeLessThan(roomConfig.hostIdleSeconds);
   });
 });

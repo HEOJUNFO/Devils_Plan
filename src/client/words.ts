@@ -313,6 +313,8 @@ const ko = {
     gathered: "모였습니다",
     said: "새 채팅",
     came: "누가 들어옴",
+    /** To the host: everyone else is ready, or has asked for another game, and the room waits on them alone. */
+    ready: "모두 준비",
     started: "게임 시작",
     host: "방장 확인",
     turn: "내 차례",
@@ -744,6 +746,7 @@ const en: typeof ko = {
     gathered: "Enough players",
     said: "New chat",
     came: "Someone came",
+    ready: "All ready",
     started: "Game started",
     host: "Still there?",
     turn: "Your turn",

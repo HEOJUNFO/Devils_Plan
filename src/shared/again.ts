@@ -44,3 +44,39 @@ export function againOf(players: readonly AgainPlayer[], you: number, host: bool
   const count = players.filter((player) => player.slot !== you && player.ready).length + (mine ? 1 : 0);
   return press || count > 0 ? { count, mine, press } : null;
 }
+
+/** A player of the room, as far as its waiting on its host goes (`PublicPlayer`). */
+export interface WaitingPlayer extends AgainPlayer {
+  /** Whether a connection of theirs is in the room now. */
+  connected: boolean;
+}
+
+/**
+ * Whether the room waits on its host alone, as a page reads it from what
+ * the room shows everyone: someone else is there, everyone else who is
+ * there and not sitting the games out has said they are ready (from the
+ * waiting room, or with "one more" over the results), and there are as many
+ * as the room's game takes at least (`least`), so that the host could start
+ * it. It is the room's own rule (`waitingOnHost` of `lobby.ts`) over the
+ * players as they are shown: the room goes by it to ask a host who does
+ * nothing whether they are there, a minute on, and the host's page goes by
+ * it to call them at once (`calling.ts`). `host` is the host's slot.
+ */
+export function waitsOnHost(players: readonly WaitingPlayer[], host: number | null, knockout: boolean, least: number): boolean {
+  if (host === null) return false;
+  const playing = knockout ? players.filter((player) => !player.out) : players;
+  const others = playing.filter((player) => player.slot !== host && player.connected);
+  if (others.length + (playing.some((player) => player.slot === host) ? 1 : 0) < least) return false;
+  return others.length > 0 && others.every((player) => player.ready);
+}
+
+/**
+ * Whether a host the room has come to wait on is called for it now, having
+ * last been called for it at `last` (ms; `null` for never in this room): not
+ * again within `gapSeconds`. Someone who says they are ready, takes it back
+ * and says it again brings the room to wait on its host each time, and the
+ * host's phone is not theirs to shake as often as they like.
+ */
+export function hostCallDue(now: number, last: number | null, gapSeconds: number): boolean {
+  return last === null || now - last >= gapSeconds * 1000;
+}

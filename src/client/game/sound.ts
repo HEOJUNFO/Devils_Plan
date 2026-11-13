@@ -173,10 +173,11 @@ export const sfx = {
 /**
  * Makes a phone buzz, briefly, where the browser can (`navigator.vibrate`:
  * Android's browsers; Safari on a phone has none, and a desktop has nothing
- * to shake). For a turn that has become the player's: a phone's sound is
- * often off. The pattern is `turnBuzz` of the sound's settings, on and off in
- * ms. Not held back by how loud the sound is set: someone who muted the game
- * in a quiet place is who this is for.
+ * to shake). For a turn that has become the player's, and for a room that
+ * has come to wait on its host alone: a phone's sound is often off. The
+ * pattern is `turnBuzz` of the sound's settings, on and off in ms. Not held
+ * back by how loud the sound is set: someone who muted the game in a quiet
+ * place is who this is for.
  */
 export function buzz(): void {
   try {

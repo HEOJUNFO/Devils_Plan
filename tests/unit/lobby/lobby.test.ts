@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { waitsOnHost } from "../../../src/shared/again";
 import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import {
   awayPlayers,
@@ -1215,6 +1216,27 @@ describe("a room that waits on its host", () => {
 
     expect(GAMES[DEFAULT_GAME].minPlayers).toBeGreaterThan(2);
     expect(waitingOnHost(ready, all)).toBe(false);
+  });
+
+  it("is read the same by a page, from what the room shows it", () => {
+    const config = testConfig();
+    const one = setReady(roomOf(3, config), tokenFor(1), true);
+    const both = setReady(one, tokenFor(2), true);
+    const few = setReady(lobbyWith(GAMES[DEFAULT_GAME].minPlayers - 1, { ...config, maxPlayers: GAMES[DEFAULT_GAME].minPlayers }), tokenFor(1), true);
+    const rooms: [LobbyState, Set<number>][] = [
+      [one, new Set([0, 1, 2])],
+      [both, new Set([0, 1, 2])],
+      [one, new Set([0, 1])],
+      [both, new Set([0])],
+      [both, new Set()],
+      [few.players.slice(2).reduce((state, p) => setReady(state, p.token, true), few), new Set(few.players.map((p) => p.slot))],
+    ];
+
+    for (const [state, there] of rooms) {
+      const view = viewLobby(state, there, 0, config);
+
+      expect(waitsOnHost(view.players, view.host, view.knockout, GAMES[view.game].minPlayers)).toBe(waitingOnHost(state, there));
+    }
   });
 
   it("passes to whoever came first of those ready and connected", () => {

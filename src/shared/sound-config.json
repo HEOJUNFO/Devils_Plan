@@ -1,5 +1,6 @@
 {
   "gains": [0, 0.2, 0.5, 0.9],
   "start": 2,
-  "turnBuzz": [60, 60, 60]
+  "turnBuzz": [60, 60, 60],
+  "hostCallGapSeconds": 30
 }
