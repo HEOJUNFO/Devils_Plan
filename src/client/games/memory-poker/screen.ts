@@ -41,6 +41,8 @@ export interface PokerHandlers {
   covered(covered: boolean): void;
   /** The game has more players than the column lists one to a row, or no longer has. */
   crowded(crowded: boolean): void;
+  /** Whether this is the player's first game of 기억 포커 (`GameHandlers.first`): the bar then says what the cards are learned for. */
+  first: boolean;
 }
 
 /** The game screen. */
@@ -514,13 +516,20 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     const seconds = Math.ceil((left(latest.clock.phase) ?? 0) / 1000);
     const have = view.locked.length;
     const of = latest.players.length;
-    if (view.phase === "memorise") return mine === null ? [WORDS.standing.watchLearn(seconds), C.bone] : [WORDS.standing.learn(seconds), C.amber];
+    // A first game: what the cards are learned for, and what the two picked are measured by. Nothing of the
+    // cards themselves is said: which lies where is what the game asks the player to remember.
+    const { picks, shared } = latest.rules;
+    if (view.phase === "memorise") {
+      if (mine === null) return [WORDS.standing.watchLearn(seconds), C.bone];
+      return [handlers.first ? WORDS.coach.learn(picks, shared, seconds) : WORDS.standing.learn(seconds), C.amber];
+    }
     if (view.phase === "choose") {
       if (mine === null) return [WORDS.standing.watchChoose(have, of, seconds), C.bone];
       if (view.mine?.locked === true) return [WORDS.standing.locked(have, of, seconds), C.teal];
       if (pending) return [WORDS.standing.sending, C.boneD];
       if (selection.length === latest.rules.picks) return [WORDS.standing.ready(seconds), C.amber];
-      return [WORDS.standing.choose(latest.rules.picks, selection.length, seconds), C.amber];
+      if (handlers.first) return [WORDS.coach.choose(picks, shared, selection.length, seconds), C.amber];
+      return [WORDS.standing.choose(picks, selection.length, seconds), C.amber];
     }
     const hand = mine === null ? undefined : view.shown?.hands.find((each) => each.player === mine);
     const mark = mine === null ? null : markOf(mine, view.shown?.outcomes ?? []);

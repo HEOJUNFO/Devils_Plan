@@ -125,6 +125,14 @@ const ko = {
     next: (words: string, seconds: number) => `${words} · 다음 라운드까지 ${seconds}초`,
     last: (words: string, seconds: number) => `${words} · 최종 결과까지 ${seconds}초`,
   },
+  /**
+   * To a player in their first game of it, in place of `standing.learn` (468
+   * pixels) and `standing.choose` (364): what the cards are learned for.
+   */
+  coach: {
+    learn: (picks: number, shared: number, seconds: number) => `외우세요: 뒤집히면 ${picks}장을 골라 공유 카드 ${shared}장과 족보를 만듭니다 · ${seconds}초`,
+    choose: (picks: number, shared: number, have: number, seconds: number) => `고른 ${picks}장 + 공유 ${shared}장의 족보로 겨룹니다 (${have}/${picks}) · ${seconds}초`,
+  },
   /** Under the standing line while choosing, 364 pixels. */
   keys: byInput("클릭 또는 방향키+Space: 고르기/빼기 · Enter: 확정", "카드를 눌러 고르고, 다시 눌러 뺍니다"),
   hint: "H: 규칙 · M: 음소거 · T: 채팅",
@@ -251,6 +259,10 @@ const en: typeof ko = {
     shown: "This round's result",
     next: (words, seconds) => `${words} · next round in ${seconds}s`,
     last: (words, seconds) => `${words} · final result in ${seconds}s`,
+  },
+  coach: {
+    learn: (picks, shared, seconds) => `Learn them: you pick ${picks} face down, to make a hand with ${shared} shared · ${seconds}s`,
+    choose: (picks, shared, have, seconds) => `Your ${picks} + the ${shared} shared make your hand (${have}/${picks}) · ${seconds}s`,
   },
   keys: byInput("Click, or arrows + Space: pick/unpick · Enter: final", "Tap a card to pick it, again to put it back"),
   hint: "H: rules · M: mute · T: chat",
