@@ -497,6 +497,7 @@ const ko = {
     "code-taken": "방을 만들지 못했습니다. 다시 시도해 주세요.",
     "join-timeout": "연결이 너무 오래 걸렸습니다. 다시 시도해 주세요.",
     "kicked": "방장이 이 방에서 내보냈습니다.",
+    "not-kept": "서버가 지금 방에 들이지 못했습니다. 잠시 뒤에 다시 해 주세요.",
   } satisfies Record<RejectReason, string>,
   /** Why something asked of the room was refused, for the waiting room. Refused moves are explained on the game screen. */
   refused: {
@@ -508,6 +509,7 @@ const ko = {
     "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다.",
     "bad-setting": "그 설정은 이 방에서 쓸 수 없습니다.",
     "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요.",
+    "not-kept": "서버가 지금 받지 못했습니다. 잠시 뒤에 다시 해 주세요.",
   } as Record<string, string>,
   refusedOther: "지금은 할 수 없습니다.",
 };
@@ -884,6 +886,7 @@ const en: typeof ko = {
     "code-taken": "The room could not be made. Try again.",
     "join-timeout": "Connecting took too long. Try again.",
     "kicked": "The host removed you from this room.",
+    "not-kept": "The server could not let you in just now. Try again in a moment.",
   },
   refused: {
     "not-host": "Only the host can do that.",
@@ -894,6 +897,7 @@ const en: typeof ko = {
     "bots-not-allowed": "This server does not allow bots.",
     "bad-setting": "This room cannot use that setting.",
     "too-fast": "That was too fast. Try again in a moment.",
+    "not-kept": "The server could not take that just now. Try again in a moment.",
   },
   refusedOther: "That cannot be done now.",
 };

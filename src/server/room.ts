@@ -165,6 +165,8 @@ const NO_TALLY: Tally = { games: 0, most: 0, began: null };
 
 /** The least time between two pokes the room acts on, in ms: asking twice in a row finds nothing new. */
 const POKE_GAP_MS = 10_000;
+/** How often at most the log is told that something asked could not be done, in ms. */
+const NOT_KEPT_SAY_EVERY_MS = 60_000;
 
 /** Whether this deployment lets bots fill empty seats (wrangler.jsonc: only while developing). */
 function botsAllowed(flag: string | undefined): boolean {
@@ -224,6 +226,8 @@ export class GameRoom extends Server<Env> {
 
   /** When the room last acted on a poke, in ms since the epoch. Forgotten when the room sleeps; nothing depends on it. */
   private pokedAt = 0;
+  /** When the log was last told that something asked could not be done, in ms. */
+  private notKeptSaidAt = 0;
 
   /**
    * By connection: the game as that connection was last sent it, to tell
@@ -341,7 +345,39 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Handles a message from a connection. */
+  /**
+   * Takes one message. What it asks is done by {@link take}; if that fails,
+   * whoever asked is told so. The room's storage takes so many writes a day
+   * and no more, and past that every join, start and move throws where it
+   * would be kept: without a word back the page would wait on a press that
+   * was never going to be answered.
+   */
   async onMessage(connection: Connection<ConnectionState>, message: WSMessage): Promise<void> {
+    try {
+      await this.take(connection, message);
+    } catch (error) {
+      this.sayNotKept(error);
+      try {
+        const state = connection.state;
+        // nobody yet: it asked to come in, and is turned away with the reason; a player is told, and stays
+        if (state?.kind === "pending") this.reject(connection, "not-kept");
+        else if (state?.kind === "player") this.refuse(connection, "not-kept");
+      } catch {
+        // the connection has gone meanwhile: there is nobody to tell
+      }
+    }
+  }
+
+  /** Tells the log that something asked could not be done, once in a while: while storage takes nothing, every message fails alike. */
+  private sayNotKept(error: unknown): void {
+    const now = Date.now();
+    if (now - this.notKeptSaidAt < NOT_KEPT_SAY_EVERY_MS && now >= this.notKeptSaidAt) return;
+    this.notKeptSaidAt = now;
+    console.error("the room could not do what was asked:", error instanceof Error ? error.message : String(error));
+  }
+
+  /** Does what one message asks. */
+  private async take(connection: Connection<ConnectionState>, message: WSMessage): Promise<void> {
     // A connection the room has ended can stay open at the far end and go on sending: none of it is read.
     if (connection.state?.kind === "gone") return;
     const parsed = parseClientMessage(message);

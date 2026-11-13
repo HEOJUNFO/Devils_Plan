@@ -1959,3 +1959,58 @@ describe("GameRoom: another game for the room", () => {
     a.close();
   });
 });
+
+/** The part of a room these tests make fail: where it keeps a value. */
+interface Keeps {
+  save(key: string, value: unknown): void;
+}
+
+describe("GameRoom: when what is asked cannot be kept", () => {
+  // The room's storage takes so many writes a day (the free plan's) and then every one fails until the day turns.
+  // Stood in for here by making the room's own way of keeping a value throw, and undone by taking that away again.
+  const failing = (room: unknown): void => {
+    (room as Keeps).save = () => {
+      throw new Error("no more writes today");
+    };
+  };
+  const mended = (room: unknown): void => {
+    delete (room as Partial<Keeps>).save;
+  };
+
+  it("tells a player that what they asked was not kept, and takes it once it can be", async () => {
+    const stub = env.GameRoom.getByName("NKPTA");
+    const a = await open("NKPTA", { player: 0, create: true });
+    const b = await open("NKPTA", { player: 1 });
+    await b.lobbyOf(2);
+    await runInDurableObject(stub, failing);
+
+    b.send({ type: "ready", ready: true });
+
+    expect(await b.nextOf("refused")).toEqual({ type: "refused", reason: "not-kept" });
+    // the room is as it was: the same press is taken once it can be kept
+    await runInDurableObject(stub, mended);
+    b.send({ type: "ready", ready: true });
+    const lobby = await b.lobbyWhere((seen) => seen.players[1].ready);
+    expect(lobby.players[1].ready).toBe(true);
+    a.close();
+    b.close();
+  });
+
+  it("turns away someone it cannot seat, with the reason, and does not seat them", async () => {
+    const stub = env.GameRoom.getByName("NKPTB");
+    const a = await open("NKPTB", { player: 0, create: true });
+    await a.lobbyOf(1);
+    await runInDurableObject(stub, failing);
+
+    const b = await open("NKPTB", { player: 1 });
+
+    expect(await b.next()).toEqual({ type: "error", reason: "not-kept" });
+    expect(await b.closed).toBe(CLOSE_REJECTED);
+    await runInDurableObject(stub, mended);
+    // nobody was seated by the join that failed: whoever comes next is the room's second player
+    const c = await open("NKPTB", { player: 2 });
+    expect(await c.lobbyWhere()).toMatchObject({ you: 1 });
+    a.close();
+    c.close();
+  });
+});

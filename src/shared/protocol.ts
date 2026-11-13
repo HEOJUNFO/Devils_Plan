@@ -51,7 +51,18 @@ export type RejectReason =
   /** A room with this code already exists and the player is not in it. */
   | "code-taken"
   /** The connection was opened but never sent `join`. */
-  | "join-timeout";
+  | "join-timeout"
+  | KeepRefusal;
+
+/**
+ * Why something asked of the room was neither done nor turned down on its
+ * merits: the room could not keep what it would have changed. Its storage
+ * takes so many writes a day and no more (the free plan's), and past that
+ * every change fails until the day turns. Said to whoever asked, so that a
+ * press is answered with a reason and not with nothing; on a join it comes
+ * as the reason the connection is refused.
+ */
+export type KeepRefusal = "not-kept";
 
 /** WebSocket close code the server uses after an `error` message. */
 export const CLOSE_REJECTED = 4000;
@@ -185,7 +196,8 @@ export type Refusal =
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal
-  | PaceRefusal;
+  | PaceRefusal
+  | KeepRefusal;
 
 /** Why a chat line was not passed on: the player is sending them too fast, or said it to someone who is not in the room. */
 export type ChatRefusal = "chat-too-fast" | "chat-nobody";

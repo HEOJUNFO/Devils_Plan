@@ -59,6 +59,7 @@ const ko = {
     "already-playing": "이미 판이 진행 중입니다",
     "bots-not-allowed": "이 서버에서는 봇을 쓸 수 없습니다",
     "too-fast": "너무 빨리 눌렀습니다. 잠시 뒤에 다시 해 주세요",
+    "not-kept": "서버가 지금 받지 못했습니다. 잠시 뒤에 다시 해 주세요",
   } as Record<string, string>,
   refusedOther: "지금은 할 수 없습니다",
   /** How a game ended, as the log says it: a line of the column, 168 pixels. */
@@ -212,6 +213,7 @@ const en: typeof ko = {
     "already-playing": "A game is already on",
     "bots-not-allowed": "This server does not allow bots",
     "too-fast": "That was too fast. Try again in a moment",
+    "not-kept": "The server could not take that just now. Try again in a moment",
   },
   refusedOther: "That cannot be done now",
   ended: {
