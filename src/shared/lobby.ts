@@ -100,6 +100,8 @@ export interface RoomConfig {
    * ms: long enough that a pointer only passing over the rows opens none.
    */
   warmUpMs: number;
+  /** How long a connection opened ahead may wait for its press, in seconds: an older one is not joined on, and a new one is opened. */
+  warmFreshSeconds: number;
   /**
    * Seconds without a ping after which a connection that has been pinging is
    * taken for dead and ended: a laptop that went to sleep or a network that

@@ -454,7 +454,12 @@ let entering: string | null = null;
  * a press finds it open (`warmUp`). Nothing is sent on it: to the room it is
  * nobody until `connect` takes it and joins.
  */
-let warm: { code: string; socket: PartySocket } | null = null;
+let warm: { code: string; socket: PartySocket; since: number } | null = null;
+/**
+ * The room last opened ahead with nothing pointing at one (`warmRest`), `null` for none: the list is drawn
+ * again often, and asks for a room once when it becomes the likeliest, not at every drawing.
+ */
+let restCode: string | null = null;
 /**
  * The code the next room will be made under, picked when the form for a new
  * room opens and not at the press that makes it: the connection to it can
@@ -1445,6 +1450,9 @@ function renderRooms(): void {
   roomList.replaceChildren(...rows);
   // said that no room was waiting, and now one is: the form no longer says so
   if (notice.textContent === WORDS.entry.noneWaiting && quickPicks(known).length > 0) notice.textContent = "";
+  // Under a finger nothing says which row is about to be pressed: the likeliest room is opened ahead, once for each
+  // room that comes to be the likeliest. (A mouse says it by being over a row, and is left alone here.)
+  if (TOUCH && likelyRoom() !== restCode) warmRest();
   // the list is redrawn whole: the row the keyboard was on stays the one it is on
   if (focused !== undefined) roomList.querySelector<HTMLElement>(`[data-code="${focused}"]`)?.focus();
   roomsCount.textContent = shown === null ? "" : WORDS.rooms.total(shown.total);
@@ -1821,28 +1829,55 @@ function coolDown(): void {
  * trips to the server and back, which far from it is most of the wait between
  * the press and the room.
  */
-function warmUp(code: string): void {
-  if (warm?.code === code || entering === code) return;
+function warmUp(code: string, wait = config.warmUpMs): void {
+  if ((warm?.code === code && isFresh(warm)) || entering === code) return;
   coolDown();
   warming = setTimeout(() => {
     warming = null;
     const current = openRoom(code);
-    warm = { code, socket: current };
+    warm = { code, socket: current, since: Date.now() };
     // The room ends a connection that says nothing for long, and a line can drop: this one is then let go,
     // not opened again, and the press opens its own.
     current.addEventListener("close", () => {
       if (warm?.socket === current) coolDown();
     });
-  }, config.warmUpMs);
+  }, wait);
 }
 
 /**
- * With the pointer on no row: the room about to be made is the one kept open
- * ahead while its form is on show, and otherwise none is.
+ * Whether a connection opened ahead is still one to join on. One that has
+ * said nothing for long may have been dropped along the way without either
+ * end hearing of it (a phone that changed networks), and a join sent into it
+ * would be waited on for seconds before the page gave it up: past
+ * `warmFreshSeconds` a new one is opened instead.
  */
+function isFresh(ahead: { since: number }): boolean {
+  return Date.now() - ahead.since <= config.warmFreshSeconds * 1000;
+}
+
+/**
+ * The room the next press most likely goes into, with the pointer on no row:
+ * the room about to be made, while its form is on show; else the room whose
+ * code is in the box, typed there or brought by an invitation; else, under a
+ * finger, which is on a row only for the press itself, the room a quick join
+ * would pick, or the first that can be entered at all. `null` for none, and
+ * while this page is in a room or on its way into one.
+ */
+function likelyRoom(): string | null {
+  if (!newRoom.hidden) return nextCode;
+  if (socket !== null) return null;
+  const typed = codeInput.value.trim().toUpperCase();
+  if (isValidRoomCode(typed, config)) return typed;
+  if (!TOUCH) return null;
+  const rooms = roomsSent === null ? [] : roomsShown(roomsSent.rooms, roomsSent.counts, listedGame).rooms;
+  return quickPicks(rooms)[0] ?? rooms.find((room) => room.players < room.maxPlayers)?.code ?? null;
+}
+
+/** With the pointer on no row: the likeliest room (`likelyRoom`) is the one kept open ahead, and with none there is none. */
 function warmRest(): void {
-  if (!newRoom.hidden && nextCode !== null) warmUp(nextCode);
-  else coolDown();
+  restCode = likelyRoom();
+  if (restCode === null) coolDown();
+  else warmUp(restCode);
 }
 
 /** The code of the room whose row `target` is in, if that room can be entered. */
@@ -1865,6 +1900,17 @@ roomList.addEventListener("focusin", (event) => {
   const code = rowCode(event.target);
   if (code !== null) warmUp(code);
 });
+// A finger that comes down in the lobby is about to press something: the row under it, or else the likeliest room,
+// is opened at once, and opened again if the connection ahead has grown old meanwhile.
+frame.addEventListener(
+  "pointerdown",
+  (event) => {
+    if (event.pointerType === "mouse" || (socket !== null && newRoom.hidden)) return;
+    const code = rowCode(event.target) ?? likelyRoom();
+    if (code !== null) warmUp(code, 0);
+  },
+  true,
+);
 
 /** The lobby: the rooms anyone can join, a nickname, and a room to make or enter by code. */
 function showLobby(message = ""): void {
@@ -1950,7 +1996,7 @@ function showNewRoom(): void {
   // Making a room opens a new connection, which is several trips to the server and back and, far from it, most of
   // the wait after the press. It is opened now, to a code picked now; the press then only has to say "make it".
   nextCode = generateRoomCode(Math.random, config);
-  warmUp(nextCode);
+  warmRest();
   showLobbyLinks(false);
   renderNewRoom();
   el<HTMLButtonElement>("create-go").focus();
@@ -1960,10 +2006,10 @@ function closeNewRoom(): void {
   // a room on its way is not waited for: the form is put away, and so is the asking
   if (creating) disconnect();
   setCreating(false);
-  // the room that was going to be made is not: the connection opened to it is let go
+  // the room that was going to be made is not: the connection opened to it is let go, for the likeliest room if there is one
   nextCode = null;
-  coolDown();
   newRoom.hidden = true;
+  warmRest();
   entry.hidden = false;
   rules.hidden = true;
   lobbyBar();
@@ -2515,7 +2561,7 @@ function disconnect(): void {
  */
 function connect(code: string, create: boolean, nick: string, attemptsLeft = 0): void {
   // a connection opened ahead to this very room is the one used; one to any other room is let go
-  const ahead = warm?.code === code ? warm.socket : null;
+  const ahead = warm !== null && warm.code === code && isFresh(warm) ? warm.socket : null;
   if (ahead !== null) warm = null;
   coolDown();
   disconnect();
@@ -2932,7 +2978,11 @@ listedNo.addEventListener("click", () => {
   renderNewRoom();
 });
 joinButton.addEventListener("click", joinFromInput);
-codeInput.addEventListener("input", syncEntry);
+codeInput.addEventListener("input", () => {
+  syncEntry();
+  // a whole code in the box is a room about to be gone into
+  warmRest();
+});
 // what the form says of the name in the box holds only while the box holds the name the page offered
 nickInput.addEventListener("input", syncEntry);
 nickInput.addEventListener("keydown", (event) => {
@@ -3352,6 +3402,8 @@ function followAddress(): void {
   codeInput.value = linked;
   invitedCode = linked;
   syncEntry();
+  // whoever was invited is a nickname and a press away from the room: the connection is opened meanwhile
+  warmRest();
   const nick = normalizeNick(nickInput.value, config);
   // A name the page offered takes nobody into a room by itself: it is seen first, and one press goes in with it.
   if (nick !== null && nickInput.value !== suggestedNick) connect(linked, false, nick);
