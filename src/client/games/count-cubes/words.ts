@@ -77,6 +77,10 @@ const ko = {
     wrong: (seconds: number) => `오답 · ${seconds}초 뒤에 다시 답할 수 있습니다`,
     ask: byInput("큐브는 모두 몇 개? 숫자를 넣고 Enter (또는 아래 버튼)", "큐브는 모두 몇 개? 아래 버튼으로 숫자를 넣고 입력"),
   },
+  /** To a player in their first game of it, in place of `standing.ask` (468 pixels): what is counted, and what a wrong answer costs. */
+  coach: {
+    ask: (lock: number) => `밑에 깔려 안 보이는 큐브도 셉니다 · 틀리면 ${lock}초 잠김 · ${byInput("숫자를 넣고 Enter", "아래 버튼으로 입력")}`,
+  },
   /** How many have the answer of how many it takes: the column's heading, with the clock beside it. */
   solved: (have: number, needed: number) => `정답 ${have}/${needed}명`,
   log: {
@@ -186,6 +190,9 @@ const en: typeof ko = {
     sending: "Sending",
     wrong: (seconds) => `Wrong · you can answer again in ${seconds}s`,
     ask: byInput("How many cubes in all? Type the number, then Enter (or the buttons)", "How many cubes in all? Enter the number with the buttons, then OK"),
+  },
+  coach: {
+    ask: (lock) => `Hidden cubes below count too · wrong: locked ${lock}s · ${byInput("type it, then Enter", "enter it below")}`,
   },
   solved: (have, needed) => `Solved ${have}/${needed}`,
   log: {

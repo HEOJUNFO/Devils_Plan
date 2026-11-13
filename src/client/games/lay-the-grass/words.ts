@@ -159,6 +159,16 @@ const ko = {
     other: (watching: boolean, who: string, doing: "pick" | "lay" | MarkKind, seconds: number) =>
       `${watching ? "관전 중 · " : ""}${who} ${doing === "pick" ? "고르는 중" : doing === "lay" ? "놓는 중" : `${doing === "manhole" ? "맨홀" : doing === "flower" ? "꽃밭" : doing === "tree" ? "가로수" : "바위"} 놓는 중`} · ${seconds}초`,
   },
+  /**
+   * To a player in their first game of it, in place of `standing.pick` with no tile pointed at and of
+   * `standing.lay` (468 pixels, measured with the timers at three digits). The order is said as the
+   * rules over the screen say it; what a tile that finds no room scores is not said, since a
+   * selection's card can change it and says so itself.
+   */
+  coach: {
+    pick: (seconds: number) => `번호가 승점 · 큰 번호는 늦게 놓아 자리가 없기도 합니다 · 고르면 못 바꿈 · ${seconds}초`,
+    lay: (seconds: number) => `공원 안에, 겹치지 않게 놓으세요 · 돌릴 수 있고 뒤집을 수 없습니다 · ${seconds}초`,
+  },
   /** The moves, a line each in a column 168 pixels wide. */
   log: {
     park: (round: number) => `공원 ${round}`,
@@ -390,6 +400,10 @@ const en: typeof ko = {
     lay: (seconds) => `Lay your tile · ${seconds}s`,
     other: (watching, who, doing, seconds) =>
       `${watching ? "Watching · " : ""}${who} is ${doing === "pick" ? "picking" : doing === "lay" ? "laying" : `placing a ${doing === "manhole" ? "manhole" : doing === "flower" ? "flower bed" : doing === "tree" ? "tree" : "rock"}`} · ${seconds}s`,
+  },
+  coach: {
+    pick: (seconds) => `Number = score · higher numbers lay later, with less room · final · ${seconds}s`,
+    lay: (seconds) => `Lay it in the park, clear of the others · it turns but does not flip · ${seconds}s`,
   },
   log: {
     park: (round) => `Park ${round}`,

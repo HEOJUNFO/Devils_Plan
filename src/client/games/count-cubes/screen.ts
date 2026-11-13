@@ -46,6 +46,8 @@ export interface CubesHandlers {
   covered(covered: boolean): void;
   /** The game has more players than the column lists one to a row, or no longer has. */
   crowded(crowded: boolean): void;
+  /** Whether this is the player's first game of 큐브 세기 (`GameHandlers.first`): the bar then says what is counted and what a wrong answer costs. */
+  first: boolean;
 }
 
 /** The game screen. */
@@ -476,7 +478,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     if (pending) return [WORDS.standing.sending, C.boneD];
     const lock = lockOf(mine);
     if (lock > 0) return [WORDS.standing.wrong(Math.ceil(lock / 1000)), C.crim];
-    return [WORDS.standing.ask, C.amber];
+    // a first game: that the cubes out of sight count, and what a wrong answer costs
+    return [handlers.first ? WORDS.coach.ask(latest.rules.lockSeconds) : WORDS.standing.ask, C.amber];
   }
 
   /** The log, made from what has been shown so far. */

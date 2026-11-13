@@ -64,6 +64,8 @@ export interface GrassHandlers {
   covered(covered: boolean): void;
   /** The game has more players than the column lists one to a row, or no longer has. */
   crowded(crowded: boolean): void;
+  /** Whether this is the player's first game of 잔디 깔기 (`GameHandlers.first`): the bar then says what a tile's number means and what laying asks. */
+  first: boolean;
 }
 
 /** The game screen. */
@@ -1094,14 +1096,15 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (choosing()) return [WORDS.standing.choose(which, seconds), hurry];
       return [WORDS.standing.chooseWait(which, seconds), C.bone];
     }
-    if (picking()) return [WORDS.standing.pick(chosen, seconds), hurry];
+    // a first game, before a tile is pointed at: what its number is for. With one pointed at, how to settle on it is said as ever.
+    if (picking()) return [handlers.first && chosen === null ? WORDS.coach.pick(seconds) : WORDS.standing.pick(chosen, seconds), hurry];
     if (marking()) {
       const marks = marksOf(me());
       return [WORDS.standing.mark(marks?.kind ?? (view.phase === "trees" ? "tree" : "manhole"), marks?.value ?? 0, seconds), hurry];
     }
     if (laying()) {
       if (cutting) return [WORDS.standing.cut(cut.length, cutMost(), seconds), hurry];
-      return [WORDS.standing.lay(seconds), hurry];
+      return [handlers.first ? WORDS.coach.lay(seconds) : WORDS.standing.lay(seconds), hurry];
     }
     // what the player on turn is putting on the park is their card's to say
     const putting = marksOf(view.turn)?.kind ?? (view.phase === "trees" ? "tree" : "manhole");
