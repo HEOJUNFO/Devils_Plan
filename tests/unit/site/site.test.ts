@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import { LANGS, type Lang } from "../../../src/shared/lang";
 import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
-import { invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
+import { INVITED_GAME_KEY, invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
 import { siteStyle } from "../../../src/shared/site/style";
 import { ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "../../../src/shared/site/words";
 
@@ -287,7 +287,13 @@ describe("the pages links of invitation go through", () => {
   });
 
   it("go on to the game's own page with whatever follows the #, and keep nothing of themselves to come back to", () => {
-    for (const { body } of invites) expect(body).toContain('<script>location.replace("/" + location.hash);</script>');
+    for (const { body } of invites) expect(body).toContain('location.replace("/" + location.hash);</script>');
+  });
+
+  it("leave which game they are for where the game's page reads it, and go on even where nothing can be left", () => {
+    for (const { game, body } of invites) {
+      expect(body).toContain(`<script>try{sessionStorage.setItem("${INVITED_GAME_KEY}","${game}")}catch(e){}location.replace(`);
+    }
   });
 
   it("ask a search engine to leave them out, and are not in the sitemap", () => {

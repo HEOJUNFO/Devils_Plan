@@ -20,7 +20,7 @@
  */
 import { GAMES, GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
-import { invitePath, invitePicture, slugOf } from "./paths";
+import { INVITED_GAME_KEY, invitePath, invitePicture, slugOf } from "./paths";
 import { LANG_NAMES, ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "./words";
 
 /** A game's rules as its sheet has them: a heading, then paragraphs and lists of points (`RulesSheet` of the client). */
@@ -414,8 +414,9 @@ function invitePage(lang: Lang, game: GameId): string {
     { tag: "meta", attrs: { property: "og:image:height", content: String(PICTURE.height) } },
     { tag: "meta", attrs: { property: "og:image:alt", content: words.invite.picture(name) } },
     { tag: "meta", attrs: { name: "twitter:card", content: "summary_large_image" } },
-    // On to the game's own page with whatever followed the `#`, and nothing kept of this page to come back to.
-    { tag: "script", children: 'location.replace("/" + location.hash);' },
+    // On to the game's own page with whatever followed the `#`, and nothing kept of this page to come back to but
+    // which game the link was for: a room that has closed by then is answered with that game's open rooms.
+    { tag: "script", children: `try{sessionStorage.setItem(${JSON.stringify(INVITED_GAME_KEY)},${JSON.stringify(game)})}catch(e){}location.replace("/" + location.hash);` },
   ];
   return `<!doctype html>
 <html lang="${lang}">

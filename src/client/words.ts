@@ -69,6 +69,8 @@ const ko = {
     sub: "방을 고르거나 만드세요",
     /** In its place for someone who opened a link to a room and has not gone in yet: two lines. */
     invited: (code: string) => `초대받은 방 ${code}\n닉네임을 넣고 입장하세요`,
+    /** Under the form, when the room a link led to is no more. It does not name the game: the list beside it is by then that game's, and says so. Two lines, as the others here are. */
+    invitedGone: "초대받은 방은 닫혔습니다. 방을 고르거나 만드세요.",
     nick: "닉네임",
     create: "방 만들기",
     /** Beside it: straight into an open room that is waiting for players. */
@@ -424,6 +426,7 @@ const en: typeof ko = {
   entry: {
     sub: "Pick a room or make one",
     invited: (code) => `Invited to room ${code}\nAdd a nickname and join`,
+    invitedGone: "That room is closed. Join or make another.",
     nick: "Nickname",
     // half a row now: the form it opens is headed the same
     create: "New room",

@@ -33,3 +33,10 @@ export function invitePath(lang: Lang, game: GameId): string {
 export function invitePicture(lang: Lang, game: GameId): string {
   return `/invite-${lang}-${slugOf(game)}.png`;
 }
+
+/**
+ * Where the page a link of invitation goes through leaves the game it is
+ * for, for the game's own page to read: the address it goes on to has only
+ * the room's code. Kept for the tab, not the browser, and read once.
+ */
+export const INVITED_GAME_KEY = "brain-survival.invited";

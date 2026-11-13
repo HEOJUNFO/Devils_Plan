@@ -47,7 +47,7 @@ import {
   type RejectReason,
 } from "../shared/protocol";
 import { liftFor, placeFrame } from "../shared/frame";
-import { invitePath } from "../shared/site/paths";
+import { INVITED_GAME_KEY, invitePath } from "../shared/site/paths";
 import { doubted, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptRoom } from "../shared/resume";
 import { QUICK_WORDS } from "../shared/chat";
@@ -2314,6 +2314,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     }
     quickRest = null;
     history.replaceState(null, "", `${location.pathname}${location.search}`);
+    if (message.reason === "not-found" && code === invitedCode) {
+      invitationGone();
+      return;
+    }
     showLobby(REJECT_TEXT[message.reason]);
   });
 }
@@ -2401,6 +2405,43 @@ function quickJoin(): void {
 
 /** The code a link brought, for as long as the box for a room's code holds it: an invitation not yet taken up. */
 let invitedCode = "";
+
+/**
+ * The game the link was for, where the page it came through said
+ * (`invitePage` of `src/shared/site/pages.ts`). Read once and taken out of
+ * the tab's storage: it is about the link that opened this page, not the
+ * next one. Nothing where the link is an old one, or the storage is closed.
+ */
+function readInvitedGame(): GameId | null {
+  try {
+    const game = sessionStorage.getItem(INVITED_GAME_KEY);
+    sessionStorage.removeItem(INVITED_GAME_KEY);
+    return isGameId(game) ? game : null;
+  } catch {
+    return null;
+  }
+}
+let invitedGame: GameId | null = readInvitedGame();
+
+/**
+ * The room a link led to is no more (its people left, and a room with
+ * nobody in it is cleared away). "No such room" would end the visit of
+ * someone who came for a game and has never seen the lobby: they are told
+ * the room has closed and what there is instead. The dead code is taken out
+ * of the box, so the lit button is the one that makes a room; where the link
+ * said which game it was for, the rooms listed are that game's and a new
+ * room starts as one of it.
+ */
+function invitationGone(): void {
+  const game = invitedGame;
+  invitedCode = "";
+  invitedGame = null;
+  codeInput.value = "";
+  syncEntry();
+  if (game !== null) chosenGame = game;
+  showLobby(WORDS.entry.invitedGone);
+  if (game !== null) pickGame(game);
+}
 
 /**
  * What the form says, and which of its buttons is the lit one, by what the
