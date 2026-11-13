@@ -45,6 +45,21 @@ export function heldAt(state: unknown): number {
   return typeof at === "number" && Number.isInteger(at) && at > 0 ? at : 0;
 }
 
+/** What is kept with a place of the page's that is none of those it holds above its first: the first itself, and a place the address was changed to. */
+export const FIRST: Held = { back: 0 };
+
+/**
+ * Whether the page has been at the place with `state` before. A place it has
+ * not been at is one the browser added when the address was changed under
+ * the page: an invitation opened in the tab the page is in changes only what
+ * is after `#`, which loads nothing.
+ */
+export function isKnown(state: unknown): boolean {
+  if (typeof state !== "object" || state === null) return false;
+  const at = (state as { back?: unknown }).back;
+  return typeof at === "number" && Number.isInteger(at) && at >= 0;
+}
+
 /** What is needed of the browser's history. */
 export interface Trail {
   /** What the browser kept with the place the page is at now. */
@@ -55,6 +70,8 @@ export interface Trail {
   go(by: number): void;
   /** Writes the page's own address on the place it is at, keeping what was kept with it. */
   settle(): void;
+  /** Keeps `FIRST` with the place the page is at, leaving its address as it is. */
+  mark(): void;
   /** Whether the player has pressed or typed anything on the page since the browser last moved it. */
   touched(): boolean;
 }
@@ -67,8 +84,10 @@ export interface Screens {
   step(): void;
 }
 
-/** The two things the page tells it. */
+/** The things the page tells it. */
 export interface BackTrail {
+  /** The page has loaded: the place it is at is one it knows from here on, and its places are put right (`sync`). */
+  start(): void;
   /** What is on show may have changed: adds the places that are missing, or steps off those there are too many of. */
   sync(): void;
   /** The browser moved to another place of this page (`popstate`). */
@@ -93,7 +112,20 @@ export function backTrail(trail: Trail, screens: Screens): BackTrail {
     }
   }
 
+  function start(): void {
+    if (!isKnown(trail.state())) trail.mark();
+    sync();
+  }
+
   function arrived(): void {
+    if (!isKnown(trail.state())) {
+      // A place the page has not been at: the address was changed under it. What the address asks for is the
+      // page's to follow, so it is left as it is; the place is known from here on. A move of the page's own
+      // that was on its way may never arrive now, and is not waited for.
+      moving = false;
+      trail.mark();
+      return;
+    }
     // Lower than the page is deep: the player pressed back, and one step is taken. Higher (a press forward, to
     // where a screen once was): there is no going forward to a screen, and `sync` steps off it.
     if (moving) moving = false;
@@ -103,5 +135,5 @@ export function backTrail(trail: Trail, screens: Screens): BackTrail {
     sync();
   }
 
-  return { sync, arrived };
+  return { start, sync, arrived };
 }

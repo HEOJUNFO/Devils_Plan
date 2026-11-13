@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backTrail, heldAt, type Held, type Screens, type Trail } from "../../../src/shared/back";
+import { backTrail, FIRST, heldAt, isKnown, type Held, type Screens, type Trail } from "../../../src/shared/back";
 
 /** One place in a browser's history: what the page kept with it, and the address it was at. */
 interface Place {
@@ -42,6 +42,9 @@ function tab(first: Place = { state: null, address: "/" }) {
     settle: () => {
       places[at].address = address();
     },
+    mark: () => {
+      places[at].state = FIRST;
+    },
     touched: () => touched,
   };
   const screens: Screens = {
@@ -64,6 +67,8 @@ function tab(first: Place = { state: null, address: "/" }) {
     },
   };
   const back = backTrail(trail, screens);
+  // the page loads
+  back.start();
 
   /** A move that was asked for is made, and the page told: says whether the tab is still on the page. */
   const arrive = (): boolean => {
@@ -105,10 +110,19 @@ function tab(first: Place = { state: null, address: "/" }) {
     enter: (code: string) => {
       room = code;
     },
+    /** The address is changed under the page (an invitation opened in this tab): the browser adds a place and tells the page. */
+    addressed: (to: string) => {
+      places.splice(at + 1);
+      places.push({ state: null, address: to });
+      at++;
+      touched = false;
+      back.arrived();
+    },
     asked: () => asked,
     waiting: () => due.length,
     left: () => left,
     at: () => at,
+    address: () => places[at].address,
     places: () => places.map((place) => `${place.address} ${heldAt(place.state)}`),
   };
 }
@@ -130,6 +144,19 @@ describe("heldAt", () => {
     expect(heldAt({ back: 0 })).toBe(0);
     expect(heldAt({ back: -1 })).toBe(0);
     expect(heldAt({ back: 1.5 })).toBe(0);
+  });
+});
+
+describe("isKnown", () => {
+  it("knows the page's first place and those it holds, and no place the browser added by itself", () => {
+    expect(isKnown(FIRST)).toBe(true);
+    expect(isKnown({ back: 2 })).toBe(true);
+    expect(isKnown(JSON.parse(JSON.stringify(FIRST)))).toBe(true);
+    expect(isKnown(null)).toBe(false);
+    expect(isKnown(undefined)).toBe(false);
+    expect(isKnown({})).toBe(false);
+    expect(isKnown({ back: -1 })).toBe(false);
+    expect(isKnown({ back: "0" })).toBe(false);
   });
 });
 
@@ -342,5 +369,46 @@ describe("backTrail", () => {
     expect(t.places()).toEqual(["/#ABCD 0", "/#ABCD 1"]);
     t.press(-1);
     expect(t.places()[0]).toBe("/ 0");
+  });
+
+  it("leaves the address alone on a place the page has not been at: it is an invitation, for the page to follow", () => {
+    const t = tab();
+    t.touch();
+    // an invitation opened in the tab the lobby is in: only what is after # changes
+    t.addressed("/#WXYZ");
+    expect(t.address()).toBe("/#WXYZ");
+    expect(t.closed).toEqual([]);
+    expect(t.waiting()).toBe(0);
+  });
+
+  it("knows that place afterwards: a room gone into from it is stepped back out of to it", () => {
+    const t = tab();
+    t.addressed("/#WXYZ");
+    // the page follows the address into the room, and the player presses something there
+    t.happen(() => {
+      t.enter("WXYZ");
+      t.open.push("room");
+    });
+    t.touch();
+    expect(t.places()).toEqual(["/ 0", "/#WXYZ 0", "/#WXYZ 1"]);
+
+    expect(t.press(-1)).toBe(true);
+    expect(t.closed).toEqual(["room"]);
+    expect(t.at()).toBe(1);
+    // the room was left: its address is not left on the place for the page to follow back in
+    expect(t.address()).toBe("/");
+  });
+
+  it("is not left waiting for a move of its own that an invitation came in the way of", () => {
+    const t = tab();
+    t.touch(() => t.open.push("rules"));
+    // the sheet is put away, and the page asks the browser to step off its place
+    t.touch(() => t.open.pop());
+    expect(t.waiting()).toBe(1);
+    // before the browser has, the address is changed under the page
+    t.addressed("/#WXYZ");
+    // whatever becomes of the move asked for, the page goes on keeping its places
+    t.touch(() => t.open.push("new room"));
+    expect(heldAt(t.trail.state())).toBe(1);
   });
 });

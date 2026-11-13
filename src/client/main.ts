@@ -12,7 +12,7 @@
  * written here or in the markup: the page's own are in `words.ts`.
  */
 import { PartySocket } from "partysocket";
-import { backTrail } from "../shared/back";
+import { backTrail, FIRST, isKnown } from "../shared/back";
 import { BUILD, outOfDate } from "../shared/build";
 import { newlyOpen, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
 import { louder, titleFor, type Call } from "../shared/calling";
@@ -3380,6 +3380,7 @@ const back = backTrail(
     hold: (held) => history.pushState(held, "", addressOf(currentCode)),
     go: (by) => history.go(by),
     settle: () => writeAddress(currentCode),
+    mark: () => history.replaceState(FIRST, "", location.href),
     touched: () => touchedSinceMoved,
   },
   {
@@ -3423,6 +3424,9 @@ new MutationObserver(() => back.sync()).observe(frame, { attributes: true, attri
  * this page is.
  */
 function followAddress(): void {
+  // The address was changed under the page: the place the browser added for it is one the page knows from here on
+  // (`src/shared/back.ts`). A browser that says so before this is heard has had it marked already.
+  if (!isKnown(history.state)) history.replaceState(FIRST, "", location.href);
   const linked = location.hash.slice(1).toUpperCase();
   if (linked === currentCode) return;
   if (!isValidRoomCode(linked, config)) {
@@ -3597,7 +3601,7 @@ if (nickInput.value === "") {
 if (!comeBack()) showLobby();
 followAddress();
 // Loaded again, the browser has kept the places this page held before: those there are too many of are stepped off.
-back.sync();
+back.start();
 // Ready to be typed in at once where there are keys. Under a finger a box that takes the focus by
 // itself brings the keyboard up over the list of rooms before anything has been read.
 if (socket === null && !TOUCH) {
