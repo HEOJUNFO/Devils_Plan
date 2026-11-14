@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import numbersConfig from "../../../src/shared/numbers-config.json";
-import { JOIN_WAYS, atMeet, countsOf, dayOf, firstKept, hourOf, isJoinWay, parseDays, parseRoomEvent, readDay, visitCounts, type NumbersConfig, type RoomEvent } from "../../../src/shared/numbers";
+import { CAME, JOIN_WAYS, atMeet, cameCounts, cameDay, cameOf, countsOf, dayOf, firstKept, hourOf, isCame, isJoinWay, parseDays, parseRoomEvent, readDay, visitCounts, type NumbersConfig, type RoomEvent } from "../../../src/shared/numbers";
 
-/** Counted in Korea, kept thirty days. */
-const CONFIG: NumbersConfig = { utcOffsetMinutes: 540, keepDays: 30 };
+/** Counted in Korea, kept thirty days; back within five days is back within the week. */
+const CONFIG: NumbersConfig = { utcOffsetMinutes: 540, keepDays: 30, weekDays: 5 };
 const HOUR = 3_600_000;
 /** Monday 16 November 2026, 00:00 in Korea. */
 const MONDAY = Date.UTC(2026, 10, 15, 15, 0);
@@ -134,6 +134,40 @@ describe("visitCounts", () => {
   });
 });
 
+describe("whether a browser has come before", () => {
+  it("is new where it keeps no day", () => {
+    expect(cameOf(null, MONDAY_DAY, CONFIG)).toBe("first");
+  });
+
+  it("is back from the day before, within the week as it is set, or longer", () => {
+    expect(cameOf(MONDAY_DAY - 1, MONDAY_DAY, CONFIG)).toBe("day");
+    expect(cameOf(MONDAY_DAY - 2, MONDAY_DAY, CONFIG)).toBe("week");
+    expect(cameOf(MONDAY_DAY - CONFIG.weekDays, MONDAY_DAY, CONFIG)).toBe("week");
+    expect(cameOf(MONDAY_DAY - CONFIG.weekDays - 1, MONDAY_DAY, CONFIG)).toBe("longer");
+  });
+
+  it("has nothing to say twice in a day, or with a clock gone back", () => {
+    expect(cameOf(MONDAY_DAY, MONDAY_DAY, CONFIG)).toBeNull();
+    expect(cameOf(MONDAY_DAY + 3, MONDAY_DAY, CONFIG)).toBeNull();
+  });
+
+  it("reads the day a browser kept, and nothing from what is not a day", () => {
+    expect(cameDay(String(MONDAY_DAY))).toBe(MONDAY_DAY);
+    for (const stored of [null, "", "yesterday", "-3", "20.5", "1e9", "123456789"]) expect(cameDay(stored)).toBeNull();
+  });
+
+  it("adds one to the number of the word said, and knows the four words", () => {
+    expect(CAME.map((came) => cameCounts(came))).toEqual([
+      [{ what: "came:first", n: 1 }],
+      [{ what: "came:day", n: 1 }],
+      [{ what: "came:week", n: 1 }],
+      [{ what: "came:longer", n: 1 }],
+    ]);
+    expect(CAME.every(isCame)).toBe(true);
+    for (const other of ["never", "", 3, null, undefined]) expect(isCame(other)).toBe(false);
+  });
+});
+
 describe("readDay", () => {
   it("lays a day's numbers out, with a game's players and minutes on average", () => {
     const day = readDay({
@@ -142,12 +176,14 @@ describe("readDay", () => {
         visits: 40, people: 31, peak: 6, made: 12, "made-listed": 9, started: 3, ended: 2, emptied: 11, alone: 5, unplayed: 2,
         "wanted:under-thirteen": 6, "wanted:memory-poker": 1, "started:under-thirteen": 3, "players:under-thirteen": 13, "ended:under-thirteen": 2, "timed:under-thirteen": 2, "minutes:under-thirteen": 25,
         "hour:9": 30, "hour:21": 10, "started-meet": 2, "via:meet": 3, "via:link": 4, "via:advert": 9,
+        "came:first": 20, "came:day": 5, "came:longer": 1, "came:never": 8,
       },
     });
 
     expect(day).toEqual({
       date: "2026-11-16", weekday: 0, visits: 40, people: 31, peak: 6, made: 12, listed: 9, started: 3, ended: 2, alone: 5, unplayed: 2,
       startedAtMeet: 2,
+      came: { first: 20, day: 5, week: 0, longer: 1 },
       // the ways anyone took, in the order the ways are listed in
       ways: [{ via: "link", n: 4 }, { via: "meet", n: 3 }],
       games: [
@@ -183,5 +219,9 @@ describe("the numbers as they are set", () => {
     expect(Math.abs(numbersConfig.utcOffsetMinutes)).toBeLessThanOrEqual(14 * 60);
     expect(Number.isInteger(numbersConfig.keepDays)).toBe(true);
     expect(numbersConfig.keepDays).toBeGreaterThan(0);
+    // a day back is "the day before", so a week is more than that; and no longer than the numbers are kept
+    expect(Number.isInteger(numbersConfig.weekDays)).toBe(true);
+    expect(numbersConfig.weekDays).toBeGreaterThan(1);
+    expect(numbersConfig.weekDays).toBeLessThan(numbersConfig.keepDays);
   });
 });

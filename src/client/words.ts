@@ -110,6 +110,9 @@ const ko = {
     weekdays: ["월", "화", "수", "목", "금", "토", "일"],
     day: (date: string, weekday: string) => `${date} (${weekday})`,
     lobby: (visits: number, people: number, peak: number) => `로비 방문 ${visits}회 · ${people}명(주소 기준) · 한때 최대 ${peak}명`,
+    /** The browsers that said that day whether they had come before (`CAME` of `numbers.ts`): new ones, and those back after a day, within the week (of so many `days`, as the numbers' settings have it), or longer. */
+    came: (first: number, day: number, week: number, longer: number, days: number) =>
+      `처음 온 브라우저 ${first} · 다시 온 브라우저 ${day + week + longer} (어제 ${day} · ${days}일 안 ${week} · 더 오래 ${longer})`,
     rooms: (made: number, listed: number) => `만든 방 ${made}개 (공개 ${listed}개)`,
     games: (started: number, ended: number) => `시작한 판 ${started} · 끝난 판 ${ended}`,
     /** Rooms that stood empty with no game ever started: nobody else came, or people came and nothing was started. */
@@ -676,6 +679,7 @@ const en: typeof ko = {
     weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     day: (date, weekday) => `${date} (${weekday})`,
     lobby: (visits, people, peak) => `Lobby: ${visits} ${visits === 1 ? "visit" : "visits"} · ${people} by address · ${peak} at once at most`,
+    came: (first, day, week, longer, days) => `Browsers new: ${first} · back: ${day + week + longer} (from yesterday ${day} · within ${days} days ${week} · longer ${longer})`,
     rooms: (made, listed) => `Rooms made: ${made} (${listed} public)`,
     games: (started, ended) => `Games started: ${started} · finished: ${ended}`,
     left: (alone, unplayed) => `Rooms left after waiting alone: ${alone} · gathered, never started: ${unplayed}`,

@@ -21,6 +21,7 @@
  */
 import chatConfig from "../chat-config.json";
 import directoryConfig from "../directory-config.json";
+import numbersConfig from "../numbers-config.json";
 import { GAMES, GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
 import roomConfig from "../room-config.json";
@@ -356,6 +357,7 @@ const PRIVACY_FACTS: PrivacyFacts = {
   wordsKept: directoryConfig.feedback.keep,
   madeMinutes: Math.max(...directoryConfig.makeLimits.map((limit) => limit.windowSeconds)) / 60,
   seatMinutes: roomConfig.awaySlotSeconds / 60,
+  weekDays: numbersConfig.weekDays,
 };
 
 /** The notice in each language. */

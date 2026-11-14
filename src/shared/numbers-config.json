@@ -1,4 +1,5 @@
 {
   "utcOffsetMinutes": 540,
-  "keepDays": 120
+  "keepDays": 120,
+  "weekDays": 7
 }

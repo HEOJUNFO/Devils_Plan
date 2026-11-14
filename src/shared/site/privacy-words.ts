@@ -30,6 +30,8 @@ export interface PrivacyFacts {
   madeMinutes: number;
   /** Minutes a browser keeps which room it was last put away in: as long as a room holds an away player's place (`awaySlotSeconds`, `room-config.json`). */
   seatMinutes: number;
+  /** Days back a browser last came and is still counted as back "within the week" (`weekDays`, `numbers-config.json`). */
+  weekDays: number;
 }
 
 /** When the notice was last changed to follow the code. */
@@ -57,6 +59,7 @@ const ko = {
         "이 브라우저를 알아보는 임의의 값을 하나 만들어 둡니다. 연결이 끊겼다 돌아왔을 때 같은 자리에 앉히는 데 쓰고, 들어가는 방에 보냅니다.",
         "방의 최근 채팅과 마지막 모습은 새로 고침에 대비해 그 탭이 열려 있는 동안만 둡니다.",
         `방에 있던 탭이 닫히거나 가려지면 그 방의 코드와 그때의 시각을 이 브라우저에 ${facts.seatMinutes}분 동안 둡니다. 그사이 다시 오면 하던 방으로 돌아가는 길을 보여 주는 데만 씁니다.`,
+        `로비에 마지막으로 온 날짜를 이 브라우저에 둡니다. 다시 오는 사람이 얼마나 되는지 세려고, 그날 처음 로비에 들어올 때 「처음 옴」, 「어제 옴」, 「${facts.weekDays}일 안에 옴」, 「더 오래전에 옴」 넷 가운데 한 마디를 서버에 보냅니다. 날짜는 보내지 않습니다.`,
         "브라우저 설정에서 이 사이트의 데이터를 지우면 모두 사라집니다.",
       ],
     },
@@ -79,7 +82,7 @@ const ko = {
         "방문자 수를 세려고, 주소를 한쪽으로만 바꾼 값(해시)을 그날 치로 두었다가 날이 바뀐 뒤 다음 방문 때 지웁니다. 주소 그대로는 적어 두지 않습니다. 다만 이 값은 주소를 감추는 암호가 아니라서, 마음먹으면 원래 주소를 맞혀 볼 수 있습니다.",
         `방을 만들면 같은 값이 만든 시각과 함께 남고, ${facts.madeMinutes}분이 지난 것은 다음에 누가 방을 만들 때 지웁니다.`,
         "로비에서 모임에 가겠다고 누르면 같은 값과 이 브라우저의 또 다른 임의의 값이 그 모임과 함께 남고, 지난 모임의 것은 다음 모임에 누가 누를 때 지웁니다.",
-        "그 밖에 남기는 것은 숫자뿐입니다. 날짜별 방문 수, 만든 방 수, 게임별 판 수 같은 것입니다.",
+        "그 밖에 남기는 것은 숫자뿐입니다. 날짜별 방문 수, 만든 방 수, 게임별 판 수 같은 것입니다. 브라우저가 보낸 「처음 옴」 같은 한 마디도 그날의 숫자에 하나를 더하고 끝이며, 주소나 다른 값과 함께 두지 않습니다.",
         "사이트가 적는 서버 로그에는 방이 만들어졌다, 게임이 시작됐다 같은 일만 적습니다. 접속 주소, 방 코드, 닉네임, 채팅은 적지 않습니다.",
       ],
     },
@@ -134,6 +137,7 @@ const en: typeof ko = {
         "A random value that tells this browser apart is made and kept. It puts you back in your seat when a connection drops and returns, and it is sent to the rooms you enter.",
         "A room's recent chat and how it last looked are kept only while that tab is open, in case the page is loaded again.",
         `When a tab in a room is closed or hidden, the room's code and the time are kept in this browser for ${facts.seatMinutes} minutes, only to offer you the way back to that room if you return by then.`,
+        `The day you last came to the lobby is kept in this browser. To count how many people come back, the first time you come to the lobby on a day it sends the server one of four words: "new", "came yesterday", "came within ${facts.weekDays} days" or "came longer ago". The day itself is not sent.`,
         "Clearing this site's data in your browser's settings removes all of it.",
       ],
     },
@@ -156,7 +160,7 @@ const en: typeof ko = {
         "To count visitors, a one-way digest (a hash) of the address is kept for the day and deleted at the first visit after the day changes. The address itself is not written down. The digest is not encryption, though: someone determined could work out which address it came from.",
         `When you make a room, the same digest is kept with the time, and those older than ${facts.madeMinutes} minutes are deleted the next time anyone makes a room.`,
         "If you say in the lobby that you will come to a meet-up, the same digest and a second random value of this browser are kept with that meet-up, and those of past meet-ups are deleted the next time anyone answers one.",
-        "Everything else that is kept is a number: visits by day, rooms made, games played of each kind.",
+        "Everything else that is kept is a number: visits by day, rooms made, games played of each kind. The one word your browser sends, such as \"new\", adds one to that day's number and is kept with no address or other value.",
         "The server log the site writes says only that things happened, such as a room being made or a game starting. It holds no address, room code, nickname or chat.",
       ],
     },

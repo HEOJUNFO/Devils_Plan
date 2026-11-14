@@ -16,7 +16,7 @@ import type { UnderHostRefusal, UnderSnapshot } from "./games/under-thirteen/hos
 import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
-import { isJoinWay, parseDays, type DayNumbers, type JoinWay } from "./numbers";
+import { isCame, isJoinWay, parseDays, type Came, type DayNumbers, type JoinWay } from "./numbers";
 import { isWho, type Coming } from "./going";
 import { parseWanting, type Wanting } from "./want";
 import type { JoinRejection, LobbyView } from "./lobby";
@@ -296,6 +296,10 @@ export interface NumbersAnswer {
  * directory keeps it until the meeting is over, whatever becomes of the
  * connection. Everyone looking is then told how many are coming (a
  * {@link ComingNote}).
+ *
+ * `came`: this browser says, the first time of a day it comes, whether it
+ * has come before and about how long ago (`cameOf` of `numbers.ts`): for the
+ * site's numbers by the day and nothing else. Nobody is told anything of it.
  */
 export type DirectoryRequest =
   | { type: "show"; game: GameId | null }
@@ -303,7 +307,8 @@ export type DirectoryRequest =
   | { type: "inbox"; key: string; drop?: number }
   | { type: "numbers"; key: string }
   | { type: "want"; game: GameId | null }
-  | { type: "going"; meet: number; who: string; on: boolean };
+  | { type: "going"; meet: number; who: string; on: boolean }
+  | { type: "came"; since: Came };
 
 /** The longest text the directory reads as a request: a word about the game at its longest fits, each of its letters written the long way. */
 export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
@@ -655,6 +660,7 @@ export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
     if (typeof data.meet !== "number" || !Number.isSafeInteger(data.meet) || !isWho(data.who) || typeof data.on !== "boolean") return null;
     return { type: "going", meet: data.meet, who: data.who, on: data.on };
   }
+  if (data.type === "came") return isCame(data.since) ? { type: "came", since: data.since } : null;
   if (data.type !== "show") return null;
   if (data.game !== null && !isGameId(data.game)) return null;
   return { type: "show", game: data.game };

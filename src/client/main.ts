@@ -63,7 +63,7 @@ import chatConfig from "../shared/chat-config.json";
 import directoryConfig from "../shared/directory-config.json";
 import meetConfig from "../shared/meet-config.json";
 import numbersConfig from "../shared/numbers-config.json";
-import { readDay, type DayNumbers, type JoinWay } from "../shared/numbers";
+import { cameDay, cameOf, dayOf, readDay, type DayNumbers, type JoinWay } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetDoor, meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
@@ -1355,6 +1355,28 @@ function askForGame(): void {
   listSocket.send(JSON.stringify(request));
 }
 
+/** Under which this browser keeps the day it last came to the lobby (`cameDay` of `numbers.ts`). */
+const CAME_KEY = "came";
+
+/**
+ * Tells the directory, the first time of a day this browser comes to the
+ * lobby, whether it has come before and about how long ago (`cameOf`): one
+ * word of four, for the site's numbers by the day. The day is kept before
+ * the word is said, and the word is said only where it was kept: a browser
+ * that keeps nothing would say "first" at every connection, so it says
+ * nothing. Only over a connection that is open (`watchRooms`).
+ */
+function sayCame(): void {
+  if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return;
+  const today = dayOf(Date.now(), numbersConfig);
+  const since = cameOf(cameDay(kept(CAME_KEY)), today, numbersConfig);
+  if (since === null) return;
+  keep(CAME_KEY, String(today));
+  if (cameDay(kept(CAME_KEY)) !== today) return;
+  const request: DirectoryRequest = { type: "came", since };
+  listSocket.send(JSON.stringify(request));
+}
+
 /** A time of day as the lobby writes it, by this browser's clock: "21:00". */
 function timeOf(at: number): string {
   return new Date(at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
@@ -1767,6 +1789,8 @@ function watchRooms(): void {
     // a word given for the next meeting is said again, in case it was given while no connection was open: the directory counts it once
     const near = meetNear(Date.now(), meetConfig);
     if (listSocket === current && near !== null && myGoing === near.start) sayGoing(near.start, true);
+    // whether this browser has come before, where it has not said so today
+    if (listSocket === current) sayCame();
   });
   current.addEventListener("message", (event) => {
     if (listSocket !== current) return;
@@ -2188,6 +2212,7 @@ function numbersAnswered(days: DayNumbers[] | null): void {
       text.className = "word";
       text.textContent = [
         WORDS.numbers.lobby(day.visits, day.people, day.peak),
+        WORDS.numbers.came(day.came.first, day.came.day, day.came.week, day.came.longer, numbersConfig.weekDays),
         `${WORDS.numbers.rooms(day.made, day.listed)} · ${WORDS.numbers.games(day.started, day.ended)}`,
         WORDS.numbers.left(day.alone, day.unplayed),
         WORDS.numbers.ways(day.ways.map((each) => `${WORDS.numbers.way[each.via]} ${each.n}`).join(" · "), day.startedAtMeet),

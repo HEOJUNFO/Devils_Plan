@@ -3,6 +3,7 @@ import { GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import { LANGS, type Lang } from "../../../src/shared/lang";
 import chatConfig from "../../../src/shared/chat-config.json";
 import directoryConfig from "../../../src/shared/directory-config.json";
+import numbersConfig from "../../../src/shared/numbers-config.json";
 import roomConfig from "../../../src/shared/room-config.json";
 import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, playPath, privacyPath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
 import { NEWS, NEWS_WORDS } from "../../../src/shared/site/news-words";
@@ -262,6 +263,11 @@ describe("the notice of what is kept of a visitor", () => {
     expect(Number.isInteger(minutes)).toBe(true);
     expect(notice("ko")).toContain(`이 브라우저에 ${minutes}분 동안`);
     expect(notice("en")).toContain(`in this browser for ${minutes} minutes`);
+  });
+
+  it("says the four words a browser tells of whether it came before, with the week as the numbers' settings have it", () => {
+    expect(notice("ko")).toContain(`「처음 옴」, 「어제 옴」, 「${numbersConfig.weekDays}일 안에 옴」, 「더 오래전에 옴」`);
+    expect(notice("en")).toContain(`"new", "came yesterday", "came within ${numbersConfig.weekDays} days" or "came longer ago"`);
   });
 
   it("says how many lines a report keeps and how many words to the maker are kept, as the settings have them", () => {

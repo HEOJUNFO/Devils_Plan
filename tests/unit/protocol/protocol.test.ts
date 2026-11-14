@@ -561,6 +561,14 @@ describe("parseDirectoryRequest", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "want", game: null }))).toEqual({ type: "want", game: null });
   });
 
+  it("reads whether a browser has come before, and no word but the four", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "week", last: 20_000 }))).toEqual({ type: "came", since: "week" });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "first" }))).toEqual({ type: "came", since: "first" });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "often" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: 3 }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came" }))).toBeNull();
+  });
+
   it("rejects a hand for a game there is not, or for none said", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "want", game: "chess" }))).toBeNull();
     expect(parseDirectoryRequest(JSON.stringify({ type: "want" }))).toBeNull();

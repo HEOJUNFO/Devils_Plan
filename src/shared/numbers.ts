@@ -14,16 +14,23 @@ import { GAME_IDS, isGameId, type GameId } from "./games";
  * The rooms tell the directory of what happened in them as they tell the
  * log, and the directory adds it up; read with the key the inbox is read
  * with, in the lobby opened with `?numbers`.
+ *
+ * One number is not the directory's own to count: whether those who come
+ * have come before. A browser keeps the day it last came and says a word of
+ * four about it, once a day ({@link cameOf}); the directory adds one to that
+ * word's number and keeps nothing else of it.
  */
 
 /**
  * `utcOffsetMinutes`: where the day is counted (a day begins at that place's
  * midnight, and its hours are that place's). `keepDays`: how many days'
- * numbers are kept.
+ * numbers are kept. `weekDays`: how many days back a browser last came and
+ * is still counted as back "within the week" ({@link cameOf}).
  */
 export interface NumbersConfig {
   utcOffsetMinutes: number;
   keepDays: number;
+  weekDays: number;
 }
 
 /**
@@ -165,6 +172,49 @@ export function visitCounts(now: number, fresh: boolean, looking: number, config
   ];
 }
 
+/**
+ * What a browser says of itself on the first time of a day it comes to the
+ * lobby: that it has not come before (`first`), or that it last came the day
+ * before (`day`), within the week (`week`), or longer ago (`longer`). A word
+ * of these four and nothing more: not the day it last came, and nothing the
+ * directory could know one browser from another by.
+ *
+ * It is the browser's own account. One whose storage was emptied says
+ * `first` again, as does one that came before this was counted; a person
+ * with two browsers is two.
+ */
+export const CAME = ["first", "day", "week", "longer"] as const;
+export type Came = (typeof CAME)[number];
+
+/** Whether `value` is one of the four words. */
+export function isCame(value: unknown): value is Came {
+  return typeof value === "string" && (CAME as readonly string[]).includes(value);
+}
+
+/** The day a browser kept as the one it last came on (`stored`, as it keeps it), or `null` where it keeps none or what it keeps is not a day. */
+export function cameDay(stored: string | null): number | null {
+  if (stored === null || !/^\d{1,7}$/.test(stored)) return null;
+  return Number(stored);
+}
+
+/**
+ * What a browser that `last` came on that day (`null`: never, as far as it
+ * knows) says on `today`; `null` where it has nothing to say: it has said
+ * its word today already, or its clock has gone back to before the day it
+ * kept.
+ */
+export function cameOf(last: number | null, today: number, config: NumbersConfig): Came | null {
+  if (last === null) return "first";
+  if (last >= today) return null;
+  if (today - last === 1) return "day";
+  return today - last <= config.weekDays ? "week" : "longer";
+}
+
+/** What a browser's word adds to the day's numbers: one more of that word. */
+export function cameCounts(came: Came): Count[] {
+  return [{ what: `came:${came}`, n: 1 }];
+}
+
 /** The first day whose numbers are still kept on `today`. */
 export function firstKept(today: number, config: NumbersConfig): number {
   return today - config.keepDays + 1;
@@ -196,6 +246,8 @@ export interface DayRead {
   unplayed: number;
   /** Games that began while a meeting for that game was on: among `started`. */
   startedAtMeet: number;
+  /** The browsers that said their word that day, by the word ({@link CAME}): new ones, and those back after a day, within the week, or longer. */
+  came: Record<Came, number>;
   /** How those who came into a room somebody else made got there, each way that anyone took, in the order of `JOIN_WAYS`. */
   ways: { via: JoinWay; n: number }[];
   /** The games a hand was raised for or something was started or ended of, in the order the games are listed in. */
@@ -233,6 +285,7 @@ export function readDay(numbers: DayNumbers): DayRead {
     alone: of("alone"),
     unplayed: of("unplayed"),
     startedAtMeet: of("started-meet"),
+    came: { first: of("came:first"), day: of("came:day"), week: of("came:week"), longer: of("came:longer") },
     ways: JOIN_WAYS.map((via) => ({ via, n: of(`via:${via}`) })).filter((each) => each.n > 0),
     games,
     hours,

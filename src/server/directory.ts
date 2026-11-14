@@ -22,7 +22,7 @@ import { isGameId, type GameId } from "../shared/games";
 import meetConfig from "../shared/meet-config.json";
 import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import numbersConfig from "../shared/numbers-config.json";
-import { atMeet, countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
+import { atMeet, cameCounts, countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
 import {
@@ -133,6 +133,8 @@ export class RoomDirectory extends Server<Env> {
   private entries = new Map<string, DirectoryEntry>();
   /** How fast each viewer has been asking for another game, by connection id. Forgotten in sleep, when nobody is asking. */
   private readonly showPace = new Map<string, Pace>();
+  /** The viewers who have said whether they came before (`came` of `DirectoryRequest`), by connection id: a connection is counted once. Forgotten in sleep, after which one that says it again is counted again: a page of ours says it once a day. */
+  private readonly cameSaid = new Set<string>();
   /** What the viewers were last told of how many they are, as it was sent; nothing after the directory has slept, when it is worked out from who was there (`tellWatching`). */
   private watchingTold: string | null = null;
   /** The most of each kind last written to the day's numbers, and for which day: a most that has not grown is not written again (`count`). Forgotten in sleep. */
@@ -200,8 +202,9 @@ export class RoomDirectory extends Server<Env> {
   /**
    * A viewer picked a game, or every game again: they are sent that list now
    * and from now on. Or a viewer wrote a word about the game, which is kept;
-   * raised or lowered a hand for a game; or said they will come to the next
-   * meeting. Anything else a viewer sends is not read.
+   * raised or lowered a hand for a game; said they will come to the next
+   * meeting; or said whether their browser has come before, which is
+   * counted. Anything else a viewer sends is not read.
    */
   async onMessage(connection: Connection<ViewerState>, message: WSMessage): Promise<void> {
     const request = parseDirectoryRequest(message);
@@ -218,6 +221,12 @@ export class RoomDirectory extends Server<Env> {
     const { from, want, game } = connection.state ?? {};
     const kept = { ...(from === undefined ? {} : { from }), ...(want === undefined ? {} : { want }) };
     if (request.type === "going") return this.takeGoing(request, from, now);
+    if (request.type === "came") {
+      // counted for whoever runs the site: do those who come come back. The word is added to its number and not kept with anything.
+      if (!this.cameSaid.has(connection.id)) this.count(cameCounts(request.since), now);
+      this.cameSaid.add(connection.id);
+      return;
+    }
     if (request.type === "want") {
       // a hand up or down: the game whose rooms are listed stays the one it was
       connection.setState({ ...(game === undefined ? {} : { game }), ...(from === undefined ? {} : { from }), ...(request.game === null ? {} : { want: request.game }) });
@@ -231,6 +240,7 @@ export class RoomDirectory extends Server<Env> {
 
   onClose(connection: Connection<ViewerState>): void {
     this.showPace.delete(connection.id);
+    this.cameSaid.delete(connection.id);
     this.feedbackPace.delete(connection.id);
     this.tellWatching(null, connection);
     this.tellWanting(null, connection);

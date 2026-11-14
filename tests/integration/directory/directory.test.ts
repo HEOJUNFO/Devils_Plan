@@ -1508,6 +1508,26 @@ describe("RoomDirectory: hands raised for a game", () => {
     a.close();
   });
 
+  it("counts a browser's word of whether it came before, once for a connection, and no word but the four", async () => {
+    await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec("DELETE FROM numbers"));
+    const [a, b] = [await hand(), await hand()];
+
+    a.sendRaw(JSON.stringify({ type: "came", since: "week" }));
+    a.sendRaw(JSON.stringify({ type: "came", since: "week" }));
+    a.sendRaw(JSON.stringify({ type: "came", since: "often" }));
+    b.sendRaw(JSON.stringify({ type: "came", since: "first" }));
+    // a connection's messages are read in the order sent: once both hands are up, the words before them have been counted
+    a.want("under-thirteen");
+    b.want("under-thirteen");
+    await a.until({ "under-thirteen": 2 });
+
+    const rows = await runInDurableObject(directoryStub(), (_object, state) =>
+      state.storage.sql.exec<{ what: string; n: number }>("SELECT what, n FROM numbers WHERE what LIKE 'came:%' AND day = ? ORDER BY what", dayOf(Date.now(), numbersConfig)).toArray(),
+    );
+    expect(rows).toEqual([{ what: "came:first", n: 1 }, { what: "came:week", n: 1 }]);
+    for (const each of [a, b]) each.close();
+  });
+
   it("reads nothing of a hand for a game there is not", async () => {
     const [a, b] = [await hand(), await hand()];
 
