@@ -1261,7 +1261,8 @@ export class GameRoom extends Server<Env> {
       const paid = next === null ? this.lobby : withPieces(this.lobby, gainsOf(this.host().pieces?.(next), ledgerConfig));
       // Who did best in it is marked in the room until the next game played to its end, and it is counted in the
       // room's tally for those who played it (`tops.ts`): with the pieces, in one lobby.
-      const marked = next === null ? paid : withResult(paid, resultOf(this.host().places?.(next), topsConfig));
+      // (not a game fewer than two of its players stayed in the room for: `resultOf`)
+      const marked = next === null ? paid : withResult(paid, resultOf(this.host().places?.(next), topsConfig, this.presence().seated));
       if (marked !== this.lobby) {
         this.saveLobby(marked);
         this.broadcastLobby();

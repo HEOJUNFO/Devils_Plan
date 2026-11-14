@@ -3614,8 +3614,12 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
         delete asked.ready;
       }
       gameOn = !over;
-      // a game played to its end goes into the player's own record, once
-      if (over && noteFinish(message)) syncRecord();
+      // a game played to its end goes into the player's own record, once: by this tab, or by another of this browser
+      // that heard of the end first, and then the record's button is shown here all the same
+      if (over) {
+        noteFinish(message);
+        syncRecord();
+      }
       if (over && (table === null || dismissedGame === message.startedAt)) {
         keepAwake();
         return;

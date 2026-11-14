@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "방 전적: 다른 사람이 모두 나간 뒤 혼자 끝낸 판을 한 판으로 세던 것을 고쳤습니다. 안내에 적힌 대로, 둘 이상이 끝까지 한 판만 셉니다(「내 기록」과 같습니다). 같은 브라우저의 탭 두 개로 한 방에 있을 때 한 탭에 「내 기록」 버튼이 나타나지 않던 것도 고쳤습니다.",
+        en: "Room tally: a game you finished alone after everyone else had left was counted as a game. As the hint says, only games two or more played to the end are counted (the same as My record). Also fixed: with two tabs of one browser in a room, the My record button did not appear in one of them.",
+      },
+      {
         ko: "하던 방으로 돌아가는 길: 연결이 먼저 끊긴 뒤에 탭을 닫으면, 방이 자리를 이미 내놓은 뒤에도 돌아가는 길을 보여 주던 것을 고쳤습니다. 이제 방이 자리를 지켜 주는 동안만 보여 줍니다. 닫힌 방의 링크로 방을 다시 열다가 「방을 만들지 못했습니다」가 나온 뒤 다시 만들면, 이제 그 링크의 방으로 열립니다. 그렇게 연 방이 비공개여도 다음에 만드는 방은 전에 고른 공개·비공개 그대로입니다.",
         en: "The way back to your room: if the connection had dropped before the tab was closed, the way back was still offered after the room had given your place up. It is now offered only while the room holds the place. When reopening a closed room from its link fails with \"The room could not be made\" and you try again, the room now opens under that link. A room reopened that way is private, and the next room you make still starts from the Public or Private choice you made before.",
       },

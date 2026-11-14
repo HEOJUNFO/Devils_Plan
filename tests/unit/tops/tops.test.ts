@@ -82,6 +82,37 @@ describe("resultOf", () => {
     expect(resultOf([{ token: token(0), place: 1 }], CONFIG)).toBeNull();
   });
 
+  it("says nothing for a game fewer people than the room counts were still in the room at the end of", () => {
+    // Arrange: two played, and one of them had given their place up before the other finished
+    const lines = [
+      { token: token(0), place: 1 },
+      { token: token(1), place: 2 },
+    ];
+
+    // Act
+    const alone = resultOf(lines, CONFIG, new Set([token(0)]));
+    const both = resultOf(lines, CONFIG, new Set([token(0), token(1)]));
+
+    // Assert: first place among nobody is not a place; with both still there it is
+    expect(alone).toBeNull();
+    expect(both).toEqual(game([0, 1], [0]));
+  });
+
+  it("ranks by everyone who played where enough of them stayed, whoever left among them", () => {
+    // Arrange: three played, the one who ended last has left
+    const lines = [
+      { token: token(0), place: 1 },
+      { token: token(1), place: 2 },
+      { token: token(2), place: 3 },
+    ];
+
+    // Act
+    const result = resultOf(lines, CONFIG, new Set([token(0), token(1)]));
+
+    // Assert
+    expect(result).toEqual(game([0, 1, 2], [0]));
+  });
+
   it("says nothing where rooms keep no mark", () => {
     const lines = [
       { token: token(0), place: 1 },

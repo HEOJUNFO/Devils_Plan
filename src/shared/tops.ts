@@ -38,11 +38,17 @@ export interface GameResult {
  * `null` for a game that leaves the room as it was: one cut short or one
  * that tells no places (`lines` absent or `null`), one a bot played in (a bot
  * is a test aid: `.claude/rules/bots.md`), one of fewer people than
- * `peopleAtLeast`, and where rooms keep no mark.
+ * `peopleAtLeast`, and where rooms keep no mark. `null` too where fewer than
+ * that many of its players are still in the room at its end (`seated`, the
+ * tokens of those who are; left out, everyone is taken to be): the room made
+ * the moves of whoever left, and first place among nobody is not a place.
+ * The player's own record leaves such a game out the same way (`record.ts`).
+ * Where enough stayed, the places are those of everyone who played.
  */
-export function resultOf(lines: readonly PlaceLine[] | null | undefined, config: TopsConfig): GameResult | null {
+export function resultOf(lines: readonly PlaceLine[] | null | undefined, config: TopsConfig, seated?: ReadonlySet<string>): GameResult | null {
   if (!config.on || lines === null || lines === undefined) return null;
   if (lines.length < config.peopleAtLeast || lines.some((line) => line.token === null)) return null;
+  if (seated !== undefined && lines.filter((line) => line.token !== null && seated.has(line.token)).length < config.peopleAtLeast) return null;
   const tokens = (some: readonly PlaceLine[]): Set<string> => new Set(some.flatMap((line) => (line.token === null ? [] : [line.token])));
   const best = Math.min(...lines.map((line) => line.place));
   const top = lines.filter((line) => line.place === best);
