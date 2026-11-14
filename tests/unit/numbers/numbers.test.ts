@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import numbersConfig from "../../../src/shared/numbers-config.json";
-import { CAME, JOIN_WAYS, atMeet, cameCounts, cameDay, cameOf, countsOf, dayOf, firstKept, hourOf, isCame, isJoinWay, parseDays, parseRoomEvent, readDay, visitCounts, type NumbersConfig, type RoomEvent } from "../../../src/shared/numbers";
+import { CAME, JOIN_WAYS, atMeet, cameCounts, cameDay, cameOf, countsOf, dayOf, firstKept, gameMinutes, hourOf, isCame, isJoinWay, parseDays, parseRoomEvent, readDay, visitCounts, type NumbersConfig, type RoomEvent } from "../../../src/shared/numbers";
 
 /** Counted in Korea, kept thirty days; back within five days is back within the week. */
 const CONFIG: NumbersConfig = { utcOffsetMinutes: 540, keepDays: 30, weekDays: 5 };
@@ -119,6 +119,18 @@ describe("dayOf and hourOf", () => {
 
   it("keep as many days as are set, today among them", () => {
     expect(firstKept(MONDAY_DAY, CONFIG)).toBe(MONDAY_DAY - 29);
+  });
+});
+
+describe("how long a game took", () => {
+  it("is whole minutes from when it began, and never less than none", () => {
+    expect(gameMinutes(MONDAY, MONDAY + 12.4 * 60_000)).toBe(12);
+    expect(gameMinutes(MONDAY, MONDAY + 12.5 * 60_000)).toBe(13);
+    expect(gameMinutes(MONDAY, MONDAY - 60_000)).toBe(0);
+  });
+
+  it("is not known where the room kept no moment, or what it kept is not one", () => {
+    for (const began of [null, undefined, "then", Number.NaN, Number.POSITIVE_INFINITY]) expect(gameMinutes(began, MONDAY)).toBeNull();
   });
 });
 

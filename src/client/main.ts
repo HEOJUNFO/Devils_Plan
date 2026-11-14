@@ -54,7 +54,7 @@ import {
 import { liftFor, placeFrame } from "../shared/frame";
 import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, newsPath, slugOf } from "../shared/site/paths";
 import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
-import { keepRoom, keptCode, keptRoom, leaveSeat, seatLeft } from "../shared/resume";
+import { keepRoom, keptCode, keptRoom, leaveSeat, parseSeatWord, seatAnswer, seatLeft, seatTaken, type SeatWord } from "../shared/resume";
 import { hearersOf, namesOf, teammatesOf, toggled, type ChatTo, type Hearer } from "../shared/aside";
 import { QUICK_WORDS } from "../shared/chat";
 import { suggestNick, type NickWords } from "../shared/nick";
@@ -4729,6 +4729,31 @@ function dropSeat(code: string): void {
 /** The code of the room the form offers the way back to (`offerSeat`), for as long as the box for a room's code holds it; "" for none. */
 let seatCode = "";
 
+/** Takes the offer of a way back off the form: the box is emptied where it still holds the code offered and the player has not gone in. */
+function takeBackSeat(): void {
+  const offered = seatCode;
+  seatCode = "";
+  if (offered !== "" && socket === null && codeInput.value.trim().toUpperCase() === offered) codeInput.value = "";
+  syncEntry();
+}
+
+/**
+ * Where this browser's tabs say to each other whether one of them is in a
+ * room (`SeatWord` of `resume.ts`); `null` in a browser with no such way. A
+ * tab that is only hidden has left the way back to its room (`putAway`) and
+ * is still in it: asked, it says so, and the tab that offered the way back
+ * takes the offer off. A tab the browser has dropped or frozen says
+ * nothing, and the offer stands. What is kept is left as it is: it is the
+ * hidden tab's, which takes it away when it is in front again.
+ */
+const seatTalk = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(storageKey(SEAT_KEY));
+seatTalk?.addEventListener("message", (event) => {
+  const word = parseSeatWord(event.data);
+  const answer = seatAnswer(word, currentCode);
+  if (answer !== null) return seatTalk.postMessage(answer);
+  if (seatTaken(word, seatCode)) takeBackSeat();
+});
+
 /**
  * Offers the way back to the room this browser was last put away in, to
  * someone who opens the site again in a tab that knows nothing of it (the
@@ -4745,15 +4770,14 @@ function offerSeat(): void {
   seatCode = left.code;
   codeInput.value = left.code;
   syncEntry();
+  // a tab that is only hidden is still in that room: where one says so, the offer is taken off again
+  seatTalk?.postMessage({ type: "ask", code: left.code } satisfies SeatWord);
   setTimeout(() => {
     // the room has let the place go by now: the offer goes, unless the box holds another code or the player went in
     // (what is kept is taken away only if it is still what was offered: a tab put away in a room since then has
     // written its own, this one among them, and that one is not three minutes old)
     if (kept(SEAT_KEY) === stored) keep(SEAT_KEY, null);
-    const offered = seatCode;
-    seatCode = "";
-    if (offered !== "" && socket === null && codeInput.value.trim().toUpperCase() === offered) codeInput.value = "";
-    syncEntry();
+    takeBackSeat();
   }, left.until - Date.now());
 }
 

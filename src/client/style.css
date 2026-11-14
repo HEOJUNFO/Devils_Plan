@@ -2077,6 +2077,8 @@ button.choice[aria-pressed="true"] {
 :root.touch #tally-open,
 :root.touch #when-open,
 :root.touch #code-hide,
+:root.touch #qr-open,
+:root.touch #version,
 :root.touch #feedback {
   position: relative;
 }
@@ -2086,6 +2088,8 @@ button.choice[aria-pressed="true"] {
 :root.touch #tally-open::before,
 :root.touch #when-open::before,
 :root.touch #code-hide::before,
+:root.touch #qr-open::before,
+:root.touch #version::before,
 :root.touch #feedback::before {
   position: absolute;
   inset: -8px -3px -3px;

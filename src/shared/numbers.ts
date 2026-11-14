@@ -147,6 +147,17 @@ export function countsOf(event: RoomEvent, meeting = false): Count[] {
   }
 }
 
+/**
+ * How many whole minutes a game that `began` then (ms since the epoch) took
+ * to `now`; `null` where the room does not know when it began: it kept no
+ * moment, or what it kept is not one (a room whose count of itself was
+ * written before the moment was kept has none at all).
+ */
+export function gameMinutes(began: unknown, now: number): number | null {
+  if (typeof began !== "number" || !Number.isFinite(began)) return null;
+  return Math.max(0, Math.round((now - began) / MINUTE_MS));
+}
+
 /** The day `now` is on where the day is counted, from the epoch. */
 export function dayOf(now: number, config: NumbersConfig): number {
   return Math.floor((now + config.utcOffsetMinutes * MINUTE_MS) / DAY_MS);

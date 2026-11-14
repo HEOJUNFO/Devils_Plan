@@ -50,7 +50,7 @@ import {
   type LobbyState,
   type RoomConfig,
 } from "../shared/lobby";
-import type { RoomEvent } from "../shared/numbers";
+import { gameMinutes, type RoomEvent } from "../shared/numbers";
 import { pace, type Pace } from "../shared/pace";
 import {
   CLOSE_LEFT,
@@ -1174,7 +1174,9 @@ export class GameRoom extends Server<Env> {
 
   /** What the room has counted of itself so far. */
   private tally(): Tally {
-    return (this.stored ? this.load<Tally>(TALLY_KEY) : null) ?? NO_TALLY;
+    const kept = this.stored ? this.load<Tally>(TALLY_KEY) : null;
+    // a count written before the moment a game began was kept has none: read as between games
+    return kept === null ? NO_TALLY : { ...kept, began: typeof kept.began === "number" ? kept.began : null };
   }
 
   /** Counts who is connected now, where that is more than were ever connected at once before. */
@@ -1242,7 +1244,7 @@ export class GameRoom extends Server<Env> {
     if (wasPlaying && !this.playing() && this.lobby !== null) {
       // For the log: which game, and how long it took. A game nobody stayed for ends here too.
       const tally = this.tally();
-      const minutes = tally.began === null ? null : Math.max(0, Math.round((Date.now() - tally.began) / 60_000));
+      const minutes = gameMinutes(tally.began, Date.now());
       console.log(`game ended: ${gameOf(this.lobby)}${minutes === null ? "" : ` ${minutes} min`}`);
       this.count({ type: "ended", game: gameOf(this.lobby), minutes });
       if (tally.began !== null) this.save(TALLY_KEY, { ...tally, began: null } satisfies Tally);

@@ -140,3 +140,30 @@ export function seatLeft(stored: string | null, now: number, maxAgeSeconds: numb
   const until = at + maxAgeSeconds * 1000;
   return at > now || now >= until ? null : { code, until };
 }
+
+/**
+ * What the tabs of one browser say to each other about a way back: a tab
+ * that offers the way back to a room asks whether another tab is in it
+ * (`ask`), and a tab that is says so (`here`). A room kept by a tab that is
+ * only hidden is not one to be offered the way back to: the tab is still
+ * there, and going in again from another would take its place from it.
+ */
+export type SeatWord = { type: "ask"; code: string } | { type: "here"; code: string };
+
+/** Reads what another tab said, returning `null` for what is not one of the two words. */
+export function parseSeatWord(raw: unknown): SeatWord | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const { type, code } = raw as Record<string, unknown>;
+  if ((type !== "ask" && type !== "here") || typeof code !== "string" || code === "") return null;
+  return { type, code };
+}
+
+/** What a tab in room `inRoom` ("" for a tab in none) answers `word` with: that it is here, where it was asked about its own room; else nothing. */
+export function seatAnswer(word: SeatWord | null, inRoom: string): SeatWord | null {
+  return word !== null && word.type === "ask" && inRoom !== "" && word.code === inRoom ? { type: "here", code: inRoom } : null;
+}
+
+/** Whether `word` says another tab is in the room this one offers the way back to (`offered`, "" for none offered). */
+export function seatTaken(word: SeatWord | null, offered: string): boolean {
+  return word !== null && word.type === "here" && offered !== "" && word.code === offered;
+}

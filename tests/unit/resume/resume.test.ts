@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_GAME } from "../../../src/shared/games";
-import { keepRoom, keptCode, keptRoom, leaveSeat, seatLeft } from "../../../src/shared/resume";
+import { keepRoom, keptCode, keptRoom, leaveSeat, parseSeatWord, seatAnswer, seatLeft, seatTaken } from "../../../src/shared/resume";
 import shipped from "../../../src/shared/room-config.json";
 
 /** The room the page was in. */
@@ -164,5 +164,30 @@ describe("the room a browser was last put away in", () => {
 
   it("leaves the room's code and the moment and nothing else", () => {
     expect(JSON.parse(leaveSeat(CODE, PUT_AWAY))).toEqual({ code: CODE, at: PUT_AWAY });
+  });
+});
+
+describe("what a browser's tabs say of a way back", () => {
+  it("a tab in the room asked about says it is here, and no other tab says anything", () => {
+    expect(seatAnswer({ type: "ask", code: CODE }, CODE)).toEqual({ type: "here", code: CODE });
+    expect(seatAnswer({ type: "ask", code: CODE }, OTHER)).toBeNull();
+    expect(seatAnswer({ type: "ask", code: CODE }, "")).toBeNull();
+    // an answer is not answered, or two tabs of one room would answer each other without end
+    expect(seatAnswer({ type: "here", code: CODE }, CODE)).toBeNull();
+    expect(seatAnswer(null, CODE)).toBeNull();
+  });
+
+  it("the way back is taken where a tab says it is in the room offered, and only then", () => {
+    expect(seatTaken({ type: "here", code: CODE }, CODE)).toBe(true);
+    expect(seatTaken({ type: "here", code: OTHER }, CODE)).toBe(false);
+    expect(seatTaken({ type: "here", code: CODE }, "")).toBe(false);
+    expect(seatTaken({ type: "ask", code: CODE }, CODE)).toBe(false);
+    expect(seatTaken(null, CODE)).toBe(false);
+  });
+
+  it("reads the two words and nothing else", () => {
+    expect(parseSeatWord({ type: "ask", code: CODE, more: 1 })).toEqual({ type: "ask", code: CODE });
+    expect(parseSeatWord({ type: "here", code: CODE })).toEqual({ type: "here", code: CODE });
+    for (const other of [null, "ask", 3, {}, { type: "gone", code: CODE }, { type: "ask" }, { type: "ask", code: "" }, { type: "here", code: 5 }]) expect(parseSeatWord(other)).toBeNull();
   });
 });
