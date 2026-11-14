@@ -183,10 +183,27 @@ describe("기억 포커: the rounds the document lists", () => {
     }
   });
 
-  it("puts the two hands of each round in the order their names give: a tie, then second, first, first, second", () => {
-    // by the document's own names: Q트리플 = Q트리플, 포카드 > 풀하우스, 투페어 > 하이, 트리플 > 투페어, 투페어 > 원페어
+  it("puts the two hands of each round in the order their names give: a tie, then second, first, first, second, second, second, second, first", () => {
+    // by the document's own names: Q트리플 = Q트리플, 포카드 > 풀하우스, 투페어 > 하이, 트리플 > 투페어, 투페어 > 원페어,
+    // and of rounds 6 to 9: 풀하우스 > 투페어, 원페어 > 하이, 투페어 > 원페어, 스트레이트 > 원페어
     const higher = DOCUMENTED_ROUNDS.map((round) => Math.sign(compareHands(documentedHand(round, round.first), documentedHand(round, round.second))));
 
-    expect(higher).toEqual([0, -1, 1, 1, -1]);
+    expect(higher).toEqual([0, -1, 1, 1, -1, -1, -1, -1, 1]);
+  });
+
+  it("lists nine rounds, and no card twice in any but the first", () => {
+    const distinct = DOCUMENTED_ROUNDS.map((round) => new Set([...round.board.join(""), ...round.shared]).size);
+
+    expect(distinct).toEqual([18, 19, 19, 19, 19, 19, 19, 19, 19]);
+  });
+
+  it("names the ninth round's ace, two, three, four and five a straight to the five, as the document does", () => {
+    const ninth = DOCUMENTED_ROUNDS[8];
+
+    const made = documentedHand(ninth, ninth.first);
+
+    expect(ninth.first.said).toBe("5 스트레이트");
+    expect(made).toEqual({ kind: "straight", ranks: [5] });
+    expect(compareHands(made, hand("2♦ 3♠ 4♥ 5♣ 6♦"))).toBeLessThan(0);
   });
 });

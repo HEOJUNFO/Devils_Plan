@@ -1,13 +1,20 @@
 /**
- * The rounds of 기억 포커 as the document lists them (the season's day-1 document, section 3.2.6
- * "미니게임4", as it stood on 2026-11-11 15:00 KST). Written by a script from the document's own
- * tables, so that no card is copied by hand: the board of sixteen cards row by row (cells A to P),
- * the three shared cards, the two cells each of the two players chose, and the hand the document
- * says each made. Cards are the Unicode playing card signs the document uses. Who played is left
- * out: the players are "first" and "second", in the document's order.
+ * The rounds of 기억 포커 as the document lists them (the season's day-1 document, the section
+ * "미니게임4": rounds 1 to 5 as it stood on 2026-11-11 15:00 KST, rounds 6 to 9 as it stood on
+ * 2026-11-14 21:28 KST, when it had come to list all nine the show played). Written by a script
+ * from the document's own tables, so that no card is copied by hand: the board of sixteen cards row
+ * by row (cells A to P), the three shared cards, the two cells each of the two players chose, and
+ * the hand the document says each made. Cards are the Unicode playing card signs the document uses.
+ * Who played is left out: the players are "first" and "second", in the document's order.
  *
  * The first round is kept as the document has it, with the queen of spades both at cell M and among
  * the shared cards, which one deck cannot give: the document's result (three queens) counts both.
+ *
+ * The document lists every round a second time as text. On 2026-11-14 the two lists were laid
+ * beside each other: they are the same but for one cell in round 3 (E) and one in round 5 (K),
+ * where the signs have the three of spades and the text the three of diamonds. This file follows
+ * the signs (in round 3 the text's card is also among the shared cards, which one deck cannot give);
+ * neither cell changes the hand its round names.
  */
 import { cardOf, type Card, type HandKind } from "../../../src/shared/games/memory-poker/cards";
 
@@ -87,5 +94,33 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🂦🂥🂨",
     first: { picks: ["B", "K"], kind: "pair", rank: 6, said: "6 원페어" },
     second: { picks: ["C", "D"], kind: "two-pair", rank: 8, said: "8 투페어" },
+  },
+  {
+    round: 6,
+    board: ["🂹🂥🃞🃈", "🃋🂺🂭🃓", "🃒🃇🂴🂫", "🂾🃚🃃🂩"],
+    shared: "🂪🃁🂡",
+    first: { picks: ["F", "O"], kind: "two-pair", rank: 14, said: "A 투페어" },
+    second: { picks: ["F", "N"], kind: "full-house", rank: 10, said: "10 풀하우스" },
+  },
+  {
+    round: 7,
+    board: ["🃘🂾🃇🂮", "🂨🃑🂵🂳", "🂴🂭🃛🃈", "🃗🃊🂩🂱"],
+    shared: "🃅🃓🂤",
+    first: { picks: ["L", "O"], kind: "high", rank: 9, said: "9 하이" },
+    second: { picks: ["B", "D"], kind: "pair", rank: 13, said: "K 원페어" },
+  },
+  {
+    round: 8,
+    board: ["🃍🂣🃚🂸", "🂾🃁🂭🃒", "🃞🂷🃄🂮", "🃗🃝🂲🂩"],
+    shared: "🂧🃑🃃",
+    first: { picks: ["D", "F"], kind: "pair", rank: 14, said: "A 원페어" },
+    second: { picks: ["B", "F"], kind: "two-pair", rank: 14, said: "A 투페어" },
+  },
+  {
+    round: 9,
+    board: ["🂤🃒🂷🃋", "🂵🂭🃂🃚", "🃓🂱🂢🃅", "🃉🃖🂨🂲"],
+    shared: "🃃🃄🃁",
+    first: { picks: ["E", "G"], kind: "straight", rank: 5, said: "5 스트레이트" },
+    second: { picks: ["A", "D"], kind: "pair", rank: 4, said: "4 원페어" },
   },
 ];

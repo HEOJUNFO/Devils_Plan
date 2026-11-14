@@ -14,6 +14,13 @@
  * (4 here), and there the document's own row of the order agrees with this
  * file, not with its cell. So nothing here was changed.
  *
+ * On 2026-11-14 the document's table had been redrawn, with each round's
+ * order before and after the passes and the penalties of the round, and a
+ * script laid it beside this file again: the 98 submissions, the order
+ * before the passes, who passed, the order after them (this file's passes,
+ * last to pass first), each round's penalties and the totals are all the
+ * same. Nothing here was changed.
+ *
  * Who played is left out. The players are numbers: as they stood, clockwise,
  * from whoever held the first-player marker in the first round.
  */
