@@ -3197,6 +3197,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       // the room counts for the player where nothing is on its way (a press in another tab) is what was asked.
       if (currentCode !== code || currentView === null || currentView.game !== message.game) keptWish = null;
       else keptWish = keptAfter(keptWish, message.wish ?? null, wishLost, asked.wish !== undefined);
+      // a game that has no place for someone who has come in since is no longer asked for: the room would refuse it
+      if (keptWish !== null && wishLost && !gameHolds(message.players.map((p) => p.slot), keptWish, config)) keptWish = null;
       renderRoom(code, message);
       // said again on a connection that has not been told it
       if (sayAgain(keptWish, wishLost, message.host === message.you, asked.wish !== undefined) && keptWish !== null) send({ type: "wish", game: keptWish });
