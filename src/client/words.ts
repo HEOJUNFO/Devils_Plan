@@ -195,7 +195,8 @@ const ko = {
     now: (game: string) => `지금 ${game} 모임`,
     /** Beside it: a press goes into the meeting's room, and when the meeting ends. */
     until: (time: string) => `들어가기 · ${time}까지`,
-    inTime: (hours: number, minutes: number) => (hours > 0 ? `${hours}시간 ${minutes}분 뒤` : `${minutes}분 뒤`),
+    /** An hour or more away, the minutes are left out. */
+    inTime: (hours: number, minutes: number) => (hours > 0 ? `${hours}시간 뒤` : `${minutes}분 뒤`),
     /**
      * In place of the wait, once anyone has said they will come (`src/shared/going.ts`): how many, "or more" past
      * the most that is counted, and for a reader who is one of them (`mine`) their own word first.
@@ -738,7 +739,7 @@ const en: typeof ko = {
     title: (time, game) => `${game} at ${time}`,
     now: (game) => `${game} on now`,
     until: (time) => `Join till ${time}`,
-    inTime: (hours, minutes) => (hours > 0 ? `in ${hours}h ${minutes}m` : `in ${minutes} min`),
+    inTime: (hours, minutes) => (hours > 0 ? `in ${hours}h` : `in ${minutes} min`),
     coming: (count, more, mine) => (mine ? `I'm in · ${count}${more ? "+" : ""}` : `${count}${more ? "+" : ""} coming`),
     calendar: "Add to calendar",
     event: (game, site) => `${game} meet-up (${site})`,

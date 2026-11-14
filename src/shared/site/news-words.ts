@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "로비의 모임 줄: 모임까지 한 시간 넘게 남았을 때는 분을 빼고 「12시간 뒤」처럼 시간만 보여 줍니다.",
+        en: "The meet-up line in the lobby: with an hour or more to go it now shows hours only, as in \"in 12h\".",
+      },
+      {
         ko: "키보드로 쓸 때: 연결이 끊긴 사람의 방장 메뉴를 열면 키가 메뉴로 들어가지 않던 것, 「만들기」를 누른 뒤 방이 만들어지는 동안 키가 갈 곳을 잃던 것을 고쳤습니다.",
         en: "With a keyboard: the host's menu for a player whose connection had dropped opened without taking the keys, and after pressing \"Make\" the keys were lost while the room was being made. Both fixed.",
       },
