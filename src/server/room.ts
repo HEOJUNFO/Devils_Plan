@@ -453,8 +453,8 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "reading") this.handleReading(connection, seat, parsed.reading);
     else if (parsed.type === "wish") this.handleWish(connection, seat, parsed.game);
     else if (parsed.type === "when") this.handleWhen(connection, seat.slot, parsed.at);
-    else if (parsed.type === "host") await this.handleHost(connection, seat.slot, parsed.to);
-    else if (parsed.type === "kick") await this.handleKick(connection, seat.slot, parsed.slot);
+    else if (parsed.type === "host") await this.handleHost(connection, seat.slot, parsed.to, parsed.nick);
+    else if (parsed.type === "kick") await this.handleKick(connection, seat.slot, parsed.slot, parsed.nick);
     else if (parsed.type === "here") await this.handleHere(seat.slot);
     else if (parsed.type === "pick") await this.handlePick(connection, seat.slot, parsed.game);
   }
@@ -979,11 +979,11 @@ export class GameRoom extends Server<Env> {
   }
 
   /** Makes the player in slot `to` the host, if the one asking is the host and `to` is someone else who is connected. */
-  private async handleHost(connection: Connection<ConnectionState>, slot: number, to: number): Promise<void> {
+  private async handleHost(connection: Connection<ConnectionState>, slot: number, to: number, nick?: string): Promise<void> {
     const lobby = this.lobby;
     if (lobby === null) return;
     if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
-    const next = to === slot || !this.connectedSlots().has(to) ? null : handHost(lobby, to);
+    const next = to === slot || !this.connectedSlots().has(to) ? null : handHost(lobby, to, nick);
     if (next === null) return this.refuse(connection, "bad-setting");
     this.saveLobby(next);
     this.broadcastLobby();
@@ -998,12 +998,12 @@ export class GameRoom extends Server<Env> {
    * let them back in. Not during a game: a seat at the table is not emptied
    * by another player.
    */
-  private async handleKick(connection: Connection<ConnectionState>, slot: number, target: number): Promise<void> {
+  private async handleKick(connection: Connection<ConnectionState>, slot: number, target: number, nick?: string): Promise<void> {
     const lobby = this.lobby;
     if (lobby === null) return;
     if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
     if (this.playing()) return this.refuse(connection, "already-playing");
-    const next = target === slot ? null : kickPlayer(lobby, target, config);
+    const next = target === slot ? null : kickPlayer(lobby, target, config, nick);
     if (next === null) return this.refuse(connection, "bad-setting");
     const theirs = this.members().filter(([, seat]) => seat.slot === target);
     const hadVoice = theirs.some(([, seat]) => seat.voice !== undefined);

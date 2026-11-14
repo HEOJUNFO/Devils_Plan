@@ -3196,7 +3196,8 @@ function showSeatMenu(slot: number | null, x = 0, y = 0): void {
 /** The menu's buttons as the room now stands: the room is not passed to someone who is away, and nobody is sent out of nothing. */
 function syncSeatMenu(): void {
   const player = seatShown === null ? undefined : currentView?.players.find((p) => p.slot === seatShown);
-  if (player === undefined || !isHost || table !== null) {
+  // (or someone else sits there now: the menu names the player it was opened for, and is not left open over another)
+  if (player === undefined || player.nick !== seatName.textContent || !isHost || table !== null) {
     if (seatShown !== null) showSeatMenu(null);
     return;
   }
@@ -4167,7 +4168,7 @@ sceneCanvas.addEventListener("click", (event) => {
   showSeatMenu(slot === view.you ? null : slot, x, y);
 });
 seatHost.addEventListener("click", () => {
-  if (seatShown !== null) send({ type: "host", to: seatShown });
+  if (seatShown !== null) send({ type: "host", to: seatShown, nick: seatName.textContent ?? "" });
   showSeatMenu(null);
 });
 seatKick.addEventListener("click", () => {
@@ -4177,7 +4178,7 @@ seatKick.addEventListener("click", () => {
     syncSeatMenu();
     return;
   }
-  if (seatShown !== null) send({ type: "kick", slot: seatShown });
+  if (seatShown !== null) send({ type: "kick", slot: seatShown, nick: seatName.textContent ?? "" });
   showSeatMenu(null);
 });
 el<HTMLButtonElement>("seat-close").addEventListener("click", () => showSeatMenu(null));

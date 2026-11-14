@@ -854,9 +854,11 @@ export function clearReady(state: LobbyState): LobbyState {
  * host before them. Their word that they are ready is taken back. Returns
  * `null` when nobody holds the slot. The input state is not modified.
  */
-export function handHost(state: LobbyState, slot: number): LobbyState | null {
+export function handHost(state: LobbyState, slot: number, nick?: string): LobbyState | null {
   const player = state.players.find((p) => p.slot === slot);
-  if (player === undefined) return null;
+  // `nick`: the name the host's page showed in the slot. Someone else sits there now (the one meant left and a
+  // newcomer was given the place while the menu was open, or while the word was on its way): nothing is done.
+  if (player === undefined || (nick !== undefined && player.nick !== nick)) return null;
   const first = Math.min(...state.players.map((p) => seqOf(p)));
   const { ready: _ready, ...rest } = player;
   return { ...state, players: state.players.map((p) => (p === player ? { ...rest, seq: first - 1 } : p)) };
@@ -867,9 +869,11 @@ export function handHost(state: LobbyState, slot: number): LobbyState | null {
  * they are not let back in ({@link LobbyState.barred}). Returns `null` when
  * nobody holds the slot. The input state is not modified.
  */
-export function kickPlayer(state: LobbyState, slot: number, config: RoomConfig): LobbyState | null {
+export function kickPlayer(state: LobbyState, slot: number, config: RoomConfig, nick?: string): LobbyState | null {
   const player = state.players.find((p) => p.slot === slot);
-  if (player === undefined) return null;
+  // `nick`: the name the host's page showed in the slot. A slot is given to the next who comes: without the name a
+  // newcomer who took the place of the player meant was sent out in their stead, and not let back in.
+  if (player === undefined || (nick !== undefined && player.nick !== nick)) return null;
   const barred = [...(state.barred ?? []), player.token].slice(-config.maxBarred);
   return seriesSettled({ ...state, players: state.players.filter((p) => p !== player), barred });
 }

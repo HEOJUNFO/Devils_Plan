@@ -1365,6 +1365,20 @@ describe("handHost", () => {
     expect(handHost(lobbyWith(2, testConfig()), 2)).toBeNull();
   });
 
+  it("is refused where the slot is held by someone other than the player the host named, and done for the one named", () => {
+    // Arrange: the host's menu was opened for "p1", who has since left; a newcomer sits in the slot
+    const config = testConfig();
+    const state = lobbyWith(3, config);
+
+    // Act
+    const other = handHost(state, 1, "someone else");
+    const named = handHost(state, 1, "p1");
+
+    // Assert
+    expect(other).toBeNull();
+    expect(named).toEqual(handHost(state, 1));
+  });
+
   it("does not modify the state it was given", () => {
     const state = lobbyWith(2, testConfig());
     const before = JSON.stringify(state);
@@ -1376,6 +1390,20 @@ describe("handHost", () => {
 });
 
 describe("kickPlayer", () => {
+  it("sends nobody out where the slot is held by someone other than the player the host named", () => {
+    // Arrange: the host's menu was opened for "p1", who has since left; a newcomer sits in the slot
+    const config = testConfig();
+    const state = lobbyWith(3, config);
+
+    // Act
+    const other = kickPlayer(state, 1, config, "someone else");
+    const named = kickPlayer(state, 1, config, "p1");
+
+    // Assert
+    expect(other).toBeNull();
+    expect(named).toEqual(kickPlayer(state, 1, config));
+  });
+
   it("takes the player out of the room", () => {
     const config = testConfig();
 

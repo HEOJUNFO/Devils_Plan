@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "방장 메뉴: 메뉴를 연 사이 그 사람이 나가고 다른 사람이 같은 자리에 앉으면, 「내보내기」나 「방장 넘기기」가 새로 온 사람에게 적용될 수 있던 것을 고쳤습니다. 이제 메뉴에 이름이 보이던 그 사람에게만 적용됩니다.",
+        en: "Host menu: if the player it was opened for left and someone else took the same seat, \"Remove\" or \"Make host\" could land on the newcomer. It now applies only to the player whose name the menu showed.",
+      },
+      {
         ko: "뒤로 가기: 로비의 게임 고르기 창을 열어 둔 채 방에 들어가면 뒤로 가기를 한 번 눌러도 아무 일도 일어나지 않던 것을 고쳤습니다. 게임 중에 뒤로 가기가 연달아 두 번 들어와도 이제 바로 나가지 않고, 「한 번 더 누르면 나감」에서 멈춥니다.",
         en: "Back button: after entering a room with the lobby's game picker left open, the first press of Back did nothing. Fixed. In a game, a Back heard twice in a moment no longer leaves at once: it stops at \"Press again to leave\".",
       },

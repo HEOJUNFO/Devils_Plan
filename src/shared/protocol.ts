@@ -319,6 +319,14 @@ export type DirectoryRequest =
   | { type: "going"; meet: number; who: string; on: boolean }
   | { type: "came"; since: Came };
 
+/**
+ * The name a host's page showed in the slot it asks about (`host`, `kick`), where it sent one: the room does
+ * nothing where someone else holds the slot by then. A page of before this sends none, and is taken at its slot.
+ */
+function named(raw: unknown): { nick?: string } {
+  return typeof raw === "string" ? { nick: raw } : {};
+}
+
 /** The longest text the directory reads as a request: a word about the game at its longest fits, each of its letters written the long way. */
 export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
 /** The longest a build's name is read. */
@@ -375,9 +383,9 @@ export type ClientMessage =
   /** Say which other game one would like the room to play next, or with `null` none; the host does not, the host changes it (`wish.ts`). */
   | { type: "wish"; game: GameId | null }
   /** Make the player in slot `to` the host; only the host may, and only to someone connected. */
-  | { type: "host"; to: number }
+  | { type: "host"; to: number; nick?: string }
   /** Send the player in `slot` out of the room, not to be let back in; only the host may, and not during a game. */
-  | { type: "kick"; slot: number }
+  | { type: "kick"; slot: number; nick?: string }
   /** The host's page answers a `host-check`: its player is there. */
   | { type: "here" }
   /** Say a line to everyone in the room. */
@@ -439,10 +447,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   }
   if (data.type === "wish") return data.game === null ? { type: "wish", game: null } : isGameId(data.game) ? { type: "wish", game: data.game } : null;
   if (data.type === "host") {
-    return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "host", to: data.to } : null;
+    return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "host", to: data.to, ...named(data.nick) } : null;
   }
   if (data.type === "kick") {
-    return typeof data.slot === "number" && Number.isInteger(data.slot) && data.slot >= 0 ? { type: "kick", slot: data.slot } : null;
+    return typeof data.slot === "number" && Number.isInteger(data.slot) && data.slot >= 0 ? { type: "kick", slot: data.slot, ...named(data.nick) } : null;
   }
   if (data.type === "join") {
     if (typeof data.token !== "string" || typeof data.nick !== "string") return null;

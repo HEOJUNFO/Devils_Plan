@@ -94,6 +94,10 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "when", at: null }))).toEqual({ type: "when", at: null });
     expect(parseClientMessage(JSON.stringify({ type: "host", to: 3 }))).toEqual({ type: "host", to: 3 });
     expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0 }))).toEqual({ type: "kick", slot: 0 });
+    // with the name the host's page showed in that slot, where it says one; a name that is no text is left out
+    expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0, nick: "ann" }))).toEqual({ type: "kick", slot: 0, nick: "ann" });
+    expect(parseClientMessage(JSON.stringify({ type: "host", to: 3, nick: "ann" }))).toEqual({ type: "host", to: 3, nick: "ann" });
+    expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0, nick: 7 }))).toEqual({ type: "kick", slot: 0 });
     expect(parseClientMessage(JSON.stringify({ type: "here", extra: 1 }))).toEqual({ type: "here" });
     expect(parseClientMessage(JSON.stringify({ type: "pick", game: "count-cubes" }))).toEqual({ type: "pick", game: "count-cubes" });
   });
