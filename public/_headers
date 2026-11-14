@@ -3,3 +3,11 @@
 # again whether it is still good, which without this it does on every visit.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Every page and file: a browser does not guess a type other than the one it
+# is told, and a link followed to another site says only where it came from,
+# not which page (SEC-007). Whether the pages may be framed, and a content
+# security policy, are not set here: see the security audit.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
