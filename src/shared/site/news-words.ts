@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "문구를 바로잡았습니다: 숫자나 방 코드 뒤에 잘못 붙던 조사, 같은 것을 두 이름으로 부르던 곳, 두 가지로 읽히던 규칙 문장. 개인정보 안내에는 모임에 가겠다고 누르면 이 브라우저에 두는 값을 적었습니다.",
+        en: "Wording was corrected: particles that came out wrong after a number or a room code (Korean), one thing called by two names, rule sentences that could be read two ways. The privacy notice now lists what this browser keeps when you say you will come to a meet-up.",
+      },
+      {
         ko: "키보드로 쓰기 편해졌습니다. 의견·규칙·새 방 창을 닫으면 열었던 버튼으로 돌아가고, 창이 열려 있는 동안 Tab이 그 안에서만 돕니다. 고른 게임과 공개·비공개에는 색 말고도 아래에 줄이 생겼습니다.",
         en: "Easier with a keyboard: closing the feedback, rules or new-room sheet returns to the button that opened it, and Tab stays inside a sheet while it is open. The game and the Public or Private choice you picked now have a bar under them as well as a colour.",
       },
@@ -155,7 +159,7 @@ export const NEWS: NewsDay[] = [
         en: `The host decides more: whether ${ROULETTE.en}'s hidden moves are told when the game is over, how long a problem of ${CUBES.en} is shown, and how many rounds ${POKER.en} is.`,
       },
       {
-        ko: "처음 하는 게임에서는 화면 위의 줄이 무엇을 보고 두는지 알려 주고, 규칙은 목표·할 일·끝 세 줄로 시작합니다.",
+        ko: "처음 하는 게임에서는 화면 위의 줄이 무엇을 보고 두는지 알려 주고, 규칙은 목표·하는 일·끝 세 줄로 시작합니다.",
         en: "In a first game the bar says what to look at, and every game's rules open with three lines: the goal, what you do, and the end.",
       },
       {

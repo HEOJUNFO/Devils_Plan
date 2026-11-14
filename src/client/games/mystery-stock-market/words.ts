@@ -241,7 +241,7 @@ const ko = {
       { text: `규칙은 ${early}라운드에 더 열리고 ${last}라운드에 다 열립니다.`, tone: "dim" },
       { text: n.rulebook === "show" ? "파란 칸이 다음에 열릴 낱말입니다. 규칙은 방송의 것입니다." : "파란 칸이 다음에 열릴 낱말입니다. 규칙은 이 판에서 새로 뽑았습니다.", tone: "dim" },
       { text: "" },
-      { text: `시크릿 (한 번): 한 종목을 다음 ${n.secretRounds}라운드 동안 모니터에서 가립니다.` },
+      { text: `시크릿 (한 번): 한 종목을 다음 ${n.secretRounds}라운드 동안 모두에게 가립니다.` },
       { text: "그동안 모두의 자산도 가려지고, 그 종목을 가졌거나 거래했으면", tone: "dim" },
       { text: "내 현금과 자산도 보이지 않습니다.", tone: "dim" },
       { text: `피스 (${n.pieceRounds}라운드까지): 한 종목의 다음 낱말 미리 보기, 또는 ${grouped(n.pieceCash)}원.` },

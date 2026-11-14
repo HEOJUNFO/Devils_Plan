@@ -84,7 +84,7 @@ const ko = {
       "로비에서 닉네임을 정합니다.",
       "방을 만들고 게임을 고릅니다. 공개 방은 목록에 보여 누구나 들어오고, 비공개 방은 링크나 코드를 아는 사람만 들어옵니다.",
       "대기실에서 초대 링크를 복사해 보냅니다. 방 코드를 불러 줘도 됩니다.",
-      "인원이 모이면 방장이 게임을 시작합니다. 방에서는 채팅과 음성 대화를 쓸 수 있습니다.",
+      "인원이 모이면 방장이 게임을 시작합니다. 방에서는 채팅을 쓸 수 있고, 비공개 방에서는 음성 채팅도 켤 수 있습니다.",
     ],
     questions: "자주 묻는 질문",
     /**
@@ -169,7 +169,7 @@ const en: typeof ko = {
       "Pick a nickname in the lobby.",
       "Make a room and choose a game. A public room is listed for anyone to join; a private room is for those who have the link or the code.",
       "Copy the invite link in the waiting room and send it, or read out the room code.",
-      "When enough players are in, the host starts the game. A room has text chat and voice chat.",
+      "When enough players are in, the host starts the game. A room has text chat, and a private room has voice chat as well.",
     ],
     questions: "Questions",
     online: (games: number, names: string): readonly [string, string] => [

@@ -23,7 +23,7 @@ const ko = {
       [
         "공개 조사 (1): 이웃한 두 칸이 찼는지 모두에게 공개",
         "비공개 조사 (2): 이웃한 두 칸을 나만 확인",
-        "1칸 회전 (3), 2칸 회전 (4): 총구와 실린더가 시계 방향으로 돌아 모든 약실이 옆자리로 넘어감",
+        "1칸 회전 (3), 2칸 회전 (4): 총구와 실린더가 시계 방향으로 돌아 약실이 그만큼씩 옆자리로 넘어감",
         "조작 (1~3): 모두가 낸 크레딧이 합쳐 6이 되면, 그때 낸 사람이 이웃한 두 칸의 탄을 맞바꿈. 넘친 크레딧은 사라지고 다시 0부터 모임",
       ],
       "공개 조사와 회전 말고는 누가 했는지만 '비공개 행동'으로 알려집니다. 무엇을 했는지, 조작 크레딧이 얼마나 모였는지, 탄이 바뀌었는지는 알려 주지 않습니다.",
@@ -71,7 +71,7 @@ const ko = {
     stored: ["조작 불가능: 크레딧 누적"],
     earnedSwap: "조작 성공! 두 칸을 고르세요",
     swapped: (who: string, a: string, b: string) => `${who} 조작: ${a}·${b} 맞바꿈`,
-    lostSwap: "시간 초과: 교체하지 못함",
+    lostSwap: "시간 초과: 맞바꾸지 못함",
     passed: (who: string) => `${who} 패스`,
     /**
      * After the last shot, at a table that tells the hidden moves when the game is over: the line over them,
@@ -79,7 +79,7 @@ const ko = {
      */
     revealed: "- 숨은 행동 공개 -",
     found: (a: string, b: string, inA: string, inB: string) => `  ${a} ${inA}, ${b} ${inB}`,
-    lostSwapBy: (who: string) => `${who} 교체 시간 초과`,
+    lostSwapBy: (who: string) => `${who} 맞바꿈 시간 초과`,
     /** The player's own: nobody else is told. */
     outOfCredits: (who: string) => `${who} 크레딧 소진`,
     fire: "격발!",
@@ -134,7 +134,7 @@ const ko = {
     yourTurn: "내 차례: 행동을 고르세요 (1~5)",
     pick: (open: boolean, pair: string) => `${open ? "공개 조사" : "비공개 조사"}: ${pair} 칸 · ${byInput("좌우 키로 고르기", "약실을 눌러 고르기")}`,
     swap: (pair: string) => `조작 성공! 맞바꿀 두 칸 ${pair} · ${byInput("좌우 키로 고르기", "약실을 눌러 고르기")}`,
-    amount: (amount: number, need: number) => `조작에 ${amount}개 제출 · ${byInput("좌우 키로 개수", "- +로 개수")} · 모두 합쳐 ${need}이면 교체`,
+    amount: (amount: number, need: number) => `조작에 ${amount}개 제출 · ${byInput("좌우 키로 개수", "- +로 개수")} · 모두 합쳐 ${need}이면 맞바꿈`,
     turn: (steps: number, letter: string, known: 0 | 1 | null, doubtful: boolean) =>
       `${steps}칸 회전: ${letter} 약실(${known === 1 ? "실탄" : known === 0 ? "빔" : "모름"}${doubtful ? "?" : ""})이 내 앞으로`,
     /** To someone watching: when they can play. Whoever the room's 탈락전 put out (`out`) cannot from the next game. */

@@ -181,7 +181,7 @@ const ko = {
     /** Who took an option: by name, or with how many they are first where the names run past the line. */
     took: (option: string, names: string) => `${option}: ${names}`,
     tookMany: (option: string, players: number, names: string) => `${option} ${players}명: ${names}`,
-    pick: (who: string, tile: number, forced: boolean) => `${who}: ${tile}번 선택${forced ? " (자동)" : ""}`,
+    pick: (who: string, tile: number, forced: boolean) => `${who}: ${tile}번 고름${forced ? " (자동)" : ""}`,
     pair: (names: string) => `상생 팀: ${names}`,
     alone: (who: string) => `${who}: 상생 짝 없음`,
     manhole: (who: string, value: number, flower: boolean) => `${who}: ${signed(value)} ${flower ? "꽃밭" : "맨홀"} 놓음`,

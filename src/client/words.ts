@@ -134,7 +134,7 @@ const ko = {
     /** Where the link says when its people meet (`when`, `src/shared/appointment.ts`), the first line says that instead: the code is in the box under it. */
     invited: (code: string | null, when: string | null) => `${when !== null ? `약속 ${when}` : code === null ? "초대받은 방" : `초대받은 방 ${code}`}\n닉네임을 넣고 입장하세요`,
     /** The same, where the box holds a name the page offered (`suggestNick`): it can be gone in with as it is. */
-    invitedNamed: (code: string | null, when: string | null) => `${when !== null ? `약속 ${when}` : code === null ? "초대받은 방" : `초대받은 방 ${code}`}\n이름을 고치거나 입장하세요`,
+    invitedNamed: (code: string | null, when: string | null) => `${when !== null ? `약속 ${when}` : code === null ? "초대받은 방" : `초대받은 방 ${code}`}\n닉네임 고치거나 입장하세요`,
     /** For someone whose name is kept, whom a link without a time takes straight in: a link whose time is still off waits for them, and says they need not. */
     invitedEarly: (when: string) => `약속 ${when}\n지금 들어가도 됩니다`,
     /** Under the form, when the room a link led to is no more. It does not name the game: the list beside it is by then that game's, and says so. Two lines, as the others here are. */
@@ -222,7 +222,7 @@ const ko = {
     raised: (more: number) => `손 들었음 · ${more}명 더 오면 방 열기`,
     raisedCount: (count: number, need: number) => `${count}/${need}명`,
     /** There are enough: a press opens a public room of the game. */
-    gathered: (count: number) => `${count}명 모임 · 눌러서 공개 방 열기`,
+    gathered: (count: number) => `${count}명 모였음 · 눌러서 공개 방 열기`,
     /** A room of the game is waiting for players: a press goes in. */
     open: "방이 열렸습니다 · 눌러서 들어가기",
   },
@@ -250,7 +250,7 @@ const ko = {
     copy: "링크 복사",
     copied: "복사됨",
     copyFailed: "복사 실패",
-    copyFailedHint: (code: string) => `링크를 복사하지 못했습니다. 방 코드 ${code}를 알려 주세요.`,
+    copyFailedHint: (code: string) => `링크를 복사하지 못했습니다. 방 코드를 알려 주세요: ${code}`,
     /** The same where this browser covers the code: the sentence does not put it back on the screen. */
     copyFailedCovered: "링크 복사 실패. 「코드 보이기」를 누르고 방 코드를 알려 주세요.",
     /**
@@ -350,10 +350,10 @@ const ko = {
     hostAloneListed: (min: number, meet: { time: string; game: string; on: boolean } | null) =>
       `목록에 올라 있습니다 · ${min}명이면 시작${meet === null ? "" : meet.on ? ` · ${meet.time}까지 ${meet.game} 모임` : ` · 다음 모임 ${meet.time} ${meet.game}`}`,
     brokenTeam: (team: number, size: number, teamSize: number) =>
-      `팀 ${team}은 ${size}명이라 팀이 아닙니다 (${teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`,
+      `팀 ${team}: ${size}명이라 팀이 아닙니다 (${teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`,
     hostReady: (bots: boolean, alone: boolean) => `${bots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}${alone ? "혼자서도 할 수 있습니다. " : ""}준비되면 시작하세요.`,
     /** To the host with others in the room: what a press on one of them does. */
-    hostOthers: "준비되면 시작하세요. 인물을 누르면 방장을 넘기거나 내보냅니다.",
+    hostOthers: "준비되면 시작하세요. 사람을 누르면 방장을 넘기거나 내보냅니다.",
     hostAllReady: "모두 준비했습니다. 게임을 시작하세요.",
     /** To the host, while others have the rules open in the waiting room (`src/shared/reading.ts`): how many, not who. */
     hostReading: (count: number) => `${count}명이 규칙을 읽는 중입니다. 잠시 뒤 시작하세요.`,
@@ -434,7 +434,7 @@ const ko = {
     /** A day to pick, other than today: the day of the week and the day of the month. */
     day: (weekday: string, day: number) => `${weekday} ${day}`,
     /** What the two buttons beside the time of day do, for a screen reader: they say − and +. */
-    earlier: (minutes: number) => `${minutes}분 앞으로`,
+    earlier: (minutes: number) => `${minutes}분 앞당김`,
     later: (minutes: number) => `${minutes}분 뒤로`,
     /** A moment, on the reader's own clock: `monthName` is for a language that names its months. */
     at: (weekday: string, month: number, _monthName: string, day: number, clock: string) => `${month}/${day}(${weekday}) ${clock}`,

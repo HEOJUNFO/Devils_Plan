@@ -39,7 +39,7 @@ export interface PrivacyFacts {
 }
 
 /** When the notice was last changed to follow the code. */
-const CHANGED = "2026-11-14";
+const CHANGED = "2026-11-15";
 
 const ko = {
   /** The link under every page, and the page's own heading. */
@@ -61,6 +61,7 @@ const ko = {
         "닉네임, 고른 언어, 소리 크기, 마지막에 고른 게임, 방 코드를 가릴지, 어떤 안내를 이미 봤는지를 이 브라우저의 저장소에 둡니다.",
         "게임별로 몇 판을 끝까지 했고 몇 번 1등을 했는지도 이 브라우저에만 둡니다. 서버로 보내지 않습니다.",
         "이 브라우저를 알아보는 임의의 값을 하나 만들어 둡니다. 연결이 끊겼다 돌아왔을 때 같은 자리에 앉히는 데 쓰고, 들어가는 방에 보냅니다.",
+        "로비에서 모임에 가겠다고 누르면, 어느 모임인지와 그 말을 거둘 때 쓰는 임의의 값 하나를 더 이 브라우저에 둡니다.",
         "방의 최근 채팅과 마지막 모습은 새로 고침에 대비해 그 탭이 열려 있는 동안만 둡니다.",
         `방에 있던 탭이 닫히거나 가려지면 그 방의 코드와 그때의 시각을 이 브라우저에 ${facts.seatMinutes}분 동안 둡니다. 그사이 다시 오면 하던 방으로 돌아가는 길을 보여 주는 데만 씁니다.`,
         `로비에 마지막으로 온 날짜를 이 브라우저에 둡니다. 다시 오는 사람이 얼마나 되는지 세려고, 그날 처음 로비에 들어올 때 「처음 옴」, 「어제 옴」, 「${facts.weekDays}일 안에 옴」, 「더 오래전에 옴」 넷 가운데 한 마디를 서버에 보냅니다. 날짜는 보내지 않습니다.`,
@@ -130,14 +131,14 @@ const ko = {
 const en: typeof ko = {
   name: "Privacy",
   title: `Privacy: What Is Kept and Who Sees It | ${SITE_NAME}`,
-  description: `${SITE_NAME} has no accounts and no cookies. What it keeps in your browser and on the server, for how long, and how addresses and voice chat are handled.`,
+  description: `${SITE_NAME} has no accounts or cookies. What it keeps in your browser and on the server, how long, and how addresses, voice, feedback and errors are handled.`,
   lead: `${SITE_NAME} is one person's project. With no accounts there is little to keep, but not nothing. This page says plainly what is kept, where, for how long, and who can see it.`,
   parts: (facts: PrivacyFacts) => ({
     none: {
       heading: "What is not asked for",
       lines: [
         "There is no sign-up, no email and no password. A nickname is all you choose.",
-        "No cookies are used. There are no ads and no visitor analytics, and no scripts or fonts are loaded from other companies.",
+        "No cookies are used. There are no ads and no analytics tool, and no scripts or fonts are loaded from other companies.",
       ],
     },
     browser: {
@@ -146,6 +147,7 @@ const en: typeof ko = {
         "Your nickname, language, volume, the game you last picked, whether room codes are hidden and which notices you have already seen are kept in this browser's storage.",
         "How many games of each kind you have played to the end, and in how many you came first, are kept in this browser only. They are not sent to the server.",
         "A random value that tells this browser apart is made and kept. It puts you back in your seat when a connection drops and returns, and it is sent to the rooms you enter.",
+        "If you say in the lobby that you will come to a meet-up, which meet-up it is and a second random value, used to take that word back, are kept in this browser.",
         "A room's recent chat and how it last looked are kept only while that tab is open, in case the page is loaded again.",
         `When a tab in a room is closed or hidden, the room's code and the time are kept in this browser for ${facts.seatMinutes} minutes, only to offer you the way back to that room if you return by then.`,
         `The day you last came to the lobby is kept in this browser. To count how many people come back, the first time you come to the lobby on a day it sends the server one of four words: "new", "came yesterday", "came within ${facts.weekDays} days" or "came longer ago". The day itself is not sent.`,

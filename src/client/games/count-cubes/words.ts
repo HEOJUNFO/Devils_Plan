@@ -132,7 +132,7 @@ const ko = {
     { text: alone ? "혼자 하는 판은 맞히면 끝납니다." : "한 명만 남기고 모두 맞히면 끝납니다." },
     { text: `제한 시간은 ${minutes}분입니다. 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.`, tone: "dim" },
     { text: "" },
-    { text: byInput("숫자 키: 입력 · Backspace: 지움 · Enter: 답하기 (아래 버튼도 같음)", "숫자는 아래 버튼으로 넣고, 입력을 누르면 답합니다."), tone: "dim" },
+    { text: byInput("숫자 키: 넣기 · Backspace: 지움 · Enter: 입력 (아래 버튼도 같음)", "숫자는 아래 버튼으로 넣고, 입력을 누르면 답합니다."), tone: "dim" },
     { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
 };

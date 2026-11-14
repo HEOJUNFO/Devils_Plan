@@ -27,7 +27,7 @@ const ko = {
         "틀리거나 답하지 못하면 그 문제에서는 다시 답할 수 없습니다. 팀이면 팀 전체가 그렇습니다.",
         "두 번 맞히면 승리하고 이후 문제에서 빠집니다. 전체 팀의 절반이 승리하면 끝납니다.",
       ],
-      "시작 전에 세 사람은 팀을 맺을 수 있습니다 (세 명이 아닌 팀은 각자 혼자 합니다). 팀을 가장 먼저 고른 사람이 그 팀의 대표입니다. 혼자 하는 사람도 한 팀으로 셉니다. 문제마다 제한 시간은 5분입니다.",
+      "시작 전에 세 명씩 팀을 맺을 수 있습니다 (세 명이 아닌 팀은 각자 혼자 합니다). 팀을 가장 먼저 고른 사람이 그 팀의 대표입니다. 혼자 하는 사람도 한 팀으로 셉니다. 문제마다 제한 시간은 5분입니다.",
       "끝나면 선택 3으로 승점을 나눕니다. 모두 동시에 고르고, 한 번 고르면 바꿀 수 없습니다.",
       [
         "승리 팀 (팀의 다수결): 독식은 대표 5점·두 팀원 1점씩, 헌신은 대표 1점·두 팀원 3점씩.",
@@ -121,7 +121,7 @@ const ko = {
     sending: "보내는 중",
     choose: (seconds: number) => `선택 3: 하나를 고르세요 · ${seconds}초`,
     chooseWait: (seconds: number) => `선택 3: 모두 고르기를 기다리는 중 · ${seconds}초`,
-    answer: (seconds: number) => `답을 말하세요 · ${seconds}초`,
+    answer: (seconds: number) => `답을 넣으세요 · ${seconds}초`,
     answering: (who: string, seconds: number) => `${who} 답하는 중 · ${seconds}초`,
     /** How a problem closed (`who` got it right, the time ran out, or everyone was wrong), and how long until the next. */
     next: (how: { right: string } | "time" | "all-wrong", seconds: number) =>
