@@ -465,7 +465,7 @@ const en: typeof ko = {
     lastPark: (round) => `Park ${round}:`,
     bonus: (points) => `Points ${points}`,
     hostNext: "Play again with the same people or go back",
-    waitHost: "Waiting for the host · \"Again\" to join in",
+    waitHost: "Waiting for the host · \"Again\" to ask",
     waitHostOut: "Waiting for the host to start a new game",
   },
   button: {

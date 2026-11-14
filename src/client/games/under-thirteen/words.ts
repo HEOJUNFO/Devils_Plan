@@ -331,7 +331,7 @@ const en: typeof ko = {
     place: (place, who, points) => `${englishOrdinal(place)} ${who} ${points} pts`,
     mine: (points) => `Your penalty points: ${points}`,
     hostNext: "Play again with these players or go back",
-    waitHost: "Waiting for the host · \"Again\" to join in",
+    waitHost: "Waiting for the host · \"Again\" to ask",
     waitHostOut: "Waiting for the host to start a new game",
   },
   help: (n) => [
@@ -349,7 +349,7 @@ const en: typeof ko = {
     { text: "cleared and you take a penalty point for each one cleared." },
     { text: "The last to take a penalty is first player next round.", tone: "dim" },
     { text: `Cards and chips last ${n.perSet} rounds, then are dealt again: ${n.rounds} rounds.` },
-    { text: "Fewest penalty points wins; a more recent penalty ranks lower.", tone: "dim" },
+    { text: "Fewest penalty points wins; tied, the later penalty ranks lower.", tone: "dim" },
     { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],
 };

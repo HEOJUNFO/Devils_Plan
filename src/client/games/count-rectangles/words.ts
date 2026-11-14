@@ -258,7 +258,7 @@ const en: typeof ko = {
       [
         "Winning team (by its majority): Monopolize gives the leader 5 and the two others 1 each; Sacrifice gives the leader 1 and the two others 3 each.",
         "Losing team (by its majority): Sacrifice takes 3 from the leader alone; Punish takes 2 from each of the two others.",
-        "Alone: 7 for a win, 3 off for a loss. Safety takes 1 more off; Challenge is an added contest (those who chose it race to answer first: the winner gets 3 Pieces, the losers lose 3 points).",
+        "Alone: 7 for a win, 3 off for a loss. Safety takes 1 more off; Challenge is a playoff (those who chose it race to answer first: the winner gets 3 Pieces, the losers lose 3 points).",
       ],
     ],
   } as RulesSheet,
@@ -385,7 +385,7 @@ const en: typeof ko = {
     duel: (points) => `Playoff ${points}`,
     duelWon: (pieces) => `Playoff won: ${pieces} Pieces`,
     hostNext: (alone) => (alone ? "Play again or go back" : "Play again with the same people or go back"),
-    waitHost: "Waiting for the host · \"Again\" to join in",
+    waitHost: "Waiting for the host · \"Again\" to ask",
     waitHostOut: "Waiting for the host to start a new game",
   },
   button: {
@@ -398,7 +398,7 @@ const en: typeof ko = {
     say: byInput("Enter", "OK"),
   },
   typed: "#",
-  brief: ["Rectangle: any rectangle of cells (one cell too).", "Sum = target counts. Blank = 0. One wrong: out."],
+  brief: ["Rectangle: any rectangle of cells (one cell too).", "Sum = target counts. Blank = 0. Wrong: no retry."],
   help: (rules) => [
     { text: "Count the Rectangles: rules", tone: "title" },
     { text: "The board has numbered and blank cells. Count the rectangles" },

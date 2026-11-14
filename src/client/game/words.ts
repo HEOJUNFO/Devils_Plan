@@ -314,7 +314,7 @@ const en: typeof ko = {
     live: (letters) => `The live rounds were in chambers ${letters}`,
     fallen: (names) => `Shot: ${names}`,
     hostNext: "Play again with the same people or go back",
-    waitHost: "Waiting for the host · \"Again\" to join in",
+    waitHost: "Waiting for the host · \"Again\" to ask",
     waitHostOut: "Waiting for the host to start a new game",
   },
   help: (rules, chambers) => [
@@ -331,7 +331,7 @@ const en: typeof ko = {
     { text: "" },
     { text: "All but a public check and a turn is told only as a hidden action." },
     { text: "Only you know your credits. With none you automatically pass." },
-    { text: `When ${rules.endWhenOut} players are out the gun fires at once, a shot at each seat.` },
+    { text: `When ${rules.endWhenOut} have no credits the gun fires at once, a shot at each seat.` },
     {
       text:
         rules.turnSeconds > 0
