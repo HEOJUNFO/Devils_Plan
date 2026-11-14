@@ -1,4 +1,6 @@
-import { isGameId, type GameId } from "./games";
+import { randomSource, seedFrom } from "./game/rng";
+import { GAME_IDS, isGameId, type GameId } from "./games";
+import { generateRoomCode, type RoomConfig } from "./lobby";
 
 /**
  * The times of day at which people are asked to gather for a game: a site
@@ -105,4 +107,56 @@ export function meetNear(now: number, config: MeetConfig): Meet | null {
     }
   }
   return null;
+}
+
+/**
+ * The code of the room a meeting is held in: the same for everyone, worked
+ * out from when the meeting starts and which game it is for, so that two
+ * who come at the same moment make one room between them and not one each
+ * (the second is refused the code and goes into the first's:
+ * `src/shared/reopen.ts`). The room is made by whoever comes first, who is
+ * its host as of any room they make; nothing makes it by itself.
+ *
+ * The code is no secret: anyone can work it out and make a room under it
+ * beforehand. Whoever presses the meeting's line is then taken into that
+ * room, as into any room on the list.
+ */
+export function meetCode(meet: Pick<Meet, "start" | "game">, config: RoomConfig): string {
+  const seed = Math.floor(meet.start / MINUTE_MS) * GAME_IDS.length + GAME_IDS.indexOf(meet.game);
+  return generateRoomCode(randomSource(seedFrom(seed)).next, config);
+}
+
+/** What the door is chosen by: a room as the list of rooms has it. */
+export interface MeetRoom {
+  code: string;
+  game: string;
+  playing: boolean;
+  players: number;
+  maxPlayers: number;
+}
+
+/**
+ * Where a press on the line of a meeting that is on takes a player:
+ *
+ * - `join`: into a room of the meeting's game that is waiting for players,
+ *   the first of `codes`; the rest are tried if that one fills or goes
+ *   before the player is there.
+ * - `make`: nobody has opened one. A room is made under the meeting's own
+ *   `code`, on the list; whoever is refused it because another was first is
+ *   taken into theirs.
+ * - `make-another`: the meeting's room is there and cannot be joined to
+ *   play (a game is on in it, it is full, or its host has changed its game).
+ *   Another room is made, on the list, under a code of its own.
+ */
+export type MeetDoor = { kind: "join"; codes: string[] } | { kind: "make"; code: string } | { kind: "make-another" };
+
+/**
+ * The door of `meet` as `rooms` stand: the rooms of the meeting's game on
+ * the list, in the list's order (the fullest first: it starts soonest).
+ */
+export function meetDoor(meet: Pick<Meet, "start" | "game">, rooms: readonly MeetRoom[], config: RoomConfig): MeetDoor {
+  const code = meetCode(meet, config);
+  const waiting = rooms.filter((room) => room.game === meet.game && !room.playing && room.players < room.maxPlayers).map((room) => room.code);
+  if (waiting.length > 0) return { kind: "join", codes: waiting };
+  return rooms.some((room) => room.code === code) ? { kind: "make-another" } : { kind: "make", code };
 }

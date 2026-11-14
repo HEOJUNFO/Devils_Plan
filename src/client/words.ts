@@ -163,7 +163,8 @@ const ko = {
     title: (time: string, game: string) => `${time} ${game} 모임`,
     /** While it is on, with when it ends. */
     now: (game: string) => `지금 ${game} 모임`,
-    until: (time: string) => `${time}까지`,
+    /** Beside it: a press goes into the meeting's room, and when the meeting ends. */
+    until: (time: string) => `들어가기 · ${time}까지`,
     inTime: (hours: number, minutes: number) => (hours > 0 ? `${hours}시간 ${minutes}분 뒤` : `${minutes}분 뒤`),
     /**
      * In place of the wait, once anyone has said they will come (`src/shared/going.ts`): how many, "or more" past
@@ -687,7 +688,7 @@ const en: typeof ko = {
     // the widest name of a game and the longest wait have one line of the list's width between them: 284 px
     title: (time, game) => `${game} at ${time}`,
     now: (game) => `${game} on now`,
-    until: (time) => `until ${time}`,
+    until: (time) => `Join till ${time}`,
     inTime: (hours, minutes) => (hours > 0 ? `in ${hours}h ${minutes}m` : `in ${minutes} min`),
     coming: (count, more, mine) => (mine ? `I'm in · ${count}${more ? "+" : ""}` : `${count}${more ? "+" : ""} coming`),
     calendar: "Add to calendar",

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { GAME_IDS, isGameId } from "../../../src/shared/games";
 import meetConfig from "../../../src/shared/meet-config.json";
-import { dayNamed, meetNear, type MeetConfig } from "../../../src/shared/meet";
+import { isValidRoomCode } from "../../../src/shared/lobby";
+import { dayNamed, meetCode, meetDoor, meetNear, type MeetConfig, type MeetRoom } from "../../../src/shared/meet";
+import roomConfig from "../../../src/shared/room-config.json";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -158,5 +160,50 @@ describe("the meetings as they are set", () => {
       const starts = each.times.map((time) => time.hour * 60 + time.minute).sort((a, b) => a - b);
       for (let i = 1; i < starts.length; i++) expect(starts[i] - starts[i - 1]).toBeGreaterThanOrEqual(each.lengthMinutes);
     }
+  });
+});
+
+describe("the room a meeting is held in", () => {
+  const rooms = roomConfig;
+  const meeting = { start: Date.UTC(2026, 10, 16, 0, 0), game: "under-thirteen" as const };
+  /** A room of the meeting's game as the list has it, waiting with one player unless said otherwise. */
+  const listed = (code: string, over: Partial<MeetRoom> = {}): MeetRoom => ({ code, game: "under-thirteen", playing: false, players: 1, maxPlayers: 16, ...over });
+
+  it("has one code for everyone who comes to that meeting, and it is a room's code", () => {
+    const code = meetCode(meeting, rooms);
+
+    expect(meetCode({ ...meeting }, rooms)).toBe(code);
+    expect(isValidRoomCode(code, rooms)).toBe(true);
+  });
+
+  it("has another code for the next meeting, and for a meeting of another game at the same hour", () => {
+    const codes = new Set<string>();
+    for (let hour = 0; hour < 24; hour++) {
+      for (const game of GAME_IDS) codes.add(meetCode({ start: meeting.start + hour * 3_600_000, game }, rooms));
+    }
+
+    expect(codes.size).toBe(24 * GAME_IDS.length);
+  });
+
+  it("is made under the meeting's code by whoever comes first, when no room of its game is on the list", () => {
+    expect(meetDoor(meeting, [], rooms)).toEqual({ kind: "make", code: meetCode(meeting, rooms) });
+    // rooms of other games are not the meeting's
+    expect(meetDoor(meeting, [listed("AAAAA", { game: "count-cubes" })], rooms)).toEqual({ kind: "make", code: meetCode(meeting, rooms) });
+  });
+
+  it("is a room of its game that is waiting for players, the list's first, with the others to fall back on", () => {
+    const door = meetDoor(meeting, [listed("AAAAA", { players: 3 }), listed("BBBBB", { playing: true }), listed("CCCCC"), listed("DDDDD", { players: 16 })], rooms);
+
+    expect(door).toEqual({ kind: "join", codes: ["AAAAA", "CCCCC"] });
+  });
+
+  it("is another room, under a code of its own, when the meeting's room is playing, full or no longer of its game", () => {
+    const code = meetCode(meeting, rooms);
+
+    expect(meetDoor(meeting, [listed(code, { playing: true })], rooms)).toEqual({ kind: "make-another" });
+    expect(meetDoor(meeting, [listed(code, { players: 16 })], rooms)).toEqual({ kind: "make-another" });
+    expect(meetDoor(meeting, [listed(code, { game: "count-cubes" })], rooms)).toEqual({ kind: "make-another" });
+    // while any room of the game waits, that is where a newcomer goes
+    expect(meetDoor(meeting, [listed(code, { playing: true }), listed("CCCCC")], rooms)).toEqual({ kind: "join", codes: ["CCCCC"] });
   });
 });

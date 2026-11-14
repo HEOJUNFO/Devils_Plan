@@ -64,7 +64,7 @@ import meetConfig from "../shared/meet-config.json";
 import numbersConfig from "../shared/numbers-config.json";
 import { readDay, type DayNumbers, type JoinWay } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
-import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
+import { meetDoor, meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
 import { againOf, hostCallDue, waitsOnHost } from "../shared/again";
 import { readingNow } from "../shared/reading";
@@ -1566,9 +1566,52 @@ function syncCalendar(): void {
   calendarButton.hidden = calendarOffer(Date.now()) === null;
 }
 
+/**
+ * The meeting whose room this page goes into as soon as the list of its
+ * game's rooms is here, by its start; `null` when it waits for none. The door
+ * is chosen by those rooms (`meetDoor`), and the list of every game leaves
+ * out rooms it has no place for.
+ */
+let meetWaited: number | null = null;
+
+/**
+ * Goes into the room of `meet`, which is on: a room of its game that is
+ * waiting for players, or the one this player makes for it under the
+ * meeting's own code, which everyone who comes after is taken into
+ * (`meetDoor` of `src/shared/meet.ts`). Nobody is asked which game or
+ * whether on the list: a meeting is for one game, and its room is for
+ * whoever comes.
+ */
+function enterMeet(meet: Meet): void {
+  if (entering !== null && socket !== null) return;
+  if (creating || readNick() === null) return;
+  if (roomsSent === null || roomsSent.of !== meet.game) {
+    // the rooms of the meeting's game are asked for (`pickGame`, by the press that came here) and waited for
+    meetWaited = meet.start;
+    notice.textContent = WORDS.entry.entering;
+    return;
+  }
+  meetWaited = null;
+  const door = meetDoor(meet, roomsSent.rooms, config);
+  if (door.kind === "join") {
+    joinRoom(door.codes[0], "meet");
+    quickRest = door.codes.slice(1);
+    restVia = "meet";
+    return;
+  }
+  chosenGame = meet.game;
+  chosenListed = true;
+  // made under the meeting's code as a link's room is opened again under its own: refused, there is a room to go into
+  reopenCode = door.kind === "make" ? door.code : null;
+  reopenVia = "meet";
+  nextCode = reopenCode;
+  notice.textContent = WORDS.entry.entering;
+  createRoom();
+}
+
 // A press opens the meeting: it lists the rooms of the game people gather for (where they are, or where one is to
 // be made) and, before the hour, says that this player will come. The next press closes it: every game's rooms
-// again, and the word taken back (`meetPress`).
+// again, and the word taken back (`meetPress`). While the meeting is on the press goes into its room (`enterMeet`).
 meetButton.addEventListener("click", () => {
   const meet = meetNear(Date.now(), meetConfig);
   if (meet === null) return;
@@ -1578,6 +1621,7 @@ meetButton.addEventListener("click", () => {
   // picking a game leaves the keyboard on the games to pick from: the press was on this line, and the next one is too
   meetButton.focus({ preventScroll: true });
   renderMeet();
+  if (meet.on) enterMeet(meet);
 });
 setInterval(() => {
   if (listSocket !== null) renderMeet();
@@ -1706,6 +1750,13 @@ function watchRooms(): void {
     if (newlyOpen(roomsSent, message).length > 0) call("room");
     roomsSent = message;
     renderRooms();
+    // the rooms a press on the meeting's line was waiting for: on into its room, if it is still on and still the one
+    if (meetWaited !== null && message.of !== null) {
+      const near = meetNear(Date.now(), meetConfig);
+      const waited = meetWaited;
+      meetWaited = null;
+      if (near !== null && near.on && near.start === waited && near.game === message.of && currentCode === "") enterMeet(near);
+    }
     // a word about the game is offered only where the server keeps them for someone to read
     feedbackButton.hidden = message.feedback !== true;
     takesWords = message.feedback === true;
@@ -3405,13 +3456,13 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       reopenCode = null;
       reopenJoined = code;
       setCreating(false);
-      connect(code, false, nick, 0, "link");
+      connect(code, false, nick, 0, reopenVia);
       return;
     }
     // A quick join found the room full or gone by the time it got there: the next one waiting is tried.
     const next = message.reason === "full" || message.reason === "not-found" ? quickRest?.shift() : undefined;
     if (next !== undefined) {
-      connect(next, false, nick, 0, "quick");
+      connect(next, false, nick, 0, restVia);
       setEntering(next);
       renderRooms();
       return;
@@ -3516,6 +3567,7 @@ function quickJoin(): void {
   }
   joinRoom(first, "quick");
   quickRest = rest;
+  restVia = "quick";
 }
 
 /** The code a link brought, for as long as the box for a room's code holds it: an invitation not yet taken up. */
@@ -3526,6 +3578,10 @@ let invitedCode = "";
  * the player goes anywhere else.
  */
 let reopenCode: string | null = null;
+/** By which way a player goes into a room they were refused the making of because another made it first: a link's room, or a meeting's. */
+let reopenVia: JoinWay = "link";
+/** By which way the rooms still to try after a first one filled or went are gone into (`quickRest`): the quick join, or a meeting's line. */
+let restVia: JoinWay = "quick";
 /** The code of a room this page went into after it could not open it again, until the room has answered: whether there was one to go into. */
 let reopenJoined: string | null = null;
 /** The name the page put in the box for a nickname because the player had none kept (`suggestNick`); empty where it put none. While the box still holds it, nobody has chosen it. */
@@ -3594,6 +3650,7 @@ function openOnGame(): void {
 function invitationGone(): void {
   const game = invitedGame;
   reopenCode = invitedCode === "" ? null : invitedCode;
+  reopenVia = "link";
   chosenListed = false;
   invitedCode = "";
   invitedGame = null;

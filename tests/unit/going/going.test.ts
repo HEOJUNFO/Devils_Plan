@@ -95,9 +95,10 @@ describe("meetPress", () => {
     expect(meetPress(meet(), null, START)).toEqual({ going: false, list: null });
   });
 
-  it("gives and takes no word while the meeting is on, and lists its game or every game again", () => {
+  it("gives and takes no word while the meeting is on, and lists its game whatever was listed", () => {
     expect(meetPress(meet(true), null, null)).toEqual({ going: null, list: "under-thirteen" });
     expect(meetPress(meet(true), "count-cubes", START)).toEqual({ going: null, list: "under-thirteen" });
-    expect(meetPress(meet(true), "under-thirteen", START)).toEqual({ going: null, list: null });
+    // the press is the way into the meeting's room: it does not put every game's rooms back
+    expect(meetPress(meet(true), "under-thirteen", START)).toEqual({ going: null, list: "under-thirteen" });
   });
 });

@@ -93,15 +93,16 @@ export function comingTo(near: Meet | null, told: Coming | null, mine: number | 
  * the hour, says that the reader will come (`going` true); the next press
  * puts it back as it was, every game's rooms (`list` `null`) and the word
  * taken back (`going` false). While the meeting is on no word is given or
- * taken (`going` `null`), and the line is open while its game is the one
- * listed. Before the hour it is open while the reader's word stands, so a
+ * taken (`going` `null`) and the line does not close: its game's rooms are
+ * listed, and the press is the way into the meeting's room (`meetDoor` of
+ * `meet.ts`). Before the hour it is open while the reader's word stands, so a
  * reader who comes back to a lobby that says they are coming takes that
  * back with one press. `listed` is the game whose rooms are listed (`null`:
  * every game), `mine` the start of the meeting the reader gave their word
  * for.
  */
 export function meetPress(near: Meet, listed: GameId | null, mine: number | null): { going: boolean | null; list: GameId | null } {
-  if (near.on) return { going: null, list: listed === near.game ? null : near.game };
+  if (near.on) return { going: null, list: near.game };
   const open = mine === near.start;
   return { going: !open, list: open ? null : near.game };
 }
