@@ -529,11 +529,21 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     }
     // a rock nobody is asked about is the room's to place: nothing is pressed for it
     if (!asked()) return;
-    if (chipOf(me() as number) === "rainbow") {
+    const own = chipOf(me() as number);
+    if (own === "rainbow") {
       STANDS.forEach((stand, index) => {
         if (pressed(`Digit${index + 1}`, `Numpad${index + 1}`) || clicked(standButton(index)) || clicked(standRect(index))) placeOn(stand);
       });
-    } else if (pressed("Enter", "NumpadEnter") || clicked(PLACE_RECT)) placeOn(null);
+    } else {
+      // A chip of one colour has one stand. That stand under a finger, or its number, places as the button does
+      // (as either does with the rainbow chip); another stand or number is told why it does nothing.
+      const chosen = STANDS.filter((_, index) => pressed(`Digit${index + 1}`, `Numpad${index + 1}`) || clicked(standRect(index)));
+      if (pressed("Enter", "NumpadEnter") || clicked(PLACE_RECT) || (own !== null && chosen.includes(own))) placeOn(null);
+      else if (own !== null && chosen.length > 0 && !pending) {
+        say(WORDS.say.oneStand(WORDS.stand[own]));
+        sfx.deny();
+      }
+    }
     if (pressed("KeyP") || clicked(PASS_RECT)) passNow();
   }
 

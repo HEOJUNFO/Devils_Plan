@@ -112,6 +112,8 @@ const ko = {
     pickSpot: "설 자리를 먼저 고르세요",
     stoodForYou: (spot: number) => `시간이 지나 방이 ${spot}번 자리에 세웠습니다`,
     penalty: (points: number) => `받침대가 무너졌습니다: 벌점 ${points}`,
+    /** A stand that is not the chip's own was pressed: `stand` is the one the rock goes on. */
+    oneStand: (stand: string) => `이 칩의 바위는 ${stand} 받침대에만 놓을 수 있습니다`,
   },
   /** Over the stands while the game stands still; `seconds` until it is given up, where that is known. */
   waitingBack: (seconds: number | null) => (seconds === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${seconds}초`),
@@ -275,6 +277,7 @@ const en: typeof ko = {
     pickSpot: "Pick a spot first",
     stoodForYou: (spot) => `Time was up: the room put you at spot ${spot}`,
     penalty: (points) => `The stand gave way: ${points} penalty points`,
+    oneStand: (stand) => `With this chip the rock goes on ${stand} only`,
   },
   waitingBack: (seconds) => (seconds === null ? "Waiting for them to come back" : `Waiting for them to come back · ${seconds}s`),
   standing: {
