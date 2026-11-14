@@ -9,8 +9,9 @@
  * again: this asks for another. The room keeps it with the connection that
  * said it and nowhere else (`src/server/room.ts`), as it keeps who has the
  * rules open (`reading.ts`): nothing is written to storage, and it is gone
- * with the connection. Once the host has changed the game the question is
- * answered, and everyone's word is taken back.
+ * with the connection, and the page says it again on the next (`sayAgain`).
+ * Once the host has changed the game the question is answered, and
+ * everyone's word is taken back.
  *
  * Pure functions over plain data.
  */
@@ -68,30 +69,32 @@ export function wishesWith(wishes: Wishes | undefined, was: GameId | null, now: 
   return next;
 }
 
-/** How a page stands towards the room, as far as saying its player's word again goes. */
-export interface WishStanding {
-  /** The game the player asked for and has not taken back, as the page remembers it; `null` for none. */
-  kept: GameId | null;
-  /** The game the room counts for them now; `null` for none. */
-  counted: GameId | null;
-  /** Whether the page has said it again on the connection now open. */
-  said: boolean;
-  /** Whether a game is being played: the room takes no word then. */
-  playing: boolean;
-  /** Whether the player is the host, whose word the room does not take. */
-  host: boolean;
-  /** Whether a press of theirs is on its way to the room and not answered. */
-  pending: boolean;
+/**
+ * The word a page remembers for its player after the room has spoken,
+ * where the room is the same and its game has not changed. `kept` is what
+ * the page remembered, `counted` what the room counts for the player now
+ * (`null` for none). With a press on its way (`pending`) the page keeps
+ * what was pressed. Else what the room counts is the word (it may have been
+ * said in another tab). Where the room counts none: on a connection the
+ * room has not been told on yet (`lost`) the page still remembers it, to
+ * say it again; on one where it was told, the word was taken back
+ * elsewhere, and the page forgets it.
+ */
+export function keptAfter(kept: GameId | null, counted: GameId | null, lost: boolean, pending: boolean): GameId | null {
+  if (pending) return kept;
+  if (counted !== null) return counted;
+  return lost ? kept : null;
 }
 
 /**
- * Whether a page says its player's word to the room again: the room does
- * not count what the page remembers (the connection that said it is gone,
- * with all the room kept of it), the room would take it now, and the page
- * has not said it on this connection already. Once a connection, so that a
- * word the room will not take is not said over and over.
+ * Whether a page says its player's word to the room again: there is one,
+ * the connection now open has not been told it (`lost`: the room keeps a
+ * word with the connections that said it, and a new connection has said
+ * nothing), the player is not the host (whose word the room does not
+ * take), and no press is on its way. Also where the room still counts the
+ * word from an older connection of the player: that one will go, and the
+ * word with it.
  */
-export function sayAgain(standing: WishStanding): boolean {
-  if (standing.kept === null || standing.kept === standing.counted) return false;
-  return !standing.said && !standing.playing && !standing.host && !standing.pending;
+export function sayAgain(kept: GameId | null, lost: boolean, host: boolean, pending: boolean): boolean {
+  return kept !== null && lost && !host && !pending;
 }

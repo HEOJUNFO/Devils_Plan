@@ -1620,6 +1620,25 @@ describe("GameRoom: being ready, and the host", () => {
     again.close();
   });
 
+  it("takes a word for another game while a game is on, and says it then: it is for the game after", async () => {
+    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
+    const a = await open("RDYWD", { player: 0, create: true });
+    const b = await open("RDYWD", { player: 1 });
+    await a.lobbyOf(2);
+    await b.lobbyOf(2);
+    a.send({ type: "start", bots: true });
+    await a.nextOf("game");
+    await b.nextOf("game");
+
+    b.send({ type: "wish", game: other });
+
+    // (a page that heard nothing of its player's word during a game would take it for taken back in another tab)
+    expect((await a.lobbyWhere((l) => l.wishes !== undefined)).wishes).toEqual({ [other]: 1 });
+    expect((await b.lobbyWhere((l) => l.wish !== undefined)).wish).toBe(other);
+    a.close();
+    b.close();
+  });
+
   it("does not take the host's word that they are ready: the host starts", async () => {
     const a = await open("RDYAB", { player: 0, create: true });
     const b = await open("RDYAB", { player: 1 });

@@ -944,11 +944,12 @@ export class GameRoom extends Server<Env> {
    * said before they were host is not counted while they are, and stands
    * again if they pass the room on before changing the game); not for
    * the game the room is for, nor for one that has no place for someone
-   * here; not during a game. Kept with the connection: nothing is written.
+   * here. Taken during a game as well: it is for the game after. Kept with
+   * the player's connections: nothing is written.
    */
   private handleWish(connection: Connection<ConnectionState>, seat: Seat, game: GameId | null): void {
     const lobby = this.lobby;
-    if (lobby === null || this.playing()) return;
+    if (lobby === null) return;
     const asked = game === gameOf(lobby) ? null : game;
     if (asked !== null && this.hostSlot() === seat.slot) return;
     if (asked !== null && !gameHolds(lobby.players.map((p) => p.slot), asked, config)) return this.refuse(connection, "bad-setting");
@@ -1491,8 +1492,9 @@ export class GameRoom extends Server<Env> {
     const connected = new Set(members.map(([, seat]) => seat.slot));
     // who has the rules open is said in a waiting room, where a start is waited for, and not over a game
     const reading = this.playing() ? undefined : this.readingSlots();
-    // and so is which game is asked for next
-    const wished = this.playing() ? undefined : this.wishedBySlot();
+    // (which game is asked for next is said during a game too: it is for the one after, and a page that
+    // heard nothing of its player's word would take it for taken back)
+    const wished = this.wishedBySlot();
     for (const [member, seat] of members) {
       const message: ServerMessage = {
         type: "lobby",
