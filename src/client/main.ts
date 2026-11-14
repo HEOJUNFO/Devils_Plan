@@ -4551,9 +4551,10 @@ function stopsIn(sheet: HTMLElement): HTMLElement[] {
 // keys walk on to the lobby's form and the rows behind the sheet, which it covers.
 addEventListener("keydown", (event) => {
   if (event.key !== "Tab") return;
-  // the topmost sheet that is on the screen (one left open inside a panel that is put away is not)
-  const sheet = !gameMenu.hidden ? gameMenu : SHEETS.find(([each]) => !each.hidden && each.getClientRects().length > 0)?.[0];
-  if (sheet === undefined || sheet.getAttribute("aria-modal") !== "true") return;
+  // the topmost modal sheet that is on the screen (one left open inside a panel that is put away is not; a sheet
+  // that is not modal, open beside it, does not let Tab out of it)
+  const sheet = !gameMenu.hidden ? gameMenu : SHEETS.find(([each]) => each.getAttribute("aria-modal") === "true" && !each.hidden && each.getClientRects().length > 0)?.[0];
+  if (sheet === undefined) return;
   const stops = stopsIn(sheet);
   if (stops.length === 0) return;
   const first = stops[0];

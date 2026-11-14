@@ -292,6 +292,9 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     latest = message;
     receivedAt = performance.now();
     if (answered) pending = false;
+    // an answer put back when the line dropped (`lost`) had reached the room after all, and was right: there is nothing left to say
+    const own = message.view.you;
+    if (own !== null && placeOf(own) !== null) typed = "";
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
   }
