@@ -179,7 +179,7 @@ const ko = {
     place: (place: number, who: string, points: number) => `${place}위 ${who} 벌점 ${points}`,
     mine: (points: number) => `내 벌점: ${points}`,
     hostNext: "같은 사람들과 한 판 더 하거나 대기실로",
-    waitHost: "방장이 새 판을 시작하기를 기다리는 중",
+    waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
   },
   /** The rules over the screen (H), by the room's own numbers. */
   help: (n: HelpNumbers): HelpLine[] => [
@@ -327,7 +327,7 @@ const en: typeof ko = {
     place: (place, who, points) => `${englishOrdinal(place)} ${who} ${points} pts`,
     mine: (points) => `Your penalty points: ${points}`,
     hostNext: "Play again with these players or go back",
-    waitHost: "Waiting for the host to start a new game",
+    waitHost: "Waiting for the host · \"Again\" to join in",
   },
   help: (n) => [
     { text: "Heavy 13: rules", tone: "title" },

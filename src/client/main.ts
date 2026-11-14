@@ -1150,6 +1150,13 @@ function showTable(game: GameId): GameScreen {
     table = CLIENTS[game].screen(tableCanvas, {
       act: (action) => send({ type: "action", action }),
       again: () => send({ type: "start", bots: wantBots }),
+      wantAgain: () => {
+        const view = currentView;
+        const again = view === null || gameOn ? null : againOf(view.players, view.you, isHost, view.knockout === true, asked.ready);
+        if (again === null || !again.press) return false;
+        // said, not turned over: a key pressed twice does not take it back (the tab does)
+        return again.mine || askRoom({ type: "ready", ready: true }, { ready: true });
+      },
       lobby: () => {
         // the results are put away; the waiting room is under them
         dismissedGame = shownGame;

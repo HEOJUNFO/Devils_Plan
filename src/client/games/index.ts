@@ -37,6 +37,14 @@ export interface GameHandlers {
   act(action: unknown): boolean;
   /** The host asked for the next game. */
   again(): boolean;
+  /**
+   * The game is over and a player who is not the host pressed the key the
+   * host starts the next game with: they would play one more, which is the
+   * room's "ready" (`src/shared/again.ts`). Returns whether the room has
+   * that word of them now; `false` where they cannot say it (sitting out of
+   * 탈락전, or no connection).
+   */
+  wantAgain(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */

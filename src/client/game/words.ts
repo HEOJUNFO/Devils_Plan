@@ -161,7 +161,7 @@ const ko = {
     live: (letters: string) => `실탄은 ${letters} 약실에 있었습니다`,
     fallen: (names: string) => `쓰러진 자리: ${names}`,
     hostNext: "같은 사람들과 한 판 더 하거나 대기실로",
-    waitHost: "방장이 새 판을 시작하기를 기다리는 중",
+    waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
   },
   /** The rules over the table (H): at most 16 lines of 436 pixels, by the room's own numbers. `dim` lines are the list of moves. */
   help: (rules: { bullets: number; startCredits: number; costPublic: number; costPrivate: number; costRotate1: number; costRotate2: number; tamperMaxPerTurn: number; tamperNeed: number; endWhenOut: number; turnSeconds: number; costTimeout: number }, chambers: number): HelpLine[] => [
@@ -313,7 +313,7 @@ const en: typeof ko = {
     live: (letters) => `The live rounds were in chambers ${letters}`,
     fallen: (names) => `Shot: ${names}`,
     hostNext: "Play again with the same people or go back",
-    waitHost: "Waiting for the host to start a new game",
+    waitHost: "Waiting for the host · \"Again\" to join in",
   },
   help: (rules, chambers) => [
     { text: "Russian Roulette: rules", tone: "title" },

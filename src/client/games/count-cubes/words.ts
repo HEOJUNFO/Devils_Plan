@@ -112,7 +112,7 @@ const ko = {
     nobody: "아무도 맞히지 못했습니다",
     answer: (cubes: string) => `큐브는 모두 ${cubes}개였습니다`,
     hostNext: (alone: boolean): string => (alone ? "한 판 더 하거나 대기실로" : "같은 사람들과 한 판 더 하거나 대기실로"),
-    waitHost: "방장이 새 판을 시작하기를 기다리는 중",
+    waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
   },
   /** The two buttons under the results, 88 pixels wide inside. */
   button: { again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
@@ -224,7 +224,7 @@ const en: typeof ko = {
     nobody: "Nobody got it right",
     answer: (cubes) => `There were ${cubes} cubes in all`,
     hostNext: (alone) => (alone ? "Play again or go back" : "Play again with the same people or go back"),
-    waitHost: "Waiting for the host to start a new game",
+    waitHost: "Waiting for the host · \"Again\" to join in",
   },
   button: { again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
   help: (lockSeconds, minutes, alone) => [

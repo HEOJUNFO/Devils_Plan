@@ -181,7 +181,7 @@ const ko = {
     duel: (points: string) => `추가 대결 ${points}`,
     duelWon: (pieces: number) => `추가 대결 승리: 피스 ${pieces}개`,
     hostNext: (alone: boolean): string => (alone ? "한 판 더 하거나 대기실로" : "같은 사람들과 한 판 더 하거나 대기실로"),
-    waitHost: "방장이 새 판을 시작하기를 기다리는 중",
+    waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
   },
   /** The buttons along the bar: the two under the results 88 pixels wide inside, the buzzer 140, the one that takes a digit back 28. */
   button: {
@@ -384,7 +384,7 @@ const en: typeof ko = {
     duel: (points) => `Playoff ${points}`,
     duelWon: (pieces) => `Playoff won: ${pieces} Pieces`,
     hostNext: (alone) => (alone ? "Play again or go back" : "Play again with the same people or go back"),
-    waitHost: "Waiting for the host to start a new game",
+    waitHost: "Waiting for the host · \"Again\" to join in",
   },
   button: {
     again: keyed("Enter", "again"),

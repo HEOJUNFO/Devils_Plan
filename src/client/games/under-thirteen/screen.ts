@@ -32,6 +32,8 @@ export interface UnderHandlers {
   act(action: unknown): boolean;
   /** The host asked for the next game. */
   again(): boolean;
+  /** Someone who is not the host would play one more; whether the room has that word of them now (`GameHandlers`). */
+  wantAgain(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -462,7 +464,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
         handlers.lobby();
       } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) askAgain();
-        else say(WORDS.refused["not-host"]);
+        // (someone who is not the host says with the same key that they would play one more: the tab beside the log shows it)
+        else if (!handlers.wantAgain()) say(WORDS.refused["not-host"]);
       }
       return;
     }
