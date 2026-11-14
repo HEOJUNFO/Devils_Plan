@@ -27,3 +27,16 @@ export function pace(
   if (previous.count < burst) return { ok: true, pace: { count: previous.count + 1, since: previous.since } };
   return { ok: false, pace: previous };
 }
+
+/**
+ * Of two things remembered of one sender's pace, the one that leaves them
+ * less at `now`: for a sender who is counted in two places (by their address
+ * while the server is awake, and with their connection, which a sleeping
+ * server still has). A pace whose window of `windowSeconds` is over, or that
+ * is not known, is passed over; nothing where neither is left.
+ */
+export function fuller(one: Pace | undefined, other: Pace | undefined, now: number, windowSeconds: number): Pace | undefined {
+  const live = [one, other].filter((each): each is Pace => each !== undefined && now >= each.since && now - each.since < windowSeconds * 1000);
+  if (live.length < 2) return live[0];
+  return live[1].count > live[0].count ? live[1] : live[0];
+}

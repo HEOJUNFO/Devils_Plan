@@ -25,7 +25,7 @@ import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import numbersConfig from "../shared/numbers-config.json";
 import { atMeet, cameCounts, countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
 import type { MessageLimit, RoomConfig } from "../shared/lobby";
-import { pace, type Pace } from "../shared/pace";
+import { fuller, pace, type Pace } from "../shared/pace";
 import {
   parseDirectoryRequest,
   type ComingNote,
@@ -102,6 +102,22 @@ interface ViewerState {
   from?: string;
   /** The game this viewer's hand is up for (`want.ts`), where it is up. */
   want?: GameId;
+  /**
+   * How much this viewer has lately done of each thing that is paced by its
+   * sender (`mayWrite`), by the thing. The directory forgets what it counts
+   * by address when it sleeps, which it does ten seconds after the last
+   * message: without this a page that waited that long between two never
+   * came to its limit.
+   */
+  paced?: Record<string, Pace>;
+}
+
+/** `state` with the game under `key` set to `value`, or let go where that is `null`; everything else of it as it was. */
+function stateWith(state: ViewerState | null | undefined, key: "game" | "want", value: GameId | null): ViewerState {
+  const next: ViewerState = { ...(state ?? {}) };
+  if (value === null) delete next[key];
+  else next[key] = value;
+  return next;
 }
 
 /**
@@ -152,7 +168,9 @@ export class RoomDirectory extends Server<Env> {
    * How much each sender has lately done of each thing that is written down
    * for them (`mayWrite`): by the thing and by what the sender's address is
    * counted as, or by connection id where there is none. Forgotten in sleep:
-   * the limits of a day are kept.
+   * the limits of a day are kept, and what a connection has done is kept with
+   * it as well (`ViewerState.paced`). No more than `SENDERS_REMEMBERED` are
+   * held: past that the one written longest ago makes way.
    */
   private readonly senderPace = new Map<string, { pace: Pace; windowMs: number }>();
 
@@ -237,9 +255,8 @@ export class RoomDirectory extends Server<Env> {
     const paced = pace(this.showPace.get(connection.id), now, config.showLimit.burst, config.showLimit.windowSeconds);
     this.showPace.set(connection.id, paced.pace);
     if (!paced.ok) return;
-    // what the viewer's address is counted as stays with the connection, whichever game is asked for; so does a hand that is up
-    const { from, want, game } = connection.state ?? {};
-    const kept = { ...(from === undefined ? {} : { from }), ...(want === undefined ? {} : { want }) };
+    // what the viewer's address is counted as stays with the connection, whichever game is asked for; so do a hand that is up and what they have done lately
+    const { from, want } = connection.state ?? {};
     if (request.type === "going") return this.takeGoing(connection, request, from, now);
     if (request.type === "came") {
       // counted for whoever runs the site: do those who come come back. The word is added to its number and not kept with anything.
@@ -249,12 +266,12 @@ export class RoomDirectory extends Server<Env> {
     }
     if (request.type === "want") {
       // a hand up or down: the game whose rooms are listed stays the one it was
-      connection.setState({ ...(game === undefined ? {} : { game }), ...(from === undefined ? {} : { from }), ...(request.game === null ? {} : { want: request.game }) });
+      connection.setState(stateWith(connection.state, "want", request.game));
       // counted for whoever runs the site: which game people came wanting. A hand that goes up and down without end is counted its few times.
       if (request.game !== null && request.game !== want && this.mayWrite("wanted", connection, config.wantCountLimit, now)) this.count([{ what: `wanted:${request.game}`, n: 1 }], now);
       return this.tellWanting(null, null, { id: connection.id, was: want });
     }
-    connection.setState({ ...(request.game === null ? {} : { game: request.game }), ...kept });
+    connection.setState(stateWith(connection.state, "game", request.game));
     connection.send(this.message(now, request.game, this.counts(now)));
   }
 
@@ -306,9 +323,11 @@ export class RoomDirectory extends Server<Env> {
    * second time for the same browser; and not past so many from one address
    * (`from`: what it is counted as, where the viewer came with one). None of
    * which is told to the viewer: their page counts its own word. Nor is a
-   * word taken back more than a few times in a while by one sender. A word
-   * newly given is counted in the day's numbers by its game, for whoever
-   * runs the site to set against how many came.
+   * word taken back more than a few times in a while by one sender: that
+   * viewer alone is then told that their word stands (`ComingNote.mine`),
+   * so that their page does not show it as taken back while it is counted.
+   * A word newly given is counted in the day's numbers by its game, for
+   * whoever runs the site to set against how many came.
    */
   private takeGoing(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "going" }>, from: string | undefined, now: number): void {
     const near = this.meetNear(now);
@@ -325,7 +344,7 @@ export class RoomDirectory extends Server<Env> {
       this.count([{ what: `going:${near.game}`, n: 1 }], now);
     } else {
       // A word given and taken back without end is a row written and thrown away each time: taken back a few times, and then it stays.
-      if (!this.mayWrite("going-back", connection, config.going.backLimit, now)) return;
+      if (!this.mayWrite("going-back", connection, config.going.backLimit, now)) return this.tellComing(connection, now, true);
       sql.exec("DELETE FROM going WHERE meet = ? AND who = ?", near.start, request.who);
     }
     this.tellComing(null, now);
@@ -336,12 +355,14 @@ export class RoomDirectory extends Server<Env> {
    * is on or next: all of them (`came` is `null`: the number has just
    * changed), or `came` alone, who has just come, where anyone has said so
    * (a page takes nobody to be coming until it hears). How many, never who.
+   * With `stands`, `came` is told as well that their own word is among them:
+   * it was not taken back.
    */
-  private tellComing(came: Connection<ViewerState> | null, now: number): void {
+  private tellComing(came: Connection<ViewerState> | null, now: number, stands = false): void {
     const near = this.meetNear(now);
     if (near === null) return;
     const rows = this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM going WHERE meet = ?", near.start).one().n;
-    const note: ComingNote = { type: "coming", ...comingOf(near.start, rows, config.going) };
+    const note: ComingNote = { type: "coming", ...comingOf(near.start, rows, config.going), ...(stands ? { mine: true as const } : {}) };
     const data = JSON.stringify(note);
     if (came !== null) {
       if (rows > 0) came.send(data);
@@ -379,13 +400,31 @@ export class RoomDirectory extends Server<Env> {
    * address is counted as, so that opening more connections brings no more;
    * where a connection came with no address (a test, a request from inside
    * the Worker) it is the connection. A refusal does not count against them.
+   *
+   * What they have done is counted here by the sender and kept with the
+   * connection too, and the fuller of the two is gone by (`fuller`): the
+   * first is forgotten when the directory sleeps, the second is not known to
+   * the sender's other connections. A sender who sleeps the directory and
+   * comes back on a new connection each time is held by neither, and by the
+   * limits of a day alone.
    */
   private mayWrite(what: string, connection: Connection<ViewerState>, limit: MessageLimit, now: number): boolean {
-    // those whose window has passed are forgotten, so that what is remembered is of the senders of the longest window
-    if (this.senderPace.size >= SENDERS_REMEMBERED) for (const [key, kept] of this.senderPace) if (now - kept.pace.since >= kept.windowMs) this.senderPace.delete(key);
     const key = `${what}:${connection.state?.from ?? connection.id}`;
-    const paced = pace(this.senderPace.get(key)?.pace, now, limit.burst, limit.windowSeconds);
+    const before = fuller(this.senderPace.get(key)?.pace, connection.state?.paced?.[what], now, limit.windowSeconds);
+    const paced = pace(before, now, limit.burst, limit.windowSeconds);
+    // written last is kept longest: the order of the map is the order of writing
+    this.senderPace.delete(key);
     this.senderPace.set(key, { pace: paced.pace, windowMs: limit.windowSeconds * 1000 });
+    connection.setState({ ...(connection.state ?? {}), paced: { ...(connection.state?.paced ?? {}), [what]: paced.pace } });
+    if (this.senderPace.size > SENDERS_REMEMBERED) {
+      // those whose window has passed are forgotten, so that what is remembered is of the senders of the longest window;
+      // where that is still too many, those written longest ago are, who are still counted by their connections
+      for (const [other, kept] of this.senderPace) if (now - kept.pace.since >= kept.windowMs) this.senderPace.delete(other);
+      for (const other of this.senderPace.keys()) {
+        if (this.senderPace.size <= SENDERS_REMEMBERED) break;
+        this.senderPace.delete(other);
+      }
+    }
     return paced.ok;
   }
 
@@ -404,10 +443,11 @@ export class RoomDirectory extends Server<Env> {
       connection.send(JSON.stringify(said));
     };
     const limits = config.feedback;
-    // by the address the viewer comes from, so that a new connection is not a new viewer
-    const paced = this.mayWrite("feedback", connection, limits.viewerLimit, now);
     const text = normalizeFeedback(request.text, limits);
-    if (!paced || text === null || !this.takesFeedback()) return answer(false);
+    if (text === null || !this.takesFeedback()) return answer(false);
+    // By the address the viewer comes from, so that a new connection is not a new viewer. Asked last: a word with nothing in it,
+    // or one nobody could read, is not one of the few a viewer may send.
+    if (!this.mayWrite("feedback", connection, limits.viewerLimit, now)) return answer(false);
     // Nothing is waited for from here to the rows, so no other word comes between the count and the row.
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM feedback WHERE at <= ?", now - DAY_MS);
@@ -443,7 +483,7 @@ export class RoomDirectory extends Server<Env> {
     const sql = this.ctx.storage.sql;
     if (request.drop !== undefined) sql.exec("DELETE FROM words WHERE id = ?", request.drop);
     const rows = sql
-      .exec<{ id: number; at: number; text: string; lang: string; build: string; flag: string | null; fault: string | null }>("SELECT id, at, text, lang, build, flag, fault FROM words ORDER BY id DESC")
+      .exec<{ id: number; at: number; text: string; lang: string; build: string; flag: string | null; fault: string | null }>("SELECT id, at, text, lang, build, flag, fault FROM words ORDER BY at DESC, id DESC")
       .toArray();
     answer(
       rows.map((row) => {
@@ -480,7 +520,9 @@ export class RoomDirectory extends Server<Env> {
    * Keeps what a viewer's page says went wrong in it (`fault.ts`) among the
    * words about the game, for whoever makes it to read with them. A fault
    * already kept from the same build is not kept twice: its count goes up
-   * and its time, screen and browser become those of this one. Not where
+   * and its time, screen and browser become those of this one, and it is
+   * read and kept as the latest (by its time: a fault that keeps coming is
+   * the last to make way, not the first). Not where
    * nobody could read it, when this sender has sent their few for now, nor
    * once the day's faults from everyone together have all been taken: each
    * is a row written, and a page that is not ours could send them without
@@ -508,8 +550,9 @@ export class RoomDirectory extends Server<Env> {
       sql.exec("UPDATE words SET at = ?, lang = ?, fault = ? WHERE id = ?", now, request.lang, JSON.stringify(note), known.id);
     } else {
       sql.exec("INSERT INTO words (at, text, lang, build, fault) VALUES (?, ?, ?, ?, ?)", now, text, request.lang, request.build, JSON.stringify(note));
-      // the latest so many faults are kept, counted apart from what players wrote: neither pushes the other out
-      sql.exec("DELETE FROM words WHERE fault IS NOT NULL AND id NOT IN (SELECT id FROM words WHERE fault IS NOT NULL ORDER BY id DESC LIMIT ?)", limits.keep);
+      // The latest so many faults are kept, counted apart from what players wrote: neither pushes the other out. The latest
+      // by when each last came, not by when it first did: the fault that comes most often is otherwise the first thrown away.
+      sql.exec("DELETE FROM words WHERE fault IS NOT NULL AND id NOT IN (SELECT id FROM words WHERE fault IS NOT NULL ORDER BY at DESC, id DESC LIMIT ?)", limits.keep);
     }
     console.log("a fault kept");
   }

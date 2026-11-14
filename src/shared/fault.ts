@@ -85,6 +85,24 @@ function fileOf(address: string): string {
   return name === "" ? "page" : name.slice(0, 60);
 }
 
+/** An address written inside a sentence, as far as it runs. */
+const ADDRESS = /\b(?:https?|wss?|file|blob):[^\s"'`<>()[\]]+/giu;
+/** What a sentence quotes between double quotes or backticks: where a browser puts what it was reading (the start of a text that is not JSON, a value). Single quotes are left: they name a property or a class. */
+const QUOTED = /"[^"]*"|`[^`]*`/gu;
+
+/**
+ * The sentence of an error as it is kept: cleaned as a line shown to a
+ * reader is, cut to `length`, and without what a browser may have written
+ * into it of the visitor. An address is replaced whole, not by its file's
+ * name as a frame's is: the address of a room's socket ends in the room's
+ * code. What is quoted is replaced too. Neither is all a sentence could
+ * hold, and a page that is not ours can send any sentence: the notice of
+ * what is kept says what is taken out, not that nothing can be in it.
+ */
+function sentenceOf(message: string, length: number): string {
+  return cutTo(cleanLine(message.replace(ADDRESS, "(address)").replace(QUOTED, (quoted) => `${quoted[0]}…${quoted[0]}`)), length);
+}
+
 /** `address`, `line` and `column` as one frame; `null` where they do not make one. */
 function frameOf(address: string, line: number, column: number): string | null {
   if (!Number.isInteger(line) || !Number.isInteger(column) || line < 0 || column < 0) return null;
@@ -110,7 +128,7 @@ function framesIn(stack: string): string[] {
  * extension threw, or one of the sentences set to be passed over.
  */
 export function faultOf(raw: RawFault, where: string, browser: Browser, config: FaultConfig): Fault | null {
-  const message = cutTo(cleanLine(raw.message), config.messageLength);
+  const message = sentenceOf(raw.message, config.messageLength);
   if (message === "" || config.ignore.some((noise) => message.includes(noise))) return null;
   const stack = raw.stack ?? "";
   if (FOREIGN.test(raw.source ?? "") || FOREIGN.test(stack)) return null;
@@ -153,7 +171,7 @@ export function parseFault(raw: unknown, config: FaultConfig): Fault | null {
   if (typeof raw !== "object" || raw === null) return null;
   const data = raw as { message?: unknown; frames?: unknown; where?: unknown; browser?: unknown };
   if (typeof data.message !== "string" || Array.from(data.message).length > config.messageLength) return null;
-  const message = cleanLine(data.message);
+  const message = sentenceOf(data.message, config.messageLength);
   if (message === "") return null;
   if (!Array.isArray(data.frames) || data.frames.length > config.frames) return null;
   const frames: string[] = [];

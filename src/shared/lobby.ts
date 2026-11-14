@@ -445,9 +445,15 @@ export function normalizeNick(raw: string, config: RoomConfig): string | null {
   return cut.length > 0 ? cut : null;
 }
 
-/** What a nickname is compared by: two that read the same are one, however they are spelled (the case of a letter, a full-width letter for a plain one, a space more or less). */
+/** What a nickname is compared by: two that read the same are one, however they are spelled (the case of a letter, a full-width letter for a plain one, a space more or less, a mark that shows nothing by itself or sits on another letter). */
 function nickKey(nick: string): string {
-  return nick.normalize("NFKC").toLowerCase().replace(/\s+/gu, "");
+  return nick.normalize("NFKC").toLowerCase().replace(/[\s\p{Default_Ignorable_Code_Point}\p{Mn}]+/gu, "");
+}
+
+/** Whether `nick` is `asked` with a number after it, as {@link distinctNick} gives one. */
+function isNumbered(nick: string, asked: string, config: RoomConfig): boolean {
+  const found = /^(.*) ([1-9]\d*)$/u.exec(nick);
+  return found !== null && Number(found[2]) >= 2 && found[1] === cutTo(asked, config.nickMaxLength - found[2].length - 1);
 }
 
 /**
@@ -510,10 +516,14 @@ export function joinLobby(
   if (asked === null) return { ok: false, reason: "bad-nick" };
 
   if (state.barred?.includes(request.token) === true) return { ok: false, reason: "kicked" };
-  // told apart from everyone else here: their own name from before is theirs to keep or change
-  const nick = distinctNick(asked, state.players.filter((p) => p.token !== request.token).map((p) => p.nick), config);
-
   const existing = findPlayer(state, request.token);
+  const others = state.players.filter((p) => p.token !== request.token).map((p) => p.nick);
+  // Told apart from everyone else here: their own name from before is theirs to keep or change. Someone who was
+  // given a number and comes back saying the name they typed (their browser keeps that one) keeps the number they
+  // had: counted again from 2 they could take the number of someone who has left, whose lines are still on screens.
+  const numbered = distinctNick(asked, others, config);
+  const nick = existing !== null && existing !== undefined && numbered !== asked && isNumbered(existing.nick, asked, config) && distinctNick(existing.nick, others, config) === existing.nick ? existing.nick : numbered;
+
   if (existing) {
     // back from being away, if they were
     const { awaySince: _away, ...kept } = existing;

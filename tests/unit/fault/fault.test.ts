@@ -47,6 +47,17 @@ describe("faultOf", () => {
     expect(JSON.stringify(noted)).not.toContain("example.com");
   });
 
+  it("takes an address and what is quoted out of the sentence: a room's socket has its code in it, and a text that is not JSON is quoted", () => {
+    const long = { ...CONFIG, messageLength: 200 };
+    const socket = faultOf({ message: "Failed to construct 'WebSocket': The URL 'wss://play.example.com/parties/game-room/QWERT?_pk=1' is invalid." }, "room", "chrome", long);
+    const parsed = faultOf({ message: `Unexpected token 'h', "hello ann"... is not valid JSON` }, "room", "chrome", long);
+    const safari = faultOf({ message: "JSON Parse error: Unexpected identifier `hello`" }, "room", "ios", long);
+
+    expect(socket?.message).toBe("Failed to construct 'WebSocket': The URL '(address)' is invalid.");
+    expect(parsed?.message).toBe(`Unexpected token 'h', "…"... is not valid JSON`);
+    expect(safari?.message).toBe("JSON Parse error: Unexpected identifier `…`");
+  });
+
   it("reads a stack as Chrome writes one and as Safari and Firefox write one, the nearest first", () => {
     const chrome = `TypeError: x\n    at draw (${SCRIPT}:3:40)\n    at async Promise.all (index 0)\n    at ${SCRIPT}:9:1`;
     const safari = `draw@${SCRIPT}:3:40\n@${SCRIPT}:9:1`;
@@ -110,6 +121,10 @@ describe("parseFault", () => {
 
   it("cleans the sentence as a line shown to a reader is", () => {
     expect(parseFault(fault({ message: " a‮b " }), CONFIG)?.message).toBe("a b");
+  });
+
+  it("takes an address and what is quoted out of a sentence that came with them, as a page does before it sends", () => {
+    expect(parseFault(fault({ message: 'at https://x.example/r/QWERT "ann"' }), CONFIG)?.message).toBe('at (address) "…"');
   });
 
   it("rejects a sentence that is empty, not text, or longer than a page sends", () => {

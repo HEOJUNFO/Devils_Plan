@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "보이지 않는 글자를 섞어 남의 닉네임과 똑같아 보이게 만든 이름에도 번호가 붙습니다. 번호를 받은 사람이 방에 다시 들어와도 그 번호가 그대로입니다. 오류 기록에서는 문장 안의 웹 주소와 인용된 글을 지웁니다.",
+        en: "A nickname made to look like someone else's with characters that show nothing now gets a number too, and a player who was given a number keeps it when they come back to the room. Web addresses and quoted text are now removed from the sentence of an error report.",
+      },
+      {
         ko: "문구를 바로잡았습니다: 숫자나 방 코드 뒤에 잘못 붙던 조사, 같은 것을 두 이름으로 부르던 곳, 두 가지로 읽히던 규칙 문장. 개인정보 안내에는 모임에 가겠다고 누르면 이 브라우저에 두는 값을 적었습니다.",
         en: "Wording was corrected: particles that came out wrong after a number or a room code (Korean), one thing called by two names, rule sentences that could be read two ways. The privacy notice now lists what this browser keeps when you say you will come to a meet-up.",
       },

@@ -696,6 +696,12 @@ describe("parseComingNote", () => {
     expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 0 }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 0, more: false });
   });
 
+  it("reads that the reader's own word stands, said to the one who could not take it back, and nothing of it otherwise", () => {
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false, mine: true }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false, mine: true });
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false, mine: "yes" }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false });
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false, mine: false }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false });
+  });
+
   it("is nothing for another message, with no meeting, or with a count that is not one", () => {
     expect(parseComingNote(JSON.stringify({ type: "watching", count: 2 }))).toBeNull();
     expect(parseComingNote(JSON.stringify({ type: "coming", count: 2 }))).toBeNull();

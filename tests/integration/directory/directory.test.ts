@@ -1068,6 +1068,35 @@ describe("RoomDirectory: something that went wrong in a page", () => {
     page.close();
   });
 
+  it("keeps a fault that keeps coming when the oldest make way, though it was the first to come", async () => {
+    await withKey();
+    const keep = directoryConfig.faults.keep;
+    const each = directoryConfig.faults.senderLimit.burst;
+    // a page of its own for every few: one sender may send only so many in a while
+    const pages: Inbox<Answer>[] = [];
+    const send = async (n: number, sent: Fault): Promise<void> => {
+      while (pages.length <= Math.floor(n / each)) pages.push(await writer());
+      tell(pages[Math.floor(n / each)], sent);
+    };
+    await send(0, fault("the one that keeps coming"));
+    for (let n = 1; n < keep; n++) await send(n, fault(`fault ${n}`));
+    // every page's faults are in before the clock moves: a page is answered after what it sent
+    for (const page of pages) await read(page);
+
+    advanceClock(1);
+    await send(keep, fault("the one that keeps coming"));
+    for (const page of pages) await read(page);
+    await send(keep + 1, fault("one more than is kept"));
+    for (const page of pages) await read(page);
+
+    const words = (await read(pages[0])) ?? [];
+    expect(words).toHaveLength(keep);
+    expect(words.map((word) => word.text.split("\n")[0]).slice(0, 2)).toEqual(["one more than is kept", "the one that keeps coming"]);
+    expect(words[1].fault?.n).toBe(2);
+    expect(words.some((word) => word.text.startsWith("fault 1\n"))).toBe(false);
+    for (const page of pages) page.close();
+  });
+
   it("leaves what players wrote where it was, however many faults come", async () => {
     await withKey();
     await writeAsNew("a word that stays");
@@ -1857,9 +1886,10 @@ describe("RoomDirectory: words given for the next meeting", () => {
     }
     a.going(1);
     await a.until(1);
-    // once more than may be taken back: not taken back
+    // once more than may be taken back: not taken back, and the one who asked is told that their word stands
     a.going(1, false);
     await a.heard();
+    expect(a.told().at(-1)).toEqual({ type: "coming", meet: START, count: 1, more: false, mine: true });
     b.going(2);
 
     await a.until(2);

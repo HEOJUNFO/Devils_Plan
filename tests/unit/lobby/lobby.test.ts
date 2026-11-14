@@ -167,6 +167,33 @@ describe("joinLobby", () => {
     expect(renamed.ok ? renamed.state.players.map((player) => player.nick) : null).toEqual(["ann", "Ann 2"]);
   });
 
+  it("takes a nickname with a mark that shows nothing in it for the one it reads as", () => {
+    const config = testConfig({ nickMaxLength: 12 });
+
+    for (const hidden of ["\u200d", "\u200c", "\ufe0f", "\u034f"]) {
+      expect(namesAfter(["방장", `방${hidden}장`], config)[1]).toMatch(/ 2$/u);
+      expect(namesAfter(["방장", `방장${hidden}`], config)[1]).toMatch(/ 2$/u);
+    }
+  });
+
+  it("leaves a player the number they were given when they come back saying the name they typed, though a lower number is free by then", () => {
+    const config = testConfig({ nickMaxLength: 12, maxPlayers: 4 });
+    let state = createLobby();
+    for (const at of [0, 1, 2]) {
+      const joined = joinLobby(state, { token: tokenFor(at), nick: "ann" }, config);
+      if (joined.ok) state = joined.state;
+    }
+    // "ann 2" goes; "ann 3" loads the page again and says "ann", as their browser kept it
+    state = { ...state, players: state.players.filter((player) => player.nick !== "ann 2") };
+
+    const back = joinLobby(state, { token: tokenFor(2), nick: "ann" }, config);
+    // someone who types another name on coming back gets that one, numbered where it is taken
+    const other = joinLobby(state, { token: tokenFor(2), nick: "Ann" }, config);
+
+    expect(back.ok ? back.state.players.map((player) => player.nick) : null).toEqual(["ann", "ann 3"]);
+    expect(other.ok ? other.state.players.map((player) => player.nick) : null).toEqual(["ann", "Ann 2"]);
+  });
+
   it("refuses a player when every slot is taken", () => {
     const config = testConfig();
     const state = lobbyWith(config.maxPlayers, config);

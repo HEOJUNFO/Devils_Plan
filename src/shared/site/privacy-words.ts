@@ -111,7 +111,7 @@ const ko = {
     faults: {
       heading: "오류 기록",
       lines: [
-        "화면의 스크립트가 오류로 멈추면 만든 사람에게 알립니다. 보내는 것은 브라우저가 알려 준 오류 문장, 오류가 난 스크립트 파일의 이름과 줄 번호, 어느 화면이었는지(로비, 대기실, 어느 게임), 브라우저의 종류(예: iOS, 크롬), 화면의 언어, 사이트 버전입니다. 닉네임, 방 코드, 접속 주소, 입력한 글은 붙지 않습니다.",
+        "화면의 스크립트가 오류로 멈추면 만든 사람에게 알립니다. 보내는 것은 브라우저가 알려 준 오류 문장, 오류가 난 스크립트 파일의 이름과 줄 번호, 어느 화면이었는지(로비, 대기실, 어느 게임), 브라우저의 종류(예: iOS, 크롬), 화면의 언어, 사이트 버전입니다. 닉네임, 방 코드, 접속 주소, 입력한 글은 붙이지 않습니다. 오류 문장 안에 웹 주소나 따옴표로 인용된 글이 있으면 그 부분은 지웁니다.",
         `로비에 연결될 때 보내며, 그때까지 이 브라우저에 최대 ${facts.faultsWaiting}건을 둡니다. 서버에는 서로 다른 오류를 최근 ${facts.faultsKept}건까지 두고, 같은 오류는 몇 번 왔는지만 셉니다. 만든 사람만 읽습니다.`,
       ],
     },
@@ -198,7 +198,7 @@ const en: typeof ko = {
     faults: {
       heading: "Error reports",
       lines: [
-        "If a page's script stops with an error, the maker of the site is told. What is sent is the error sentence the browser gave, the names and line numbers of the script files it came from, which screen was up (the lobby, a waiting room or which game), the kind of browser (such as iOS or Chrome), the page's language and the site's version. No nickname, room code, address or anything you typed is attached.",
+        "If a page's script stops with an error, the maker of the site is told. What is sent is the error sentence the browser gave, the names and line numbers of the script files it came from, which screen was up (the lobby, a waiting room or which game), the kind of browser (such as iOS or Chrome), the page's language and the site's version. No nickname, room code, address or anything you typed is attached, and a web address or quoted text inside the error sentence is removed.",
         `It is sent when the lobby is connected; until then up to ${facts.faultsWaiting} wait in this browser. The server keeps the latest ${facts.faultsKept} different errors and only counts how often the same one came. Only the maker of the site reads them.`,
       ],
     },

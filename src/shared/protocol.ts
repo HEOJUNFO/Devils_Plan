@@ -578,6 +578,12 @@ export interface WantingNote {
  */
 export interface ComingNote extends Coming {
   type: "coming";
+  /**
+   * Said to one viewer alone, whose word could not be taken back just now
+   * (they have taken one back too often for a while): their word stands, and
+   * their page shows it so.
+   */
+  mine?: true;
 }
 
 /** Parses the directory's word on how many are coming to a meeting, returning `null` for anything else. */
@@ -586,7 +592,7 @@ export function parseComingNote(raw: unknown): ComingNote | null {
   if (data === null || data.type !== "coming") return null;
   if (typeof data.meet !== "number" || !Number.isSafeInteger(data.meet)) return null;
   if (typeof data.count !== "number" || !Number.isInteger(data.count) || data.count < 0) return null;
-  return { type: "coming", meet: data.meet, count: data.count, more: data.more === true };
+  return { type: "coming", meet: data.meet, count: data.count, more: data.more === true, ...(data.mine === true ? { mine: true as const } : {}) };
 }
 
 /** Parses the directory's word on how many hands are up, returning `null` for anything else. */

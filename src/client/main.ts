@@ -1816,6 +1816,11 @@ function watchRooms(): void {
     const guests = parseComingNote(event.data);
     if (guests !== null) {
       coming = guests;
+      // the directory did not take this browser's word back (taken back too often for a while): it stands here too
+      if (guests.mine === true) {
+        myGoing = guests.meet;
+        keep("going", String(guests.meet));
+      }
       renderMeet();
       return;
     }
