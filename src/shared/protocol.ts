@@ -326,8 +326,11 @@ export type ClientMessage =
    * (`parts.ts`); a page that does not say so is sent every game whole.
    * `via`: how the page came to a room it did not make, where it says: for
    * the site's numbers by the day and nothing else (`numbers.ts`).
+   * `only`: the page asks to go in only if the room is still a meeting's
+   * room of that game (`holdsMeet` of `meet.ts`); otherwise it is told there
+   * is no such room, which is so of the room it asked for.
    */
-  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean; pings: boolean; parts?: boolean; via?: JoinWay }
+  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean; pings: boolean; parts?: boolean; via?: JoinWay; only?: GameId }
   /** Give up the slot for good (a dropped connection keeps it). */
   | { type: "leave" }
   /**
@@ -438,6 +441,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       parts: data.parts === true,
       // how the page came to this room, for the site's numbers alone (`src/shared/numbers.ts`): nothing in the room goes by it
       ...(isJoinWay(data.via) ? { via: data.via } : {}),
+      ...(isGameId(data.only) ? { only: data.only } : {}),
     };
   }
   if (data.type === "listing") {

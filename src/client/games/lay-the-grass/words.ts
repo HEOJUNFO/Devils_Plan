@@ -224,6 +224,8 @@ const ko = {
     check: (points: string) => `견제 ${points}`,
     harmony: (points: string) => `화합 ${points}`,
     neighbours: (points: string) => `이웃 ${points}`,
+    /** Before the parts of the points, in a game of more parks than one: they are those of the last park, and the places are of all the parks together. */
+    lastPark: (round: number) => `공원 ${round}:`,
     bonus: (points: string) => `점수 ${points}`,
     hostNext: "같은 사람들과 한 판 더 하거나 대기실로",
     waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
@@ -460,6 +462,7 @@ const en: typeof ko = {
     check: (points) => `Check ${points}`,
     harmony: (points) => `Harmony ${points}`,
     neighbours: (points) => `Neighbors ${points}`,
+    lastPark: (round) => `Park ${round}:`,
     bonus: (points) => `Points ${points}`,
     hostNext: "Play again with the same people or go back",
     waitHost: "Waiting for the host · \"Again\" to join in",

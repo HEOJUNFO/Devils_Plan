@@ -1386,7 +1386,10 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     // The viewer's points, part by part. A game on drawn cards can give more parts than a row holds (in English
     // four of them already do): what does not fit goes on the row below, in place of the line the buttons beside
     // it say as well.
-    const parts = line === null ? [WORDS.result.over] : [...(score === null ? [] : [WORDS.result.bonus(signed(score.points))]), ...breakdown(line)];
+    // In a game of several parks the places are of all of them together and the parts are the last park's: said so.
+    const own = line === null ? [] : [...(score === null ? [] : [WORDS.result.bonus(signed(score.points))]), ...breakdown(line)];
+    if (view.rounds > 1 && own.length > 0) own[0] = `${WORDS.result.lastPark(view.round)} ${own[0]}`;
+    const parts = line === null ? [WORDS.result.over] : own;
     const rows = rowsOf(parts, RESULT_JOINT, RESULT_WIDTH, (text) => pen.width(text));
     const below = rows.slice(1).join(RESULT_JOINT);
     pen.txt(pen.fit(rows[0] ?? "", RESULT_WIDTH), 96, 240, C.boneD);

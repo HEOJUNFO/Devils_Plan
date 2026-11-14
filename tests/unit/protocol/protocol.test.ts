@@ -231,6 +231,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(joinJson())).not.toHaveProperty("via");
   });
 
+  it("keeps the game a room must be a meeting's room of to be gone into, where the page names a game there is", () => {
+    expect(parseClientMessage(joinJson({ only: "under-thirteen" }))).toMatchObject({ type: "join", only: "under-thirteen" });
+    expect(parseClientMessage(joinJson({ only: "no-such-game" }))).not.toHaveProperty("only");
+    expect(parseClientMessage(joinJson({ only: true }))).not.toHaveProperty("only");
+    expect(parseClientMessage(joinJson())).not.toHaveProperty("only");
+  });
+
   it("treats a join without a create flag as not creating", () => {
     const raw = JSON.stringify({ type: "join", token: "player-token-0001", nick: "ann" });
 

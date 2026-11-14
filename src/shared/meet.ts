@@ -126,6 +126,17 @@ export function meetCode(meet: Pick<Meet, "start" | "game">, config: RoomConfig)
   return generateRoomCode(randomSource(seedFrom(seed)).next, config);
 }
 
+/**
+ * Whether a room is one a meeting of `game` is held in: on the list, and of
+ * that game. A room made under a meeting's code stops being so when its host
+ * takes it off the list or changes its game; whoever then presses the
+ * meeting's line is not taken into it (the room turns away a page that asks
+ * for it as the meeting's: `only` of a join, `src/server/room.ts`).
+ */
+export function holdsMeet(room: { game: string; listed: boolean }, game: GameId): boolean {
+  return room.listed && room.game === game;
+}
+
 /** What the door is chosen by: a room as the list of rooms has it. */
 export interface MeetRoom {
   code: string;
@@ -144,9 +155,13 @@ export interface MeetRoom {
  * - `make`: nobody has opened one. A room is made under the meeting's own
  *   `code`, on the list; whoever is refused it because another was first is
  *   taken into theirs.
- * - `make-another`: the meeting's room is there and cannot be joined to
- *   play (a game is on in it, it is full, or its host has changed its game).
- *   Another room is made, on the list, under a code of its own.
+ * - `make-another`: the meeting's room is on the list and cannot be joined
+ *   to play (a game is on in it, or it is full). Another room is made, on the
+ *   list, under a code of its own.
+ *
+ * A room under the meeting's code that is not among `rooms` (off the list,
+ * or of another game, whose rooms the list of this one does not have) is
+ * found out when the making is refused: see {@link holdsMeet}.
  */
 export type MeetDoor = { kind: "join"; codes: string[] } | { kind: "make"; code: string } | { kind: "make-another" };
 

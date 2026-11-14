@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GAME_IDS, isGameId } from "../../../src/shared/games";
 import meetConfig from "../../../src/shared/meet-config.json";
 import { isValidRoomCode } from "../../../src/shared/lobby";
-import { dayNamed, meetCode, meetDoor, meetNear, type MeetConfig, type MeetRoom } from "../../../src/shared/meet";
+import { dayNamed, holdsMeet, meetCode, meetDoor, meetNear, type MeetConfig, type MeetRoom } from "../../../src/shared/meet";
 import roomConfig from "../../../src/shared/room-config.json";
 
 const MINUTE = 60_000;
@@ -197,13 +197,25 @@ describe("the room a meeting is held in", () => {
     expect(door).toEqual({ kind: "join", codes: ["AAAAA", "CCCCC"] });
   });
 
-  it("is another room, under a code of its own, when the meeting's room is playing, full or no longer of its game", () => {
+  it("is another room, under a code of its own, when the meeting's room is on the list and playing or full", () => {
     const code = meetCode(meeting, rooms);
 
     expect(meetDoor(meeting, [listed(code, { playing: true })], rooms)).toEqual({ kind: "make-another" });
     expect(meetDoor(meeting, [listed(code, { players: 16 })], rooms)).toEqual({ kind: "make-another" });
+    // seen under another game, where the list given is of every game (the list of one game does not have it:
+    // the room itself then turns the meeting's newcomer away, `holdsMeet`)
     expect(meetDoor(meeting, [listed(code, { game: "count-cubes" })], rooms)).toEqual({ kind: "make-another" });
     // while any room of the game waits, that is where a newcomer goes
     expect(meetDoor(meeting, [listed(code, { playing: true }), listed("CCCCC")], rooms)).toEqual({ kind: "join", codes: ["CCCCC"] });
+  });
+
+  it("stays the meeting's while it is on the list and of the meeting's game, and no longer", () => {
+    expect(holdsMeet({ game: "under-thirteen", listed: true }, "under-thirteen")).toBe(true);
+    // its host took it off the list, to play with those who are in it
+    expect(holdsMeet({ game: "under-thirteen", listed: false }, "under-thirteen")).toBe(false);
+    // or changed its game
+    expect(holdsMeet({ game: "count-cubes", listed: true }, "under-thirteen")).toBe(false);
+    // a room made by a newer server for a game this one has not heard of
+    expect(holdsMeet({ game: "no-such-game", listed: true }, "under-thirteen")).toBe(false);
   });
 });

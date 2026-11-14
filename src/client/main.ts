@@ -1316,6 +1316,8 @@ function pickGame(game: GameId | null): void {
   roomsPick.focus();
   if (game === listedGame) return;
   listedGame = game;
+  // a press on the meeting's line waits for the rooms of its game: looking at any other list lets it go
+  dropMeetWait();
   // a hand is for the game being looked at: looking at another takes it down
   if (myWant !== null && myWant !== game) sayWant(null);
   askForGame();
@@ -1567,12 +1569,37 @@ function syncCalendar(): void {
 }
 
 /**
- * The meeting whose room this page goes into as soon as the list of its
- * game's rooms is here, by its start; `null` when it waits for none. The door
- * is chosen by those rooms (`meetDoor`), and the list of every game leaves
- * out rooms it has no place for.
+ * A room made for a meeting, or gone into as one: the meeting's `game`, and
+ * the meeting's own `code` where the room is made under it (`null` for a
+ * room made under a code of its own because the meeting's cannot be played
+ * in). Such a room is made on the list whatever this player last chose for
+ * a room of their own, and nothing of it is kept as their choice.
  */
-let meetWaited: number | null = null;
+interface ForMeet {
+  game: GameId;
+  code: string | null;
+}
+
+/** How long a press on the meeting's line waits for the list of its game's rooms, in ms: the list answers in a second, and a press is not acted on long after it was made. */
+const MEET_WAIT_MS = 5000;
+/**
+ * The meeting whose room this page goes into as soon as the list of its
+ * game's rooms is here: its start, and when the press was made. `null` when
+ * it waits for none. The door is chosen by those rooms (`meetDoor`), and the
+ * list of every game leaves out rooms it has no place for. Anything else the
+ * player does meanwhile lets the wait go (`dropMeetWait`).
+ */
+let meetWaited: { start: number; at: number } | null = null;
+
+/** Lets go of a press on the meeting's line that is still waiting for the list: the player went elsewhere, or the list is not coming. */
+function dropMeetWait(): void {
+  if (meetWaited === null) return;
+  meetWaited = null;
+  if (socket === null && notice.textContent === WORDS.entry.entering) {
+    notice.textContent = "";
+    notice.classList.remove("going");
+  }
+}
 
 /**
  * Goes into the room of `meet`, which is on: a room of its game that is
@@ -1580,33 +1607,35 @@ let meetWaited: number | null = null;
  * meeting's own code, which everyone who comes after is taken into
  * (`meetDoor` of `src/shared/meet.ts`). Nobody is asked which game or
  * whether on the list: a meeting is for one game, and its room is for
- * whoever comes.
+ * whoever comes. With no list to go by (it is not connected) the room is
+ * made as if none were open: one that is there is then gone into.
  */
 function enterMeet(meet: Meet): void {
-  if (entering !== null && socket !== null) return;
-  if (creating || readNick() === null) return;
-  if (roomsSent === null || roomsSent.of !== meet.game) {
+  if ((entering !== null && socket !== null) || creating || currentCode !== "") return;
+  const nick = readNick();
+  if (nick === null) return;
+  if (roomsSent !== null && roomsSent.of !== meet.game) {
     // the rooms of the meeting's game are asked for (`pickGame`, by the press that came here) and waited for
-    meetWaited = meet.start;
+    meetWaited = { start: meet.start, at: Date.now() };
     notice.textContent = WORDS.entry.entering;
+    notice.classList.add("going");
     return;
   }
   meetWaited = null;
-  const door = meetDoor(meet, roomsSent.rooms, config);
+  const door = meetDoor(meet, roomsSent?.rooms ?? [], config);
   if (door.kind === "join") {
     joinRoom(door.codes[0], "meet");
     quickRest = door.codes.slice(1);
     restVia = "meet";
     return;
   }
-  chosenGame = meet.game;
-  chosenListed = true;
-  // made under the meeting's code as a link's room is opened again under its own: refused, there is a room to go into
-  reopenCode = door.kind === "make" ? door.code : null;
-  reopenVia = "meet";
-  nextCode = reopenCode;
+  quickRest = null;
+  setEntering(null);
+  if (door.kind === "make") connect(door.code, true, nick, 0, undefined, { game: meet.game, code: door.code });
+  else connect(generateRoomCode(Math.random, config), true, nick, CREATE_ATTEMPTS - 1, undefined, { game: meet.game, code: null });
+  setCreating(true);
   notice.textContent = WORDS.entry.entering;
-  createRoom();
+  notice.classList.add("going");
 }
 
 // A press opens the meeting: it lists the rooms of the game people gather for (where they are, or where one is to
@@ -1625,6 +1654,9 @@ meetButton.addEventListener("click", () => {
 });
 setInterval(() => {
   if (listSocket !== null) renderMeet();
+  // A host alone in a room on the list reads when people next gather (`hostAloneListed`), and nothing the room
+  // says comes to draw that line again: it is drawn again here, so that it does not name a meeting that is over.
+  else if (currentView !== null && currentCode !== "" && table === null && currentView.listed && currentView.players.length === 1) renderRoom(currentCode, currentView);
 }, MEET_EVERY_MS);
 
 /** Draws the list of rooms as last sent, for the game picked. */
@@ -1750,12 +1782,18 @@ function watchRooms(): void {
     if (newlyOpen(roomsSent, message).length > 0) call("room");
     roomsSent = message;
     renderRooms();
-    // the rooms a press on the meeting's line was waiting for: on into its room, if it is still on and still the one
-    if (meetWaited !== null && message.of !== null) {
+    // the rooms a press on the meeting's line was waiting for: on into its room, if the press is a moment old, the
+    // meeting is still on and still the one, and the player has not gone on to anything else meanwhile
+    if (meetWaited !== null) {
       const near = meetNear(Date.now(), meetConfig);
       const waited = meetWaited;
-      meetWaited = null;
-      if (near !== null && near.on && near.start === waited && near.game === message.of && currentCode === "") enterMeet(near);
+      const fresh = Date.now() - waited.at <= MEET_WAIT_MS;
+      const here = socket === null && currentCode === "" && newRoom.hidden;
+      if (!fresh || !here || near === null || !near.on || near.start !== waited.start) dropMeetWait();
+      else if (message.of === near.game) {
+        meetWaited = null;
+        enterMeet(near);
+      }
     }
     // a word about the game is offered only where the server keeps them for someone to read
     feedbackButton.hidden = message.feedback !== true;
@@ -1772,6 +1810,8 @@ function watchRooms(): void {
     if (listSocket !== current) return;
     listDown ??= Date.now();
     roomsSent = null;
+    // a press on the meeting's line that waited for this list is not acted on when it comes back
+    dropMeetWait();
     watching = null;
     wanting = {};
     coming = null;
@@ -2585,7 +2625,7 @@ function showOptions(shown: boolean): void {
   showQuick(false);
   showSwap(false);
   optionsSheet.hidden = false;
-  (optionsList.querySelector<HTMLButtonElement>("button:not(:disabled)") ?? el<HTMLButtonElement>("options-close")).focus({ preventScroll: true });
+  (optionsList.querySelector<HTMLButtonElement>("button:not(:disabled):not([hidden])") ?? el<HTMLButtonElement>("options-close")).focus({ preventScroll: true });
 }
 
 optionsOpen.addEventListener("click", () => showOptions(optionsSheet.hidden === true));
@@ -3203,10 +3243,14 @@ function disconnect(): void {
  * Opens a connection to `code`. `attemptsLeft` is how many more fresh codes
  * may be tried if this is a create and the code turns out to be in use.
  */
-function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, via?: JoinWay): void {
+function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, via?: JoinWay, meet?: ForMeet): void {
   // whether this is a link's room being opened again under its code; going anywhere else lets that offer go
   const reopening = create && code === reopenCode;
   if (!reopening) reopenCode = null;
+  // whether this is a meeting's room being made under the meeting's own code: refused, there is a room to go into
+  const meeting = create && meet !== undefined && meet.code === code;
+  // going into any room is not waiting for a list to choose a meeting's by
+  meetWaited = null;
   // a connection opened ahead to this very room is the one used; one to any other room is let go
   const ahead = warm !== null && warm.code === code && isFresh(warm) ? warm.socket : null;
   if (ahead !== null) warm = null;
@@ -3219,12 +3263,16 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
     token: loadToken(),
     nick,
     create,
-    game: chosenGame,
-    listed: chosenListed,
+    // a meeting's room is of the meeting's game and on the list, whatever was last chosen for a room of one's own
+    game: meet?.game ?? chosenGame,
+    listed: meet !== undefined ? true : chosenListed,
     pings: true,
     parts: true,
     // how this page came to a room it did not make, for the site's numbers (`src/shared/numbers.ts`)
     ...(via === undefined || create ? {} : { via }),
+    // Gone into as a meeting's room, under the meeting's code, because someone made it first: only if it still
+    // is one (on the list, of the meeting's game). A room its host has since taken off the list is not walked into.
+    ...(meet !== undefined && !create ? { only: meet.game } : {}),
   };
 
   const current = ahead ?? openRoom(code);
@@ -3296,7 +3344,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       // The room is made: from here on a reconnect only comes back to it. A
       // second "make" would be refused as a stranger's once the room has let
       // this player's slot go.
-      join = { ...join, create: false };
+      // Nor is how this page first came here said again, or what the room had to be: a player back in the
+      // room after their place was let go is not counted as having come in twice, nor turned away from it.
+      const { via: _via, only: _only, ...settled } = join;
+      join = { ...settled, create: false };
       // a link's room that was to be opened again is open, by this player or by another before them
       reopenCode = null;
       reopenJoined = null;
@@ -3445,9 +3496,24 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       return;
     }
     disconnect();
-    const then = create ? afterRefusedMake(message.reason, reopening, attemptsLeft) : "tell";
+    const then = create ? afterRefusedMake(message.reason, reopening || meeting, attemptsLeft) : "tell";
     if (then === "another-code") {
-      connect(generateRoomCode(Math.random, config), true, nick, attemptsLeft - 1);
+      connect(generateRoomCode(Math.random, config), true, nick, attemptsLeft - 1, undefined, meet);
+      return;
+    }
+    if (then === "join" && meeting) {
+      // Someone else made the meeting's room first: this player goes into theirs, if it is still the meeting's.
+      setCreating(false);
+      connect(code, false, nick, 0, "meet", meet);
+      setEntering(code);
+      return;
+    }
+    if (!create && meet !== undefined && message.reason === "not-found") {
+      // The room under the meeting's code is no longer a meeting's (off the list, or of another game by now), or
+      // has gone in this moment: the meeting gets another room, on the list, under a code of its own.
+      setEntering(null);
+      connect(generateRoomCode(Math.random, config), true, nick, CREATE_ATTEMPTS - 1, undefined, { game: meet.game, code: null });
+      setCreating(true);
       return;
     }
     if (then === "join") {
@@ -3456,7 +3522,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       reopenCode = null;
       reopenJoined = code;
       setCreating(false);
-      connect(code, false, nick, 0, reopenVia);
+      connect(code, false, nick, 0, "link");
       return;
     }
     // A quick join found the room full or gone by the time it got there: the next one waiting is tried.
@@ -3578,8 +3644,6 @@ let invitedCode = "";
  * the player goes anywhere else.
  */
 let reopenCode: string | null = null;
-/** By which way a player goes into a room they were refused the making of because another made it first: a link's room, or a meeting's. */
-let reopenVia: JoinWay = "link";
 /** By which way the rooms still to try after a first one filled or went are gone into (`quickRest`): the quick join, or a meeting's line. */
 let restVia: JoinWay = "quick";
 /** The code of a room this page went into after it could not open it again, until the room has answered: whether there was one to go into. */
@@ -3650,7 +3714,6 @@ function openOnGame(): void {
 function invitationGone(): void {
   const game = invitedGame;
   reopenCode = invitedCode === "" ? null : invitedCode;
-  reopenVia = "link";
   chosenListed = false;
   invitedCode = "";
   invitedGame = null;

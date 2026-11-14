@@ -66,6 +66,7 @@ import {
   type ServerMessage,
 } from "../shared/protocol";
 import knockoutConfig from "../shared/knockout-config.json";
+import { holdsMeet } from "../shared/meet";
 import { outsOf } from "../shared/knockout";
 import ledgerConfig from "../shared/ledger-config.json";
 import { resultOf } from "../shared/tops";
@@ -629,6 +630,12 @@ export class GameRoom extends Server<Env> {
       // A reconnect repeats the original request, so the room's own members
       // may "create" it again; anyone else has collided with a code in use.
       return this.reject(connection, "code-taken");
+    }
+
+    // Asked for as a meeting's room (`only`): a room that no longer is one, because its host took it off the list
+    // or changed its game, is not the room that was asked for. Its own players come back to it all the same.
+    if (request.only !== undefined && !made && !findPlayer(lobby, request.token) && !holdsMeet({ game: gameOf(lobby), listed: lobby.listed === true }, request.only)) {
+      return this.reject(connection, "not-found");
     }
 
     const now = Date.now();
