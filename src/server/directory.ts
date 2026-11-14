@@ -24,7 +24,7 @@ import meetConfig from "../shared/meet-config.json";
 import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import numbersConfig from "../shared/numbers-config.json";
 import { atMeet, cameCounts, countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
-import type { RoomConfig } from "../shared/lobby";
+import type { MessageLimit, RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
 import {
   parseDirectoryRequest,
@@ -60,6 +60,8 @@ const ADDRESS_MAX_LENGTH = 45;
 const DAY_MS = 86_400_000;
 /** Throws away all but the latest so many of what players wrote and of players pointed out. Faults are kept among them and counted apart (`takeFault`). */
 const TRIM_WORDS = "DELETE FROM words WHERE fault IS NULL AND id NOT IN (SELECT id FROM words WHERE fault IS NULL ORDER BY id DESC LIMIT ?)";
+/** How many senders' paces are remembered before those that have run out are looked for and forgotten. */
+const SENDERS_REMEMBERED = 500;
 /** How often at most the log is told that the numbers could not be written, in ms: while they cannot, every visit fails alike. */
 const NOT_COUNTED_SAY_EVERY_MS = 60_000;
 
@@ -146,10 +148,13 @@ export class RoomDirectory extends Server<Env> {
   private notCountedSaidAt = 0;
   /** What the viewers were last told of how many hands are up, as it was sent; nothing after the directory has slept, when everyone is told again. */
   private wantingTold: string | null = null;
-  /** How many words about the game each viewer has sent lately, by connection id. Forgotten in sleep: the day's limit is kept. */
-  private readonly feedbackPace = new Map<string, Pace>();
-  /** How many faults each sender has sent lately, by what their address is counted as (by connection id where there is none). Forgotten in sleep: the day's limit is kept. */
-  private readonly faultPace = new Map<string, Pace>();
+  /**
+   * How much each sender has lately done of each thing that is written down
+   * for them (`mayWrite`): by the thing and by what the sender's address is
+   * counted as, or by connection id where there is none. Forgotten in sleep:
+   * the limits of a day are kept.
+   */
+  private readonly senderPace = new Map<string, { pace: Pace; windowMs: number }>();
 
   /** Runs on first start and on every wake from hibernation. */
   onStart(): void {
@@ -235,7 +240,7 @@ export class RoomDirectory extends Server<Env> {
     // what the viewer's address is counted as stays with the connection, whichever game is asked for; so does a hand that is up
     const { from, want, game } = connection.state ?? {};
     const kept = { ...(from === undefined ? {} : { from }), ...(want === undefined ? {} : { want }) };
-    if (request.type === "going") return this.takeGoing(request, from, now);
+    if (request.type === "going") return this.takeGoing(connection, request, from, now);
     if (request.type === "came") {
       // counted for whoever runs the site: do those who come come back. The word is added to its number and not kept with anything.
       if (!this.cameSaid.has(connection.id)) this.count(cameCounts(request.since), now);
@@ -245,8 +250,8 @@ export class RoomDirectory extends Server<Env> {
     if (request.type === "want") {
       // a hand up or down: the game whose rooms are listed stays the one it was
       connection.setState({ ...(game === undefined ? {} : { game }), ...(from === undefined ? {} : { from }), ...(request.game === null ? {} : { want: request.game }) });
-      // counted for whoever runs the site: which game people came wanting
-      if (request.game !== null && request.game !== want) this.count([{ what: `wanted:${request.game}`, n: 1 }], now);
+      // counted for whoever runs the site: which game people came wanting. A hand that goes up and down without end is counted its few times.
+      if (request.game !== null && request.game !== want && this.mayWrite("wanted", connection, config.wantCountLimit, now)) this.count([{ what: `wanted:${request.game}`, n: 1 }], now);
       return this.tellWanting(null, null, { id: connection.id, was: want });
     }
     connection.setState({ ...(request.game === null ? {} : { game: request.game }), ...kept });
@@ -256,7 +261,6 @@ export class RoomDirectory extends Server<Env> {
   onClose(connection: Connection<ViewerState>): void {
     this.showPace.delete(connection.id);
     this.cameSaid.delete(connection.id);
-    this.feedbackPace.delete(connection.id);
     this.tellWatching(null, connection);
     this.tellWanting(null, connection);
   }
@@ -301,11 +305,12 @@ export class RoomDirectory extends Server<Env> {
    * now. Not for a meeting other than the one that is on or next; not a
    * second time for the same browser; and not past so many from one address
    * (`from`: what it is counted as, where the viewer came with one). None of
-   * which is told to the viewer: their page counts its own word. A word
+   * which is told to the viewer: their page counts its own word. Nor is a
+   * word taken back more than a few times in a while by one sender. A word
    * newly given is counted in the day's numbers by its game, for whoever
    * runs the site to set against how many came.
    */
-  private takeGoing(request: Extract<DirectoryRequest, { type: "going" }>, from: string | undefined, now: number): void {
+  private takeGoing(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "going" }>, from: string | undefined, now: number): void {
     const near = this.meetNear(now);
     if (near === null || !mayAnswer(near, request.meet)) return;
     // Nothing is waited for from here to the rows, so no other word comes between the count and the row.
@@ -319,6 +324,8 @@ export class RoomDirectory extends Server<Env> {
       sql.exec("INSERT INTO going (meet, who, key) VALUES (?, ?, ?)", near.start, request.who, from ?? null);
       this.count([{ what: `going:${near.game}`, n: 1 }], now);
     } else {
+      // A word given and taken back without end is a row written and thrown away each time: taken back a few times, and then it stays.
+      if (!this.mayWrite("going-back", connection, config.going.backLimit, now)) return;
       sql.exec("DELETE FROM going WHERE meet = ? AND who = ?", near.start, request.who);
     }
     this.tellComing(null, now);
@@ -367,6 +374,22 @@ export class RoomDirectory extends Server<Env> {
   }
 
   /**
+   * Whether the sender on `connection` may have one more of `what` written
+   * down now, when `limit` is how many in a while. The sender is what their
+   * address is counted as, so that opening more connections brings no more;
+   * where a connection came with no address (a test, a request from inside
+   * the Worker) it is the connection. A refusal does not count against them.
+   */
+  private mayWrite(what: string, connection: Connection<ViewerState>, limit: MessageLimit, now: number): boolean {
+    // those whose window has passed are forgotten, so that what is remembered is of the senders of the longest window
+    if (this.senderPace.size >= SENDERS_REMEMBERED) for (const [key, kept] of this.senderPace) if (now - kept.pace.since >= kept.windowMs) this.senderPace.delete(key);
+    const key = `${what}:${connection.state?.from ?? connection.id}`;
+    const paced = pace(this.senderPace.get(key)?.pace, now, limit.burst, limit.windowSeconds);
+    this.senderPace.set(key, { pace: paced.pace, windowMs: limit.windowSeconds * 1000 });
+    return paced.ok;
+  }
+
+  /**
    * Keeps a viewer's word about the game for whoever makes it to read
    * (`readInbox`), and tells the viewer that it was. Not when there is
    * nothing in it, when this viewer has sent their few for now, when the
@@ -381,10 +404,10 @@ export class RoomDirectory extends Server<Env> {
       connection.send(JSON.stringify(said));
     };
     const limits = config.feedback;
-    const paced = pace(this.feedbackPace.get(connection.id), now, limits.viewerLimit.burst, limits.viewerLimit.windowSeconds);
-    this.feedbackPace.set(connection.id, paced.pace);
+    // by the address the viewer comes from, so that a new connection is not a new viewer
+    const paced = this.mayWrite("feedback", connection, limits.viewerLimit, now);
     const text = normalizeFeedback(request.text, limits);
-    if (!paced.ok || text === null || !this.takesFeedback()) return answer(false);
+    if (!paced || text === null || !this.takesFeedback()) return answer(false);
     // Nothing is waited for from here to the rows, so no other word comes between the count and the row.
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM feedback WHERE at <= ?", now - DAY_MS);
@@ -468,13 +491,7 @@ export class RoomDirectory extends Server<Env> {
   private takeFault(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "fault" }>, now: number): void {
     if (!this.takesFeedback()) return;
     const limits = config.faults;
-    const windowMs = limits.senderLimit.windowSeconds * 1000;
-    // those whose window has passed are forgotten, so that what is remembered is of the senders of one window
-    for (const [sender, kept] of this.faultPace) if (now - kept.since >= windowMs) this.faultPace.delete(sender);
-    const sender = connection.state?.from ?? connection.id;
-    const paced = pace(this.faultPace.get(sender), now, limits.senderLimit.burst, limits.senderLimit.windowSeconds);
-    this.faultPace.set(sender, paced.pace);
-    if (!paced.ok) return;
+    if (!this.mayWrite("fault", connection, limits.senderLimit, now)) return;
     // Nothing is waited for from here to the rows, so no other fault comes between the count and the row.
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM faulted WHERE at <= ?", now - DAY_MS);

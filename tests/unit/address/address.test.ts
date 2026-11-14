@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { countedAs, withinLimit, type Limiter } from "../../../src/server/address";
+import { countedAs, fromOwnPage, withinLimit, type Limiter } from "../../../src/server/address";
 
 /** An address out of the range kept for examples. */
 const ADDRESS = "203.0.113.5";
@@ -93,6 +93,30 @@ describe("a limit kept by address", () => {
     expect(await withinLimit(undefined, ADDRESS, NAME)).toBe(true);
     expect(warned).toHaveBeenCalledTimes(1);
     expect(warned.mock.calls[0].join(" ")).toContain(NAME);
+  });
+});
+
+describe("whose page asks for a connection", () => {
+  const ASKED = "https://play.example.com/parties/game-room/ABCDE";
+
+  it("lets a page of the same host connect, whatever its path", () => {
+    expect(fromOwnPage("https://play.example.com", ASKED)).toBe(true);
+    expect(fromOwnPage("http://localhost:5273", "http://localhost:5273/parties/room-directory/main")).toBe(true);
+  });
+
+  it("turns away a page of another host, of another port, or of a host that only ends or begins the same", () => {
+    for (const origin of ["https://evil.example.net", "https://example.com", "https://play.example.com.evil.net", "https://notplay.example.com", "https://play.example.com:8443", "http://localhost:5173"]) {
+      expect(fromOwnPage(origin, ASKED)).toBe(false);
+    }
+    expect(fromOwnPage("http://localhost:5173", "http://localhost:5273/parties/room-directory/main")).toBe(false);
+  });
+
+  it("turns away an origin that is no address, as a page in a sandbox names", () => {
+    for (const origin of ["null", "", "play.example.com"]) expect(fromOwnPage(origin, ASKED)).toBe(false);
+  });
+
+  it("lets through what names no origin: not a browser", () => {
+    expect(fromOwnPage(null, ASKED)).toBe(true);
   });
 });
 

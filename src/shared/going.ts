@@ -1,4 +1,5 @@
 import type { GameId } from "./games";
+import type { MessageLimit } from "./lobby";
 import type { Meet } from "./meet";
 
 /**
@@ -25,6 +26,8 @@ export interface GoingConfig {
   perAddress: number;
   /** The most that is told: past it, "or more". */
   most: number;
+  /** How many times one sender may take a word back within one window: a person changes their mind once or twice, a script gives and takes back without end, and each time is a row written. */
+  backLimit: MessageLimit;
 }
 
 /** How many have said they will come to the meeting that starts at `meet` (ms since the epoch), as it is told: the number, and whether there are more than it says. */

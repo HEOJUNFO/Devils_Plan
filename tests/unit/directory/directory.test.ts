@@ -79,7 +79,8 @@ function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryCon
     faults: { messageLength: 40, frames: 2, each: 2, senderLimit: { burst: 2, windowSeconds: 60 }, dayLimit: 5, keep: 3, ignore: [] },
     makeLimits: MAKE_LIMITS,
     watchingMost: 3,
-    going: { perAddress: 4, most: 20 },
+    going: { perAddress: 4, most: 20, backLimit: { burst: 2, windowSeconds: 60 } },
+    wantCountLimit: { burst: 3, windowSeconds: 60 },
     ...overrides,
   };
 }

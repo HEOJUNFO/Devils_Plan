@@ -3,6 +3,7 @@ import { env, exports } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import type { RoomListing } from "../../../src/shared/directory";
+import type { Fault } from "../../../src/shared/fault";
 import type { StoredWord } from "../../../src/shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
 import {
@@ -332,6 +333,21 @@ describe("RoomDirectory", () => {
     after.close();
     viewer.close();
     again.close();
+  });
+
+  it("lets a page of its own host connect, and turns away a page of another site", async () => {
+    const ask = (origin: string): Promise<Response> =>
+      exports.default.fetch(`http://example.com/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`, { headers: { Upgrade: "websocket", Origin: origin } });
+
+    const ours = await ask("http://example.com");
+    const theirs = await ask("https://evil.example.net");
+    const sandboxed = await ask("null");
+
+    expect(ours.status).toBe(101);
+    expect(theirs.status).toBe(403);
+    expect(sandboxed.status).toBe(403);
+    ours.webSocket?.accept();
+    ours.webSocket?.close();
   });
 
   it("takes no report from a viewer", async () => {
@@ -781,14 +797,31 @@ describe("RoomDirectory: a word about the game", () => {
     expect(words).toEqual([{ id: expect.any(Number), at: expect.any(Number), text: "방 목록이 느려요\n두 번째 줄", lang: "ko", build: "abc1234" }]);
     expect(words?.[0].at).toBeGreaterThanOrEqual(before);
     // what is kept is those five things and no more: no address, no connection, no name.
-    // (The sixth column is for a player pointed out in a room, and of a word written here it holds nothing.)
+    // (Two more columns are for a player pointed out in a room and for something that went wrong in a page, and of a word written here they hold nothing.)
     const columns = await runInDurableObject(directoryStub(), (_object, state) =>
       state.storage.sql.exec<{ name: string }>("SELECT name FROM pragma_table_info('words')").toArray().map((row) => row.name),
     );
-    expect(columns.sort()).toEqual(["at", "build", "flag", "id", "lang", "text"]);
-    const flags = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ flag: string | null }>("SELECT flag FROM words").toArray().map((row) => row.flag));
-    expect(flags).toEqual([null]);
+    expect(columns.sort()).toEqual(["at", "build", "fault", "flag", "id", "lang", "text"]);
+    const marks = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ flag: string | null; fault: string | null }>("SELECT flag, fault FROM words").toArray());
+    expect(marks).toEqual([{ flag: null, fault: null }]);
     inbox.close();
+  });
+
+  it("takes from one address no more than a viewer's few in a while, over however many connections", async () => {
+    await withKey();
+    const most = directoryConfig.feedback.viewerLimit.burst;
+    const sent: (boolean | undefined)[] = [];
+
+    // each word from a connection of its own, all from one address that no other test comes from
+    for (let n = 0; n <= most; n++) {
+      const inbox = new Inbox<Answer>(await socket(`/parties/${DIRECTORY_PARTY}/${DIRECTORY_NAME}`, "203.0.113.150"));
+      await inbox.next();
+      write(inbox, `word ${n}`);
+      sent.push((await answerTo(inbox)).sent);
+      inbox.close();
+    }
+
+    expect(sent).toEqual([...Array<boolean>(most).fill(true), false]);
   });
 
   it("gives the reader the latest first", async () => {
@@ -1808,6 +1841,28 @@ describe("RoomDirectory: words given for the next meeting", () => {
 
     await a.until(most + 1);
     expect(a.told().map((note) => note.count)).toEqual([...Array.from({ length: most }, (_each, at) => at + 1), most + 1]);
+    a.close();
+    b.close();
+  });
+
+  it("lets one sender take a word back only a few times in a while, and then the word stays", async () => {
+    await withMeet();
+    const back = directoryConfig.going.backLimit.burst;
+    // an address that no other test comes from: what a sender has taken back is remembered from test to test
+    const [a, b] = [await guest("203.0.113.151"), await guest()];
+
+    for (let n = 0; n < back; n++) {
+      a.going(1);
+      a.going(1, false);
+    }
+    a.going(1);
+    await a.until(1);
+    // once more than may be taken back: not taken back
+    a.going(1, false);
+    await a.heard();
+    b.going(2);
+
+    await a.until(2);
     a.close();
     b.close();
   });

@@ -6,7 +6,8 @@
   "feedback": { "maxLength": 500, "viewerLimit": { "burst": 2, "windowSeconds": 600 }, "dayLimit": 60, "keep": 200, "readLimit": { "burst": 10, "windowSeconds": 600 } },
   "faults": { "messageLength": 200, "frames": 4, "each": 5, "senderLimit": { "burst": 5, "windowSeconds": 600 }, "dayLimit": 150, "keep": 60, "ignore": ["Script error", "ResizeObserver loop", "NotAllowedError", "AbortError"] },
   "watchingMost": 20,
-  "going": { "perAddress": 4, "most": 20 },
+  "going": { "perAddress": 4, "most": 20, "backLimit": { "burst": 4, "windowSeconds": 600 } },
+  "wantCountLimit": { "burst": 7, "windowSeconds": 600 },
   "makeLimits": [
     { "burst": 12, "windowSeconds": 60 },
     { "burst": 120, "windowSeconds": 3600 }

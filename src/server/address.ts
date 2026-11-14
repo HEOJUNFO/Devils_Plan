@@ -41,6 +41,26 @@ export function countedAs(from: string): string {
     .join(":");
 }
 
+/**
+ * Whether a connection asked for at the address `asked`, by a page whose
+ * origin the browser says is `origin`, is asked for by one of the game's own
+ * pages: one served from the same host. A browser names the page's origin
+ * on every connection it opens and a page cannot change it, so a page on
+ * another site cannot open rooms or the list from its visitors' browsers,
+ * spreading over their addresses what the limits by address hold back.
+ * What is not a browser (a test, a tool) names no origin and is let
+ * through: it comes from one address and meets the limits kept by it.
+ */
+export function fromOwnPage(origin: string | null, asked: string): boolean {
+  if (origin === null) return true;
+  try {
+    return new URL(origin).host === new URL(asked).host;
+  } catch {
+    // an origin that is no address: a page in a sandbox says "null"
+    return false;
+  }
+}
+
 /** What a limit is asked of: Cloudflare's rate limiting binding, the game's own count, or something a test puts in its place. */
 export interface Limiter {
   limit(options: { key: string }): Promise<{ success: boolean }>;

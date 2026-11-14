@@ -59,6 +59,12 @@ export interface DirectoryConfig {
   watchingMost: number;
   /** A word given for the next meeting, "I'll come": how many from one address, and how many are told (`going.ts`). */
   going: GoingConfig;
+  /**
+   * How many times one sender's hand going up for a game is counted in the
+   * day's numbers within one window: once for each game there is, which is
+   * what a person looking around does. The hand itself is not limited.
+   */
+  wantCountLimit: MessageLimit;
 }
 
 /** How many people are looking at the list, as it is told to them: the number, and whether there are more than it says. */

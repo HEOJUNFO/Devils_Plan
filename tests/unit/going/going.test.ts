@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { comingOf, comingTo, isWho, mayAnswer, mayGiveAnother, meetPress, newWho, type GoingConfig } from "../../../src/shared/going";
 import type { Meet } from "../../../src/shared/meet";
 
-const CONFIG: GoingConfig = { perAddress: 4, most: 20 };
+const CONFIG: GoingConfig = { perAddress: 4, most: 20, backLimit: { burst: 2, windowSeconds: 60 } };
 /** A meeting an hour long, and the one after it. */
 const START = 1_800_000_000_000;
 const NEXT = START + 86_400_000;

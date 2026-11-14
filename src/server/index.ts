@@ -8,7 +8,7 @@ import { routePartykitRequest } from "partyserver";
 import { isValidRoomCode, type RoomConfig } from "../shared/lobby";
 import { DIRECTORY_NAME } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
-import { ADDRESS_HEADER, withinLimit } from "./address";
+import { ADDRESS_HEADER, fromOwnPage, withinLimit } from "./address";
 
 export { RoomDirectory } from "./directory";
 export { GameRoom } from "./room";
@@ -16,6 +16,7 @@ export { GameRoom } from "./room";
 const rooms: RoomConfig = roomConfig;
 const notFound = (): Response => new Response("Not Found", { status: 404 });
 const tooMany = (): Response => new Response("Too Many Requests", { status: 429 });
+const notOurs = (): Response => new Response("Forbidden", { status: 403 });
 
 /**
  * Whether one more connection is taken from the address `connecting` comes
@@ -35,7 +36,9 @@ export default {
       // reporting to the directory), so none is let in from outside.
       onBeforeRequest: notFound,
       onBeforeConnect: async (connecting, party) => {
-        // Counted before anything else: asking after names that cannot be a room counts as well.
+        // A page of another site may not connect from its visitors' browsers (`fromOwnPage`).
+        if (!fromOwnPage(connecting.headers.get("Origin"), connecting.url)) return notOurs();
+        // Counted before anything else that is asked: asking after names that cannot be a room counts as well.
         if (!(await mayConnect(connecting, env))) return tooMany();
         // A Durable Object comes into being, and keeps what it stores, the
         // first time its name is used: only names that can be a room, and the
