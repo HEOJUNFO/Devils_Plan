@@ -10,6 +10,7 @@ import {
   createGame,
   deadline,
   drawSolid,
+  plainSolid,
   heightAt,
   isTerraced,
   isValidConfig,
@@ -540,5 +541,22 @@ describe("큐브 세기: what a player is sent", () => {
 
     expect(viewFor(state, 0).solid).toEqual(state.solid);
     expect(viewFor(state, null).history).toEqual(state.history);
+  });
+});
+
+describe("큐브 세기: the solid used when none drawn would do", () => {
+  it("comes to a number of cubes the game allows, has more than one height, and hides no column", () => {
+    const solid = plainSolid(config);
+    const at = (row: number, col: number): number => solid.heights[row * solid.cols + col];
+
+    expect(countOf(solid)).toBeGreaterThanOrEqual(config.minAnswer);
+    expect(countOf(solid)).toBeLessThanOrEqual(config.maxAnswer);
+    expect(new Set(solid.heights).size).toBeGreaterThan(1);
+    for (let row = 0; row < solid.rows; row++) {
+      for (let col = 0; col < solid.cols; col++) {
+        if (row > 0) expect(at(row, col)).toBeLessThanOrEqual(at(row - 1, col));
+        if (col > 0) expect(at(row, col)).toBeLessThanOrEqual(at(row, col - 1));
+      }
+    }
   });
 });

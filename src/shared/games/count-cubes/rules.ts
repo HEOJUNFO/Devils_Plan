@@ -151,15 +151,32 @@ function cutBlock(random: () => number, config: CubesConfig): Solid {
   return { rows, cols, heights };
 }
 
-/** The solid used when none drawn would do: two steps down to each side of a small block. */
-function plainSolid(config: CubesConfig): Solid {
-  const side = Math.max(2, config.minSide);
-  const top = Math.max(2, config.minHeight);
-  const heights: number[] = [];
-  for (let row = 0; row < side; row++) {
-    for (let col = 0; col < side; col++) heights.push(Math.max(1, top - Math.max(row, col)));
+/**
+ * The solid used when none drawn would do: steps down to each side of a
+ * block, one cube lower every `tread` columns. The smallest block and the
+ * narrowest steps that come to a number of cubes the game allows; where
+ * none does, the smallest block there is.
+ */
+export function plainSolid(config: CubesConfig): Solid {
+  const stepped = (side: number, top: number, tread: number): Solid => {
+    const heights: number[] = [];
+    for (let row = 0; row < side; row++) {
+      for (let col = 0; col < side; col++) heights.push(Math.max(1, top - Math.floor(Math.max(row, col) / tread)));
+    }
+    return { rows: side, cols: side, heights };
+  };
+  const least = Math.max(2, config.minSide);
+  const low = Math.max(2, config.minHeight);
+  for (let side = least; side <= Math.max(least, config.maxSide); side++) {
+    for (let top = low; top <= Math.max(low, config.maxHeight); top++) {
+      for (let tread = 1; tread < side; tread++) {
+        const solid = stepped(side, top, tread);
+        const count = countOf(solid);
+        if (count >= config.minAnswer && count <= config.maxAnswer && new Set(solid.heights).size > 1) return solid;
+      }
+    }
   }
-  return { rows: side, cols: side, heights };
+  return stepped(least, low, 1);
 }
 
 /**

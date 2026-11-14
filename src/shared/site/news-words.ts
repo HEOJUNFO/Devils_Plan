@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "기억 포커: 인원이 홀수(5명 이상)일 때 한 사람이 매 라운드 셋이 겨루는 조에 들어가던 것을 고쳤습니다. 이제 남는 한 명은 셋 조에 덜 들어갔던 짝에 들어갑니다. 러시안 룰렛 규칙 안내에는 4명·5명 탁자의 실탄 수와, 맞바꿀 칸을 고르다 시간을 넘기면 어떻게 되는지를 적었습니다.",
+        en: "Memory Poker: with an odd number of players (5 or more), one player was in the group of three every round. The player left over now joins the pair that has been in a group of three least. The Russian Roulette rules now say how many live rounds a table of 4 or 5 has, and what happens when the time runs out while you pick the chambers to swap.",
+      },
+      {
         ko: "보이지 않는 글자를 섞어 남의 닉네임과 똑같아 보이게 만든 이름에도 번호가 붙습니다. 번호를 받은 사람이 방에 다시 들어와도 그 번호가 그대로입니다. 오류 기록에서는 문장 안의 웹 주소와 인용된 글을 지웁니다.",
         en: "A nickname made to look like someone else's with characters that show nothing now gets a number too, and a player who was given a number keeps it when they come back to the room. Web addresses and quoted text are now removed from the sentence of an error report.",
       },

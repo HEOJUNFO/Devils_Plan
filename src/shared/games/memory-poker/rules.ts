@@ -216,25 +216,77 @@ function clone(state: PokerState): PokerState {
 const NOBODY = -1;
 
 /**
- * (gap) Who is set against whom in `round` (from 1), for players in `order`.
- * Everyone plays every round. The players are paired off as a league pairs
- * its sides: one stays, the others move round a place each round, so that
- * nobody meets the same opponent again before having met them all. With an
- * odd number, the one left over joins a pair, and those three play each
- * other. Each group, and the list of them, is in the order of the players'
- * numbers.
+ * The pairs of `round` (from 1) for players in `order`, as a league pairs its
+ * sides: one stays, the others move round a place each round, so that nobody
+ * meets the same opponent again before having met them all. With an odd
+ * number one pair is of a player and {@link NOBODY}.
  */
-export function groupsFor(order: readonly number[], round: number): number[][] {
-  if (order.length < 2) return order.length === 1 ? [[order[0]]] : [];
+function pairsFor(order: readonly number[], round: number): number[][] {
   const ring = order.length % 2 === 0 ? [...order] : [...order, NOBODY];
   const rest = ring.slice(1);
   const turns = (round - 1) % rest.length;
   const seats = [ring[0], ...rest.slice(turns), ...rest.slice(0, turns)];
   const pairs: number[][] = [];
   for (let i = 0; i < seats.length / 2; i++) pairs.push([seats[i], seats[seats.length - 1 - i]]);
-  const alone = pairs.find((pair) => pair.includes(NOBODY));
-  const groups = pairs.filter((pair) => pair !== alone);
-  if (alone !== undefined) groups[0] = [...groups[0], ...alone.filter((player) => player !== NOBODY)];
+  return pairs;
+}
+
+/** (gap) The player with no opponent of their own in `round` (from 1), who joins a pair: `null` where the players are even in number or fewer than three. */
+export function leftOver(order: readonly number[], round: number): number | null {
+  if (order.length < 3 || order.length % 2 === 0) return null;
+  return pairsFor(order, round).find((pair) => pair.includes(NOBODY))?.find((player) => player !== NOBODY) ?? null;
+}
+
+/**
+ * (gap) Who is set against whom in `round` (from 1), for players in `order`.
+ * Everyone plays every round. The players are paired off as a league pairs
+ * its sides ({@link pairsFor}). With an odd number, the one left over joins
+ * a pair, and those three play each other.
+ *
+ * Which pair: the one whose two have been in a group of three least so far
+ * this game (the one of them who has been most often, then the two
+ * together), and of those the pair that has met the one left over least.
+ * Three is a harder round than two (one of three wins it), so it is shared
+ * out; joining the first pair every round had the player who stays in place
+ * play three in every round of the game. The rounds before are worked out
+ * again each time from `order` alone: nothing of it is kept.
+ *
+ * The pairs themselves never repeat before everyone has met; the one left
+ * over does meet two players a second time that game, which with three in a
+ * group and an odd room cannot be helped. Each group, and the list of them,
+ * is in the order of the players' numbers.
+ */
+export function groupsFor(order: readonly number[], round: number): number[][] {
+  if (order.length < 2) return order.length === 1 ? [[order[0]]] : [];
+  /** How many groups of three each player has been in, and how many times each two have met, in the rounds before. */
+  const threes = new Map<number, number>();
+  const met = new Map<string, number>();
+  const both = (a: number, b: number): string => (a < b ? `${a}-${b}` : `${b}-${a}`);
+  let groups: number[][] = [];
+  for (let each = 1; each <= round; each++) {
+    const pairs = pairsFor(order, each);
+    const alone = pairs.find((pair) => pair.includes(NOBODY));
+    groups = pairs.filter((pair) => pair !== alone);
+    const left = alone?.find((player) => player !== NOBODY);
+    if (left !== undefined && groups.length > 0) {
+      const weigh = (pair: readonly number[]): number[] => [
+        Math.max(...pair.map((player) => threes.get(player) ?? 0)),
+        pair.reduce((sum, player) => sum + (threes.get(player) ?? 0), 0),
+        pair.reduce((sum, player) => sum + (met.get(both(player, left)) ?? 0), 0),
+      ];
+      const lighter = (a: readonly number[], b: readonly number[]): boolean => {
+        const at = a.findIndex((value, i) => value !== b[i]);
+        return at >= 0 && a[at] < b[at];
+      };
+      let host = 0;
+      for (let i = 1; i < groups.length; i++) if (lighter(weigh(groups[i]), weigh(groups[host]))) host = i;
+      groups[host] = [...groups[host], left];
+    }
+    for (const group of groups) {
+      if (group.length === 3) for (const player of group) threes.set(player, (threes.get(player) ?? 0) + 1);
+      for (let i = 0; i < group.length; i++) for (let j = i + 1; j < group.length; j++) met.set(both(group[i], group[j]), (met.get(both(group[i], group[j])) ?? 0) + 1);
+    }
+  }
   return groups.map((group) => [...group].sort((a, b) => a - b)).sort((a, b) => a[0] - b[0]);
 }
 

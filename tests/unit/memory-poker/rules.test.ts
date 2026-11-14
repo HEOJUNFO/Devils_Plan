@@ -9,6 +9,7 @@ import {
   createGame,
   deadline,
   groupsFor,
+  leftOver,
   isValidConfig,
   parseAction,
   shiftClock,
@@ -158,6 +159,37 @@ describe("기억 포커: who plays whom", () => {
     const trios = [1, 2, 3].map((round) => groupsFor(range(5), round).find((group) => group.length === 3));
 
     expect(new Set(trios.map((trio) => trio?.join(","))).size).toBeGreaterThan(1);
+  });
+
+  it("has each of five players in the group of three as often as the others over five rounds", () => {
+    const order = [3, 0, 4, 1, 2];
+
+    const trios = range(5).map((n) => groupsFor(order, n + 1).find((group) => group.length === 3) ?? []);
+
+    expect(range(5).map((player) => trios.filter((trio) => trio.includes(player)).length)).toEqual([3, 3, 3, 3, 3]);
+  });
+
+  it.each([7, 9, 11, 13, 15])("has nobody of %i players in the group of three round after round: no more than four times in seven, and nobody more than twice as often as another is", (count) => {
+    const order = range(count).reverse();
+
+    const trios = range(7).map((n) => groupsFor(order, n + 1).find((group) => group.length === 3) ?? []);
+    const times = range(count).map((player) => trios.filter((trio) => trio.includes(player)).length);
+
+    expect(Math.max(...times)).toBeLessThanOrEqual(4);
+    expect(Math.max(...times) - Math.min(...times)).toBeLessThanOrEqual(2);
+  });
+
+  it("keeps the pairs of an odd room those of a league, whoever the one left over joins: no pair of the two set against each other is made twice in a turn of the room", () => {
+    const order = range(7);
+
+    const pairs = range(7).flatMap((n) => {
+      const groups = groupsFor(order, n + 1);
+      const left = leftOver(order, n + 1);
+      return groups.map((group) => group.filter((player) => player !== left).join("-"));
+    });
+
+    expect(new Set(pairs).size).toBe(pairs.length);
+    expect(pairs).toHaveLength((7 * 6) / 2);
   });
 
   it("lists each group, and the groups, in the order of the players' numbers", () => {

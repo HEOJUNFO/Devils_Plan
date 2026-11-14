@@ -18,7 +18,7 @@ const ko = {
       end: "절반이 크레딧을 다 쓰면 자리마다 한 발씩 격발하고 끝납니다.",
     },
     parts: [
-      "약실 중 몇 칸에 실탄이 있습니다 (6명이면 여섯 칸 중 두 칸). 한 자리에 약실 한 칸이 마주 보고, 마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.",
+      "약실 중 몇 칸에 실탄이 있습니다 (4명이면 한 칸, 5명과 6명이면 두 칸). 한 자리에 약실 한 칸이 마주 보고, 마지막 격발 때 내 앞 약실이 비어 있으면 생존입니다.",
       "내 차례에는 다섯 가지 중 하나를 합니다. 크레딧은 16개로 시작합니다.",
       [
         "공개 조사 (1): 이웃한 두 칸이 찼는지 모두에게 공개",
@@ -28,7 +28,7 @@ const ko = {
       ],
       "공개 조사와 회전 말고는 누가 했는지만 '비공개 행동'으로 알려집니다. 무엇을 했는지, 조작 크레딧이 얼마나 모였는지, 탄이 바뀌었는지는 알려 주지 않습니다.",
       "남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없고, 다 쓰면 차례마다 자동으로 패스됩니다 (패스도 비공개 행동). 절반(5명이면 2명)이 크레딧을 다 쓰면 그 즉시 끝나고, 총구가 향한 자리부터 시계 방향으로 한 발씩 격발합니다.",
-      "방에 차례 시간 제한이 있으면 (공개 방은 처음부터 있습니다), 시간을 넘긴 차례는 크레딧 1개를 잃고 넘어갑니다. 접속이 끊긴 사람의 차례도 잠시 뒤 그렇게 넘어갑니다.",
+      "방에 차례 시간 제한이 있으면 (공개 방은 처음부터 있습니다), 시간을 넘긴 차례는 크레딧 1개를 잃고 넘어갑니다. 접속이 끊긴 사람의 차례도 잠시 뒤 그렇게 넘어갑니다. 맞바꿀 두 칸을 고르다 시간을 넘기면 크레딧은 더 잃지 않고 맞바꿈만 없어집니다.",
     ],
   } as RulesSheet,
   /** Why the room refused a move, for the bar. */
@@ -201,7 +201,7 @@ const en: typeof ko = {
       end: "When half are out of credits, one shot is fired at each seat.",
     },
     parts: [
-      "Some of the chambers hold a live round (with 6 players, two of the six). Each seat faces one chamber, and you live if the chamber in front of you is empty at the last volley.",
+      "Some of the chambers hold a live round (one with 4 players, two with 5 or 6). Each seat faces one chamber, and you live if the chamber in front of you is empty at the last volley.",
       "On your turn, do one of five things. You start with 16 credits.",
       [
         "Public check (1): shows everyone whether two neighbouring chambers are loaded",
@@ -211,7 +211,7 @@ const en: typeof ko = {
       ],
       "Only a public check and a turn are announced as they are. Anything else is announced as a hidden action: the table hears who, not what. Nobody is told how many credits have gathered, or that two rounds changed places.",
       "Only you know how many credits you have left. While you have credits you cannot pass; once you run out you automatically pass on every turn, and that too is announced as a hidden action. The game ends the moment half the players (two of five) have spent theirs, and the gun fires one shot at each seat, clockwise from the one the muzzle points at.",
-      "If the room has a turn clock (a public room starts with one), a turn that runs out loses 1 credit and passes on. So does the turn of a player whose connection is down, after a moment.",
+      "If the room has a turn clock (a public room starts with one), a turn that runs out loses 1 credit and passes on. So does the turn of a player whose connection is down, after a moment. If the time runs out while you are picking the two chambers to swap, you lose no more credits, only the swap.",
     ],
   } as RulesSheet,
   refused: {
