@@ -118,6 +118,55 @@ describe("joinLobby", () => {
     expect(result).toMatchObject({ ok: true, slot: 2, rejoined: false });
   });
 
+  /** The names carried in a room after each of `nicks` has come in, in that order, each as a player of their own. */
+  function namesAfter(nicks: readonly string[], config: RoomConfig): string[] {
+    let state = createLobby();
+    nicks.forEach((nick, at) => {
+      const joined = joinLobby(state, { token: tokenFor(at), nick }, config);
+      if (!joined.ok) throw new Error(`could not join: ${joined.reason}`);
+      state = joined.state;
+    });
+    return state.players.map((player) => player.nick);
+  }
+
+  it("gives a nickname someone else in the room carries a number, the first from 2 that is nobody's", () => {
+    const config = testConfig({ nickMaxLength: 12 });
+
+    expect(namesAfter(["ann", "ann", "ann"], config)).toEqual(["ann", "ann 2", "ann 3"]);
+    expect(namesAfter(["ann", "ann 2", "ann"], config)).toEqual(["ann", "ann 2", "ann 3"]);
+  });
+
+  it("takes two nicknames that read the same for one: the case of a letter, a wide letter, a space more or less", () => {
+    const config = testConfig({ nickMaxLength: 12 });
+
+    expect(namesAfter(["Ann", "ANN", "ａｎｎ"], config)).toEqual(["Ann", "ANN 2", "ａｎｎ 3"]);
+    expect(namesAfter(["ann", "a n n"], config)).toEqual(["ann", "a n n 2"]);
+    expect(namesAfter(["ann", "anne"], config)).toEqual(["ann", "anne"]);
+    expect(namesAfter(["방장", "방 장"], config)).toEqual(["방장", "방 장 2"]);
+  });
+
+  it("cuts a numbered nickname so that it is no longer than a nickname may be", () => {
+    const config = testConfig({ nickMaxLength: 6 });
+
+    expect(namesAfter(["abcdef", "abcdef", "abcdef"], config)).toEqual(["abcdef", "abcd 2", "abcd 3"]);
+  });
+
+  it("leaves a player their own nickname when they come back, and gives them a number when they take someone else's", () => {
+    const config = testConfig({ nickMaxLength: 12 });
+    let state = createLobby();
+    for (const [at, nick] of ["ann", "bob"].entries()) {
+      const joined = joinLobby(state, { token: tokenFor(at), nick }, config);
+      if (joined.ok) state = joined.state;
+    }
+
+    const back = joinLobby(state, { token: tokenFor(0), nick: "ann" }, config);
+    const renamed = joinLobby(state, { token: tokenFor(1), nick: "Ann" }, config);
+
+    expect(back).toMatchObject({ ok: true, rejoined: true });
+    expect(back.ok ? back.state.players.map((player) => player.nick) : null).toEqual(["ann", "bob"]);
+    expect(renamed.ok ? renamed.state.players.map((player) => player.nick) : null).toEqual(["ann", "Ann 2"]);
+  });
+
   it("refuses a player when every slot is taken", () => {
     const config = testConfig();
     const state = lobbyWith(config.maxPlayers, config);

@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-14",
     lines: [
       {
+        ko: "방에 같은 닉네임이 이미 있으면 뒤에 번호가 붙습니다(「철수 2」). 채팅에서 누가 한 말인지 헷갈리지 않습니다.",
+        en: "If a nickname is already in the room, yours gets a number after it (\"Ann 2\"), so a line of chat is never mistaken for someone else's.",
+      },
+      {
         ko: `빨강과 초록을 가려 보기 어려워도 알아보도록 표시를 더했습니다. ${ROULETTE.ko}: 전에 실탄을 본 약실은 글자 아래에 줄이 있습니다. ${GRASS.ko}: 놓을 수 없는 자리는 칸마다 ×가 그려지고, 공격을 고른 사람의 타일 번호에 밑줄이 있습니다. ${RECT.ko}: 답 옆에 ○나 ×가 붙습니다.`,
         en: `Marks were added for players who cannot tell red from green. ${ROULETTE.en}: a chamber that held a round when it was last seen has a bar under its letter. ${GRASS.en}: a place where the tile does not fit is crossed out cell by cell, and the tile number of a player who took Attack is underlined. ${RECT.en}: an answer is followed by ○ or ×.`,
       },

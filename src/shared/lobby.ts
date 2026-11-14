@@ -445,6 +445,28 @@ export function normalizeNick(raw: string, config: RoomConfig): string | null {
   return cut.length > 0 ? cut : null;
 }
 
+/** What a nickname is compared by: two that read the same are one, however they are spelled (the case of a letter, a full-width letter for a plain one, a space more or less). */
+function nickKey(nick: string): string {
+  return nick.normalize("NFKC").toLowerCase().replace(/\s+/gu, "");
+}
+
+/**
+ * `nick` as it is carried in a room where the names in `taken` are carried
+ * already: itself where nobody has it, else with the first number from 2
+ * that makes it nobody's ("ann 2"), cut so that the whole still fits. A
+ * line of chat shows who said it by name alone, and under a name someone
+ * else carries a player could speak as them.
+ */
+export function distinctNick(nick: string, taken: readonly string[], config: RoomConfig): string {
+  const keys = new Set(taken.map(nickKey));
+  if (!keys.has(nickKey(nick))) return nick;
+  for (let n = 2; ; n++) {
+    const mark = ` ${n}`;
+    const numbered = `${cutTo(nick, config.nickMaxLength - mark.length)}${mark}`;
+    if (!keys.has(nickKey(numbered))) return numbered;
+  }
+}
+
 /** Whether `code` is a well-formed room code under `config`. */
 export function isValidRoomCode(code: string, config: RoomConfig): boolean {
   if (code.length !== config.roomCodeLength) return false;
@@ -474,8 +496,9 @@ export function findPlayer(state: LobbyState, token: string): LobbyPlayer | unde
  *
  * A token already in the lobby rejoins its slot (taking the new nickname).
  * Otherwise the player gets the lowest free slot, or is refused when the room
- * is full: it holds as many as its game takes ({@link capacityOf}). The input
- * state is not modified.
+ * is full: it holds as many as its game takes ({@link capacityOf}). A
+ * nickname someone else in the room carries is given a number
+ * ({@link distinctNick}). The input state is not modified.
  */
 export function joinLobby(
   state: LobbyState,
@@ -483,10 +506,12 @@ export function joinLobby(
   config: RoomConfig,
 ): JoinResult {
   if (!isValidToken(request.token)) return { ok: false, reason: "bad-token" };
-  const nick = normalizeNick(request.nick, config);
-  if (nick === null) return { ok: false, reason: "bad-nick" };
+  const asked = normalizeNick(request.nick, config);
+  if (asked === null) return { ok: false, reason: "bad-nick" };
 
   if (state.barred?.includes(request.token) === true) return { ok: false, reason: "kicked" };
+  // told apart from everyone else here: their own name from before is theirs to keep or change
+  const nick = distinctNick(asked, state.players.filter((p) => p.token !== request.token).map((p) => p.nick), config);
 
   const existing = findPlayer(state, request.token);
   if (existing) {
