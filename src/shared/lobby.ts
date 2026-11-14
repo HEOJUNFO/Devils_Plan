@@ -224,6 +224,8 @@ export interface LobbyState {
    * room stored before the list existed, which is then not on it.
    */
   listed?: boolean;
+  /** When the room's people meet, as its host said (ms since the epoch; `appointment.ts`). Absent where none was said. */
+  when?: number;
   /** Seconds a player has for a move in the games started here; 0 or absent for no limit. */
   turnSeconds?: number;
   /** Which of the game's variants the games started here are played by (`games.json`); absent for the game's first. */
@@ -301,6 +303,8 @@ export interface LobbyView {
   wishes?: Wishes;
   /** The game the viewer has asked for; not there for none. */
   wish?: GameId;
+  /** When the room's people meet, as its host said (ms since the epoch); not there where none was said. A time that has passed is still said: the reader's clock tells (`standing` of `appointment.ts`). */
+  when?: number;
 }
 
 /** Why a join was refused. */
@@ -845,6 +849,18 @@ export function nextHost(state: LobbyState, connectedSlots: ReadonlySet<number>)
   return next;
 }
 
+/**
+ * Notes when the room's people meet, or with `null` that no time is said
+ * any more. Whether the time is one a room takes is the caller's to check
+ * (`mayAnnounce` of `appointment.ts`, which needs the clock). The input
+ * state is not modified.
+ */
+export function setWhen(state: LobbyState, at: number | null): LobbyState {
+  if ((state.when ?? null) === at) return state;
+  const { when: _when, ...rest } = state;
+  return at === null ? rest : { ...rest, when: at };
+}
+
 /** Puts the room on the list of rooms or takes it off. The input state is not modified. */
 export function setListed(state: LobbyState, listed: boolean): LobbyState {
   return (state.listed === true) === listed ? state : { ...state, listed };
@@ -903,5 +919,6 @@ export function viewLobby(
     ...(readers > 0 ? { reading: readers } : {}),
     ...(wishCount(wishes) > 0 ? { wishes } : {}),
     ...(wish !== undefined ? { wish } : {}),
+    ...(state.when !== undefined ? { when: state.when } : {}),
   };
 }

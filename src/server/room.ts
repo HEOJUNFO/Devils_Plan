@@ -2,6 +2,8 @@ import { Server, type Connection, type ConnectionContext, type WSMessage } from 
 import { BUILD } from "../shared/build";
 import { heardBy } from "../shared/aside";
 import { normalizeChat, paceChat, type ChatConfig, type ChatPace, type QuickWord } from "../shared/chat";
+import { mayAnnounce, type AppointmentConfig } from "../shared/appointment";
+import appointmentConfigJson from "../shared/appointment-config.json";
 import chatConfigJson from "../shared/chat-config.json";
 import type { Flag, FlagConfig } from "../shared/feedback";
 import { maskLine, type MaskConfig } from "../shared/mask";
@@ -31,6 +33,7 @@ import {
   setGame,
   setListed,
   setReady,
+  setWhen,
   setTeam,
   setTurnSeconds,
   setKnockout,
@@ -79,6 +82,7 @@ const chatConfig: ChatConfig = chatConfigJson;
 const flagConfig: FlagConfig = chatConfigJson.flag;
 const maskConfig: MaskConfig = maskConfigJson;
 const voiceConfig: VoiceConfig = voiceConfigJson;
+const appointmentConfig: AppointmentConfig = appointmentConfigJson;
 /** What the log calls the directory's count of rooms made by each address. */
 const ROOM_COUNT = "ROOM_COUNT";
 /** `readyState` of a WebSocket that is open. */
@@ -413,7 +417,7 @@ export class GameRoom extends Server<Env> {
     }
     // A page of ours comes nowhere near these limits; one that is not may not make the room work without end.
     const sort =
-      parsed.type === "listing" || parsed.type === "clock" || parsed.type === "variant" || parsed.type === "knockout" || parsed.type === "host" || parsed.type === "kick" || parsed.type === "pick"
+      parsed.type === "listing" || parsed.type === "when" || parsed.type === "clock" || parsed.type === "variant" || parsed.type === "knockout" || parsed.type === "host" || parsed.type === "kick" || parsed.type === "pick"
         ? "setting"
         : parsed.type === "rtc"
           ? "signal"
@@ -444,6 +448,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "ready") await this.handleReady(seat, parsed.ready);
     else if (parsed.type === "reading") this.handleReading(connection, seat, parsed.reading);
     else if (parsed.type === "wish") this.handleWish(connection, seat, parsed.game);
+    else if (parsed.type === "when") this.handleWhen(connection, seat.slot, parsed.at);
     else if (parsed.type === "host") await this.handleHost(connection, seat.slot, parsed.to);
     else if (parsed.type === "kick") await this.handleKick(connection, seat.slot, parsed.slot);
     else if (parsed.type === "here") await this.handleHere(seat.slot);
@@ -914,6 +919,22 @@ export class GameRoom extends Server<Env> {
     connection.setState(reading ? { ...plain, reading: true } : plain);
     // nobody is told it during a game: it is said again when the room is next sent
     if (!this.playing()) this.broadcastLobby();
+  }
+
+  /**
+   * Notes when the room's people meet, as its host says, or that no time is
+   * said any more, and tells everyone (`appointment.ts`). Kept with the
+   * room: someone who comes in later is told too.
+   */
+  private handleWhen(connection: Connection<ConnectionState>, slot: number, at: number | null): void {
+    const lobby = this.lobby;
+    if (lobby === null) return;
+    if (this.hostSlot() !== slot) return this.refuse(connection, "not-host");
+    if (at !== null && !mayAnnounce(at, Date.now(), appointmentConfig)) return this.refuse(connection, "bad-setting");
+    const next = setWhen(lobby, at);
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
   }
 
   /**

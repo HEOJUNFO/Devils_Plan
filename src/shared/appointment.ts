@@ -7,9 +7,14 @@
  * where it has closed in between, `reopen.ts`).
  *
  * The time rides in the address after the room's code (`CODE-TAIL`), behind
- * the `#`, which is sent to no server: the room and the lobby know nothing
- * of it, nothing is stored, and nobody is held to it. Two links to one room
- * may say two times; each says what its maker chose.
+ * the `#`, which is sent to no server: of a link's time the room and the
+ * lobby know nothing, nothing is stored, and nobody is held to it. Two
+ * links to one room may say two times; each says what its maker chose.
+ *
+ * A room has one time of its own besides, where its host has said one to
+ * it (`mayAnnounce`, `setWhen` of `lobby.ts`): the room keeps that with
+ * what else it keeps, and shows it to everyone in it, also to someone who
+ * came in by the code and saw no link. The room's own link then carries it.
  *
  * Pure functions over plain data. Turning a day and a time of day into a
  * moment is the page's work, which knows the reader's clock.
@@ -94,4 +99,13 @@ export function firstDay(nowMinutes: number, config: AppointmentConfig): number 
 /** Whether a link can be made for `at`: only for a time still to come. */
 export function mayPlan(at: number, now: number): boolean {
   return at > now;
+}
+
+/**
+ * Whether a room takes `at` from its host as the time its people meet: a
+ * whole minute still to come, and no further off than a link may say
+ * (`standing`).
+ */
+export function mayAnnounce(at: unknown, now: number, config: AppointmentConfig): at is number {
+  return typeof at === "number" && Number.isSafeInteger(at) && at % MINUTE === 0 && mayPlan(at, now) && standing(at, now, config) !== null;
 }

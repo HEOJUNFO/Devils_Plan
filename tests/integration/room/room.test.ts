@@ -1529,6 +1529,41 @@ describe("GameRoom: being ready, and the host", () => {
     a.close();
   });
 
+  it("keeps the time its host says its people meet, tells everyone, and tells whoever comes in later", async () => {
+    // a whole minute, two hours on by the clock the room reads
+    const at = (Math.floor(Date.now() / 60_000) + 120) * 60_000;
+    const a = await open("RDYTA", { player: 0, create: true });
+    const b = await open("RDYTA", { player: 1 });
+    await a.lobbyOf(2);
+
+    a.send({ type: "when", at });
+
+    expect((await a.lobbyWhere((l) => l.when !== undefined)).when).toBe(at);
+    expect((await b.lobbyWhere((l) => l.when !== undefined)).when).toBe(at);
+    const c = await open("RDYTA", { player: 2 });
+    expect((await c.lobbyWhere()).when).toBe(at);
+    a.send({ type: "when", at: null });
+    expect((await b.lobbyWhere((l) => l.when === undefined)).when).toBeUndefined();
+    a.close();
+    b.close();
+    c.close();
+  });
+
+  it("takes a time for the room from its host alone, and not one that has passed", async () => {
+    const at = (Math.floor(Date.now() / 60_000) + 120) * 60_000;
+    const a = await open("RDYTB", { player: 0, create: true });
+    const b = await open("RDYTB", { player: 1 });
+    await a.lobbyOf(2);
+    await b.lobbyOf(2);
+
+    b.send({ type: "when", at });
+    expect(await b.refusal()).toEqual({ type: "refused", reason: "not-host" });
+    a.send({ type: "when", at: at - 180 * 60_000 });
+    expect(await a.refusal()).toEqual({ type: "refused", reason: "bad-setting" });
+    a.close();
+    b.close();
+  });
+
   it("tells everyone how many asked for another game, and takes the word back once the host has changed the game", async () => {
     const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
     const a = await open("RDYWA", { player: 0, create: true });

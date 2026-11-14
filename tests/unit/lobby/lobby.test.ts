@@ -25,6 +25,7 @@ import {
   markAway,
   normalizeNick,
   setListed,
+  setWhen,
   setTeam,
   setTurnSeconds,
   setVariant,
@@ -598,6 +599,47 @@ describe("hostOf", () => {
 
     expect(joined.slot).toBe(0);
     expect(hostOf(joined.state, new Set([0, 2]))?.slot).toBe(2);
+  });
+});
+
+describe("setWhen", () => {
+  /** A moment, as a room keeps one. */
+  const AT = 1_800_000_000_000;
+
+  it("notes when the room's people meet, and shows it to everyone in the room", () => {
+    const config = testConfig();
+    const state = setWhen(lobbyWith(2, config), AT);
+
+    expect(state.when).toBe(AT);
+    expect(viewLobby(state, new Set([0, 1]), 0, config).when).toBe(AT);
+    expect(viewLobby(state, new Set([0, 1]), 1, config).when).toBe(AT);
+  });
+
+  it("takes the time back, and then says nothing of one", () => {
+    const config = testConfig();
+    const state = setWhen(setWhen(lobbyWith(2, config), AT), null);
+
+    expect("when" in state).toBe(false);
+    expect("when" in viewLobby(state, new Set([0, 1]), 0, config)).toBe(false);
+  });
+
+  it("is the same state where nothing changes", () => {
+    const config = testConfig();
+    const plain = lobbyWith(2, config);
+    const timed = setWhen(plain, AT);
+
+    expect(setWhen(plain, null)).toBe(plain);
+    expect(setWhen(timed, AT)).toBe(timed);
+  });
+
+  it("does not modify the state it was given", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+    const before = JSON.stringify(state);
+
+    setWhen(state, AT);
+
+    expect(JSON.stringify(state)).toBe(before);
   });
 });
 

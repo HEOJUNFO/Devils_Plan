@@ -374,6 +374,11 @@ const ko = {
   /** An invitation that says when (`src/shared/appointment.ts`): the link on a room's bar, the sheet it opens, and what is said of the time. */
   when: {
     open: "약속 잡기",
+    /** The same link while the room has a time of its own, said by its host: it says the time. */
+    set: (when: string) => `약속 ${when}`,
+    /** The host's button on the sheet: says the time picked to the room, so everyone in it sees it; and takes it back. */
+    tell: "방에 알리기",
+    untell: "방의 약속 지우기",
     title: "약속 잡기: 언제 모일까요?",
     help: "시간이 담긴 초대 링크입니다. 받은 사람도 달력에 넣습니다.",
     today: "오늘",
@@ -815,6 +820,9 @@ const en: typeof ko = {
   brief: { goal: "Goal", play: "Play", end: "End" },
   when: {
     open: "Set a time",
+    set: (when) => `Meet ${when}`,
+    tell: "Tell the room",
+    untell: "Clear the room's time",
     title: "Set a time: when do you meet?",
     help: "This link says when, and can go in a calendar.",
     today: "Today",

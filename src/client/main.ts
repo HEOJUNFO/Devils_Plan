@@ -203,6 +203,7 @@ const whenClock = el<HTMLElement>("when-clock");
 const whenSays = el<HTMLElement>("when-says");
 const whenCalendar = el<HTMLButtonElement>("when-calendar");
 const whenCopy = el<HTMLButtonElement>("when-copy");
+const whenTell = el<HTMLButtonElement>("when-tell");
 const appointmentConfig: AppointmentConfig = appointmentConfigJson;
 /**
  * What the link that opened this page said of when the room's people meet
@@ -537,6 +538,8 @@ let warming: ReturnType<typeof setTimeout> | null = null;
  * stays as it was until then reads as a press not taken.
  */
 let asked: { listed?: boolean; turnSeconds?: number; variant?: string; team?: number; ready?: boolean; wish?: GameId | null } = {};
+/** The time the room last said its people meet, as this page last noted it in the chat; `null` for none. A change is said once. */
+let saidWhen: number | null = null;
 /** Whether the room has spoken on the connection now open: a new one starts with nothing this page said on the last. */
 let roomSpoke = false;
 /** The game this player asked the room for as its next, as the room last said it, or `null` for none: said again on a new connection (`src/shared/wish.ts`). */
@@ -2496,6 +2499,11 @@ function roomLink(code: string, game: GameId | null, at: number | null): string 
   return `${location.origin}${game === null ? "/" : invitePath(lang, game)}#${linkedOf(code, at)}`;
 }
 
+/** The time the room's people meet, as its host said to the room, while it still stands on the reader's clock (`standing`); `null` for none. */
+function roomWhenOf(view: LobbyView | null): number | null {
+  return view?.when !== undefined && appointmentStands(view.when, Date.now(), appointmentConfig) !== null ? view.when : null;
+}
+
 /** Gives the appointment at `at` in the room `code` to the reader's calendar: its address is the link itself, which at that hour opens the room. */
 function saveAppointment(code: string, at: number, game: GameId | null): void {
   saveCalendar({
@@ -2531,6 +2539,12 @@ function renderWhen(): void {
   whenSays.textContent = open ? whenOf(at) : WORDS.when.past;
   whenCalendar.disabled = !open;
   whenCopy.disabled = !open;
+  // The host says the time picked to the room, where everyone in it reads it, also who comes in later; with the
+  // room's own time picked, the button takes it back.
+  const told = roomWhenOf(currentView) === at;
+  whenTell.hidden = !isHost;
+  whenTell.textContent = told ? WORDS.when.untell : WORDS.when.tell;
+  whenTell.disabled = !told && !open;
 }
 
 /**
@@ -2553,7 +2567,10 @@ function showWhen(shown: boolean): void {
   showSwap(false);
   const now = new Date();
   const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const said = appointment !== null && appointment.code === currentCode && mayPlan(appointment.at, now.getTime()) ? new Date(appointment.at) : null;
+  // the room's own time first, where its host said one; else the time of the link that led here
+  const roomAt = roomWhenOf(currentView);
+  const saidAt = roomAt !== null && mayPlan(roomAt, now.getTime()) ? roomAt : appointment !== null && appointment.code === currentCode && mayPlan(appointment.at, now.getTime()) ? appointment.at : null;
+  const said = saidAt === null ? null : new Date(saidAt);
   // the day the link said, counted from today on the calendar (not in hours: a day the clocks change has 23 or 25)
   const saidDay = said === null ? null : Math.round((new Date(said.getFullYear(), said.getMonth(), said.getDate()).getTime() - midnight) / 86_400_000);
   if (said !== null && saidDay !== null && saidDay < appointmentConfig.days) {
@@ -2595,6 +2612,12 @@ for (const [id, by, label] of [
     renderWhen();
   });
 }
+whenTell.addEventListener("click", () => {
+  const at = whenPicked();
+  if (roomWhenOf(currentView) === at) send({ type: "when", at: null });
+  else if (mayPlan(at, Date.now())) send({ type: "when", at });
+  renderWhen();
+});
 whenCalendar.addEventListener("click", () => {
   const at = whenPicked();
   if (currentCode === "" || !mayPlan(at, Date.now())) return renderWhen();
@@ -2791,13 +2814,24 @@ function renderRoom(code: string, view: LobbyView): void {
     // another room waits on its host anew
     hostWaited = false;
     hostCalledAt = null;
-    // the link that led here said when the room's people meet: said once, where it stays to be read
-    if (appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null && !chat.noted("when")) {
-      chat.note({ kind: "when", at: appointment.at });
-    }
-  } else if (currentView !== null) noteComings(currentView, view);
+    // When the room's people meet: said once, where it stays to be read. The room's own time where its host
+    // said one; else the time of the link that led here.
+    const linked = appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null ? appointment.at : null;
+    const first = roomWhenOf(view) ?? linked;
+    if (first !== null && !chat.noted("when")) chat.note({ kind: "when", at: first });
+    saidWhen = roomWhenOf(view);
+  } else {
+    if (currentView !== null) noteComings(currentView, view);
+    // the host has said a time to the room, or another one
+    const at = roomWhenOf(view);
+    if (at !== null && at !== saidWhen) chat.note({ kind: "when", at });
+    saidWhen = at;
+  }
   currentCode = code;
   currentView = view;
+  // the link that sets a time says the room's, where it has one; the sheet, if open, says what its host's button does now
+  whenOpen.textContent = roomWhenOf(view) === null ? WORDS.when.open : WORDS.when.set(whenOf(roomWhenOf(view) ?? 0));
+  if (!whenSheet.hidden) renderWhen();
   syncTally();
   // who the chat's next line is said to, as the room now stands
   renderTo();
@@ -3688,7 +3722,8 @@ copyButton.addEventListener("click", () => {
   const invited = currentView !== null && isGameId(currentView.game) ? currentView.game : null;
   // Through the page that tells whatever draws a card for a link (a messenger) which game this is, in the
   // language of the one inviting; it goes on to the room at once. The code follows the `#` and is sent to nobody.
-  const link = `${location.origin}${invited === null ? location.pathname : invitePath(lang, invited)}#${currentCode}`;
+  // (where the room's host has said when its people meet, the link says so too: `linkedOf`)
+  const link = `${location.origin}${invited === null ? location.pathname : invitePath(lang, invited)}#${linkedOf(currentCode, roomWhenOf(currentView))}`;
   const game = invited === null ? "" : GAMES[invited].title[lang];
   // copied, it is the link alone, as an address is pasted; the sheet sends a line with it
   passOn(copyButton, WORDS.room.copy, game === "" ? "" : WORDS.share.invite(game), link, link, () => {

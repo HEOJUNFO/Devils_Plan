@@ -89,6 +89,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "reading", reading: false }))).toEqual({ type: "reading", reading: false });
     expect(parseClientMessage(JSON.stringify({ type: "wish", game: DEFAULT_GAME }))).toEqual({ type: "wish", game: DEFAULT_GAME });
     expect(parseClientMessage(JSON.stringify({ type: "wish", game: null }))).toEqual({ type: "wish", game: null });
+    expect(parseClientMessage(JSON.stringify({ type: "when", at: 1_800_000_000_000 }))).toEqual({ type: "when", at: 1_800_000_000_000 });
+    expect(parseClientMessage(JSON.stringify({ type: "when", at: null }))).toEqual({ type: "when", at: null });
     expect(parseClientMessage(JSON.stringify({ type: "host", to: 3 }))).toEqual({ type: "host", to: 3 });
     expect(parseClientMessage(JSON.stringify({ type: "kick", slot: 0 }))).toEqual({ type: "kick", slot: 0 });
     expect(parseClientMessage(JSON.stringify({ type: "here", extra: 1 }))).toEqual({ type: "here" });
@@ -204,6 +206,10 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "reading" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "reading", reading: "yes" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "wish" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "when" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "when", at: "21:00" }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "when", at: -1 }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "when", at: 1.5 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "wish", game: "no-such-game" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "host" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "host", to: -1 }))).toBeNull();

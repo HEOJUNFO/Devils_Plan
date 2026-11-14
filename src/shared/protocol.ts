@@ -349,6 +349,8 @@ export type ClientMessage =
   | { type: "ready"; ready: boolean }
   /** Say that one has the rules of the room's game open in its waiting room, or no longer (`reading.ts`). */
   | { type: "reading"; reading: boolean }
+  /** Say when the room's people meet, or with `null` that no time is said any more; only the host may (`appointment.ts`). */
+  | { type: "when"; at: number | null }
   /** Say which other game one would like the room to play next, or with `null` none; the host does not, the host changes it (`wish.ts`). */
   | { type: "wish"; game: GameId | null }
   /** Make the player in slot `to` the host; only the host may, and only to someone connected. */
@@ -411,6 +413,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
   if (data.type === "pick") return isGameId(data.game) ? { type: "pick", game: data.game } : null;
   if (data.type === "ready") return typeof data.ready === "boolean" ? { type: "ready", ready: data.ready } : null;
   if (data.type === "reading") return typeof data.reading === "boolean" ? { type: "reading", reading: data.reading } : null;
+  if (data.type === "when") {
+    return data.at === null ? { type: "when", at: null } : typeof data.at === "number" && Number.isSafeInteger(data.at) && data.at >= 0 ? { type: "when", at: data.at } : null;
+  }
   if (data.type === "wish") return data.game === null ? { type: "wish", game: null } : isGameId(data.game) ? { type: "wish", game: data.game } : null;
   if (data.type === "host") {
     return typeof data.to === "number" && Number.isInteger(data.to) && data.to >= 0 ? { type: "host", to: data.to } : null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstDay, linkedOf, mayPlan, parseLinked, standing, stepped, tailOf, type AppointmentConfig } from "../../../src/shared/appointment";
+import { firstDay, linkedOf, mayAnnounce, mayPlan, parseLinked, standing, stepped, tailOf, type AppointmentConfig } from "../../../src/shared/appointment";
 
 const CONFIG: AppointmentConfig = { days: 7, defaultMinutes: 21 * 60, stepMinutes: 30, earlyMinutes: 15, graceMinutes: 60, lengthMinutes: 90, remindMinutes: 10 };
 const MINUTE = 60_000;
@@ -96,5 +96,33 @@ describe("mayPlan", () => {
     expect(mayPlan(AT + 1, AT)).toBe(true);
     expect(mayPlan(AT, AT)).toBe(false);
     expect(mayPlan(AT - MINUTE, AT)).toBe(false);
+  });
+});
+
+describe("mayAnnounce", () => {
+  /** A moment on a whole minute, and a minute and a day in ms. */
+  const MINUTE_MS = 60_000;
+  const DAY_MS = 24 * 60 * MINUTE_MS;
+  const NOW_AT = 30_000_000 * MINUTE_MS;
+
+  it("takes a whole minute still to come", () => {
+    expect(mayAnnounce(NOW_AT + MINUTE_MS, NOW_AT, CONFIG)).toBe(true);
+    expect(mayAnnounce(NOW_AT + 3 * DAY_MS, NOW_AT, CONFIG)).toBe(true);
+  });
+
+  it("does not take a time that has come or passed", () => {
+    expect(mayAnnounce(NOW_AT, NOW_AT, CONFIG)).toBe(false);
+    expect(mayAnnounce(NOW_AT - MINUTE_MS, NOW_AT, CONFIG)).toBe(false);
+  });
+
+  it("does not take a time further off than a link may say", () => {
+    expect(mayAnnounce(NOW_AT + (CONFIG.days + 2) * DAY_MS, NOW_AT, CONFIG)).toBe(false);
+  });
+
+  it("does not take what is not a whole minute, or not a time at all", () => {
+    expect(mayAnnounce(NOW_AT + MINUTE_MS + 1, NOW_AT, CONFIG)).toBe(false);
+    expect(mayAnnounce(Number.NaN, NOW_AT, CONFIG)).toBe(false);
+    expect(mayAnnounce("tomorrow", NOW_AT, CONFIG)).toBe(false);
+    expect(mayAnnounce(null, NOW_AT, CONFIG)).toBe(false);
   });
 });
