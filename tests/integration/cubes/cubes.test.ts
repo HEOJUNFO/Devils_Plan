@@ -421,8 +421,16 @@ describe("GameRoom: bots in 큐브 세기", () => {
 
     expect(game.players.filter((player) => player.bot)).toHaveLength(WITH_BOTS - 1);
     expect(game.view.you).toBe(0);
-    expect(over.view.history.at(-1)).toEqual({ type: "ended", reason: "ranked" });
-    expect(over.view.ranked).toHaveLength(WITH_BOTS - 1);
+    // A bot's answer is right six times in ten (bot-config.json) from a seed the room draws for each game, so
+    // once in some hundreds of games a bot has still not got it when the problem's time is up, and the game
+    // ends by its clock instead (seen once, on a build machine, 2026-11-14: this test then asked for "ranked"
+    // and stopped a deploy). Either way it is the bots and the clock that end it, and the person, who never
+    // answered, is placed nowhere.
+    const end = over.view.history.at(-1);
+    const reason = end?.type === "ended" ? end.reason : null;
+    expect(["ranked", "time"]).toContain(reason);
+    expect(over.view.history.some((entry) => (entry.type === "right" || entry.type === "wrong") && entry.player !== 0)).toBe(true);
+    expect(over.view.ranked.length === WITH_BOTS - 1).toBe(reason === "ranked");
     expect(over.view.ranked.map((entry) => entry.player)).not.toContain(0);
     alone.close();
   });
