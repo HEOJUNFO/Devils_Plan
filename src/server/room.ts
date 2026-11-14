@@ -1304,7 +1304,7 @@ export class GameRoom extends Server<Env> {
   private report(): Promise<void> {
     const lobby = this.lobby;
     this.wanted =
-      lobby === null ? null : listingOf(this.name, lobby, this.connectedSlots(), this.playing(), config);
+      lobby === null ? null : listingOf(this.name, lobby, this.connectedSlots(), this.playing(), config, this.tally().began);
     this.telling = this.telling.then(() => this.tellDirectory()).catch(() => undefined);
     return this.telling;
   }

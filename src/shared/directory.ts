@@ -125,6 +125,19 @@ export interface RoomListing {
   maxPlayers: number;
   /** Whether a game is being played; someone who joins now watches until the next one. */
   playing: boolean;
+  /**
+   * When the game being played began, in ms since the epoch, where the room
+   * knows: someone choosing between waiting in this room and making their
+   * own is told how long it has been going. Absent between games.
+   */
+  since?: number;
+}
+
+/** How many whole minutes the game in `listing` has been going at `now`; `null` where none is, or the room did not say when it began. */
+export function minutesPlayed(listing: Pick<RoomListing, "playing" | "since">, now: number): number | null {
+  if (!listing.playing || listing.since === undefined) return null;
+  // a clock that is behind the room's reads the start as still to come: no time has passed, then
+  return Math.max(0, Math.floor((now - listing.since) / 60_000));
 }
 
 /** What the directory stores for a room: its listing and when it last heard from it. */
@@ -151,6 +164,7 @@ export function listingOf(
   connectedSlots: ReadonlySet<number>,
   playing: boolean,
   config: RoomConfig,
+  began: number | null = null,
 ): RoomListing | null {
   if (lobby.listed !== true) return null;
   const connected = lobby.players.filter((p) => connectedSlots.has(p.slot));
@@ -164,6 +178,7 @@ export function listingOf(
     players: connected.length,
     maxPlayers: capacityOf(game, config),
     playing,
+    ...(playing && began !== null ? { since: began } : {}),
   };
 }
 
@@ -191,9 +206,11 @@ export function parseReport(raw: unknown, config: RoomConfig): RoomReport | null
   if (typeof maxPlayers !== "number" || !Number.isInteger(maxPlayers)) return null;
   if (maxPlayers < 1 || maxPlayers > capacityOf(listing.game, config) || players < 1 || players > maxPlayers) return null;
   if (typeof listing.playing !== "boolean") return null;
+  // when its game began is kept only as a moment there can have been, of a game that is on
+  const since = listing.playing && typeof listing.since === "number" && Number.isInteger(listing.since) && listing.since > 0 ? { since: listing.since } : {};
   return {
     code: data.code,
-    listing: { code: data.code, game: listing.game, host, players, maxPlayers, playing: listing.playing },
+    listing: { code: data.code, game: listing.game, host, players, maxPlayers, playing: listing.playing, ...since },
   };
 }
 

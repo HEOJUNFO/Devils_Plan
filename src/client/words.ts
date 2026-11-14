@@ -142,6 +142,8 @@ const ko = {
     of: (host: string) => `${host}의 방`,
     full: "가득 참",
     playing: "게임 중 · 들어가면 관전",
+    /** The same of a game that has been going `minutes` whole minutes, one at least: whoever reads it is choosing between waiting here and a room of their own. */
+    playingFor: (minutes: number) => `게임 ${minutes}분째 · 들어가면 관전`,
     waitingFor: (more: number) => `대기 중 · ${more}명 더 오면 시작`,
     waiting: "대기 중 · 곧 시작",
     /** On the row that was pressed, in place of how the room stands, until the room answers. */
@@ -675,6 +677,8 @@ const en: typeof ko = {
     of: (host) => `${host}'s room`,
     full: "Full",
     playing: "Playing · join to watch",
+    // beside the widest name of a game: "join to" does not fit with the minutes
+    playingFor: (minutes) => `${minutes} min in · watch`,
     waitingFor: (more) => `Waiting · needs ${more} more`,
     waiting: "Waiting · starts soon",
     entering: "Entering…",

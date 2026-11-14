@@ -14,7 +14,7 @@
 import { PartySocket } from "partysocket";
 import { backTrail, FIRST, isKnown } from "../shared/back";
 import { BUILD, outOfDate } from "../shared/build";
-import { newlyOpen, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
+import { minutesPlayed, newlyOpen, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
 import { louder, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
@@ -1271,7 +1271,10 @@ function loadNewer(): void {
 /** What a row says about how the room stands. */
 function standing(listing: RoomListing, game: GameId): string {
   if (listing.players >= listing.maxPlayers) return WORDS.rooms.full;
-  if (listing.playing) return WORDS.rooms.playing;
+  if (listing.playing) {
+    const minutes = minutesPlayed(listing, Date.now());
+    return minutes === null || minutes < 1 ? WORDS.rooms.playing : WORDS.rooms.playingFor(minutes);
+  }
   const short = GAMES[game].minPlayers - listing.players;
   return short > 0 ? WORDS.rooms.waitingFor(short) : WORDS.rooms.waiting;
 }
@@ -1653,7 +1656,9 @@ meetButton.addEventListener("click", () => {
   if (meet.on) enterMeet(meet);
 });
 setInterval(() => {
-  if (listSocket !== null) renderMeet();
+  // the rows too, where one counts the minutes of a game (`minutesPlayed`); drawing them draws the meeting's line
+  if (listSocket !== null && roomsSent !== null && roomsSent.rooms.some((room) => minutesPlayed(room, Date.now()) !== null)) renderRooms();
+  else if (listSocket !== null) renderMeet();
   // A host alone in a room on the list reads when people next gather (`hostAloneListed`), and nothing the room
   // says comes to draw that line again: it is drawn again here, so that it does not name a meeting that is over.
   else if (currentView !== null && currentCode !== "" && table === null && currentView.listed && currentView.players.length === 1) renderRoom(currentCode, currentView);

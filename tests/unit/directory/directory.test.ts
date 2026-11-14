@@ -5,6 +5,7 @@ import {
   isStale,
   listRooms,
   listingOf,
+  minutesPlayed,
   mayMakeAnother,
   newlyOpen,
   parseReport,
@@ -187,6 +188,44 @@ function listedRoom(count: number, config: RoomConfig, listed = true): LobbyStat
   }
   return state;
 }
+
+describe("how long a listed room's game has been going", () => {
+  const T0 = 1_800_000_000_000;
+
+  it("is said by a room that is playing and knows when its game began, and by no other", () => {
+    const config = roomConfig();
+    const room = listedRoom(3, config);
+
+    expect(listingOf("ABCD", room, new Set([0, 1, 2]), true, config, T0)).toMatchObject({ playing: true, since: T0 });
+    // between games there is no game to have begun, whatever the room last counted
+    expect(listingOf("ABCD", room, new Set([0, 1, 2]), false, config, T0)).not.toHaveProperty("since");
+    expect(listingOf("ABCD", room, new Set([0, 1, 2]), true, config, null)).not.toHaveProperty("since");
+    expect(listingOf("ABCD", room, new Set([0, 1, 2]), true, config)).not.toHaveProperty("since");
+  });
+
+  it("is kept from a room's report where it is a moment of a game that is on, and left out otherwise", () => {
+    const playing = { code: "ABCD", listing: { ...listing("ABCD", { players: 3, playing: true }), since: T0 } };
+
+    expect(parseReport(playing, roomConfig())).toEqual(playing);
+    expect(parseReport({ code: "ABCD", listing: { ...listing("ABCD", { players: 3, playing: false }), since: T0 } }, roomConfig())?.listing).not.toHaveProperty("since");
+    for (const since of ["soon", -5, 1.5, 0, null]) {
+      const parsed = parseReport({ code: "ABCD", listing: { ...listing("ABCD", { players: 3, playing: true }), since } }, roomConfig());
+      expect(parsed?.listing, String(since)).toEqual(listing("ABCD", { players: 3, playing: true }));
+    }
+  });
+
+  it("is counted in whole minutes, none for a room between games or one that did not say, and never less than none", () => {
+    const of = (over: { playing: boolean; since?: number }, now: number) => minutesPlayed(over, now);
+
+    expect(of({ playing: true, since: T0 }, T0 + 59_999)).toBe(0);
+    expect(of({ playing: true, since: T0 }, T0 + 60_000)).toBe(1);
+    expect(of({ playing: true, since: T0 }, T0 + 12 * 60_000 + 30_000)).toBe(12);
+    // a reader whose clock is behind the room's
+    expect(of({ playing: true, since: T0 }, T0 - 90_000)).toBe(0);
+    expect(of({ playing: true }, T0)).toBeNull();
+    expect(of({ playing: false, since: T0 }, T0 + 60_000)).toBeNull();
+  });
+});
 
 describe("listingOf", () => {
   it("lists a room on the list with its game, its host and how many are connected", () => {
