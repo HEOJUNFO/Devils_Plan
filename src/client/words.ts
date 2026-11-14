@@ -7,6 +7,7 @@
  * three lines: a sentence changed here is looked at on the page it is on.
  */
 import { GAME_IDS } from "../shared/games";
+import type { JoinWay } from "../shared/numbers";
 import type { RejectReason } from "../shared/protocol";
 import { SITE_WORDS } from "../shared/site/words";
 import { words } from "./lang";
@@ -95,6 +96,9 @@ const ko = {
     games: (started: number, ended: number) => `시작한 판 ${started} · 끝난 판 ${ended}`,
     /** Rooms that stood empty with no game ever started: nobody else came, or people came and nothing was started. */
     left: (alone: number, unplayed: number) => `혼자 기다리다 비운 방 ${alone} · 모였는데 시작 못 한 방 ${unplayed}`,
+    /** How those who came into a room somebody else made got there, each way with its number (`way`), and how many games began at a meeting for them. */
+    ways: (list: string, atMeet: number) => `남의 방에 들어온 길: ${list === "" ? "없음" : list} · 모임 시간에 시작한 판 ${atMeet}`,
+    way: { link: "링크", list: "목록", quick: "빠른 입장", code: "코드", meet: "모임" } as Record<JoinWay, string>,
     /** A game's line: hands raised for it in the lobby, games started and ended, and a game's players and minutes on average. */
     game: (name: string, wanted: number, started: number, ended: number, players: number | null, minutes: number | null) =>
       `${name}: 손 든 횟수 ${wanted} · 시작 ${started} · 끝 ${ended}${players === null ? "" : ` · 평균 ${players}명`}${minutes === null ? "" : ` · 평균 ${minutes}분`}`,
@@ -637,6 +641,8 @@ const en: typeof ko = {
     rooms: (made, listed) => `Rooms made: ${made} (${listed} public)`,
     games: (started, ended) => `Games started: ${started} · finished: ${ended}`,
     left: (alone, unplayed) => `Rooms left after waiting alone: ${alone} · gathered, never started: ${unplayed}`,
+    ways: (list, atMeet) => `Into someone else's room by: ${list === "" ? "none" : list} · games started at a meet-up: ${atMeet}`,
+    way: { link: "link", list: "list", quick: "quick join", code: "code", meet: "meet-up" },
     game: (name, wanted, started, ended, players, minutes) =>
       `${name}: ${wanted} hands raised · ${started} started · ${ended} finished${players === null ? "" : ` · ${players} to a game`}${minutes === null ? "" : ` · ${minutes} min a game`}`,
     hours: (list) => `Visits by hour: ${list}`,

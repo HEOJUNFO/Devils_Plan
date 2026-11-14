@@ -22,7 +22,7 @@ import { isGameId, type GameId } from "../shared/games";
 import meetConfig from "../shared/meet-config.json";
 import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import numbersConfig from "../shared/numbers-config.json";
-import { countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
+import { atMeet, countsOf, dayOf, firstKept, parseRoomEvent, visitCounts, type Count, type DayNumbers, type NumbersConfig } from "../shared/numbers";
 import type { RoomConfig } from "../shared/lobby";
 import { pace, type Pace } from "../shared/pace";
 import {
@@ -557,7 +557,9 @@ export class RoomDirectory extends Server<Env> {
     if (path === COUNT_PATH) {
       const event = parseRoomEvent(raw);
       if (event === null) return new Response("Bad Request", { status: 400 });
-      this.count(countsOf(event), Date.now());
+      const now = Date.now();
+      // a game that began while a meeting for it is on is counted as one the meeting brought about
+      this.count(countsOf(event, atMeet(event, this.meetNear(now))), now);
       return new Response(null, { status: 204 });
     }
     if (path === FLAG_PATH) {

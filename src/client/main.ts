@@ -62,7 +62,7 @@ import chatConfig from "../shared/chat-config.json";
 import directoryConfig from "../shared/directory-config.json";
 import meetConfig from "../shared/meet-config.json";
 import numbersConfig from "../shared/numbers-config.json";
-import { readDay, type DayNumbers } from "../shared/numbers";
+import { readDay, type DayNumbers, type JoinWay } from "../shared/numbers";
 import { wantRow, type WantRow, type Wanting } from "../shared/want";
 import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
@@ -194,6 +194,13 @@ const seatKick = el<HTMLButtonElement>("seat-kick");
 const copyButton = el<HTMLButtonElement>("copy");
 const clockButton = el<HTMLButtonElement>("clock");
 const variantButton = el<HTMLButtonElement>("variant");
+/**
+ * The most ways of playing a game may have for the button that goes through
+ * them to stand beside the start: the row is 159 px wide, and what is left
+ * beside "준비 취소" or "Not ready" holds a name of about 78 px. A game with
+ * more ways names each by two things (잔디 깔기: whose cards, how many parks).
+ */
+const WAYS_BESIDE_START = 3;
 const teamButton = el<HTMLButtonElement>("team");
 const optionsOpen = el<HTMLButtonElement>("options-open");
 const optionsSheet = el<HTMLElement>("options-sheet");
@@ -1496,7 +1503,7 @@ wantButton.addEventListener("click", () => {
   if (row.kind === "others") return pickGame(row.game);
   if (row.kind === "offer") sayWant(row.game);
   else if (row.kind === "raised") sayWant(null);
-  else if (row.kind === "open") return joinRoom(row.code);
+  else if (row.kind === "open") return joinRoom(row.code, "list");
   else {
     // enough are here: this player opens the room the others are waiting for, a public one of that game
     chosenGame = row.game;
@@ -1607,7 +1614,7 @@ function renderRooms(): void {
       part("room-game", GAMES[game].title[lang]),
       part(!going && (listing.playing || full) ? "room-state busy" : "room-state", going ? WORDS.rooms.entering : standing(listing, game)),
     );
-    button.addEventListener("click", () => joinRoom(listing.code));
+    button.addEventListener("click", () => joinRoom(listing.code, "list"));
     const item = document.createElement("li");
     item.append(button);
     return item;
@@ -2001,6 +2008,7 @@ function numbersAnswered(days: DayNumbers[] | null): void {
         WORDS.numbers.lobby(day.visits, day.people, day.peak),
         `${WORDS.numbers.rooms(day.made, day.listed)} · ${WORDS.numbers.games(day.started, day.ended)}`,
         WORDS.numbers.left(day.alone, day.unplayed),
+        WORDS.numbers.ways(day.ways.map((each) => `${WORDS.numbers.way[each.via]} ${each.n}`).join(" · "), day.startedAtMeet),
         ...day.games.map((each) => WORDS.numbers.game(GAMES[each.game].title[lang], each.wanted, each.started, each.ended, each.players, each.minutes)),
         ...(day.hours.length === 0 ? [] : [WORDS.numbers.hours(day.hours.map((each) => WORDS.numbers.hour(each.hour, each.visits)).join(" · "))]),
       ].join("\n");
@@ -3065,7 +3073,8 @@ function renderRoom(code: string, view: LobbyView): void {
   clockButton.hidden = !game.turns;
   // A game with both a clock and a choice of ways has a button more than the row beside the start holds: the two
   // go into a sheet of their own, opened from where they were. Everyone can open it; only the host's presses count.
-  const crowded = game.turns && variant !== undefined;
+  // So does a choice among more ways than `WAYS_BESIDE_START`: each of so many is named by more words than the row is wide.
+  const crowded = variant !== undefined && (game.turns || game.variants.length > WAYS_BESIDE_START);
   const home = crowded ? optionsList : teamButton.parentElement;
   if (home !== null && clockButton.parentElement !== home) {
     if (crowded) home.append(clockButton, variantButton);
@@ -3143,7 +3152,7 @@ function disconnect(): void {
  * Opens a connection to `code`. `attemptsLeft` is how many more fresh codes
  * may be tried if this is a create and the code turns out to be in use.
  */
-function connect(code: string, create: boolean, nick: string, attemptsLeft = 0): void {
+function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, via?: JoinWay): void {
   // whether this is a link's room being opened again under its code; going anywhere else lets that offer go
   const reopening = create && code === reopenCode;
   if (!reopening) reopenCode = null;
@@ -3163,6 +3172,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     listed: chosenListed,
     pings: true,
     parts: true,
+    // how this page came to a room it did not make, for the site's numbers (`src/shared/numbers.ts`)
+    ...(via === undefined || create ? {} : { via }),
   };
 
   const current = ahead ?? openRoom(code);
@@ -3394,13 +3405,13 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       reopenCode = null;
       reopenJoined = code;
       setCreating(false);
-      connect(code, false, nick);
+      connect(code, false, nick, 0, "link");
       return;
     }
     // A quick join found the room full or gone by the time it got there: the next one waiting is tried.
     const next = message.reason === "full" || message.reason === "not-found" ? quickRest?.shift() : undefined;
     if (next !== undefined) {
-      connect(next, false, nick);
+      connect(next, false, nick, 0, "quick");
       setEntering(next);
       renderRooms();
       return;
@@ -3474,15 +3485,15 @@ function unask(): void {
   if (any && currentView !== null && currentCode !== "") renderRoom(currentCode, currentView);
 }
 
-/** Enters the room `code`, from the list or from an address. */
-function joinRoom(code: string): void {
+/** Enters the room `code`, by `via`: a row of the list, the quick join, a code in the box (a link's, where it is the one a link brought). */
+function joinRoom(code: string, via: JoinWay): void {
   // pressed again on the way in: the first press stands, and the connection it opened is not thrown away for a new one
   if (entering === code && socket !== null) return;
   const nick = readNick();
   if (nick === null) return;
   // a room asked for by name is the only one tried
   quickRest = null;
-  connect(code, false, nick);
+  connect(code, false, nick, 0, via);
   setEntering(code);
   notice.textContent = WORDS.entry.entering;
   renderRooms();
@@ -3503,7 +3514,7 @@ function quickJoin(): void {
     notice.textContent = WORDS.entry.noneWaiting;
     return;
   }
-  joinRoom(first);
+  joinRoom(first, "quick");
   quickRest = rest;
 }
 
@@ -3648,7 +3659,8 @@ function joinFromInput(): void {
     codeInput.focus();
     return;
   }
-  joinRoom(code);
+  // the code a link put in the box is the link's; any other was typed
+  joinRoom(code, code === invitedCode ? "link" : "code");
 }
 
 function leaveRoom(): void {
@@ -4269,7 +4281,7 @@ function followAddress(): void {
   // A name the page offered takes nobody into a room by itself: it is seen first, and one press goes in with it.
   // Nor does a link whose time is still some way off: the time is what it was opened for, and is read first
   // (with the calendar link under it); the lit button goes in now all the same.
-  if (nick !== null && nickInput.value !== suggestedNick && stands !== "ahead") connect(linked, false, nick);
+  if (nick !== null && nickInput.value !== suggestedNick && stands !== "ahead") connect(linked, false, nick, 0, "link");
   else if (nick !== null && nickInput.value !== suggestedNick) joinButton.focus({ preventScroll: true });
   else if (nick === null) nickInput.focus();
   else if (!TOUCH) {

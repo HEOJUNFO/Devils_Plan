@@ -1,4 +1,20 @@
 {
   "awaySeconds": 10,
-  "standSeconds": 180
+  "standSeconds": 180,
+  "ways": {
+    "fresh": {
+      "deck": "fresh"
+    },
+    "show": {
+      "deck": "show"
+    },
+    "fresh-three": {
+      "deck": "fresh",
+      "parks": 3
+    },
+    "show-three": {
+      "deck": "show",
+      "parks": 3
+    }
+  }
 }

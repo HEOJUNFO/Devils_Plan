@@ -71,6 +71,20 @@
           "ko": "방송의 카드",
           "en": "Show's cards"
         }
+      },
+      {
+        "id": "fresh-three",
+        "title": {
+          "ko": "새 카드 · 공원 3곳",
+          "en": "New cards · 3 parks"
+        }
+      },
+      {
+        "id": "show-three",
+        "title": {
+          "ko": "방송의 카드 · 공원 3곳",
+          "en": "Show's cards · 3 parks"
+        }
       }
     ]
   },

@@ -16,7 +16,7 @@ import type { UnderHostRefusal, UnderSnapshot } from "./games/under-thirteen/hos
 import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
-import { parseDays, type DayNumbers } from "./numbers";
+import { isJoinWay, parseDays, type DayNumbers, type JoinWay } from "./numbers";
 import { isWho, type Coming } from "./going";
 import { parseWanting, type Wanting } from "./want";
 import type { JoinRejection, LobbyView } from "./lobby";
@@ -324,8 +324,10 @@ export type ClientMessage =
    * page from before pings does not say so and is never ended for silence.
    * `parts` says the page reads a game sent as what has changed in it
    * (`parts.ts`); a page that does not say so is sent every game whole.
+   * `via`: how the page came to a room it did not make, where it says: for
+   * the site's numbers by the day and nothing else (`numbers.ts`).
    */
-  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean; pings: boolean; parts?: boolean }
+  | { type: "join"; token: string; nick: string; create: boolean; game: GameId; listed: boolean; pings: boolean; parts?: boolean; via?: JoinWay }
   /** Give up the slot for good (a dropped connection keeps it). */
   | { type: "leave" }
   /**
@@ -434,6 +436,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       listed: data.listed === true,
       pings: data.pings === true,
       parts: data.parts === true,
+      // how the page came to this room, for the site's numbers alone (`src/shared/numbers.ts`): nothing in the room goes by it
+      ...(isJoinWay(data.via) ? { via: data.via } : {}),
     };
   }
   if (data.type === "listing") {

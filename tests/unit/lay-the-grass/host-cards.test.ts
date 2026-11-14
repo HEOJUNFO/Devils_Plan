@@ -157,4 +157,51 @@ describe("잔디 깔기 in a room: the cards of a game", () => {
     // over these games every kind of option there is was on a card
     expect([...kinds].sort()).toEqual([...KINDS].sort());
   });
+
+  it("lays one park where the room asks for cards alone, and three, on the cards its name says, where it asks for three", () => {
+    const players = candidates(3);
+
+    const one = started(players, { variant: "show" });
+    const freshThree = started(players, { variant: "fresh-three" });
+    const showThree = started(players, { variant: "show-three" });
+
+    expect(one.state.decks).toHaveLength(shipped.rounds);
+    expect(seenBy(one, players, 0, T0).view.rounds).toBe(shipped.rounds);
+    expect(freshThree.state.decks).toHaveLength(3);
+    expect(freshThree.state.deck).toBe("fresh");
+    expect(showThree.state.decks).toEqual([1, 2, 3].map(() => showCards(CHOICES, 3, shipped.cards)));
+    // the screen counts the parks by what the game was started with, not by the rules' own number
+    expect(seenBy(showThree, players, 0, T0).rules.rounds).toBe(3);
+    expect(seenBy(showThree, players, null, T0).view.rounds).toBe(3);
+  });
+
+  it("plays three parks through with bots, choosing again at each, and ends with every park's points added up", () => {
+    const players = candidates(1);
+    for (let n = 1; n <= 12; n++) {
+      let session = started(players, { bots: true, allowBots: true, seed: n, chance: words(n), variant: "fresh-three" });
+      for (let step = 0; host.running(session); step++) {
+        expect(step).toBeLessThan(1800);
+        session = host.tick(session, presenceOf(players), host.deadline(session)!);
+      }
+
+      const state = session.state;
+      expect(state.history.at(-1)).toEqual({ type: "ended", round: 3, reason: "rounds" });
+      expect(state.history.filter((event) => event.type === "park").map((event) => event.round)).toEqual([1, 2, 3]);
+      const scores = state.history.filter((event) => event.type === "score");
+      expect(scores.map((event) => event.round)).toEqual([1, 2, 3]);
+      // every park had its own choices: each of the game's choices came up three times
+      for (const which of shipped.choices) expect(state.history.filter((event) => event.type === "choice" && event.which === which)).toHaveLength(3);
+      for (const player of state.players) {
+        const laid = scores.reduce((sum, event) => sum + (event.type === "score" ? (event.lines.find((line) => line.player === player.id)?.total ?? 0) : 0), 0);
+        // and what a card gave outright when it was chosen (선택 5의 "점수"), at each park it was chosen at
+        const given = state.history.reduce((sum, event) => {
+          if (event.type !== "choice") return sum;
+          const option = event.chosen.find((each) => each.player === player.id)?.option;
+          const effect = option === undefined ? undefined : event.card.options[option - 1];
+          return sum + (effect?.kind === "score" ? effect.points : 0);
+        }, 0);
+        expect(player.score).toBe(laid + given);
+      }
+    }
+  });
 });

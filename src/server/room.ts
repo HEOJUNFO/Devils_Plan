@@ -650,6 +650,9 @@ export class GameRoom extends Server<Env> {
     // For the log, which is all that counts rooms: which game, and whether on the list. Never the code or a name.
     if (made) console.log(`room made: ${result.state.game} ${result.state.listed ? "listed" : "unlisted"}`);
     if (made) this.count({ type: "made", game: gameOf(result.state), listed: result.state.listed === true });
+    // Someone new to a room another made, by the way their page says it came (a link, the list, a meeting): a
+    // way, never who. Not its maker, and not a player back in the place they hold: a reconnect says `join` again.
+    else if (!result.rejoined && request.via !== undefined) this.count({ type: "joined", game: gameOf(result.state), via: request.via });
     connection.setState({ kind: "player", slot: result.slot, token: request.token, since: now, pings: request.pings, parts: request.parts === true });
     // Also notes anyone whose connection ended without the room being told. With nobody to note it is the lobby
     // just saved, and is not written a second time.

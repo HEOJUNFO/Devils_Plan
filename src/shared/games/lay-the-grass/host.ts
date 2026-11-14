@@ -25,6 +25,7 @@ import {
   deadline as rulesDeadline,
   hasCell,
   moveFor,
+  parksOf,
   parseAction,
   shiftClock,
   viewFor,
@@ -43,6 +44,14 @@ export interface GrassHostConfig {
   awaySeconds: number;
   /** Seconds a game stands still, with none of its players connected, before it is ended. */
   standSeconds: number;
+  /**
+   * What each way of playing a room's host may choose is (the `variants` of
+   * the game in `games.json`): whose cards (`deck`), and how many parks are
+   * laid one after another with the points added up (`parks`; the rules' own
+   * number where none is given). The document's game is one park; more is
+   * for a room (design/games/lay-the-grass.md, "지금 승점과 공원 수").
+   */
+  ways: Record<string, { deck: string; parks?: number }>;
 }
 
 /**
@@ -272,9 +281,12 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
           seats.push({ id, token: null, nick: `봇 ${seats.filter((seat) => seat.token === null).length + 1}` });
         }
       }
-      // a room asks for the show's cards by name; any other game draws its own, from the room's numbers
-      const deck: Deck = isDeck(request.variant) ? request.variant : DECKS[0];
-      const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now, deck, chance: request.chance }, config);
+      // a room asks for a way of playing by name: whose cards, and how many parks. Any other game draws its own cards,
+      // from the room's numbers, for as many parks as the rules have.
+      const way = request.variant !== undefined && Object.hasOwn(hosting.ways, request.variant) ? hosting.ways[request.variant] : undefined;
+      const deck: Deck = isDeck(way?.deck) ? way.deck : DECKS[0];
+      const parks = way?.parks ?? config.rounds;
+      const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now, deck, chance: request.chance }, { ...config, rounds: parks });
       if (!created.ok) return refuse(created.reason);
       const session: GrassSession = {
         version: VERSION,
@@ -337,7 +349,7 @@ export function grassHostFor(config: GrassConfig): GameHost<GrassSession, GrassH
       return {
         startedAt: session.startedAt,
         rules: {
-          rounds: config.rounds,
+          rounds: parksOf(state),
           pickSeconds: config.pickSeconds,
           placeSeconds: config.placeSeconds,
         },

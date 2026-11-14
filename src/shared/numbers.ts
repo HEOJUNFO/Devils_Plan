@@ -27,14 +27,32 @@ export interface NumbersConfig {
 }
 
 /**
+ * The ways into a room somebody else made, as the page that took one says
+ * which (`join` of `src/shared/protocol.ts`): a `link` that names the room,
+ * a row of the `list`, the lobby's `quick` join, a `code` typed in, or the
+ * row of a meeting that is on (`meet`). Counted to learn whether a link sent
+ * brings anyone into a room and whether a meeting does; a way is a word of
+ * these five and says nothing of who took it.
+ */
+export const JOIN_WAYS = ["link", "list", "quick", "code", "meet"] as const;
+export type JoinWay = (typeof JOIN_WAYS)[number];
+
+/** Whether `value` names one of the ways into a room. */
+export function isJoinWay(value: unknown): value is JoinWay {
+  return typeof value === "string" && (JOIN_WAYS as readonly string[]).includes(value);
+}
+
+/**
  * Something that happened in a room, as the room tells the directory: a
- * room was made, a game began in it with so many `players`, a game ended
- * after so many `minutes` (`null` where the room does not know when it
- * began), or the room stands empty, having had so many `games` started in
- * it and at `most` so many people at once.
+ * room was made, somebody came into it by `via` (its maker is not counted
+ * so, nor anyone coming back to a place they hold), a game began in it with
+ * so many `players`, a game ended after so many `minutes` (`null` where the
+ * room does not know when it began), or the room stands empty, having had
+ * so many `games` started in it and at `most` so many people at once.
  */
 export type RoomEvent =
   | { type: "made"; game: GameId; listed: boolean }
+  | { type: "joined"; game: GameId; via: JoinWay }
   | { type: "started"; game: GameId; players: number }
   | { type: "ended"; game: GameId; minutes: number | null }
   | { type: "emptied"; game: GameId; listed: boolean; games: number; most: number };
@@ -67,6 +85,7 @@ export function parseRoomEvent(raw: unknown): RoomEvent | null {
   if (!isGameId(data.game)) return null;
   const game = data.game;
   if (data.type === "made") return typeof data.listed === "boolean" ? { type: "made", game, listed: data.listed } : null;
+  if (data.type === "joined") return isJoinWay(data.via) ? { type: "joined", game, via: data.via } : null;
   if (data.type === "started") return isCount(data.players, MOST_PEOPLE) ? { type: "started", game, players: data.players } : null;
   if (data.type === "ended") {
     if (data.minutes === null) return { type: "ended", game, minutes: null };
@@ -80,21 +99,35 @@ export function parseRoomEvent(raw: unknown): RoomEvent | null {
 }
 
 /**
- * What `event` adds to the numbers of the day it happened on.
+ * Whether a game `event` says began is one a meeting brought about, as far
+ * as the site can tell: it began while a meeting for that very game was on
+ * (`meet`: the meeting that is on or next at that moment, `src/shared/meet.ts`).
+ */
+export function atMeet(event: RoomEvent, meet: { on: boolean; game: GameId } | null): boolean {
+  return event.type === "started" && meet !== null && meet.on && meet.game === event.game;
+}
+
+/**
+ * What `event` adds to the numbers of the day it happened on. `meeting`:
+ * that a game it says began did so at a meeting for it ({@link atMeet}).
  *
  * A room that stands empty with no game ever started in it is counted
  * again, by why: `alone` where nobody else ever came (someone waited and
  * left), `unplayed` where people came and still nothing was started.
  */
-export function countsOf(event: RoomEvent): Count[] {
+export function countsOf(event: RoomEvent, meeting = false): Count[] {
   switch (event.type) {
     case "made":
       return [{ what: "made", n: 1 }, ...(event.listed ? [{ what: "made-listed", n: 1 }] : [])];
+    case "joined":
+      // one row, by the way: how many came in at all is the ways added up
+      return [{ what: `via:${event.via}`, n: 1 }];
     case "started":
       return [
         { what: "started", n: 1 },
         { what: `started:${event.game}`, n: 1 },
         { what: `players:${event.game}`, n: event.players },
+        ...(meeting ? [{ what: "started-meet", n: 1 }] : []),
       ];
     case "ended":
       return [
@@ -161,6 +194,10 @@ export interface DayRead {
   ended: number;
   alone: number;
   unplayed: number;
+  /** Games that began while a meeting for that game was on: among `started`. */
+  startedAtMeet: number;
+  /** How those who came into a room somebody else made got there, each way that anyone took, in the order of `JOIN_WAYS`. */
+  ways: { via: JoinWay; n: number }[];
   /** The games a hand was raised for or something was started or ended of, in the order the games are listed in. */
   games: GameRead[];
   /** The hours somebody came in, earliest first, with how many visits. */
@@ -195,6 +232,8 @@ export function readDay(numbers: DayNumbers): DayRead {
     ended: of("ended"),
     alone: of("alone"),
     unplayed: of("unplayed"),
+    startedAtMeet: of("started-meet"),
+    ways: JOIN_WAYS.map((via) => ({ via, n: of(`via:${via}`) })).filter((each) => each.n > 0),
     games,
     hours,
   };

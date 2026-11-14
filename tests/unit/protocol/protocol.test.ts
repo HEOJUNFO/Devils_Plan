@@ -223,6 +223,14 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage(JSON.stringify({ type: "pick", game: 3 }))).toBeNull();
   });
 
+  it("keeps how the page says it came to the room where that is one of the ways, and nothing for any other word", () => {
+    expect(parseClientMessage(joinJson({ via: "link" }))).toMatchObject({ type: "join", via: "link" });
+    expect(parseClientMessage(joinJson({ via: "meet" }))).toMatchObject({ type: "join", via: "meet" });
+    expect(parseClientMessage(joinJson({ via: "advert" }))).not.toHaveProperty("via");
+    expect(parseClientMessage(joinJson({ via: 3 }))).not.toHaveProperty("via");
+    expect(parseClientMessage(joinJson())).not.toHaveProperty("via");
+  });
+
   it("treats a join without a create flag as not creating", () => {
     const raw = JSON.stringify({ type: "join", token: "player-token-0001", nick: "ann" });
 

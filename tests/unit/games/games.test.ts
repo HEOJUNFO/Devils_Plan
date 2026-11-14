@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { isDeck } from "../../../src/shared/games/lay-the-grass/cards";
+import grassHosting from "../../../src/shared/games/lay-the-grass/host-config.json";
 import { REVEAL_VARIANT } from "../../../src/shared/game/host";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId } from "../../../src/shared/games";
@@ -55,10 +57,18 @@ describe("the games a room can be made for", () => {
     expect(GAMES["mystery-stock-market"].variants.map((each) => each.id)).toEqual(["fresh", "show"]);
   });
 
-  it("lets a room of 잔디 깔기 be played with cards drawn for each game, which it starts with, or with the show's", () => {
-    // what a room is made with is a game's first way: a game somebody has played is not known to them beforehand
-    expect(GAMES["lay-the-grass"].variants.map((each) => each.id)).toEqual(["fresh", "show"]);
-    expect(GAMES["lay-the-grass"].variants.map((each) => each.title.ko)).toEqual(["판마다 새 카드", "방송의 카드"]);
+  it("lets a room of 잔디 깔기 be played with cards drawn for each game, which it starts with, or with the show's, over one park or three", () => {
+    // what a room is made with is a game's first way: a game somebody has played is not known to them beforehand,
+    // and one park, as the document's game is
+    expect(GAMES["lay-the-grass"].variants.map((each) => each.id)).toEqual(["fresh", "show", "fresh-three", "show-three"]);
+    expect(GAMES["lay-the-grass"].variants.map((each) => each.title.ko)).toEqual(["판마다 새 카드", "방송의 카드", "새 카드 · 공원 3곳", "방송의 카드 · 공원 3곳"]);
+  });
+
+  it("has a way of playing 잔디 깔기 in the host's settings for every way a room can ask for, each on cards there are", () => {
+    for (const variant of GAMES["lay-the-grass"].variants) {
+      expect(Object.hasOwn(grassHosting.ways, variant.id), variant.id).toBe(true);
+      expect(isDeck(grassHosting.ways[variant.id as keyof typeof grassHosting.ways].deck), variant.id).toBe(true);
+    }
   });
 
   it("lets a room of 러시안 룰렛 keep the hidden moves hidden when the game is over, which it starts with, or tell them then", () => {

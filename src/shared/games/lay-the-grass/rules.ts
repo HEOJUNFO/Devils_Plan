@@ -895,6 +895,16 @@ export function optionOf(state: Pick<GrassState, "choices">, player: number, whi
   return state.choices.find((chosen) => chosen.which === which && chosen.player === player)?.option ?? null;
 }
 
+/**
+ * How many parks the game is: as many as it drew cards for when it started
+ * (`createGame`). A room's host may ask for more than the rules' own number
+ * (`config.rounds`), so a game goes by what it was started with, not by the
+ * number set when it is asked.
+ */
+export function parksOf(state: Pick<GrassState, "decks">): number {
+  return state.decks.length;
+}
+
 /** The cards of the park being played: one for each of its choices, in the order they are made. */
 export function cardsOf(state: Pick<GrassState, "decks" | "round">): Card[] {
   return state.decks[state.round - 1] ?? [];
@@ -1104,7 +1114,7 @@ function close(state: GrassState, now: number, config: GrassConfig): void {
   }
   state.history.push({ type: "score", round: state.round, lines });
   state.turn = null;
-  if (state.round >= config.rounds) {
+  if (state.round >= parksOf(state)) {
     state.phase = "ended";
     state.pauseUntil = null;
     state.history.push({ type: "ended", round: state.round, reason: "rounds" });
@@ -1558,7 +1568,7 @@ export function viewFor(state: GrassState, player: number | null, config: GrassC
     you,
     phase: state.phase,
     round: state.round,
-    rounds: config.rounds,
+    rounds: parksOf(state),
     park: { rows: [...state.park.rows] },
     players: state.players.map((each) => ({ ...each })),
     choosing:
