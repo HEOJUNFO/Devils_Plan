@@ -4,8 +4,8 @@ import { LANGS, type Lang } from "../../../src/shared/lang";
 import chatConfig from "../../../src/shared/chat-config.json";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import roomConfig from "../../../src/shared/room-config.json";
-import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, privacyPath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
-import { INVITED_GAME_KEY, invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
+import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, playPath, privacyPath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
+import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
 import { siteStyle } from "../../../src/shared/site/style";
 import voiceConfig from "../../../src/shared/voice-config.json";
 import { ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "../../../src/shared/site/words";
@@ -374,5 +374,39 @@ describe("the pages links of invitation go through", () => {
 
   it("write a game's name and summary as text, not as markup", () => {
     for (const { body } of invites) expect(body).not.toMatch(/content="[^"]*[<>][^"]*"/);
+  });
+});
+
+describe("the way from a page of rules to the lobby", () => {
+  it("opens the lobby on the rooms of the game the page is about, in the page's language", () => {
+    for (const lang of LANGS) {
+      for (const game of GAME_IDS) {
+        const body = file(`${gamePath(lang, game).slice(1)}index.html`);
+        const links = all(body, /<a class="button" href="([^"]*)"/g).map(unescape);
+
+        expect(links, gamePath(lang, game)).toContain(playPath(lang, game));
+        expect(body).toContain(escapeHtml(SITE_WORDS[lang].game.play(GAMES[game].title[lang])));
+      }
+    }
+  });
+
+  it("names the game after the ? as its page of rules is named, and the lobby reads that name back", () => {
+    for (const game of GAME_IDS) {
+      const asked = new URL(playPath("ko", game), ORIGIN).searchParams;
+
+      expect(asked.get("lang")).toBe("ko");
+      expect(asked.get(LOBBY_GAME_PARAM)).toBe(slugOf(game));
+      expect(gameOfSlug(asked.get(LOBBY_GAME_PARAM))).toBe(game);
+    }
+    expect(playPath("en", "under-thirteen")).not.toContain("under-thirteen");
+  });
+
+  it("opens the lobby on every game where the address names none, or a game there is not", () => {
+    expect(new URL(playPath("en"), ORIGIN).searchParams.has(LOBBY_GAME_PARAM)).toBe(false);
+    expect(gameOfSlug(null)).toBeNull();
+    expect(gameOfSlug("")).toBeNull();
+    expect(gameOfSlug("chess")).toBeNull();
+    // the id of 무거운 13 is not what an address calls it
+    expect(gameOfSlug("under-thirteen")).toBeNull();
   });
 });

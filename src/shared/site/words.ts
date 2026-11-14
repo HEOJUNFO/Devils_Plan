@@ -116,7 +116,9 @@ const ko = {
     /** What each of the three lines the rules open with answers (a sheet's `brief`). */
     brief: { goal: "목표", play: "하는 일", end: "끝" },
     start: "시작하기",
-    startHow: "로비에서 방을 만들 때 게임 목록에서 고르면 됩니다. 초대 링크를 보내고, 인원이 모이면 방장이 시작합니다.",
+    startHow: "아래 버튼은 로비를 이 게임의 방 목록으로 엽니다. 열린 방에 들어가거나, 방을 만들어 초대 링크를 보내세요. 인원이 모이면 방장이 시작합니다.",
+    /** The button that opens the lobby on this game's rooms. */
+    play: (name: string) => `${name} 방 찾기`,
     others: "다른 게임",
   },
   /** How many play, as it is said in a sentence and in a list. */
@@ -194,7 +196,8 @@ const en: typeof ko = {
     rules: "Rules",
     brief: { goal: "Goal", play: "Play", end: "End" },
     start: "Start a game",
-    startHow: "Make a room in the lobby and pick the game from the list. Send the invite link, and the host starts when enough players are in.",
+    startHow: "The button below opens the lobby on this game's rooms. Join an open room, or make one and send the invite link. The host starts when enough players are in.",
+    play: (name: string) => `Find a ${name} room`,
     others: "Other games",
   },
   count: (min: number, max: number) => `${min}–${max} players`,

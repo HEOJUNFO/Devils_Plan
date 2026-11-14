@@ -51,7 +51,7 @@ import {
   type RejectReason,
 } from "../shared/protocol";
 import { liftFor, placeFrame } from "../shared/frame";
-import { INVITED_GAME_KEY, invitePath } from "../shared/site/paths";
+import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, slugOf } from "../shared/site/paths";
 import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptCode, keptRoom } from "../shared/resume";
 import { hearersOf, namesOf, teammatesOf, toggled, type ChatTo, type Hearer } from "../shared/aside";
@@ -1327,6 +1327,21 @@ function askForGame(): void {
   listSocket.send(JSON.stringify(request));
 }
 
+/** A time of day as the lobby writes it, by this browser's clock: "21:00". */
+function timeOf(at: number): string {
+  return new Date(at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+}
+
+/**
+ * The meeting that is on, or the next one, as a sentence outside the lobby
+ * names it: the game, whether it is on, and the time it ends if it is and
+ * starts if not. `null` where there are no meetings.
+ */
+function meetSaid(): { time: string; game: string; on: boolean } | null {
+  const meet = meetNear(Date.now(), meetConfig);
+  return meet === null ? null : { time: timeOf(meet.on ? meet.end : meet.start), game: GAMES[meet.game].title[lang], on: meet.on };
+}
+
 /** The row over the rooms that says when people are asked to gather. */
 const meetButton = el<HTMLButtonElement>("meet");
 /** On the lobby's last line, for someone who said they will come: puts the meeting in their calendar. */
@@ -1400,7 +1415,6 @@ function renderMeet(): void {
   meetButton.hidden = meet === null;
   syncCalendar();
   if (meet === null) return;
-  const timeOf = (at: number): string => new Date(at).toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
   const minutes = Math.max(1, Math.ceil((meet.start - now) / 60_000));
   const [title, when] = [...meetButton.children];
   const game = GAMES[meet.game].title[lang];
@@ -3095,7 +3109,9 @@ function renderRoom(code: string, view: LobbyView): void {
       ? short
         ? WORDS.room.knockoutShort(game.minPlayers, playing.length)
         : isHost && view.players.length === 1
-          ? WORDS.room.hostAlone(game.minPlayers)
+          ? view.listed
+            ? WORDS.room.hostAloneListed(game.minPlayers, meetSaid())
+            : WORDS.room.hostAlone(game.minPlayers)
           : WORDS.room.needPlayers(game.minPlayers, playing.length)
       : sittingOut && !isHost
         ? WORDS.room.knockoutWatching
@@ -3522,6 +3538,38 @@ function readInvitedGame(): GameId | null {
 let invitedGame: GameId | null = readInvitedGame();
 
 /**
+ * The game the address asks the lobby to open on (`LOBBY_GAME_PARAM`): a page
+ * of rules sends its reader here so, and so does the link a result is passed
+ * on with. Read once and taken out of the address: it is about how this page
+ * was reached, and a page loaded again lists what its player last looked at.
+ */
+function readAskedGame(): GameId | null {
+  const asked = new URLSearchParams(location.search);
+  if (!asked.has(LOBBY_GAME_PARAM)) return null;
+  const game = gameOfSlug(asked.get(LOBBY_GAME_PARAM));
+  asked.delete(LOBBY_GAME_PARAM);
+  const rest = asked.toString();
+  history.replaceState(history.state, "", `${location.pathname}${rest === "" ? "" : `?${rest}`}${location.hash}`);
+  return game;
+}
+const askedGame = readAskedGame();
+
+/**
+ * Opens the lobby on the rooms of the game this page was reached for, where
+ * it was reached for one and for no room: the list is that game's, with the
+ * line that raises a hand for it where it has no room, and a new room starts
+ * as one of it. A link to a room says which room, and that is where it goes.
+ */
+function openOnGame(): void {
+  const game = askedGame ?? invitedGame;
+  if (game === null || socket !== null || invitedCode !== "") return;
+  chosenGame = game;
+  listedGame = game;
+  askForGame();
+  renderRooms();
+}
+
+/**
  * The room a link led to is no more (its people left, and a room with
  * nobody in it is cleared away). "No such room" would end the visit of
  * someone who came for a game and has never seen the lobby: they are told
@@ -3841,7 +3889,8 @@ tabShare.addEventListener("click", () => {
   const verdict = table?.verdict() ?? null;
   if (table === null || verdict === null || tableGame === null) return;
   const said = `${WORDS.share.result(GAMES[tableGame].title[lang], verdict)} · ${WORDS.share.come}`;
-  const address = `${location.origin}/`;
+  // to the lobby on this game's rooms: whoever opens it came for this game, not for a list of every game
+  const address = `${location.origin}/?${LOBBY_GAME_PARAM}=${slugOf(tableGame)}`;
   const plain = (): void => passOn(tabShare, WORDS.game.share, said, address, `${said}\n${address}`);
   // made in the press itself: a browser hands a file on only in the press that asked for it
   const under = table.under?.() ?? null;
@@ -4389,6 +4438,7 @@ if (nickInput.value === "") {
 // Loaded again in a room, the room is on the screen at once; anywhere else, the lobby.
 if (!comeBack()) showLobby();
 followAddress();
+openOnGame();
 // Loaded again, the browser has kept the places this page held before: those there are too many of are stepped off.
 back.start();
 // Ready to be typed in at once where there are keys. Under a finger a box that takes the focus by

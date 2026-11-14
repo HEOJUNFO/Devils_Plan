@@ -4,7 +4,7 @@
  * player sends to invite someone (`src/client/main.ts`). No words here, so
  * the game's page takes none of the site's sentences with it.
  */
-import type { GameId } from "../games";
+import { GAME_IDS, type GameId } from "../games";
 import type { Lang } from "../lang";
 
 /**
@@ -18,6 +18,18 @@ const SLUGS: Partial<Record<GameId, string>> = { "under-thirteen": "heavy-13" };
 export function slugOf(game: GameId): string {
   return SLUGS[game] ?? game;
 }
+
+/** The game an address names as `slug`, or `null` where it names none. */
+export function gameOfSlug(slug: string | null): GameId | null {
+  return GAME_IDS.find((game) => slugOf(game) === slug) ?? null;
+}
+
+/**
+ * What the address of the game's own page says after its `?` to open the
+ * lobby on the rooms of one game: a page of rules sends its reader there, and
+ * so does the link a result is passed on with.
+ */
+export const LOBBY_GAME_PARAM = "game";
 
 /**
  * The address a player invites someone through, in the language the player

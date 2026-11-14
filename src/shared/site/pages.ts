@@ -24,7 +24,7 @@ import directoryConfig from "../directory-config.json";
 import { GAMES, GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
 import roomConfig from "../room-config.json";
-import { INVITED_GAME_KEY, invitePath, invitePicture, slugOf } from "./paths";
+import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, invitePath, invitePicture, slugOf } from "./paths";
 import { PRIVACY_PARTS, PRIVACY_WORDS, type PrivacyFacts } from "./privacy-words";
 import { LANG_NAMES, ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "./words";
 
@@ -82,9 +82,9 @@ export function privacyPath(lang: Lang): string {
   return `/${lang}/privacy/`;
 }
 
-/** The address that opens the game itself in `lang`. */
-export function playPath(lang: Lang): string {
-  return `/?lang=${lang}`;
+/** The address that opens the game itself in `lang`: its lobby, on the rooms of `game` where one is named. */
+export function playPath(lang: Lang, game?: GameId): string {
+  return `/?lang=${lang}${game === undefined ? "" : `&${LOBBY_GAME_PARAM}=${slugOf(game)}`}`;
 }
 
 /** `text` as it is written inside a tag or an attribute. */
@@ -316,7 +316,7 @@ ${brief.join("\n")}
 ${rules.join("\n")}
 <h2>${escapeHtml(words.game.start)}</h2>
 <p>${escapeHtml(words.game.startHow)}</p>
-<p class="act"><a class="button" href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a></p>
+<p class="act"><a class="button" href="${escapeHtml(playPath(lang, game))}">${escapeHtml(words.game.play(name))}</a></p>
 <h2>${escapeHtml(words.game.others)}</h2>
 ${gameList(lang, GAME_IDS.filter((other) => other !== game))}`;
   const data = [
