@@ -195,6 +195,8 @@ describe("GameRoom: a room of 무거운 13", () => {
     submit(clients[1], 5, "green");
     const waiting = await Promise.all(clients.map((client) => client.underWhere((game) => game.view.submitted.length === 1)));
     submit(clients[0], 2, "red");
+    // the chips and the cards are told in the order they were put in, and two sockets' messages keep no order of their own
+    await clients[1].underWhere((game) => game.view.submitted.length === 2);
     submit(clients[2], 6, "rainbow");
     const chips = await Promise.all(clients.map((client) => client.underWhere((game) => game.view.phase === "chips")));
     await runAlarm(stub);
