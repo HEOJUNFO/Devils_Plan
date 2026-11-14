@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "뒤로 가기: 로비의 게임 고르기 창을 열어 둔 채 방에 들어가면 뒤로 가기를 한 번 눌러도 아무 일도 일어나지 않던 것을 고쳤습니다. 게임 중에 뒤로 가기가 연달아 두 번 들어와도 이제 바로 나가지 않고, 「한 번 더 누르면 나감」에서 멈춥니다.",
+        en: "Back button: after entering a room with the lobby's game picker left open, the first press of Back did nothing. Fixed. In a game, a Back heard twice in a moment no longer leaves at once: it stops at \"Press again to leave\".",
+      },
+      {
         ko: "손 들기: 인원이 모였을 때 두 사람이 거의 동시에 「눌러서 공개 방 열기」를 누르면 각자 방이 하나씩 생겨 혼자 앉게 되던 것을 고쳤습니다. 이제 먼저 누른 한 사람만 방을 열고, 다른 사람에게는 「다른 분이 방을 여는 중입니다」라고 알린 뒤 열린 방으로 안내합니다.",
         en: "Hands up: when enough players had gathered and two pressed \"press to open a public room\" at almost the same moment, each got a room of their own and sat in it alone. Now only the first to press opens the room; the other is told \"Another player is opening the room\" and is then shown the room to join.",
       },
@@ -139,7 +143,7 @@ export const NEWS: NewsDay[] = [
       },
       {
         ko: "모임 시간에 로비의 모임 줄을 누르면 모두 같은 방으로 들어갑니다.",
-        en: "While a meeting is on, pressing its line in the lobby takes everyone into the same room.",
+        en: "While a meet-up is on, pressing its line in the lobby takes everyone into the same room.",
       },
       {
         ko: `${GRASS.ko}: 방장이 공원 3곳을 이어서 까는 방식을 고를 수 있습니다.`,
@@ -180,7 +184,7 @@ export const NEWS: NewsDay[] = [
       },
       {
         ko: "로비가 사람들이 모이는 시간을 알려 주고, 「갈게요」를 눌러 두면 달력에 넣을 수 있습니다.",
-        en: "The lobby says when people meet; say \"I'm in\" and you can put the meeting in your calendar.",
+        en: "The lobby says when people meet; say \"I'm in\" and you can put the meet-up in your calendar.",
       },
       {
         ko: "사이트를 폰의 홈 화면에 두면 전체 화면으로 열립니다.",

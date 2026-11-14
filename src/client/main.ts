@@ -3280,6 +3280,9 @@ function renderRoom(code: string, view: LobbyView): void {
   // the room asked for is here
   if (creating) setCreating(false);
   unwatchRooms();
+  // the games to pick from are the list's, and go with it: left open under the room they were one more thing for
+  // the browser's back button to close, unseen, before it did anything
+  showGamePicks(false);
   roomsPanel.hidden = true;
   entry.hidden = true;
   newRoom.hidden = true;
@@ -4748,6 +4751,8 @@ const back = backTrail(
       if (closeTop() || currentCode === "") return;
       if (table === null) return leaveRoom();
       if (leaveArmed !== null) {
+        // a second step right behind the first is one press heard twice, as with the button: it does not leave
+        if (performance.now() - leaveArmedAt < LEAVE_AGAIN_MS) return;
         disarmLeave();
         leaveRoom();
         return;
