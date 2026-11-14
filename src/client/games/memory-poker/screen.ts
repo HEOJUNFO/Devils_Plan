@@ -71,6 +71,9 @@ const SIDE_W = 124;
 const CARD_W = 36;
 const CARD_H = 44;
 const SHARED_Y = 20;
+/** The dashes of the frame round an opponent's card, and the gaps between them, in pixels. */
+const DASH_ON = 4;
+const DASH_OFF = 3;
 /** The widest a name is drawn in the list of players, in pixels. */
 const NAME_WIDTH = 62;
 /** With this many seconds or fewer of a phase left, the clock turns red. */
@@ -391,6 +394,27 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     pen.px(x + w - thick, y, thick, h, colour);
   }
 
+  /**
+   * A frame of dashes: the opponent's cards have it where this player's own
+   * have a whole one, so that the two are told apart by more than crimson
+   * and amber. A dash at each end of a side, so the corners are whole.
+   */
+  function dashed(box: Box, colour: string, thick: number): void {
+    const [x, y, w, h] = box;
+    const side = (length: number, draw: (at: number, run: number) => void): void => {
+      for (let at = 0; at + DASH_ON <= length; at += DASH_ON + DASH_OFF) draw(at, DASH_ON);
+      draw(length - DASH_ON, DASH_ON);
+    };
+    side(w, (at, run) => {
+      pen.px(x + at, y, run, thick, colour);
+      pen.px(x + at, y + h - thick, run, thick, colour);
+    });
+    side(h, (at, run) => {
+      pen.px(x, y + at, thick, run, colour);
+      pen.px(x + w - thick, y + at, thick, run, colour);
+    });
+  }
+
   function drawFace(box: Box, card: Card): void {
     const [x, y, w, h] = box;
     const colour = SUIT_COLOURS[suitOf(card)];
@@ -427,8 +451,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       if (view.board !== null) {
         drawFace(box, view.board[cell]);
         if (view.shown === null) continue;
-        // the cards of this player's own round: an opponent's choice in crimson, their own in amber round it
-        if (others.some((player) => shownCells(player).includes(cell))) frame([x + 1, y + 1, w - 2, h - 2], C.crim, 2);
+        // the cards of this player's own round: an opponent's choice in dashes of crimson, their own in a whole frame of amber round it
+        if (others.some((player) => shownCells(player).includes(cell))) dashed([x + 1, y + 1, w - 2, h - 2], C.crim, 2);
         if (mine !== null && shownCells(mine).includes(cell)) frame([x - 1, y - 1, w + 2, h + 2], C.amber, 2);
         continue;
       }
