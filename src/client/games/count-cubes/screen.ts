@@ -174,6 +174,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   let typed = "";
   /** The digits of the answer last sent, to be put back where it may never have reached the room (`lost`). */
   let sent = "";
+  /** How many things the game had told of when an answer was put back (`lost`); `null` with none put back and not yet heard of. */
+  let putBackAt: number | null = null;
   /** From where the solid is looked at: the player turns it by dragging its picture, or with the arrow keys. */
   let angle: View = FIRST_VIEW;
   /**
@@ -295,6 +297,13 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     // an answer put back when the line dropped (`lost`) had reached the room after all, and was right: there is nothing left to say
     const own = message.view.you;
     if (own !== null && placeOf(own) !== null) typed = "";
+    // Or it had reached the room and was wrong: the room has told of it since. Left in the box it was one press
+    // from being said again when the lock ended, for a second lock.
+    if (putBackAt !== null) {
+      const since = message.view.history.slice(putBackAt);
+      if (typed === sent && since.some((event) => event.type === "wrong" && event.player === own)) typed = "";
+      putBackAt = null;
+    }
     offline = false;
     handlers.crowded(isCrowded(message.players.length));
   }
@@ -810,7 +819,10 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       starting = false;
       // An answer still on its way may never have reached the room: its digits are put back, so that one press
       // says it again on coming back. (Where it did reach the room, the room's word on coming back says what came of it.)
-      if (pending && typed === "") typed = sent;
+      if (pending && typed === "") {
+        typed = sent;
+        putBackAt = latest?.view.history.length ?? null;
+      }
       pending = false;
       offline = true;
     },

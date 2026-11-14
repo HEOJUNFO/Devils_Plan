@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hearersOf, heardBy, namesOf, parseTo, teammatesOf, toggled, type AsidePlayer, type Hearer } from "../../../src/shared/aside";
+import { hearersOf, heardBy, namesOf, parseNamed, parseTo, teammatesOf, toggled, type AsidePlayer, type Hearer } from "../../../src/shared/aside";
 
 /** The most a line can be said to in these tests: a room of sixteen but the speaker. */
 const MOST = 15;
@@ -56,6 +56,48 @@ describe("heardBy", () => {
   it("gives nobody where none of them can read it", () => {
     expect(heardBy([0], 0, ROOM, here)).toEqual([]);
     expect(heardBy([3, 9], 0, ROOM, here)).toEqual([]);
+  });
+});
+
+describe("heardBy, with the names the speaker saw in the slots", () => {
+  const here = (slot: number): boolean => ROOM.find((p) => p.slot === slot)?.connected === true;
+
+  it("gives those whose name is still the one the speaker saw", () => {
+    expect(heardBy([1, 4], 0, ROOM, here, ["나래", "마루"])).toEqual([
+      { slot: 1, nick: "나래" },
+      { slot: 4, nick: "마루" },
+    ]);
+  });
+
+  it("leaves out a slot that someone else has taken since the speaker looked: the line was not meant for them", () => {
+    expect(heardBy([1, 4], 0, ROOM, here, ["나래", "떠난 사람"])).toEqual([{ slot: 1, nick: "나래" }]);
+    expect(heardBy([4], 0, ROOM, here, ["떠난 사람"])).toEqual([]);
+  });
+});
+
+describe("parseNamed", () => {
+  it("reads the slots with the name seen in each, lowest slot first", () => {
+    expect(parseNamed([4, 1], ["마루", "나래"], MOST)).toEqual({ to: [1, 4], names: ["나래", "마루"] });
+    expect(parseNamed([2], ["다온"], MOST)).toEqual({ to: [2], names: ["다온"] });
+  });
+
+  it("is nothing where the names are not one for each slot, or a slot is named twice, or anything is not what it should be", () => {
+    for (const [to, names] of [
+      [[1, 4], ["나래"]],
+      [[1], ["나래", "마루"]],
+      [[1, 1], ["나래", "나래"]],
+      [[1], [5]],
+      [[1], "나래"],
+      [1, ["나래"]],
+      [[], []],
+      [[-1], ["나래"]],
+      [[1], ["x".repeat(200)]],
+    ] as [unknown, unknown][]) expect(parseNamed(to, names, MOST)).toBeNull();
+  });
+
+  it("is nothing for more slots than a line may be said to", () => {
+    const upTo = Array.from({ length: MOST + 1 }, (_none, slot) => slot);
+    expect(parseNamed(upTo, upTo.map(String), MOST)).toBeNull();
   });
 });
 

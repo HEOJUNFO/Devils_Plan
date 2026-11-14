@@ -788,7 +788,8 @@ const chat = createChat(
       const people = toPeopleNow();
       if (people === null) return send({ type: "chat", text });
       // a line meant for some is never said to everyone because they have gone
-      return people.length > 0 && send({ type: "chat", text, to: people.map((person) => person.slot) });
+      // (with the name seen in each slot: the room leaves out a slot someone else has been given meanwhile)
+      return people.length > 0 && send({ type: "chat", text, to: people.map((person) => person.slot), names: people.map((person) => person.nick) });
     },
     to: () => toNames(),
     sendQuick: (word) => send({ type: "quick", word }),

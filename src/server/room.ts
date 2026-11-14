@@ -230,8 +230,12 @@ export class GameRoom extends Server<Env> {
    */
   private readonly chatPace = new Map<number, ChatPace>();
 
-  /** How many players each slot has pointed out from this room. Forgotten when the room sleeps: the directory keeps the day's limit. */
-  private readonly flagsSent = new Map<number, number>();
+  /**
+   * How many players each player has pointed out from this room, by their token: counted by the slot it was the
+   * next player's to be given that slot who could point nobody out, while their page told them it had. Forgotten
+   * when the room sleeps: the directory keeps the day's limit.
+   */
+  private readonly flagsSent = new Map<string, number>();
 
   /** When the room last acted on a poke, in ms since the epoch. Forgotten when the room sleeps; nothing depends on it. */
   private pokedAt = 0;
@@ -435,9 +439,9 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "start") await this.handleStart(connection, seat.slot, parsed.bots);
     else if (parsed.type === "action") await this.handleAction(connection, seat.slot, parsed.action);
     else if (parsed.type === "listing") await this.handleListing(connection, seat.slot, parsed.listed);
-    else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text, parsed.to);
+    else if (parsed.type === "chat") this.handleChat(connection, seat.slot, parsed.text, parsed.to, parsed.names);
     else if (parsed.type === "quick") this.handleQuick(connection, seat.slot, parsed.word);
-    else if (parsed.type === "flag") this.handleFlag(seat.slot, parsed.slot, parsed.lines);
+    else if (parsed.type === "flag") this.handleFlag(seat.slot, seat.token, parsed.slot, parsed.lines);
     else if (parsed.type === "clock") this.handleClock(connection, seat.slot, parsed.seconds);
     else if (parsed.type === "variant") this.handleVariant(connection, seat.slot, parsed.variant);
     else if (parsed.type === "knockout") this.handleKnockout(connection, seat.slot, parsed.on);
@@ -732,7 +736,7 @@ export class GameRoom extends Server<Env> {
    * in a line said aside as in any other; in a room off it the line goes as
    * it was said.
    */
-  private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string, to?: number[]): void {
+  private handleChat(connection: Connection<ConnectionState>, slot: number, raw: string, to?: number[], names?: string[]): void {
     const player = this.lobby?.players.find((p) => p.slot === slot);
     if (!player) return;
     const clean = normalizeChat(raw, chatConfig);
@@ -751,7 +755,8 @@ export class GameRoom extends Server<Env> {
     // said aside: someone who has gone, or the speaker, is nobody to say it to; nor is a
     // player whose seat is kept while no connection of theirs is here to read it
     const members = [...this.members()];
-    const [first, ...more] = heardBy(to, slot, this.lobby?.players ?? [], (other) => members.some(([, seat]) => seat.slot === other));
+    // (nor is whoever has just been given the slot of the player the speaker saw there: `names`)
+    const [first, ...more] = heardBy(to, slot, this.lobby?.players ?? [], (other) => members.some(([, seat]) => seat.slot === other), names);
     if (first === undefined) return this.refuse(connection, "chat-nobody");
     const message: ServerMessage = {
       type: "chat",
@@ -795,13 +800,13 @@ export class GameRoom extends Server<Env> {
    * included: their page says it was sent. Each player may point so many
    * times from a room and no more, and nothing here waits for the directory.
    */
-  private handleFlag(slot: number, target: number, raw: readonly string[]): void {
+  private handleFlag(slot: number, token: string, target: number, raw: readonly string[]): void {
     const lobby = this.lobby;
     const other = lobby === null || target === slot ? undefined : lobby.players.find((p) => p.slot === target);
     if (lobby === null || other === undefined) return;
-    const sent = this.flagsSent.get(slot) ?? 0;
+    const sent = this.flagsSent.get(token) ?? 0;
     if (sent >= flagConfig.each) return;
-    this.flagsSent.set(slot, sent + 1);
+    this.flagsSent.set(token, sent + 1);
     const lines = raw
       .map((line) => normalizeChat(line, chatConfig))
       .filter((line): line is string => line !== null)

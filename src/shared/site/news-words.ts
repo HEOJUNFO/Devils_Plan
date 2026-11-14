@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "몇 사람에게만 한 말은, 그 사람이 나가고 다른 사람이 같은 자리를 막 넘겨받은 순간에도 새로 온 사람에게 가지 않습니다. 큐브 세기에서 연결이 끊긴 사이 이미 오답이 된 답이 입력칸에 다시 남던 것, 앞사람이 신고를 다 쓴 자리에 들어온 사람이 신고할 수 없던 것도 고쳤습니다.",
+        en: "A line said to some people no longer reaches a newcomer who was given the seat of someone it was meant for a moment before. Also fixed: in Count the Cubes, an answer already judged wrong while the connection was down came back into the box; and a player given the seat of someone who had used up their reports could not report anyone.",
+      },
+      {
         ko: "음성 채팅: 마이크 허용 창이 떠 있는 동안 방을 나간 뒤 허용을 누르면 마이크가 로비에서 켜진 채 남던 것을 고쳤습니다. 이제 그 마이크는 바로 닫힙니다. 연결이 끊겼다 돌아오면 음성이 조용히 끊기던 것도 고쳤습니다. 방에서 내보내지면 열려 있던 창(초대 QR, 설정 등)도 함께 닫힙니다.",
         en: "Voice chat: if you left a room while the browser was still asking for the microphone and then allowed it, the microphone stayed open in the lobby. It is now closed at once. Voice also no longer goes silent after a connection is lost and comes back. A sheet left open (the invitation QR, the settings) now closes when you are sent out of a room.",
       },

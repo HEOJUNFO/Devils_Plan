@@ -4,7 +4,7 @@
  * Shared by both sides so a change to the wire format is a type error on the
  * side that was not updated.
  */
-import { parseTo, type Hearer } from "./aside";
+import { parseNamed, parseTo, type Hearer } from "./aside";
 import { isQuickWord, type QuickWord } from "./chat";
 import type { RoomCounts, RoomListing, Watching } from "./directory";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
@@ -380,7 +380,7 @@ export type ClientMessage =
   | { type: "here" }
   /** Say a line to everyone in the room. */
   /** A line for the room, or with `to` for the players in those slots and nobody else (`aside.ts`). */
-  | { type: "chat"; text: string; to?: number[] }
+  | { type: "chat"; text: string; to?: number[]; names?: string[] }
   /** Say one of the words that take one press (`QUICK_WORDS`) to everyone in the room. It counts as a line does. */
   | { type: "quick"; word: QuickWord }
   /**
@@ -465,6 +465,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     if (typeof data.text !== "string") return null;
     if (data.to === undefined) return { type: "chat", text: data.text };
     // a line meant for some and addressed to nobody is not said to everyone instead
+    if (data.names !== undefined) {
+      // with the name the speaker saw in each slot (`heardBy`): a page from before they were sent sends none
+      const named = parseNamed(data.to, data.names, CHAT_TO_MOST);
+      return named === null ? null : { type: "chat", text: data.text, to: named.to, names: named.names };
+    }
     const to = parseTo(data.to, CHAT_TO_MOST);
     return to === null ? null : { type: "chat", text: data.text, to };
   }

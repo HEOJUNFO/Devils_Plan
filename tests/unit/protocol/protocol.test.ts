@@ -141,6 +141,10 @@ describe("parseClientMessage", () => {
   });
 
   it("rejects a chat line that is not text", () => {
+    // with the names the speaker saw in the slots: read with them, and nothing where they do not go with the slots
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: [4, 1], names: ["d", "a"] }))).toEqual({ type: "chat", text: "psst", to: [1, 4], names: ["a", "d"] });
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: [4, 1], names: ["d"] }))).toBeNull();
+    expect(parseClientMessage(JSON.stringify({ type: "chat", text: "psst", to: 3, names: ["d"] }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "chat" }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "chat", text: 5 }))).toBeNull();
     expect(parseClientMessage(JSON.stringify({ type: "chat", text: ["hi"] }))).toBeNull();

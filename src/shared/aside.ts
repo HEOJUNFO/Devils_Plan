@@ -57,15 +57,38 @@ export function parseTo(raw: unknown, most: number): number[] | null {
   return slots.length <= most ? slots : null;
 }
 
+/** The longest name read with a slot: longer than any nickname the room gives, so nothing a page of ours sends is cut off. */
+const NAME_MOST = 64;
+
+/**
+ * The slots a line is said to with the name the speaker saw in each
+ * (`names[i]` in the slot `to[i]`), out of what a page sent: each slot once,
+ * lowest first. `null` for anything else: names that are not one for each
+ * slot, a slot twice, nobody, or more than `most`.
+ */
+export function parseNamed(rawTo: unknown, rawNames: unknown, most: number): { to: number[]; names: string[] } | null {
+  if (!Array.isArray(rawTo) || !Array.isArray(rawNames) || rawTo.length === 0 || rawTo.length !== rawNames.length || rawTo.length > most) return null;
+  if (!rawTo.every(isSlot) || !rawNames.every((name): name is string => typeof name === "string" && name.length <= NAME_MOST)) return null;
+  if (new Set(rawTo).size !== rawTo.length) return null;
+  const pairs = rawTo.map((slot, i) => ({ slot, name: rawNames[i] })).sort((a, b) => a.slot - b.slot);
+  return { to: pairs.map((pair) => pair.slot), names: pairs.map((pair) => pair.name) };
+}
+
 /**
  * Who of the slots `asked` a line of the player in `speaker` goes to: those
  * in the room other than the speaker with a connection there to read it
  * (`here`), lowest slot first. Empty where there is nobody: the room then
  * refuses the line.
+ *
+ * With `names` (the name the speaker saw in each slot asked, `names[i]` in
+ * `asked[i]`), a slot whose player goes by another name is left out: the
+ * player spoken to left and someone else was given the slot before the
+ * speaker's page heard of it, and the line was not meant for them.
  */
-export function heardBy(asked: readonly number[], speaker: number, players: readonly { slot: number; nick: string }[], here: (slot: number) => boolean): Hearer[] {
+export function heardBy(asked: readonly number[], speaker: number, players: readonly { slot: number; nick: string }[], here: (slot: number) => boolean, names?: readonly string[]): Hearer[] {
   return players
     .filter((player) => player.slot !== speaker && asked.includes(player.slot) && here(player.slot))
+    .filter((player) => names === undefined || names[asked.indexOf(player.slot)] === player.nick)
     .map((player) => ({ slot: player.slot, nick: player.nick }))
     .sort((a, b) => a.slot - b.slot);
 }
