@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-14",
     lines: [
       {
+        ko: `${CUBES.ko}: 답을 보낸 순간 연결이 끊기면, 보낸 숫자가 입력 칸에 다시 놓입니다. 다시 연결된 뒤 Enter 한 번이면 됩니다.`,
+        en: `${CUBES.en}: if the connection drops as an answer is sent, the number is put back in the box, and one press of Enter sends it again once the connection is back.`,
+      },
+      {
         ko: `${POKER.ko}: 연결이 끊기기 직전에 뒤집은 카드가 방에 닿지 않았으면, 다시 연결됐을 때 고른 것으로 보이지 않습니다. 전에는 화면에만 고른 것으로 남아, 시간이 다 되면 다른 카드로 겨루게 될 수 있었습니다.`,
         en: `${POKER.en}: a card turned just before the connection dropped is no longer shown as picked on coming back if it never reached the room. Before, it stayed picked on the screen alone, and the round could be played with another card when time ran out.`,
       },

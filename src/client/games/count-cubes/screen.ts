@@ -172,6 +172,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   let noteT = 0;
   /** The digits entered so far. */
   let typed = "";
+  /** The digits of the answer last sent, to be put back where it may never have reached the room (`lost`). */
+  let sent = "";
   /** From where the solid is looked at: the player turns it by dragging its picture, or with the arrow keys. */
   let angle: View = FIRST_VIEW;
   /**
@@ -349,8 +351,10 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       sfx.deny();
     } else {
       pending = handlers.act({ type: "answer", said: result.said });
-      if (pending) typed = "";
-      else say(WORDS.notSent);
+      if (pending) {
+        sent = `${result.said}`;
+        typed = "";
+      } else say(WORDS.notSent);
     }
   }
 
@@ -801,6 +805,9 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     },
     lost(): void {
       starting = false;
+      // An answer still on its way may never have reached the room: its digits are put back, so that one press
+      // says it again on coming back. (Where it did reach the room, the room's word on coming back says what came of it.)
+      if (pending && typed === "") typed = sent;
       pending = false;
       offline = true;
     },
