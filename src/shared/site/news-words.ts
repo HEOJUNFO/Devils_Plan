@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "빠른 입장: 방 목록이 아직 오기 전에 누르면 「기다리는 방이 없습니다」라고 하고 그 누름이 사라지던 것을 고쳤습니다. 이제 목록이 오면 바로 들어갑니다. 방장이 내보낸 방은 빠른 입장이 건너뜁니다. 모임 줄은 모임이 시작하거나 끝나는 순간에 바로 다시 그려지고, 달력 파일의 글자 처리 하나를 바로잡았습니다.",
+        en: "Quick join: pressed before the list of rooms had arrived, it said that no room was waiting and the press was lost. It now enters as soon as the list comes. A room whose host sent you out is passed over. The meet-up line is redrawn the moment a meet-up starts or ends, and one mark in the calendar file is now written as the format asks.",
+      },
+      {
         ko: "몇 사람에게만 한 말은, 그 사람이 나가고 다른 사람이 같은 자리를 막 넘겨받은 순간에도 새로 온 사람에게 가지 않습니다. 큐브 세기에서 연결이 끊긴 사이 이미 오답이 된 답이 입력칸에 다시 남던 것, 앞사람이 신고를 다 쓴 자리에 들어온 사람이 신고할 수 없던 것도 고쳤습니다.",
         en: "A line said to some people no longer reaches a newcomer who was given the seat of someone it was meant for a moment before. Also fixed: in Count the Cubes, an answer already judged wrong while the connection was down came back into the box; and a player given the seat of someone who had used up their reports could not report anyone.",
       },

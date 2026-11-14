@@ -706,6 +706,11 @@ describe("parseComingNote", () => {
     expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false, mine: false }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 3, more: false });
   });
 
+  it("reads the meeting a word was not taken for, said to the one who gave it", () => {
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 0, more: false, not: 1_800_000_000_000 }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 0, more: false, not: 1_800_000_000_000 });
+    expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 0, more: false, not: "soon" }))).toEqual({ type: "coming", meet: 1_800_000_000_000, count: 0, more: false });
+  });
+
   it("is nothing for another message, with no meeting, or with a count that is not one", () => {
     expect(parseComingNote(JSON.stringify({ type: "watching", count: 2 }))).toBeNull();
     expect(parseComingNote(JSON.stringify({ type: "coming", count: 2 }))).toBeNull();

@@ -48,7 +48,7 @@ describe("calendarOf", () => {
   it("escapes what means something to a calendar's file in the name", () => {
     const lines = linesOf(calendarOf(event({ summary: "a, b; c\\d\ne" })));
 
-    expect(lines).toContain("SUMMARY:a\\, b\; c\\\\d\\ne");
+    expect(lines).toContain("SUMMARY:a\\, b\\; c\\\\d\\ne");
   });
 
   it("folds a long line so that none has more than 75 octets, and cuts no letter in two", () => {
@@ -59,5 +59,13 @@ describe("calendarOf", () => {
     // unfolded as a calendar reads it, the name is whole
     expect(file.replace(/\r\n /g, "")).toContain(`SUMMARY:${summary}\r\n`);
     expect(linesOf(file).filter((line) => line.startsWith(" ")).length).toBeGreaterThan(1);
+  });
+});
+
+describe("calendarOf: text with the file's own marks in it", () => {
+  it("writes a semicolon, a comma and a backslash so that they are read as text", () => {
+    const file = calendarOf(event({ summary: "a;b,c\\d" }));
+
+    expect(linesOf(file)).toContain("SUMMARY:a\\;b\\,c\\\\d");
   });
 });

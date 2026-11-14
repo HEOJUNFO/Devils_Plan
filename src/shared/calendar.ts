@@ -32,7 +32,7 @@ function utc(at: number): string {
 
 /** `text` as the file writes text: the four characters that mean something to it are escaped. */
 function escaped(text: string): string {
-  return text.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  return text.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 }
 
 /** `line` folded: no line of more than 75 octets, each further line begun with a space, and no letter cut in two. */

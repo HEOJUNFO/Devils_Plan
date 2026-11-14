@@ -589,6 +589,13 @@ export interface ComingNote extends Coming {
    * their page shows it so.
    */
   mine?: true;
+  /**
+   * Said to one viewer alone: the start of a meeting they gave their word
+   * for that the directory did not take it for (by its clock that meeting is
+   * not the one that is on or next). Their page lets go of the word it was
+   * showing as given; nothing else in such a note is for reading.
+   */
+  not?: number;
 }
 
 /** Parses the directory's word on how many are coming to a meeting, returning `null` for anything else. */
@@ -597,7 +604,7 @@ export function parseComingNote(raw: unknown): ComingNote | null {
   if (data === null || data.type !== "coming") return null;
   if (typeof data.meet !== "number" || !Number.isSafeInteger(data.meet)) return null;
   if (typeof data.count !== "number" || !Number.isInteger(data.count) || data.count < 0) return null;
-  return { type: "coming", meet: data.meet, count: data.count, more: data.more === true, ...(data.mine === true ? { mine: true as const } : {}) };
+  return { type: "coming", meet: data.meet, count: data.count, more: data.more === true, ...(data.mine === true ? { mine: true as const } : {}), ...(typeof data.not === "number" && Number.isSafeInteger(data.not) ? { not: data.not } : {}) };
 }
 
 /** Parses the directory's word on how many hands are up, returning `null` for anything else. */

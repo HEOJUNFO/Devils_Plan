@@ -1835,6 +1835,8 @@ describe("RoomDirectory: words given for the next meeting", () => {
 
     // one word was taken of the three: the one for the next meeting, given while there was one
     expect(b.told().map((note) => note.count)).toEqual([1]);
+    // and the one who gave the other two was told of each that it was not taken
+    expect(a.told().flatMap((note) => (note.not === undefined ? [] : [note.not]))).toEqual([AFTER.start, START]);
     const rows = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ who: string }>("SELECT who FROM going").toArray());
     expect(rows).toEqual([{ who: who(2) }]);
     a.close();

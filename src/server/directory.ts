@@ -331,7 +331,15 @@ export class RoomDirectory extends Server<Env> {
    */
   private takeGoing(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "going" }>, from: string | undefined, now: number): void {
     const near = this.meetNear(now);
-    if (near === null || !mayAnswer(near, request.meet)) return;
+    if (near === null || !mayAnswer(near, request.meet)) {
+      // A word for a meeting that is not the one on or next by this clock (the page's clock is off, or the word is
+      // an old one said again) is not taken, and the one who gave it is told: their page showed it as counted.
+      if (request.on) {
+        const note: ComingNote = { type: "coming", meet: request.meet, count: 0, more: false, not: request.meet };
+        connection.send(JSON.stringify(note));
+      }
+      return;
+    }
     // Nothing is waited for from here to the rows, so no other word comes between the count and the row.
     const sql = this.ctx.storage.sql;
     sql.exec("DELETE FROM going WHERE meet < ?", near.start);

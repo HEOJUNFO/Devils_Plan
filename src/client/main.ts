@@ -1430,6 +1430,11 @@ function keep(name: string, value: string | null): void {
   }
 }
 
+/** The meeting the line was last drawn for, and whether as one that is on: what a press on it is taken to mean (`renderMeet`). */
+let meetDrawn: { start: number; on: boolean } | null = null;
+/** The timer that draws the line again when the meeting it shows starts or ends. */
+let meetTurn = 0;
+
 /** The start of the meeting this browser said it will come to, or `null`: kept in the browser, since it is said hours before. */
 let myGoing: number | null = ((): number | null => {
   const start = Number(kept("going") ?? "");
@@ -1472,7 +1477,11 @@ function renderMeet(): void {
   const meet = meetNear(now, meetConfig);
   meetButton.hidden = meet === null;
   syncCalendar();
+  meetDrawn = meet === null ? null : { start: meet.start, on: meet.on };
+  window.clearTimeout(meetTurn);
   if (meet === null) return;
+  // drawn again the moment it becomes another line (the meeting starts, or ends): not only every so often
+  meetTurn = window.setTimeout(renderMeet, Math.min(2 ** 31 - 1, Math.max(0, (meet.on ? meet.end : meet.start) - now) + 20));
   const minutes = Math.max(1, Math.ceil((meet.start - now) / 60_000));
   const [title, when] = [...meetButton.children];
   const game = GAMES[meet.game].title[lang];
@@ -1693,6 +1702,13 @@ function enterMeet(meet: Meet): void {
 meetButton.addEventListener("click", () => {
   const meet = meetNear(Date.now(), meetConfig);
   if (meet === null) return;
+  // A press does what the line says. Where the line drawn is of another moment (it said "enter" and the meeting
+  // has just ended, or counted the minutes and it has just begun), the press draws it as it is now and no more:
+  // it would have given a word for tomorrow's meeting in place of entering, or entered in place of giving one.
+  if (meetDrawn !== null && (meetDrawn.start !== meet.start || meetDrawn.on !== meet.on)) {
+    renderMeet();
+    return;
+  }
   const press = meetPress(meet, listedGame, myGoing);
   if (press.going !== null) sayGoing(meet.start, press.going);
   pickGame(press.list);
@@ -1816,6 +1832,15 @@ function watchRooms(): void {
     }
     const guests = parseComingNote(event.data);
     if (guests !== null) {
+      if (guests.not !== undefined) {
+        // the directory did not take this browser's word for that meeting (by its clock it is not the next): the word is let go here too
+        if (myGoing === guests.not) {
+          myGoing = null;
+          keep("going", null);
+        }
+        renderMeet();
+        return;
+      }
       coming = guests;
       // the directory did not take this browser's word back (taken back too often for a while): it stands here too
       if (guests.mine === true) {
@@ -1840,6 +1865,11 @@ function watchRooms(): void {
     if (newlyOpen(roomsSent, message).length > 0) call("room");
     roomsSent = message;
     renderRooms();
+    // a press on the quick join that came before the list did: taken up now, unless the player has gone on to something else
+    if (quickWaited) {
+      quickWaited = false;
+      if (currentCode === "" && entering === null && !creating && newRoom.hidden) quickJoin();
+    }
     // the rooms a press on the meeting's line was waiting for: on into its room, if the press is a moment old, the
     // meeting is still on and still the one, and the player has not gone on to anything else meanwhile
     if (meetWaited !== null) {
@@ -3708,8 +3738,9 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       connect(code, false, nick, 0, "link");
       return;
     }
-    // A quick join found the room full or gone by the time it got there: the next one waiting is tried.
-    const next = message.reason === "full" || message.reason === "not-found" ? quickRest?.shift() : undefined;
+    if (message.reason === "kicked") sentOutOf.add(code);
+    // A quick join found the room full or gone by the time it got there, or one this player was sent out of: the next one waiting is tried.
+    const next = message.reason === "full" || message.reason === "not-found" || message.reason === "kicked" ? quickRest?.shift() : undefined;
     if (next !== undefined) {
       connect(next, false, nick, 0, restVia);
       setEntering(next);
@@ -3815,8 +3846,18 @@ function joinRoom(code: string, via: JoinWay): void {
 function quickJoin(): void {
   if (entering !== null && socket !== null) return;
   if (readNick() === null) return;
-  const shown = roomsSent === null ? null : roomsShown(roomsSent.rooms, roomsSent.counts, listedGame);
-  const [first, ...rest] = quickPicks(shown?.rooms ?? []);
+  if (roomsSent === null) {
+    // The list has not come yet (the page has just opened, or the list's connection is down): the press is kept
+    // and taken up when it comes. Said as "no room is waiting", it was untrue under a list still loading, and
+    // the press was lost when the list came with a room in it.
+    quickWaited = true;
+    notice.textContent = WORDS.rooms.loading;
+    return;
+  }
+  quickWaited = false;
+  const shown = roomsShown(roomsSent.rooms, roomsSent.counts, listedGame);
+  // (not a room this player was sent out of: it would turn them away again, and it was tried first on every press)
+  const [first, ...rest] = quickPicks(shown.rooms).filter((code) => !sentOutOf.has(code));
   if (first === undefined) {
     notice.textContent = WORDS.entry.noneWaiting;
     return;
@@ -3825,6 +3866,11 @@ function quickJoin(): void {
   quickRest = rest;
   restVia = "quick";
 }
+
+/** A press on the quick join made before the list of rooms had come: taken up when it comes (`quickJoin`). */
+let quickWaited = false;
+/** The rooms this page was sent out of by their host, by code: the quick join passes them over. Forgotten with the page. */
+const sentOutOf = new Set<string>();
 
 /** The code a link brought, for as long as the box for a room's code holds it: an invitation not yet taken up. */
 let invitedCode = "";
