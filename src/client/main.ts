@@ -2341,7 +2341,7 @@ function numbersAnswered(days: DayNumbers[] | null): void {
         WORDS.numbers.ways(day.ways.map((each) => `${WORDS.numbers.way[each.via]} ${each.n}`).join(" · "), day.startedAtMeet),
         ...day.games.map(
           (each) =>
-            `${WORDS.numbers.game(GAMES[each.game].title[lang], each.wanted, each.started, each.ended, each.players, each.minutes)} · ${WORDS.numbers.gameRooms(each.made, each.alone, each.unplayed, each.again)}`,
+            `${WORDS.numbers.game(GAMES[each.game].title[lang], each.wanted, each.started, each.ended, each.players, each.minutes)} · ${WORDS.numbers.gameRooms(each.made, each.alone, each.waited, each.unplayed, each.again, each.left)}`,
         ),
         ...(day.hours.length === 0 ? [] : [WORDS.numbers.hours(day.hours.map((each) => WORDS.numbers.hour(each.hour, each.visits)).join(" · "))]),
       ].join("\n");

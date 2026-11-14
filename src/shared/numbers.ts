@@ -54,15 +54,18 @@ export function isJoinWay(value: unknown): value is JoinWay {
  * room was made, somebody came into it by `via` (its maker is not counted
  * so, nor anyone coming back to a place they hold), a game began in it with
  * so many `players`, a game ended after so many `minutes` (`null` where the
- * room does not know when it began), or the room stands empty, having had
- * so many `games` started in it and at `most` so many people at once.
+ * room does not know when it began; `left` where nobody was connected to it
+ * any more when it did), or the room stands empty, having had so many `games`
+ * started in it and at `most` so many people at once (`waited`: of a room
+ * nobody else came into and nothing was started in, the minutes from its
+ * first person coming to its standing empty, where the room knows).
  */
 export type RoomEvent =
   | { type: "made"; game: GameId; listed: boolean }
   | { type: "joined"; game: GameId; via: JoinWay }
   | { type: "started"; game: GameId; players: number }
-  | { type: "ended"; game: GameId; minutes: number | null }
-  | { type: "emptied"; game: GameId; listed: boolean; games: number; most: number };
+  | { type: "ended"; game: GameId; minutes: number | null; left?: true }
+  | { type: "emptied"; game: GameId; listed: boolean; games: number; most: number; waited?: number };
 
 /** One thing added to a day's numbers: `n` more of `what`; or, with `most`, `n` kept where it is the most so far. */
 export interface Count {
@@ -98,12 +101,15 @@ export function parseRoomEvent(raw: unknown): RoomEvent | null {
   if (data.type === "joined") return isJoinWay(data.via) ? { type: "joined", game, via: data.via } : null;
   if (data.type === "started") return isCount(data.players, MOST_PEOPLE) ? { type: "started", game, players: data.players } : null;
   if (data.type === "ended") {
-    if (data.minutes === null) return { type: "ended", game, minutes: null };
-    return isCount(data.minutes, MOST_MINUTES) ? { type: "ended", game, minutes: data.minutes } : null;
+    const left = data.left === true ? { left: true as const } : {};
+    if (data.minutes === null) return { type: "ended", game, minutes: null, ...left };
+    return isCount(data.minutes, MOST_MINUTES) ? { type: "ended", game, minutes: data.minutes, ...left } : null;
   }
   if (data.type === "emptied") {
     if (typeof data.listed !== "boolean" || !isCount(data.games, Number.MAX_SAFE_INTEGER) || !isCount(data.most, MOST_PEOPLE)) return null;
-    return { type: "emptied", game, listed: data.listed, games: data.games, most: data.most };
+    // a wait that is no number of minutes is left out, and the room is still counted
+    const waited = isCount(data.waited, MOST_MINUTES) ? { waited: data.waited } : {};
+    return { type: "emptied", game, listed: data.listed, games: data.games, most: data.most, ...waited };
   }
   return null;
 }
@@ -125,7 +131,10 @@ export function atMeet(event: RoomEvent, meet: { on: boolean; game: GameId } | n
  * again, by why: `alone` where nobody else ever came (someone waited and
  * left), `unplayed` where people came and still nothing was started. One in
  * which a game was started a second time is counted as `again`: its people
- * stayed for another.
+ * stayed for another. Of a room waited in alone, the minutes of the wait
+ * are added up where the room said them (`waited`, over `waits` rooms); a
+ * game that ended with nobody connected to it is counted as `left` of its
+ * game, among those ended.
  *
  * A room made, and one that stood empty so, is counted of its game as well.
  * The game is the room's at that moment: a host who changes the game of a
@@ -151,12 +160,14 @@ export function countsOf(event: RoomEvent, meeting = false): Count[] {
         { what: "ended", n: 1 },
         { what: `ended:${event.game}`, n: 1 },
         ...(event.minutes === null ? [] : [{ what: `timed:${event.game}`, n: 1 }, { what: `minutes:${event.game}`, n: event.minutes }]),
+        ...(event.left === true ? [{ what: `left:${event.game}`, n: 1 }] : []),
       ];
     case "emptied": {
       if (event.games >= AGAIN_GAMES) return [{ what: "emptied", n: 1 }, { what: `again:${event.game}`, n: 1 }];
       if (event.games > 0) return [{ what: "emptied", n: 1 }];
       const why = event.most <= 1 ? "alone" : "unplayed";
-      return [{ what: "emptied", n: 1 }, { what: why, n: 1 }, { what: `${why}:${event.game}`, n: 1 }];
+      const waited = why === "alone" && event.waited !== undefined ? [{ what: `waits:${event.game}`, n: 1 }, { what: `waited:${event.game}`, n: event.waited }] : [];
+      return [{ what: "emptied", n: 1 }, { what: why, n: 1 }, { what: `${why}:${event.game}`, n: 1 }, ...waited];
     }
   }
 }
@@ -250,16 +261,20 @@ export function firstKept(today: number, config: NumbersConfig): number {
  * made for it, games started and ended, the players of a started game on
  * average, and the minutes of an ended one (`null` where nothing was counted
  * to work one out from); and of the rooms that stood empty as its own, those
- * someone waited in `alone`, those where people came and nothing was started
+ * someone waited in `alone` (and for how many minutes on average, `waited`:
+ * `null` where no room said), those where people came and nothing was started
  * (`unplayed`), and those where a game was started a second time (`again`).
+ * `left`: the games, among those ended, that nobody was connected to any more.
  */
 export interface GameRead {
   game: GameId;
   wanted: number;
   made: number;
   alone: number;
+  waited: number | null;
   unplayed: number;
   again: number;
+  left: number;
   started: number;
   ended: number;
   players: number | null;
@@ -304,8 +319,10 @@ export function readDay(numbers: DayNumbers): DayRead {
     wanted: of(`wanted:${game}`),
     made: of(`made:${game}`),
     alone: of(`alone:${game}`),
+    waited: mean(of(`waited:${game}`), of(`waits:${game}`)),
     unplayed: of(`unplayed:${game}`),
     again: of(`again:${game}`),
+    left: of(`left:${game}`),
     started: of(`started:${game}`),
     ended: of(`ended:${game}`),
     players: mean(of(`players:${game}`), of(`started:${game}`)),

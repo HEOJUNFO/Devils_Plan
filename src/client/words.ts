@@ -125,8 +125,13 @@ const ko = {
     /** A game's line: hands raised for it in the lobby, games started and ended, and a game's players and minutes on average. */
     game: (name: string, wanted: number, started: number, ended: number, players: number | null, minutes: number | null) =>
       `${name}: 손 든 횟수 ${wanted} · 시작 ${started} · 끝 ${ended}${players === null ? "" : ` · 평균 ${players}명`}${minutes === null ? "" : ` · 평균 ${minutes}분`}`,
-    /** After a game's line: rooms made for it, and of the rooms that stood empty as its own, those someone waited in alone, those where people came and nothing was started, and those where a game was started a second time. */
-    gameRooms: (made: number, alone: number, unplayed: number, again: number) => `방 ${made}개 (혼자 비움 ${alone} · 시작 못 함 ${unplayed} · 두 판 이상 ${again})`,
+    /**
+     * After a game's line: rooms made for it, and of the rooms that stood empty as its own, those someone waited in
+     * alone (with the minutes of that wait on average, where any room said), those where people came and nothing was
+     * started, and those where a game was started a second time; then the games that ended with nobody left at them.
+     */
+    gameRooms: (made: number, alone: number, waited: number | null, unplayed: number, again: number, left: number) =>
+      `방 ${made}개 (혼자 비움 ${alone}${waited === null ? "" : `, 평균 ${waited}분 기다림`} · 시작 못 함 ${unplayed} · 두 판 이상 ${again}) · 모두 떠난 판 ${left}`,
     hours: (list: string) => `시간대별 방문: ${list}`,
     hour: (hour: number, visits: number) => `${hour}시 ${visits}`,
   },
@@ -697,7 +702,8 @@ const en: typeof ko = {
     way: { link: "link", list: "list", quick: "quick join", code: "code", meet: "meet-up" },
     game: (name, wanted, started, ended, players, minutes) =>
       `${name}: hands raised ${wanted} · ${started} started · ${ended} finished${players === null ? "" : ` · ${players} to a game`}${minutes === null ? "" : ` · ${minutes} min a game`}`,
-    gameRooms: (made, alone, unplayed, again) => `rooms ${made} (left alone ${alone} · never started ${unplayed} · played again ${again})`,
+    gameRooms: (made, alone, waited, unplayed, again, left) =>
+      `rooms ${made} (left alone ${alone}${waited === null ? "" : `, after ${waited} min on average`} · never started ${unplayed} · played again ${again}) · games everyone left ${left}`,
     hours: (list) => `Visits by hour: ${list}`,
     hour: (hour, visits) => `${hour}h ${visits}`,
   },

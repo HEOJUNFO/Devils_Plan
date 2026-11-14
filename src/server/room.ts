@@ -168,9 +168,11 @@ interface Tally {
   most: number;
   /** When the game now being played started, in ms since the epoch; `null` between games. */
   began: number | null;
+  /** When the first of its people came, in ms since the epoch; `null` before anyone has, and in a count written before this was kept. */
+  since: number | null;
 }
 
-const NO_TALLY: Tally = { games: 0, most: 0, began: null };
+const NO_TALLY: Tally = { games: 0, most: 0, began: null, since: null };
 
 /** The least time between two pokes the room acts on, in ms: asking twice in a row finds nothing new. */
 const POKE_GAP_MS = 10_000;
@@ -1197,14 +1199,15 @@ export class GameRoom extends Server<Env> {
   private tally(): Tally {
     const kept = this.stored ? this.load<Tally>(TALLY_KEY) : null;
     // a count written before the moment a game began was kept has none: read as between games
-    return kept === null ? NO_TALLY : { ...kept, began: typeof kept.began === "number" ? kept.began : null };
+    return kept === null ? NO_TALLY : { ...kept, began: typeof kept.began === "number" ? kept.began : null, since: typeof kept.since === "number" ? kept.since : null };
   }
 
   /** Counts who is connected now, where that is more than were ever connected at once before. */
   private countHere(): void {
     const here = this.connectedSlots().size;
     const tally = this.tally();
-    if (here > tally.most) this.save(TALLY_KEY, { ...tally, most: here } satisfies Tally);
+    // (the moment the first of them came is kept in the same write: how long someone waited alone is counted from it)
+    if (here > tally.most) this.save(TALLY_KEY, { ...tally, most: here, since: tally.since ?? Date.now() } satisfies Tally);
   }
 
   /**
@@ -1221,13 +1224,15 @@ export class GameRoom extends Server<Env> {
    */
   private sayGone(lobby: LobbyState): void {
     console.log(`game ended: ${gameOf(lobby)} with its room`);
-    this.count({ type: "ended", game: gameOf(lobby), minutes: null });
+    this.count({ type: "ended", game: gameOf(lobby), minutes: null, left: true });
   }
 
   private sayEmptied(lobby: LobbyState): void {
     const tally = this.tally();
     console.log(`room emptied: ${gameOf(lobby)} ${lobby.listed ? "listed" : "unlisted"} games ${tally.games} most ${tally.most}`);
-    this.count({ type: "emptied", game: gameOf(lobby), listed: lobby.listed === true, games: tally.games, most: tally.most });
+    // of a room nobody else came into and nothing was started in: how long its one person waited
+    const waited = tally.games === 0 && tally.most <= 1 ? gameMinutes(tally.since, Date.now()) : null;
+    this.count({ type: "emptied", game: gameOf(lobby), listed: lobby.listed === true, games: tally.games, most: tally.most, ...(waited === null ? {} : { waited }) });
     if (this.stored) this.save(TALLY_KEY, null);
   }
 
@@ -1277,7 +1282,8 @@ export class GameRoom extends Server<Env> {
       const tally = this.tally();
       const minutes = gameMinutes(tally.began, Date.now());
       console.log(`game ended: ${gameOf(this.lobby)}${minutes === null ? "" : ` ${minutes} min`}`);
-      this.count({ type: "ended", game: gameOf(this.lobby), minutes });
+      // (with nobody connected to it any more, it is one its players left: the clock of a game standing still ended it)
+      this.count({ type: "ended", game: gameOf(this.lobby), minutes, ...(this.connectedSlots().size === 0 ? { left: true as const } : {}) });
       if (tally.began !== null) this.save(TALLY_KEY, { ...tally, began: null } satisfies Tally);
       // What the game paid in pieces goes on the room's ledger: here, the one place a game ends, so once.
       const paid = next === null ? this.lobby : withPieces(this.lobby, gainsOf(this.host().pieces?.(next), ledgerConfig));
