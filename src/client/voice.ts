@@ -63,6 +63,15 @@ export function createVoice(options: {
   fakeMic: boolean;
 }): Voice {
   let on = false;
+  /**
+   * The asking for the microphone that is on its way, by its number; 0 with
+   * none. The browser's question can stay up for as long as the player
+   * likes, and the page goes on under it: a `leave` meanwhile (the button,
+   * the room left, the player sent out) sets this to 0, and the answer that
+   * comes then opens nothing.
+   */
+  let asking = 0;
+  let asked = 0;
   let muted = false;
   let me = -1;
   /** The slots this page does not play the sound of (`quiet`). */
@@ -215,9 +224,22 @@ export function createVoice(options: {
       return local !== null;
     },
     async join(): Promise<void> {
-      if (on) return;
-      context = new AudioContext();
-      local = await openMic();
+      // one asking at a time: a second press while the browser's question is up opened a second microphone that nothing ever closed
+      if (on || asking !== 0) return;
+      const mine = ++asked;
+      asking = mine;
+      const made = new AudioContext();
+      const mic = await openMic();
+      if (asking !== mine) {
+        // Left while the browser was asking: what it gave is given straight back. Before, the microphone came on in
+        // the lobby, which has no button to turn it off, and the next room entered was told this page was in voice.
+        for (const track of mic?.getTracks() ?? []) track.stop();
+        void made.close().catch(() => undefined);
+        return;
+      }
+      asking = 0;
+      context = made;
+      local = mic;
       own = local === null ? null : listen(local);
       muted = local === null;
       on = true;
@@ -226,6 +248,8 @@ export function createVoice(options: {
       sync();
     },
     leave(): void {
+      // an asking on its way is called off (see `join`)
+      asking = 0;
       if (!on) return;
       on = false;
       for (const slot of [...peers.keys()]) hangUp(slot);

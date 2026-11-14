@@ -2429,6 +2429,16 @@ function showLobby(message = ""): void {
   hideTable();
   chat.close();
   showWho(null);
+  // The other sheets of the room go with it as well: someone sent out by the host, or let go by the room,
+  // pressed nothing that would have closed one, and it stood over the lobby with that room's people or its
+  // invitation in it, and over the next room entered.
+  showTo(false);
+  showOptions(false);
+  showWhen(false);
+  showQr(false);
+  showVoiceAsk(false);
+  // no game is on show out of a room: the next room's first start is called, and its host is called back to it
+  gameOn = false;
   room.hidden = true;
   newRoom.hidden = true;
   entry.hidden = false;
@@ -3449,9 +3459,11 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
   const greet = (): void => {
     // Fires again on every reconnect; the server expects `join` each time.
     current.send(JSON.stringify(join));
-    // a connection that came back is a new one to the room: say again that this page is in voice
-    voice.announce();
+    // A connection that came back is a new one to the room: say again that this page is in voice. Said once the
+    // page counts itself connected: `send` lets nothing go before that, and said the other way round the word
+    // was never sent, so that after any reconnect the page showed itself in voice and was connected to nobody.
     online = true;
+    voice.announce();
     // What the room kept with the connection that is gone is said again once it has spoken on this one, and so
     // has let this player in: that the rules are open, and which game was asked for.
     readingSaid = false;

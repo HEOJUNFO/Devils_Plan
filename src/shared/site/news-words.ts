@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "음성 채팅: 마이크 허용 창이 떠 있는 동안 방을 나간 뒤 허용을 누르면 마이크가 로비에서 켜진 채 남던 것을 고쳤습니다. 이제 그 마이크는 바로 닫힙니다. 연결이 끊겼다 돌아오면 음성이 조용히 끊기던 것도 고쳤습니다. 방에서 내보내지면 열려 있던 창(초대 QR, 설정 등)도 함께 닫힙니다.",
+        en: "Voice chat: if you left a room while the browser was still asking for the microphone and then allowed it, the microphone stayed open in the lobby. It is now closed at once. Voice also no longer goes silent after a connection is lost and comes back. A sheet left open (the invitation QR, the settings) now closes when you are sent out of a room.",
+      },
+      {
         ko: "러시안 룰렛: 규칙 창을 열어 둔 사이 차례 시간이 지나가면, 지난 차례에 고른 수나 놓친 맞바꿈이 화면에 그대로 남던 것을 고쳤습니다. 아무도 남지 않아 방이 끝까지 둔 판은 이제 순위·왕관·탈락전에 세지 않습니다.",
         en: "Russian Roulette: when the turn clock ran out while the rules sheet was open, the move chosen for the turn that had gone, or a swap that was lost, stayed on the screen. Fixed. A game the room played out because nobody stayed no longer counts for places, the crown or the knockout.",
       },
