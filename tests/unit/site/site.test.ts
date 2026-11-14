@@ -212,6 +212,14 @@ describe("the notice of what is kept of a visitor", () => {
     expect(notice("en")).toContain(`${hours} hours`);
   });
 
+  it("says how long a browser keeps which room it was last in, as long as a room holds an away player's place", () => {
+    const minutes = roomConfig.awaySlotSeconds / 60;
+
+    expect(Number.isInteger(minutes)).toBe(true);
+    expect(notice("ko")).toContain(`이 브라우저에 ${minutes}분 동안`);
+    expect(notice("en")).toContain(`in this browser for ${minutes} minutes`);
+  });
+
   it("says how many lines a report keeps and how many words to the maker are kept, as the settings have them", () => {
     for (const lang of LANGS) {
       expect(notice(lang)).toMatch(new RegExp(`\\b${chatConfig.flag.lines}\\b`));

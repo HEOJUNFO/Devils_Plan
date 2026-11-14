@@ -118,6 +118,11 @@ const ko = {
     /** The room of the link has closed: a room made now is made under the link's own code (`src/shared/reopen.ts`). */
     // two lines of the form's column, on a phone as well: a third would lie on the bar under it
     invitedGone: "닫힌 방입니다. 방 만들기로 같은 링크에 다시 엽니다.",
+    /**
+     * In place of `sub` for someone who opens the site again within the time the room they were in holds their
+     * place (their tab was closed, or a phone dropped it): the code is in the box, and "입장" is the lit button's name.
+     */
+    seatKept: (code: string | null) => `${code === null ? "하던 방이 있습니다" : `하던 방 ${code}`}\n입장을 누르면 돌아갑니다`,
     nick: "닉네임",
     create: "방 만들기",
     /** Beside it: straight into an open room that is waiting for players. */
@@ -657,6 +662,7 @@ const en: typeof ko = {
     invitedNamed: (code, when) => `${when !== null ? `Meet ${when}` : code === null ? "Invited to a room" : `Invited to room ${code}`}\nRename, or just join`,
     invitedEarly: (when) => `Meet ${when}\nYou can join now`,
     invitedGone: "Room closed. New room reopens the same link.",
+    seatKept: (code) => `${code === null ? "You were in a room" : `Your room ${code}`}\nPress Join to go back`,
     nick: "Nickname",
     // half a row now: the form it opens is headed the same
     create: "New room",

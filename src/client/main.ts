@@ -53,7 +53,7 @@ import {
 import { liftFor, placeFrame } from "../shared/frame";
 import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, slugOf } from "../shared/site/paths";
 import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
-import { keepRoom, keptCode, keptRoom } from "../shared/resume";
+import { keepRoom, keptCode, keptRoom, leaveSeat, seatLeft } from "../shared/resume";
 import { hearersOf, namesOf, teammatesOf, toggled, type ChatTo, type Hearer } from "../shared/aside";
 import { QUICK_WORDS } from "../shared/chat";
 import { suggestNick, type NickWords } from "../shared/nick";
@@ -3353,6 +3353,9 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       // room after their place was let go is not counted as having come in twice, nor turned away from it.
       const { via: _via, only: _only, ...settled } = join;
       join = { ...settled, create: false };
+      // in the room, on a page that is in front: there is no way back to offer, to this tab or another
+      seatCode = "";
+      if (document.visibilityState === "visible") keep(SEAT_KEY, null);
       // a link's room that was to be opened again is open, by this player or by another before them
       reopenCode = null;
       reopenJoined = null;
@@ -3551,6 +3554,13 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       showLobby(REJECT_TEXT["code-taken"]);
       return;
     }
+    // turned away from the room the way back was offered to: it is offered no longer
+    if (code === seatCode) {
+      seatCode = "";
+      keep(SEAT_KEY, null);
+      if (codeInput.value.trim().toUpperCase() === code) codeInput.value = "";
+      syncEntry();
+    }
     showLobby(REJECT_TEXT[message.reason]);
   });
 }
@@ -3747,7 +3757,9 @@ function syncEntry(): void {
   // someone whose name is kept has nothing to put in: the link waited for them only because its time is still off
   const kept = !named && normalizeNick(nickInput.value, config) !== null;
   entrySub.textContent =
-    toRoom && code === invitedCode
+    toRoom && code === seatCode && code !== invitedCode
+      ? WORDS.entry.seatKept(codeHidden ? null : code)
+      : toRoom && code === invitedCode
       ? named
         ? WORDS.entry.invitedNamed(codeHidden ? null : code, when)
         : when !== null && kept
@@ -3789,6 +3801,9 @@ function joinFromInput(): void {
 }
 
 function leaveRoom(): void {
+  // left on purpose: there is no way back to offer
+  keep(SEAT_KEY, null);
+  seatCode = "";
   showOptions(false);
   voice.leave();
   send({ type: "leave" });
@@ -4488,6 +4503,9 @@ setInterval(() => {
  * nothing to keep, and what was kept before is thrown away.
  */
 function putAway(): void {
+  // For the browser, not the tab: a tab that is closed or dropped in a room leaves which room and when, so that the
+  // site opened again offers the way back while the room holds the place (`offerSeat`).
+  if (currentCode !== "") keep(SEAT_KEY, leaveSeat(currentCode, Date.now()));
   // what this page shows is itself what was kept, the room not heard from yet: that is left as it is, with its age
   if (returning) return;
   try {
@@ -4500,7 +4518,39 @@ function putAway(): void {
 // a phone drops a tab that is not in front without telling it: what it would keep is kept when it is hidden
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") putAway();
+  // back in front, in its room: nobody has a way back to be offered
+  else if (currentCode !== "") keep(SEAT_KEY, null);
 });
+
+/** Under which name this browser keeps the room it was last put away in (`leaveSeat`). */
+const SEAT_KEY = "seat";
+/** The code of the room the form offers the way back to (`offerSeat`), for as long as the box for a room's code holds it; "" for none. */
+let seatCode = "";
+
+/**
+ * Offers the way back to the room this browser was last put away in, to
+ * someone who opens the site again in a tab that knows nothing of it (the
+ * tab was closed, or a phone dropped it): the room's code is put in the box,
+ * the form says so, and the lit button goes in, to the place the room still
+ * holds. Offered for as long as the room holds it and no longer; not where
+ * the address already names a room.
+ */
+function offerSeat(): void {
+  if (socket !== null || currentCode !== "" || codeInput.value !== "") return;
+  const left = seatLeft(kept(SEAT_KEY), Date.now(), config.awaySlotSeconds, (code) => isValidRoomCode(code, config));
+  if (left === null) return keep(SEAT_KEY, null);
+  seatCode = left.code;
+  codeInput.value = left.code;
+  syncEntry();
+  setTimeout(() => {
+    // the room has let the place go by now: the offer goes, unless the box holds another code or the player went in
+    keep(SEAT_KEY, null);
+    const offered = seatCode;
+    seatCode = "";
+    if (offered !== "" && socket === null && codeInput.value.trim().toUpperCase() === offered) codeInput.value = "";
+    syncEntry();
+  }, left.until - Date.now());
+}
 
 /**
  * Loaded again in the room the address names: puts the room back on the
@@ -4576,6 +4626,7 @@ if (nickInput.value === "") {
 if (!comeBack()) showLobby();
 followAddress();
 openOnGame();
+offerSeat();
 // Loaded again, the browser has kept the places this page held before: those there are too many of are stepped off.
 back.start();
 // Ready to be typed in at once where there are keys. Under a finger a box that takes the focus by

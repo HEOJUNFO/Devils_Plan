@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_GAME } from "../../../src/shared/games";
-import { keepRoom, keptCode, keptRoom } from "../../../src/shared/resume";
+import { keepRoom, keptCode, keptRoom, leaveSeat, seatLeft } from "../../../src/shared/resume";
 import shipped from "../../../src/shared/room-config.json";
 
 /** The room the page was in. */
@@ -130,5 +130,39 @@ describe("the room a page was in, where its address does not say", () => {
     const old = keepRoom(CODE, lobbyText(), null, PUT_AWAY);
     expect(keptCode(old)).toBe(CODE);
     expect(keptRoom(old, keptCode(old), PUT_AWAY + MAX_AGE_MS + 1, MAX_AGE)).toBeNull();
+  });
+});
+
+describe("the room a browser was last put away in", () => {
+  /** A code is a room's when it is five capitals: enough for these tests. */
+  const isCode = (code: string): boolean => /^[A-Z]{5}$/.test(code);
+
+  it("is offered again with how long the room still holds the place", () => {
+    const left = leaveSeat(CODE, PUT_AWAY);
+
+    expect(seatLeft(left, PUT_AWAY, MAX_AGE, isCode)).toEqual({ code: CODE, until: PUT_AWAY + MAX_AGE_MS });
+    expect(seatLeft(left, PUT_AWAY + MAX_AGE_MS - 1, MAX_AGE, isCode)).toEqual({ code: CODE, until: PUT_AWAY + MAX_AGE_MS });
+  });
+
+  it("is offered no longer once the room has let the place go, nor from a clock that is ahead of this one", () => {
+    const left = leaveSeat(CODE, PUT_AWAY);
+
+    expect(seatLeft(left, PUT_AWAY + MAX_AGE_MS, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft(left, PUT_AWAY + 10 * MAX_AGE_MS, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft(left, PUT_AWAY - 1, MAX_AGE, isCode)).toBeNull();
+  });
+
+  it("is nothing where nothing was left, or what was left is not a room and a moment", () => {
+    expect(seatLeft(null, PUT_AWAY, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft("", PUT_AWAY, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft("{", PUT_AWAY, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft("null", PUT_AWAY, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft(JSON.stringify({ code: "abc", at: PUT_AWAY }), PUT_AWAY, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft(JSON.stringify({ code: CODE, at: "now" }), PUT_AWAY, MAX_AGE, isCode)).toBeNull();
+    expect(seatLeft(JSON.stringify({ code: CODE }), PUT_AWAY, MAX_AGE, isCode)).toBeNull();
+  });
+
+  it("leaves the room's code and the moment and nothing else", () => {
+    expect(JSON.parse(leaveSeat(CODE, PUT_AWAY))).toEqual({ code: CODE, at: PUT_AWAY });
   });
 });

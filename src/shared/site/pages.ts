@@ -354,6 +354,7 @@ const PRIVACY_FACTS: PrivacyFacts = {
   flagLines: chatConfig.flag.lines,
   wordsKept: directoryConfig.feedback.keep,
   madeMinutes: Math.max(...directoryConfig.makeLimits.map((limit) => limit.windowSeconds)) / 60,
+  seatMinutes: roomConfig.awaySlotSeconds / 60,
 };
 
 /** The notice in each language. */

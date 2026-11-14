@@ -100,3 +100,43 @@ export function keptRoom(stored: string | null, code: string, now: number, maxAg
       : null;
   return { lobby, game: shown, at };
 }
+
+/**
+ * What a page leaves in its browser when it is put away in the room `code`
+ * at `at` (ms since the epoch): the room's code and that moment, and nothing
+ * else. Not for the tab, as what {@link keepRoom} keeps is, but for the
+ * browser: a phone that drops the tab, or a player who closed it, opens the
+ * site again in a tab that knows nothing of the room, and is offered the way
+ * back to the place the room still holds for them ({@link seatLeft}).
+ */
+export function leaveSeat(code: string, at: number): string {
+  return JSON.stringify({ code, at });
+}
+
+/** A room a player may still hold a place in: its code, and until when (ms since the epoch) the way back is offered. */
+export interface SeatLeft {
+  code: string;
+  until: number;
+}
+
+/**
+ * The room this browser was last put away in, from what {@link leaveSeat}
+ * left, while the room still holds the place: a room gives up the place of
+ * a player who has been away `maxAgeSeconds`. `null` where nothing was left,
+ * it is older than that at `now` (or from a clock ahead of this one, whose
+ * age cannot be told), or `isCode` does not take its code for a room's.
+ */
+export function seatLeft(stored: string | null, now: number, maxAgeSeconds: number, isCode: (code: string) => boolean): SeatLeft | null {
+  if (stored === null) return null;
+  let left: unknown;
+  try {
+    left = JSON.parse(stored);
+  } catch {
+    return null;
+  }
+  if (typeof left !== "object" || left === null) return null;
+  const { code, at } = left as Record<string, unknown>;
+  if (typeof code !== "string" || !isCode(code) || typeof at !== "number" || !Number.isFinite(at)) return null;
+  const until = at + maxAgeSeconds * 1000;
+  return at > now || now >= until ? null : { code, until };
+}

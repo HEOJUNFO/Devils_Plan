@@ -28,6 +28,8 @@ export interface PrivacyFacts {
   wordsKept: number;
   /** Minutes the note of a room made is kept: the longest of `makeLimits` (`directory-config.json`). */
   madeMinutes: number;
+  /** Minutes a browser keeps which room it was last put away in: as long as a room holds an away player's place (`awaySlotSeconds`, `room-config.json`). */
+  seatMinutes: number;
 }
 
 /** When the notice was last changed to follow the code. */
@@ -54,6 +56,7 @@ const ko = {
         "게임별로 몇 판을 끝까지 했고 몇 번 1등을 했는지도 이 브라우저에만 둡니다. 서버로 보내지 않습니다.",
         "이 브라우저를 알아보는 임의의 값을 하나 만들어 둡니다. 연결이 끊겼다 돌아왔을 때 같은 자리에 앉히는 데 쓰고, 들어가는 방에 보냅니다.",
         "방의 최근 채팅과 마지막 모습은 새로 고침에 대비해 그 탭이 열려 있는 동안만 둡니다.",
+        `방에 있던 탭이 닫히거나 가려지면 그 방의 코드와 그때의 시각을 이 브라우저에 ${facts.seatMinutes}분 동안 둡니다. 그사이 다시 오면 하던 방으로 돌아가는 길을 보여 주는 데만 씁니다.`,
         "브라우저 설정에서 이 사이트의 데이터를 지우면 모두 사라집니다.",
       ],
     },
@@ -130,6 +133,7 @@ const en: typeof ko = {
         "How many games of each kind you have played to the end, and in how many you came first, are kept in this browser only. They are not sent to the server.",
         "A random value that tells this browser apart is made and kept. It puts you back in your seat when a connection drops and returns, and it is sent to the rooms you enter.",
         "A room's recent chat and how it last looked are kept only while that tab is open, in case the page is loaded again.",
+        `When a tab in a room is closed or hidden, the room's code and the time are kept in this browser for ${facts.seatMinutes} minutes, only to offer you the way back to that room if you return by then.`,
         "Clearing this site's data in your browser's settings removes all of it.",
       ],
     },
