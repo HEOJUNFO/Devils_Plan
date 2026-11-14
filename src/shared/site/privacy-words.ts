@@ -60,11 +60,11 @@ const ko = {
     room: {
       heading: "방에 들어가면",
       lines: [
-        "방은 닉네임, 위의 임의의 값, 자리, 게임의 진행을 서버에 가지고 있습니다. 방장이 방에 약속 시간을 알리면 그 시간도 방과 함께 가지고 있고, 방에 들어온 사람 모두에게 보입니다.",
+        "방은 닉네임, 위의 임의의 값, 자리, 게임의 진행을 서버에 가지고 있습니다. 방장이 방에 약속 시간을 알리면 그 시간도 방과 함께 가지고 있고, 방에 들어온 사람 모두에게 보입니다. 다음에 하고 싶은 게임을 고르면 그것도 자리와 함께 가지고 있습니다.",
         `마지막 사람이 나가기를 누르면 방에 있던 것은 바로 지워집니다. 모두 연결이 끊긴 채 남은 방은 ${facts.roomHours}시간 뒤에 지워집니다.`,
         "같은 방 사람들은 닉네임, 접속해 있는지, 채팅, 그 방에서 몇 판을 하고 몇 번 이겼는지를 봅니다.",
         "대기실에서 규칙을 펴 둔 동안에는 방의 다른 사람들에게 규칙을 읽는 사람이 몇 명인지가 전해집니다. 누구인지는 전하지 않고, 저장하지 않습니다.",
-        "대기실에서 다음에 하고 싶은 게임을 고르면 방 사람들에게 게임마다 고른 사람 수가 전해집니다. 누구인지는 전하지 않고, 저장하지 않습니다.",
+        "대기실에서 다음에 하고 싶은 게임을 고르면 방 사람들에게 게임마다 고른 사람 수가 전해집니다. 누구인지는 전하지 않습니다. 고른 것은 거두거나 방장이 게임을 바꿀 때까지 방에 남고, 방이 지워질 때 함께 지워집니다.",
         `채팅은 서버에 저장하지 않고 방 사람들에게 전하기만 합니다. 다만 누가 신고하면 신고된 사람의 닉네임과 그 사람의 채팅 최대 ${facts.flagLines}줄이 만든 사람에게 남습니다.`,
         "공개 방은 방 코드, 게임, 방장의 닉네임, 인원이 로비 목록에 올라 누구나 봅니다. 비공개 방은 목록에 오르지 않습니다.",
       ],
@@ -136,11 +136,11 @@ const en: typeof ko = {
     room: {
       heading: "When you enter a room",
       lines: [
-        "The room holds your nickname, the random value above, your seat and the game's progress on the server. If the host tells the room a meeting time, the room holds that too, and everyone who enters the room sees it.",
+        "The room holds your nickname, the random value above, your seat and the game's progress on the server. If the host tells the room a meeting time, the room holds that too, and everyone who enters the room sees it. If you pick the game you want next, the room holds that with your seat.",
         `When the last player presses leave, what the room held is deleted at once. A room left with everyone disconnected is deleted after ${facts.roomHours} hours.`,
         "People in the same room see your nickname, whether you are connected, your chat, and how many games you have played and won in that room.",
         "While you have the rules open in a waiting room, the others in the room are told how many people are reading them, not who. It is not stored.",
-        "If you pick the game you want next in a waiting room, the people in the room are told how many picked each game, not who. It is not stored.",
+        "If you pick the game you want next in a waiting room, the people in the room are told how many picked each game, not who. Your pick stays in the room until you take it back or the host changes the game, and is deleted with the room.",
         `Chat is passed to the people in the room and not stored on the server. If someone reports a player, though, that player's nickname and up to ${facts.flagLines} of their chat lines are kept for the maker of the site to read.`,
         "A public room shows its code, its game, its host's nickname and how many are in it on the lobby's list, to anyone. A private room is not on the list.",
       ],

@@ -1021,7 +1021,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       pen.txt(pen.fit(parts.join(" · "), 280), 96, 240, line.total > 0 ? C.teal : line.total < 0 ? C.crim : C.boneD);
     }
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext(latest.players.length === 1) : WORDS.result.waitHost, 96, 254, C.boneD);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext(latest.players.length === 1) : handlers.out() ? WORDS.result.waitHostOut : WORDS.result.waitHost, 96, 254, C.boneD);
     if (host) button(AGAIN_RECT, WORDS.button.again, "", !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
   }

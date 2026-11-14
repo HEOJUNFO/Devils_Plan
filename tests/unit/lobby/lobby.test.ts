@@ -26,6 +26,7 @@ import {
   normalizeNick,
   setListed,
   setWhen,
+  setWish,
   setTeam,
   setTurnSeconds,
   setVariant,
@@ -280,17 +281,16 @@ describe("viewLobby", () => {
 
   it("tells everyone how many asked for each other game, and each viewer which they asked for", () => {
     const config = testConfig();
-    const state = lobbyWith(3, config);
-    const there = new Set([0, 1, 2]);
-    const other = GAME_IDS.find((id) => id !== gameOf(state))!;
-    const wished = new Map([
+    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME)!;
+    const state = wishing(lobbyWith(3, config), [
       [1, other],
       [2, other],
     ]);
+    const there = new Set([0, 1, 2]);
 
-    expect(viewLobby(state, there, 0, config, false, undefined, wished)).toMatchObject({ wishes: { [other]: 2 } });
-    expect("wish" in viewLobby(state, there, 0, config, false, undefined, wished)).toBe(false);
-    expect(viewLobby(state, there, 1, config, false, undefined, wished)).toMatchObject({ wishes: { [other]: 2 }, wish: other });
+    expect(viewLobby(state, there, 0, config)).toMatchObject({ wishes: { [other]: 2 } });
+    expect("wish" in viewLobby(state, there, 0, config)).toBe(false);
+    expect(viewLobby(state, there, 1, config)).toMatchObject({ wishes: { [other]: 2 }, wish: other });
   });
 
   it("does not count a word for a game that has no place for someone who is in the room", () => {
@@ -298,14 +298,14 @@ describe("viewLobby", () => {
     const small = SOLO_GAME;
     const large = TEAM_GAME;
     const fits = GAMES[small].maxPlayers;
-    const wished = new Map([
+    const wished: [number, GameId][] = [
       [1, small],
       [2, large],
-    ]);
+    ];
     const all = (count: number): Set<number> => new Set(Array.from({ length: count }, (_, slot) => slot));
 
-    const roomy = viewLobby(roomOf(ALONE_GAME, fits, config), all(fits), 1, config, false, undefined, wished);
-    const crowded = viewLobby(roomOf(ALONE_GAME, fits + 1, config), all(fits + 1), 1, config, false, undefined, wished);
+    const roomy = viewLobby(wishing(roomOf(ALONE_GAME, fits, config), wished), all(fits), 1, config);
+    const crowded = viewLobby(wishing(roomOf(ALONE_GAME, fits + 1, config), wished), all(fits + 1), 1, config);
 
     expect(roomy).toMatchObject({ wishes: { [small]: 1, [large]: 1 }, wish: small });
     // one more has come in than the small game seats: the host could not change to it, and is not shown a count for it
@@ -320,12 +320,21 @@ describe("viewLobby", () => {
     const other = GAME_IDS.find((id) => id !== gameOf(state))!;
 
     expect("wishes" in viewLobby(state, there, 0, config)).toBe(false);
-    expect("wishes" in viewLobby(state, there, 0, config, false, undefined, new Map())).toBe(false);
-    // the host's own word, a word for the room's own game, and the word of someone who is gone are not counted
-    expect("wishes" in viewLobby(state, there, 0, config, false, undefined, new Map([[0, other]]))).toBe(false);
-    expect("wishes" in viewLobby(state, there, 1, config, false, undefined, new Map([[1, gameOf(state)]]))).toBe(false);
-    expect("wish" in viewLobby(state, there, 1, config, false, undefined, new Map([[1, gameOf(state)]]))).toBe(false);
-    expect("wishes" in viewLobby(state, new Set([0]), 0, config, false, undefined, new Map([[1, other]]))).toBe(false);
+    // the host's own word, a word for the room's own game, and the word of someone who is away are not counted
+    expect("wishes" in viewLobby(wishing(state, [[0, other]]), there, 0, config)).toBe(false);
+    expect("wishes" in viewLobby(wishing(state, [[1, gameOf(state)]]), there, 1, config)).toBe(false);
+    expect("wish" in viewLobby(wishing(state, [[1, gameOf(state)]]), there, 1, config)).toBe(false);
+    expect("wishes" in viewLobby(wishing(state, [[1, other]]), new Set([0]), 0, config)).toBe(false);
+  });
+
+  it("counts a word again when its player is back: it is kept with the player, not with a connection", () => {
+    const config = testConfig();
+    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME)!;
+    const state = wishing(lobbyWith(2, config), [[1, other]]);
+
+    expect("wishes" in viewLobby(state, new Set([0]), 0, config)).toBe(false);
+    expect(viewLobby(state, new Set([0, 1]), 0, config)).toMatchObject({ wishes: { [other]: 1 } });
+    expect(viewLobby(state, new Set([0, 1]), 1, config)).toMatchObject({ wish: other });
   });
 
   it("marks who leads each team, of those connected", () => {
@@ -833,6 +842,53 @@ describe("dropLapsed", () => {
 });
 
 /** A room of `game` holding players 0..count-1. */
+/** `state` with each `[slot, game]` said as that slot's word for another game (the slots of these rooms are the order of coming in). */
+function wishing(state: LobbyState, words: readonly (readonly [number, GameId])[]): LobbyState {
+  return words.reduce((room, [slot, game]) => setWish(room, tokenFor(slot), game), state);
+}
+
+describe("setWish", () => {
+  const other = GAME_IDS.find((id) => id !== DEFAULT_GAME)!;
+
+  it("notes a player's word for another game, and takes it back", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+
+    const said = setWish(state, tokenFor(1), other);
+    const back = setWish(said, tokenFor(1), null);
+
+    expect(said.players[1]).toMatchObject({ wish: other });
+    expect("wish" in said.players[0]!).toBe(false);
+    expect("wish" in back.players[1]!).toBe(false);
+    // the input is not changed
+    expect("wish" in state.players[1]!).toBe(false);
+  });
+
+  it("returns the same state where nothing changes, or the player is not in the room", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+    const said = setWish(state, tokenFor(1), other);
+
+    expect(setWish(said, tokenFor(1), other)).toBe(said);
+    expect(setWish(state, tokenFor(1), null)).toBe(state);
+    expect(setWish(state, tokenFor(9), other)).toBe(state);
+  });
+
+  it("is taken back from everyone when the room's game changes: the question is answered", () => {
+    const config = testConfig();
+    const third = GAME_IDS.find((id) => id !== DEFAULT_GAME && id !== other)!;
+    const state = wishing(lobbyWith(3, config), [
+      [1, other],
+      [2, third],
+    ]);
+
+    const changed = setGame(state, other, config);
+
+    expect(changed).not.toBeNull();
+    expect(changed!.players.some((p) => "wish" in p)).toBe(false);
+  });
+});
+
 function roomOf(game: GameId, count: number, config: RoomConfig): LobbyState {
   let state = createLobby(game);
   for (let n = 0; n < count; n++) {

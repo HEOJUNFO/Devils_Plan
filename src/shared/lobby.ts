@@ -189,6 +189,14 @@ export interface LobbyPlayer {
    */
   ready?: true;
   /**
+   * The other game the player has said they would like the room to play
+   * next (`wish.ts`); absent for none. Kept with the player, so it is theirs
+   * whichever of their tabs said it and however often their connection
+   * goes and comes back; taken back by them, or from everyone when the host
+   * changes the room's game, which answers the question.
+   */
+  wish?: GameId;
+  /**
    * The pieces (피스) the player has won in the games played in this room
    * (`ledger.ts`); absent for none. They go with the player who leaves.
    */
@@ -417,7 +425,8 @@ export function setGame(state: LobbyState, game: GameId, config: RoomConfig): Lo
         ? config.listedTurnSeconds
         : 0;
   const { variant: _variant, ...rest } = state;
-  const players = state.players.map(({ team: _team, teamSince: _teamSince, ready: _ready, ...player }) => player);
+  // (which game next has been answered: everyone's word for one is taken back with the rest)
+  const players = state.players.map(({ team: _team, teamSince: _teamSince, ready: _ready, wish: _wish, ...player }) => player);
   return { ...rest, game, turnSeconds, players };
 }
 
@@ -783,6 +792,20 @@ export function setReady(state: LobbyState, token: string, ready: boolean): Lobb
   return { ...state, players: state.players.map((p) => (p === player ? (ready ? { ...rest, ready: true as const } : rest) : p)) };
 }
 
+/**
+ * Notes which other game a player would like the room to play next, or
+ * with `null` that they ask for none. Returns the state unchanged when that
+ * was their word already or `token` is not in the room. Whether the word is
+ * one to take (not the host's, not for the room's own game, a game with a
+ * place for everyone) is the room's to say. The input state is not modified.
+ */
+export function setWish(state: LobbyState, token: string, game: GameId | null): LobbyState {
+  const player = findPlayer(state, token);
+  if (player === undefined || (player.wish ?? null) === game) return state;
+  const { wish: _wish, ...rest } = player;
+  return { ...state, players: state.players.map((p) => (p === player ? (game === null ? rest : { ...rest, wish: game }) : p)) };
+}
+
 /** Takes back everyone's word that they are ready: a game has started. Unchanged when nobody was. The input state is not modified. */
 export function clearReady(state: LobbyState): LobbyState {
   if (!state.players.some((p) => p.ready === true)) return state;
@@ -870,11 +893,11 @@ export function setListed(state: LobbyState, listed: boolean): LobbyState {
  * The lobby as the player in `viewerSlot` may see it: every player's slot,
  * nickname and connection status, and no tokens. `reading` are the slots
  * with a connection that said its player has the rules open: the viewer is
- * told how many of the others, not who (`reading.ts`). `wished` is the game
- * each slot's connection asked for as the room's next: everyone is told how
- * many asked for each, and the viewer which they asked for (`wish.ts`); a
- * word for a game that has no place for everyone in the room is left out
- * for as long as that is so.
+ * told how many of the others, not who (`reading.ts`). Of the game each
+ * player asked for as the room's next, everyone is told how many asked for
+ * each, and the viewer which they asked for (`wish.ts`); a word for a game
+ * that has no place for everyone in the room is left out for as long as
+ * that is so.
  */
 export function viewLobby(
   state: LobbyState,
@@ -883,7 +906,6 @@ export function viewLobby(
   config: RoomConfig,
   voice = false,
   reading?: ReadonlySet<number>,
-  wished?: ReadonlyMap<number, GameId>,
 ): LobbyView {
   const leaders = leadersOf(state, connectedSlots);
   const host = hostOf(state, connectedSlots);
@@ -892,7 +914,8 @@ export function viewLobby(
   const readers = reading === undefined ? 0 : readersFor(new Set([...reading].filter((slot) => seated.has(slot))), connectedSlots, viewerSlot);
   // nor is a word counted for a game that has no place for someone who is here now: the host could not change to it
   const slots = state.players.map((p) => p.slot);
-  const asked = new Map([...(wished ?? [])].filter(([slot, game]) => seated.has(slot) && gameHolds(slots, game, config)));
+  const asked = new Map<number, GameId>();
+  for (const p of state.players) if (p.wish !== undefined && gameHolds(slots, p.wish, config)) asked.set(p.slot, p.wish);
   const wishes = wishesOf(asked, connectedSlots, host?.slot ?? null, gameOf(state));
   // the viewer's own word, where it is one of those counted
   const mine = asked.get(viewerSlot);

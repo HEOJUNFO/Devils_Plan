@@ -155,6 +155,7 @@ const ko = {
     mine: (wins: number, ties: number, losses: number) => `내 기록: ${wins}승 ${ties}무 ${losses}패`,
     hostNext: "같은 사람들과 한 판 더 하거나 대기실로",
     waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
+    waitHostOut: "방장이 새 판을 시작하기를 기다리는 중",
   },
   /** The buttons of the bar, 88 pixels wide inside. */
   button: { lock: keyed("Enter", "확정"), again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
@@ -290,6 +291,7 @@ const en: typeof ko = {
     mine: (wins, ties, losses) => `Your record: ${wins}W ${ties}T ${losses}L`,
     hostNext: "Play again with the same people or go back",
     waitHost: "Waiting for the host · \"Again\" to join in",
+    waitHostOut: "Waiting for the host to start a new game",
   },
   button: { lock: keyed("Enter", "final"), again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
   help: (n) => [

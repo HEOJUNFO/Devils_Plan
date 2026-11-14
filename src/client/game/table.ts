@@ -1383,7 +1383,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(WORDS.result.live(live.join("·")), 96, 226, C.bone);
     pen.txt(WORDS.result.fallen(result.hitSeats.map((seat) => pen.fit(nickOf(seat), LOG_NAME_WIDTH)).join(", ")), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
-    else pen.txt(starting ? WORDS.prompt.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    else pen.txt(starting ? WORDS.prompt.sending : host ? WORDS.result.hostNext : handlers.out() ? WORDS.result.waitHostOut : WORDS.result.waitHost, 96, 254, C.boneD);
     if (host) smallButton(AGAIN_RECT, WORDS.button.again, !starting);
     smallButton(LOBBY_RECT, WORDS.button.lobby, false);
   }

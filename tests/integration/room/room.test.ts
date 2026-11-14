@@ -1620,6 +1620,26 @@ describe("GameRoom: being ready, and the host", () => {
     again.close();
   });
 
+  it("keeps a word for another game while its player's connection goes and comes back", async () => {
+    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
+    const a = await open("RDYWE", { player: 0, create: true });
+    const b = await open("RDYWE", { player: 1 });
+    await a.lobbyOf(2);
+    b.send({ type: "wish", game: other });
+    await a.lobbyWhere((l) => l.wishes !== undefined);
+
+    b.close();
+    // away, they are not counted
+    expect((await a.lobbyWhere((l) => l.players.some((p) => !p.connected))).wishes).toBeUndefined();
+    const back = await open("RDYWE", { player: 1 });
+
+    // the word is the player's, kept with their seat: nothing has to be said again
+    expect((await back.lobbyWhere((l) => l.wish !== undefined)).wish).toBe(other);
+    expect((await a.lobbyWhere((l) => l.wishes !== undefined)).wishes).toEqual({ [other]: 1 });
+    a.close();
+    back.close();
+  });
+
   it("takes a word for another game while a game is on, and says it then: it is for the game after", async () => {
     const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
     const a = await open("RDYWD", { player: 0, create: true });

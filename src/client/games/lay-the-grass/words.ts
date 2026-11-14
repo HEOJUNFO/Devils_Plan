@@ -227,6 +227,7 @@ const ko = {
     bonus: (points: string) => `점수 ${points}`,
     hostNext: "같은 사람들과 한 판 더 하거나 대기실로",
     waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
+    waitHostOut: "방장이 새 판을 시작하기를 기다리는 중",
   },
   /** The buttons along the bar: the two under the results 88 pixels wide inside, the three for laying 84. */
   button: {
@@ -462,6 +463,7 @@ const en: typeof ko = {
     bonus: (points) => `Points ${points}`,
     hostNext: "Play again with the same people or go back",
     waitHost: "Waiting for the host · \"Again\" to join in",
+    waitHostOut: "Waiting for the host to start a new game",
   },
   button: {
     again: keyed("Enter", "again"),

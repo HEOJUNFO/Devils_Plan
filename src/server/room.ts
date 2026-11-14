@@ -34,6 +34,7 @@ import {
   setListed,
   setReady,
   setWhen,
+  setWish,
   setTeam,
   setTurnSeconds,
   setKnockout,
@@ -129,8 +130,6 @@ interface Seat {
   voice?: { muted: boolean };
   /** There while its page has the rules open in the waiting room (`reading.ts`). Kept here and not in storage. */
   reading?: true;
-  /** The game its player asked for as the room's next (`wish.ts`). Kept here and not in storage. */
-  wish?: GameId;
 }
 
 /**
@@ -872,12 +871,7 @@ export class GameRoom extends Server<Env> {
     // while the room is still for the game that end is of: what compares and clears it is that game's
     if (this.session !== null) await this.commitSession(null);
     this.saveLobby(next);
-    // which game next has been answered: everyone's word for one is taken back
-    for (const [member, seat] of this.members()) {
-      if (seat.wish === undefined) continue;
-      const { wish: _wish, ...plain } = seat;
-      member.setState(plain);
-    }
+    // (which game next has been answered: `setGame` took everyone's word for one back)
     this.broadcastLobby();
     // For the log: which game a room turns to from which. Never the room's code or a name.
     console.log(`game changed: ${gameOf(lobby)} to ${game}`);
@@ -938,14 +932,15 @@ export class GameRoom extends Server<Env> {
   }
 
   /**
-   * Notes which other game a connection's player would like the room to play
-   * next, or that they ask for none, and tells everyone how many ask for
-   * each (`wish.ts`). Not the host's to say, who changes the game (a word
-   * said before they were host is not counted while they are, and stands
-   * again if they pass the room on before changing the game); not for
-   * the game the room is for, nor for one that has no place for someone
-   * here. Taken during a game as well: it is for the game after. Kept with
-   * the player's connections: nothing is written.
+   * Notes which other game a player would like the room to play next, or
+   * that they ask for none, and tells everyone how many ask for each
+   * (`wish.ts`). Not the host's to say, who changes the game (a word said
+   * before they were host is not counted while they are, and stands again
+   * if they pass the room on before changing the game); not for the game
+   * the room is for, nor for one that has no place for someone here. Taken
+   * during a game as well: it is for the game after. Kept with the player
+   * in the room's state, as "ready" is: it is theirs whichever tab said it,
+   * and stays through a connection that goes and comes back.
    */
   private handleWish(connection: Connection<ConnectionState>, seat: Seat, game: GameId | null): void {
     const lobby = this.lobby;
@@ -953,23 +948,10 @@ export class GameRoom extends Server<Env> {
     const asked = game === gameOf(lobby) ? null : game;
     if (asked !== null && this.hostSlot() === seat.slot) return;
     if (asked !== null && !gameHolds(lobby.players.map((p) => p.slot), asked, config)) return this.refuse(connection, "bad-setting");
-    // The word is the player's, not one connection's: a second tab, or a connection left over from before a
-    // network changed, would else go on saying what the player has since taken back.
-    let changed = false;
-    for (const [member, each] of this.members()) {
-      if (each.slot !== seat.slot || (each.wish ?? null) === asked) continue;
-      const { wish: _wish, ...plain } = each;
-      member.setState(asked === null ? plain : { ...plain, wish: asked });
-      changed = true;
-    }
-    if (changed) this.broadcastLobby();
-  }
-
-  /** The game each slot's connection asked for as the room's next, by slot. */
-  private wishedBySlot(): Map<number, GameId> {
-    const wished = new Map<number, GameId>();
-    for (const [, seat] of this.members()) if (seat.wish !== undefined && !wished.has(seat.slot)) wished.set(seat.slot, seat.wish);
-    return wished;
+    const next = setWish(lobby, seat.token, asked);
+    if (next === lobby) return;
+    this.saveLobby(next);
+    this.broadcastLobby();
   }
 
   /** The slots with a connection whose page has the rules open. */
@@ -1492,15 +1474,13 @@ export class GameRoom extends Server<Env> {
     const connected = new Set(members.map(([, seat]) => seat.slot));
     // who has the rules open is said in a waiting room, where a start is waited for, and not over a game
     const reading = this.playing() ? undefined : this.readingSlots();
-    // (which game is asked for next is said during a game too: it is for the one after, and a page that
-    // heard nothing of its player's word would take it for taken back)
-    const wished = this.wishedBySlot();
+    // (which game is asked for next is said during a game too: it is for the one after)
     for (const [member, seat] of members) {
       const message: ServerMessage = {
         type: "lobby",
         room: this.name,
         build: BUILD,
-        ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered(), reading, wished),
+        ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered(), reading),
       };
       member.send(JSON.stringify(message));
     }

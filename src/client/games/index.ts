@@ -40,8 +40,8 @@ export interface GameHandlers {
   /**
    * The game is over and a player who is not the host pressed the key the
    * host starts the next game with: they would play one more, which is the
-   * room's "ready" (`src/shared/again.ts`). Returns whether the room has
-   * that word of them now; `false` where they cannot say it (sitting out of
+   * room's "ready" (`src/shared/again.ts`). Returns whether that word is
+   * said, or was now sent; `false` where they cannot say it (sitting out of
    * 탈락전, or no connection).
    */
   wantAgain(): boolean;

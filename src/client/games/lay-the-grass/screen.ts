@@ -59,6 +59,8 @@ export interface GrassHandlers {
   again(): boolean;
   /** Someone who is not the host would play one more; whether the room has that word of them now (`GameHandlers`). */
   wantAgain(): boolean;
+  /** Whether the room's 탈락전 has put this browser's player out (`GameHandlers`). */
+  out(): boolean;
   /** The game is over and the player wants the waiting room back. */
   lobby(): void;
   /** How the player in lobby slot `slot` stands in the room's voice chat. */
@@ -1386,7 +1388,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     pen.txt(pen.fit(rows[0] ?? "", RESULT_WIDTH), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
     else if (below !== "") pen.txt(pen.fit(below, RESULT_WIDTH), 96, 254, C.boneD);
-    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : WORDS.result.waitHost, 96, 254, C.boneD);
+    else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : handlers.out() ? WORDS.result.waitHostOut : WORDS.result.waitHost, 96, 254, C.boneD);
     if (host) button(AGAIN_RECT, WORDS.button.again, "", !starting, !starting);
     button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
   }
