@@ -34,6 +34,15 @@ describe("initialsOf", () => {
     expect(letters(["Bo", "Ab", "ad"])).toEqual(["B", "A", "d"]);
   });
 
+  it("gives only a letter or a figure: not a mark, a joiner or a sign that shows nothing by itself", () => {
+    // a heart with its variation selector, a family joined by zero-width joiners, a flag of two halves, an accent written apart
+    expect(letters(["\u2764\uFE0F민수", "\u2764\uFE0F영희"])).toEqual(["민", "영"]);
+    expect(letters(["\u{1F468}\u200D\u{1F469}\u200D\u{1F467}A", "\u{1F468}\u200D\u{1F4BB}B"])).toEqual(["A", "B"]);
+    expect(letters(["\u{1F1F0}\u{1F1F7}철수", "\u{1F1F0}\u{1F1F7}영희"])).toEqual(["철", "영"]);
+    expect(letters(["e\u0301a", "eb"])).toEqual(["a", "b"]);
+    expect(letters(["A.B", "A-C"])).toEqual(["B", "C"]);
+  });
+
   it("keeps the first letter of a name that has no other to give", () => {
     expect(letters(["김", "김"])).toEqual(["김", "김"]);
     expect(letters(["aa", "aa"])).toEqual(["a", "a"]);

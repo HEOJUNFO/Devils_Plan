@@ -98,3 +98,52 @@ export function keptAfter(kept: GameId | null, counted: GameId | null, lost: boo
 export function sayAgain(kept: GameId | null, lost: boolean, host: boolean, pending: boolean): boolean {
   return kept !== null && lost && !host && !pending;
 }
+
+/** What a page has of its player's word when the room speaks. */
+export interface WishPage {
+  /** The word it remembers; `null` for none. */
+  readonly kept: GameId | null;
+  /** Whether the connection now open has yet to be told it. */
+  readonly lost: boolean;
+  /** Whether a press is on its way to the room. */
+  readonly pending: boolean;
+  /**
+   * What the page had on show: `"nothing"` (a page just opened), `"this"`
+   * (the same room, for the same game), or `"other"` (another room, or the
+   * room's game has changed, which answers the question).
+   */
+  readonly had: "nothing" | "this" | "other";
+}
+
+/** What the room says that bears on a player's word. */
+export interface WishRoom {
+  /** The word it counts for the player; `null` for none. */
+  readonly counted: GameId | null;
+  /** Whether the player is the host as the room now stands. */
+  readonly host: boolean;
+  /** Whether a game has a place for everyone in the room. */
+  readonly holds: (game: GameId) => boolean;
+}
+
+/**
+ * What a page does about its player's word when the room has spoken: the
+ * word it remembers from now (`kept`), whether it says it to the room
+ * (`say`), and whether the connection has still to be told (`lost`).
+ *
+ * A page just opened takes up what the room counts for its player (asked in
+ * another tab of theirs) and says it on its own connection, so that the
+ * word does not go with the other tab. A word for a game that has no place
+ * for someone who has come in since is forgotten rather than said and
+ * refused. A player who is the host is not asked for a word and the room
+ * counts none for them, but a player may be the host only until the host
+ * is back (the others went, or this page came back before them): the page
+ * keeps the word meanwhile, and a connection that has still to be told is
+ * told then.
+ */
+export function wishHeard(page: WishPage, room: WishRoom): { kept: GameId | null; say: boolean; lost: boolean } {
+  // (of a host's word the room says nothing: a page whose player is the host keeps what it remembered)
+  const same = room.host ? page.kept : keptAfter(page.kept, room.counted, page.lost, page.pending);
+  let kept = page.had === "other" ? null : page.had === "nothing" ? room.counted : same;
+  if (kept !== null && page.lost && !room.holds(kept)) kept = null;
+  return { kept, say: sayAgain(kept, page.lost, room.host, page.pending), lost: page.lost && room.host && kept !== null };
+}

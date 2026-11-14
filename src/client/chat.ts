@@ -103,6 +103,8 @@ export interface Chat {
   note(note: ChatNote): void;
   /** Whether a note of `kind` is among the lines on show; with `at`, one that says that moment. */
   noted(kind: ChatNote["kind"], at?: number): boolean;
+  /** The kind of the last note on show that is one of `kinds`, or `null` where there is none. */
+  lastOf(kinds: readonly ChatNote["kind"][]): ChatNote["kind"] | null;
   /** The connection to the room went: the lines on their way are not coming back. */
   lost(): void;
   /** Puts the cursor in the box. */
@@ -329,6 +331,13 @@ export function createChat(
     },
     noted(kind: ChatNote["kind"], at?: number): boolean {
       return lines.some((line) => line.note?.kind === kind && (at === undefined || ("at" in line.note && line.note.at === at)));
+    },
+    lastOf(kinds: readonly ChatNote["kind"][]): ChatNote["kind"] | null {
+      for (let at = lines.length - 1; at >= 0; at--) {
+        const kind = lines[at]?.note?.kind;
+        if (kind !== undefined && kinds.includes(kind)) return kind;
+      }
+      return null;
     },
     lost(): void {
       if (waiting.length === 0) return;

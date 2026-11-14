@@ -8,7 +8,9 @@
  * "봇 2") that letter says nothing, and each of them is given a later letter
  * of their own name instead: the first that is nobody's first letter and
  * that no one before them was given. A name with no such letter keeps its
- * first.
+ * first. The choice is made name by name in order, so it is not always the
+ * best there was: where the letters run out (twelve bots) some keep a first
+ * letter they share.
  */
 
 /** The letter standing for a player, and where in their name it is (counted in letters, from 0). */
@@ -16,6 +18,13 @@ export interface Initial {
   readonly letter: string;
   readonly at: number;
 }
+
+/**
+ * What may be given as a later letter: a letter or a figure. Not a space, a
+ * mark that sits on the letter before it, a joiner or a selector inside an
+ * emoji (which show nothing by themselves), half a flag, or punctuation.
+ */
+const LETTER = /^[\p{L}\p{N}]$/u;
 
 /** Letters that differ only by case are one letter to a reader in a hurry. */
 const fold = (letter: string): string => letter.toLowerCase();
@@ -37,7 +46,7 @@ export function initialsOf(nicks: readonly string[]): Initial[] {
     if (shared(firsts[index]!)) {
       for (let later = at + 1; later < each.length; later++) {
         const letter = each[later]!;
-        if (letter.trim() === "" || taken.has(fold(letter))) continue;
+        if (!LETTER.test(letter) || taken.has(fold(letter))) continue;
         taken.add(fold(letter));
         return { letter, at: later };
       }

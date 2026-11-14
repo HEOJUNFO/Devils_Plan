@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GAME_IDS, type GameId } from "../../../src/shared/games";
-import { keptAfter, sayAgain, wishAfter, wishCount, wishesOf, wishesWith } from "../../../src/shared/wish";
+import { keptAfter, sayAgain, wishAfter, wishCount, wishHeard, wishesOf, wishesWith } from "../../../src/shared/wish";
 
 /** The game the room is for, and two others. */
 const NOW: GameId = GAME_IDS[0]!;
@@ -122,5 +122,57 @@ describe("sayAgain", () => {
 
   it("leaves a press that is on its way to be answered", () => {
     expect(sayAgain(ONE, true, false, true)).toBe(false);
+  });
+});
+
+describe("wishHeard", () => {
+  const anywhere = (): boolean => true;
+  const page = { kept: null, lost: false, pending: false, had: "this" } as const;
+  const room = { counted: null, host: false, holds: anywhere } as const;
+
+  it("says a remembered word again on a new connection, once", () => {
+    const first = wishHeard({ ...page, kept: ONE, lost: true }, room);
+    expect(first).toEqual({ kept: ONE, say: true, lost: false });
+    // the room's answer counts it; nothing more is said
+    expect(wishHeard({ ...page, kept: first.kept, lost: first.lost }, { ...room, counted: ONE })).toEqual({ kept: ONE, say: false, lost: false });
+  });
+
+  it("still has the word to say where its player is the host only until the others are back", () => {
+    // both dropped; this page came back first and is host for a moment
+    const alone = wishHeard({ ...page, kept: ONE, lost: true }, { ...room, host: true });
+    expect(alone).toEqual({ kept: ONE, say: false, lost: true });
+    // the host is back: the word is said now, not forgotten
+    expect(wishHeard({ ...page, kept: alone.kept, lost: alone.lost }, room)).toEqual({ kept: ONE, say: true, lost: false });
+  });
+
+  it("keeps the word while its player is the host for want of the host, whose word the room does not count", () => {
+    // the host went: the room counts nothing for the one who is host now, and that is not the word taken back
+    const meanwhile = wishHeard({ ...page, kept: ONE }, { ...room, host: true });
+    expect(meanwhile).toEqual({ kept: ONE, say: false, lost: false });
+    // the host is back and the room counts it again, from the connection that said it
+    expect(wishHeard({ ...page, kept: meanwhile.kept }, { ...room, counted: ONE })).toEqual({ kept: ONE, say: false, lost: false });
+  });
+
+  it("takes up on a page just opened what the room counts for its player, and says it on that connection too", () => {
+    // asked in another tab before this one was opened: closing that tab must not take the word with it
+    expect(wishHeard({ ...page, lost: true, had: "nothing" }, { ...room, counted: ONE })).toEqual({ kept: ONE, say: true, lost: false });
+    expect(wishHeard({ ...page, lost: true, had: "nothing" }, room)).toEqual({ kept: null, say: false, lost: false });
+  });
+
+  it("forgets the word in another room, or once the room's game has changed", () => {
+    expect(wishHeard({ ...page, kept: ONE, lost: true, had: "other" }, room)).toEqual({ kept: null, say: false, lost: false });
+    expect(wishHeard({ ...page, kept: ONE, had: "other" }, { ...room, counted: OTHER })).toEqual({ kept: null, say: false, lost: false });
+  });
+
+  it("forgets a word taken back in another tab", () => {
+    expect(wishHeard({ ...page, kept: ONE }, room)).toEqual({ kept: null, say: false, lost: false });
+  });
+
+  it("does not say again a word for a game that has no place for everyone, and forgets it", () => {
+    expect(wishHeard({ ...page, kept: ONE, lost: true }, { ...room, holds: (game) => game !== ONE })).toEqual({ kept: null, say: false, lost: false });
+  });
+
+  it("leaves a press that is on its way alone", () => {
+    expect(wishHeard({ ...page, kept: ONE, pending: true }, room)).toEqual({ kept: ONE, say: false, lost: false });
   });
 });
