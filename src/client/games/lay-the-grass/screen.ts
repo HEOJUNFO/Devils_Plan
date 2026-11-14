@@ -35,6 +35,7 @@ import {
   type Tile,
 } from "../../../shared/games/lay-the-grass/rules";
 import { hits, type Press, type Reach } from "../../../shared/frame";
+import { initialsOf, type Initial } from "../../../shared/initials";
 import type { ServerMessage } from "../../../shared/protocol";
 import { rowsOf } from "../../../shared/text";
 import type { VoiceMark } from "../../../shared/voice";
@@ -258,6 +259,37 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
 
   // ---- What the latest message means ---------------------------------------------------------------
   const nickOf = (player: number): string => latest?.players.find((each) => each.id === player)?.nick ?? "";
+  /** The letters standing for the players of the game, and the names they were worked out from. */
+  let initials: { of: string; letters: readonly Initial[] } = { of: "", letters: [] };
+  /**
+   * The letter that stands for `player` on the grass they laid: the first of
+   * their name, or a later one where another player begins with the same
+   * (`src/shared/initials.ts`). `null` for someone who is not in the game.
+   */
+  function initialOf(player: number): Initial | null {
+    if (latest === null) return null;
+    const of = latest.players.map((each) => each.nick).join("\n");
+    if (initials.of !== of) initials = { of, letters: initialsOf(latest.players.map((each) => each.nick)) };
+    return initials.letters[latest.players.findIndex((each) => each.id === player)] ?? null;
+  }
+  /**
+   * Shows in the list which letter of `name` stands for `player` on the
+   * park, where that is not the name's first: the letter is drawn as it is
+   * on their grass, dark on a patch of their colour (in ink here: it is part of a name to be read). The name is written at
+   * `x`, `y`, shortened to `shown`. Nothing where the letter was cut off.
+   */
+  function showInitial(player: number, name: string, shown: string, x: number, y: number): void {
+    const mark = initialOf(player);
+    if (mark === null || mark.letter === "") return;
+    const letters = Array.from(name);
+    if (mark.at === letters.findIndex((letter) => letter.trim() !== "")) return;
+    const before = letters.slice(0, mark.at).join("");
+    if (!shown.startsWith(before + mark.letter)) return;
+    const at = x + pen.width(before);
+    // a letter is eleven rows from the row above `y`: the patch has one more above it, and leaves one free before the next name
+    pen.px(at - 1, y - 2, pen.width(mark.letter) + 1, 12, grassOf(player));
+    pen.txt(mark.letter, at, y, C.ink);
+  }
   /** The colour of `player`'s grass. */
   function grassOf(player: number): string {
     const index = latest?.players.findIndex((each) => each.id === player) ?? -1;
@@ -872,8 +904,9 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
 
   /**
    * Draws the cells of a tile lying on the park, with a dark line where it
-   * ends. On one of its cells, where a letter fits, is the first letter of
-   * its owner's name, in the tile's own dark shade: two players may pick the
+   * ends. On one of its cells, where a letter fits, is the letter that
+   * stands for its owner (`initialOf`: the first of their name, or a later one
+   * where two names begin alike), in the tile's own dark shade: two players may pick the
    * same tile, so its number does not say whose it is, and sixteen colours
    * are not told apart by everyone (nor two greens by anyone, in a hurry).
    */
@@ -884,7 +917,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     const own = new Set(cells.map((cell) => `${cell.row},${cell.col}`));
     // the first cell with nothing else on it, reading across and down
     const plain = cells.filter((cell) => cell.kind !== "number" && cell.kind !== "hole").sort((a, b) => a.row - b.row || a.col - b.col)[0];
-    const initial = Array.from(nickOf(placement.player))[0] ?? "";
+    const initial = initialOf(placement.player)?.letter ?? "";
     for (const cell of cells) {
       const x = box.x + cell.col * box.cell;
       const y = box.y + cell.row * box.cell;
@@ -1209,6 +1242,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         const room = end - (ex + 7) - (voice !== "out" ? VOICE_MARK_W + 2 : 0);
         const name = pen.fit(info?.nick ?? "", Math.min(NAME_WIDTH, room));
         pen.txt(name, ex + 7, y, nameColour);
+        showInitial(player, info?.nick ?? "", name, ex + 7, y);
         if (voice !== "out") drawVoiceMark(pen, ex + 7 + pen.width(name) + 2, y, voice, time);
         return;
       }
@@ -1219,6 +1253,7 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       if (onTurn) pen.txt("▶", ex + 15, y, C.amber);
       const name = pen.fit(info?.nick ?? "", NAME_WIDTH);
       pen.txt(name, ex + 27, y, nameColour);
+      showInitial(player, info?.nick ?? "", name, ex + 27, y);
       if (voice !== "out") drawVoiceMark(pen, ex + 27 + pen.width(name) + 2, y, voice, time);
       if (tile !== null) pen.txt(WORDS.panel.tile(tile), ex + 112, y, tileColour, "right");
       if (laid) pen.txt(WORDS.panel.laid, ex + 117, y, C.teal);
