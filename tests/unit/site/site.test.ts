@@ -257,12 +257,12 @@ describe("the notice of what is kept of a visitor", () => {
     expect(notice("en")).toContain(`${hours} hours`);
   });
 
-  it("says how long a browser keeps which room it was last in, as long as a room holds an away player's place", () => {
+  it("says how long a browser uses which room it was last in, as long as a room holds an away player's place", () => {
     const minutes = roomConfig.awaySlotSeconds / 60;
 
     expect(Number.isInteger(minutes)).toBe(true);
-    expect(notice("ko")).toContain(`이 브라우저에 ${minutes}분 동안`);
-    expect(notice("en")).toContain(`in this browser for ${minutes} minutes`);
+    expect(notice("ko")).toContain(`${minutes}분 안에 다시 오면`);
+    expect(notice("en")).toContain(`if you return within ${minutes} minutes`);
   });
 
   it("says the four words a browser tells of whether it came before, with the week as the numbers' settings have it", () => {
