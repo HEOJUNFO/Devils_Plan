@@ -223,6 +223,8 @@ const ko = {
     raisedCount: (count: number, need: number) => `${count}/${need}명`,
     /** There are enough: a press opens a public room of the game. */
     gathered: (count: number) => `${count}명 모였음 · 눌러서 공개 방 열기`,
+    /** Under the form, to whoever pressed a moment after another of the hands did: the room is that one's to open. */
+    opening: "다른 분이 방을 여는 중입니다. 잠시만요.",
     /** A room of the game is waiting for players: a press goes in. */
     open: "방이 열렸습니다 · 눌러서 들어가기",
   },
@@ -749,6 +751,7 @@ const en: typeof ko = {
     raised: (more) => `Hand up · ${more} more to open a room`,
     raisedCount: (count, need) => `${count}/${need}`,
     gathered: (count) => `${count} here · press to open a public room`,
+    opening: "Another player is opening the room.",
     open: "A room is open · press to join",
   },
   newRoom: {

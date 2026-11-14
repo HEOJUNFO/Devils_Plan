@@ -65,6 +65,10 @@ export interface DirectoryConfig {
    * what a person looking around does. The hand itself is not limited.
    */
   wantCountLimit: MessageLimit;
+  /** For how many seconds the room the hands are waiting for is held for whoever said first they would open it (`opener`, `want.ts`). */
+  wantOpenSeconds: number;
+  /** How long a page waits for the directory's word on whose the room is to open before it opens it anyway (the line may be down). */
+  wantOpenWaitMs: number;
 }
 
 /** How many people are looking at the list, as it is told to them: the number, and whether there are more than it says. */

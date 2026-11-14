@@ -1555,6 +1555,17 @@ describe("RoomDirectory: hands raised for a game", () => {
       this.ws.send(JSON.stringify(request));
     }
 
+    /** Says this viewer is about to open the room the hands for `game` are waiting for. */
+    open(game: GameId): void {
+      const request: DirectoryRequest = { type: "open", game };
+      this.ws.send(JSON.stringify(request));
+    }
+
+    /** What the directory has answered to that, each time: whether the room was this viewer's to open. */
+    opening(): boolean[] {
+      return this.raw.map((text) => JSON.parse(text) as { type: string; yours?: boolean }).flatMap((message) => (message.type === "opening" && typeof message.yours === "boolean" ? [message.yours] : []));
+    }
+
     /** What the directory has said of the hands, each time it said so, oldest first. */
     told(): Wanting[] {
       return this.raw.map((text) => JSON.parse(text) as { type: string }).filter((message): message is WantingNote => message.type === "wanting").map((note) => note.games);
@@ -1610,6 +1621,29 @@ describe("RoomDirectory: hands raised for a game", () => {
     await c.until({});
     a.close();
     c.close();
+  });
+
+  it("gives the room the hands are waiting for to the first who says they will open it, and tells the next it is someone else's", async () => {
+    // Arrange: two hands, which is enough for the game
+    const [a, b, idle] = [await hand(), await hand(), await hand()];
+    a.want("under-thirteen");
+    b.want("under-thirteen");
+    await idle.until({ "under-thirteen": 2 });
+
+    // Act: one says they are about to open the room, and once that is answered so do the other and someone whose
+    // hand is not up (one after the other: two sockets' words are not promised to arrive in the order sent)
+    a.open("under-thirteen");
+    await vi.waitFor(() => expect(a.opening()).toEqual([true]));
+    b.open("under-thirteen");
+    idle.open("under-thirteen");
+
+    // Assert: the first had it, the second is told to wait, and a viewer with no hand up is not answered
+    await vi.waitFor(() => expect(b.opening()).toEqual([false]));
+    // (a hand moved for `idle` is answered after its `open` was dealt with: nothing came in between)
+    idle.want("count-cubes");
+    await idle.until({ "under-thirteen": 2, "count-cubes": 1 });
+    expect(idle.opening()).toEqual([]);
+    for (const viewer of [a, b, idle]) viewer.close();
   });
 
   it("tells someone who has just come of the hands that are up, and says nothing of hands where none are", async () => {

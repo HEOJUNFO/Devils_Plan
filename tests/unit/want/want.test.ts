@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GAMES, GAME_IDS } from "../../../src/shared/games";
-import { handsFor, parseWanting, wantingOf, wantRow, type Wanting } from "../../../src/shared/want";
+import { handsFor, opener, parseWanting, wantingOf, wantRow, type Wanting } from "../../../src/shared/want";
 
 const none = (): string | null => null;
 
@@ -80,5 +80,42 @@ describe("wantRow", () => {
 
   it("does not point someone whose hand is down to a room: the list shows it", () => {
     expect(wantRow("russian-roulette", null, wanting, () => "ABCDE")).toMatchObject({ kind: "offer" });
+  });
+});
+
+describe("opener", () => {
+  it("gives the room to open to whoever asks first, and holds it for a while", () => {
+    // Arrange
+    const now = 1_000_000;
+
+    // Act
+    const first = opener(undefined, now, 8);
+
+    // Assert
+    expect(first).toEqual({ yours: true, until: now + 8000 });
+  });
+
+  it("tells whoever asks while it is held that someone else is opening it, and holds it no longer for that", () => {
+    // Arrange: held since `now`, and another of the hands presses half a second later
+    const now = 1_000_000;
+    const held = opener(undefined, now, 8).until;
+
+    // Act
+    const second = opener(held, now + 500, 8);
+
+    // Assert
+    expect(second).toEqual({ yours: false, until: held });
+  });
+
+  it("gives it to the next who asks once the while is over: the first may never have opened it", () => {
+    // Arrange
+    const now = 1_000_000;
+    const held = opener(undefined, now, 8).until;
+
+    // Act
+    const later = opener(held, now + 8000, 8);
+
+    // Assert
+    expect(later).toEqual({ yours: true, until: now + 16000 });
   });
 });

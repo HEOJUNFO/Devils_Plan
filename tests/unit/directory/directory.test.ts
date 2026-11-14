@@ -81,6 +81,8 @@ function directoryConfig(overrides: Partial<DirectoryConfig> = {}): DirectoryCon
     watchingMost: 3,
     going: { perAddress: 4, most: 20, backLimit: { burst: 2, windowSeconds: 60 } },
     wantCountLimit: { burst: 3, windowSeconds: 60 },
+    wantOpenSeconds: 8,
+    wantOpenWaitMs: 2000,
     ...overrides,
   };
 }

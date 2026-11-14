@@ -34,6 +34,22 @@ export function wantingOf(hands: readonly (string | null | undefined)[], most: n
   return wanting;
 }
 
+/**
+ * Whose the room is to open, when one of the hands that are enough says it
+ * is about to open it. Everyone whose hand is up is told at the same moment
+ * that they are enough, and each of them may press: without this two who
+ * pressed within a moment of each other each made a room and sat in it
+ * alone. The first to ask has it (`yours`), and it is held for them for
+ * `holdSeconds` (`until`, ms since the epoch: what the directory keeps and
+ * gives back here as `held`). Whoever asks meanwhile is told it is someone
+ * else's, and waits for the room to be listed. Once the while is over the
+ * next to ask has it: the first may have gone, or been refused the room.
+ */
+export function opener(held: number | undefined, now: number, holdSeconds: number): { yours: boolean; until: number } {
+  if (held !== undefined && now < held) return { yours: false, until: held };
+  return { yours: true, until: now + holdSeconds * 1000 };
+}
+
 /** Reads how many hands the directory says are up, leaving out what is not a game or not a number of hands. */
 export function parseWanting(raw: unknown): Wanting | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;

@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "손 들기: 인원이 모였을 때 두 사람이 거의 동시에 「눌러서 공개 방 열기」를 누르면 각자 방이 하나씩 생겨 혼자 앉게 되던 것을 고쳤습니다. 이제 먼저 누른 한 사람만 방을 열고, 다른 사람에게는 「다른 분이 방을 여는 중입니다」라고 알린 뒤 열린 방으로 안내합니다.",
+        en: "Hands up: when enough players had gathered and two pressed \"press to open a public room\" at almost the same moment, each got a room of their own and sat in it alone. Now only the first to press opens the room; the other is told \"Another player is opening the room\" and is then shown the room to join.",
+      },
+      {
         ko: "방 전적: 다른 사람이 모두 나간 뒤 혼자 끝낸 판을 한 판으로 세던 것을 고쳤습니다. 안내에 적힌 대로, 둘 이상이 끝까지 한 판만 셉니다(「내 기록」과 같습니다). 같은 브라우저의 탭 두 개로 한 방에 있을 때 한 탭에 「내 기록」 버튼이 나타나지 않던 것도 고쳤습니다.",
         en: "Room tally: a game you finished alone after everyone else had left was counted as a game. As the hint says, only games two or more played to the end are counted (the same as My record). Also fixed: with two tabs of one browser in a room, the My record button did not appear in one of them.",
       },

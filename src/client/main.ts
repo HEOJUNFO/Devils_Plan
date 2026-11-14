@@ -45,6 +45,7 @@ import {
   parseInboxAnswer,
   parseNumbersAnswer,
   parseComingNote,
+  parseOpeningNote,
   parseWantingNote,
   parseServerMessage,
   parseWatchingNote,
@@ -1517,6 +1518,31 @@ let myWant: GameId | null = null;
 /** What the row last said, to tell when it comes to say there are enough: that is what a tab behind others is called back for. */
 let wantKind: WantRow["kind"] | null = null;
 
+/**
+ * The game whose room this player has said they are about to open, while the directory's word on whose it is to
+ * open is waited for (`opener`, `src/shared/want.ts`), with the timer that opens it anyway where no word comes.
+ */
+let openAsked: { game: GameId; timer: number } | null = null;
+
+/** Lets go of a room asked to be opened and not yet answered for. */
+function unaskOpen(): void {
+  if (openAsked !== null) clearTimeout(openAsked.timer);
+  openAsked = null;
+}
+
+/** Opens the room the hands for `game` are waiting for, a public one, or goes into it where one is waiting by now. */
+function openForHands(game: GameId): void {
+  unaskOpen();
+  if (notice.textContent === WORDS.want.opening) notice.textContent = "";
+  const row = wantNow();
+  if (row.kind === "open") return joinRoom(row.code, "list");
+  // no longer enough (someone left while the directory was asked): the row says so, and nothing is opened
+  if (row.kind !== "gathered" || row.game !== game) return renderWant();
+  chosenGame = game;
+  chosenListed = true;
+  createRoom();
+}
+
 /** What the row says and does now. */
 function wantNow(): WantRow {
   const rooms = roomsSent?.rooms ?? [];
@@ -1559,6 +1585,8 @@ function renderWant(): void {
   wantButton.hidden = row.kind === "pick";
   wantButton.classList.toggle("up", myWant !== null);
   wantButton.classList.toggle("on", row.kind === "gathered" || row.kind === "open");
+  // the room someone else was opening is there to go into, or this player's hand is down: nothing is waited for
+  if ((row.kind === "open" || myWant === null) && notice.textContent === WORDS.want.opening) notice.textContent = "";
   // enough hands are up now, and were not: whoever raised theirs has likely gone to another tab to wait
   if (row.kind === "gathered" && wantKind !== "gathered") call("gathered");
   wantKind = row.kind;
@@ -1572,10 +1600,17 @@ wantButton.addEventListener("click", () => {
   else if (row.kind === "raised") sayWant(null);
   else if (row.kind === "open") return joinRoom(row.code, "list");
   else {
-    // enough are here: this player opens the room the others are waiting for, a public one of that game
-    chosenGame = row.game;
-    chosenListed = true;
-    return createRoom();
+    // Enough are here: this player opens the room the others are waiting for, a public one of that game. Everyone
+    // whose hand is up reads the same line at the same moment, so the directory is asked first whose it is to open:
+    // two who pressed together each made a room and sat in it alone.
+    if (readNick() === null || openAsked !== null) return;
+    const game = row.game;
+    if (listSocket === null || listSocket.readyState !== WebSocket.OPEN) return openForHands(game);
+    const request: DirectoryRequest = { type: "open", game };
+    listSocket.send(JSON.stringify(request));
+    // no word (the line went down on the way): opened all the same, as it was before the directory was asked
+    openAsked = { game, timer: window.setTimeout(() => openForHands(game), directoryConfig.wantOpenWaitMs) };
+    return;
   }
   renderWant();
 });
@@ -1831,6 +1866,16 @@ function watchRooms(): void {
     if (inbox !== null) return inboxAnswered(inbox.words);
     const counted = parseNumbersAnswer(event.data);
     if (counted !== null) return numbersAnswered(counted.days);
+    const whose = parseOpeningNote(event.data);
+    if (whose !== null) {
+      // an answer to nothing this page is still asking is let go
+      if (openAsked === null || openAsked.game !== whose.game) return;
+      if (whose.yours) return openForHands(whose.game);
+      // someone else's to open: their room will be on the list, and the row then goes into it
+      unaskOpen();
+      notice.textContent = WORDS.want.opening;
+      return;
+    }
     const hands = parseWantingNote(event.data);
     if (hands !== null) {
       wanting = hands.games;
@@ -2317,6 +2362,7 @@ function unwatchRooms(): void {
   listSocket?.close();
   listSocket = null;
   // the hand was that connection's
+  unaskOpen();
   myWant = null;
   wanting = {};
   wantKind = null;

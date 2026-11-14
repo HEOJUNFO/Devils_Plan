@@ -15,6 +15,7 @@ import {
   parseInboxAnswer,
   parseNumbersAnswer,
   parseComingNote,
+  parseOpeningNote,
   parseWantingNote,
   parseServerMessage,
   parseWatchingNote,
@@ -592,6 +593,13 @@ describe("parseDirectoryRequest", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "inbox", key: "my key", drop: 12, more: 1 }))).toEqual({ type: "inbox", key: "my key", drop: 12 });
   });
 
+  it("reads that a room of a game is about to be opened for the hands that are up, and nothing for what is not a game", () => {
+    expect(parseDirectoryRequest(JSON.stringify({ type: "open", game: "under-thirteen", more: 1 }))).toEqual({ type: "open", game: "under-thirteen" });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "open", game: "chess" }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "open", game: null }))).toBeNull();
+    expect(parseDirectoryRequest(JSON.stringify({ type: "open" }))).toBeNull();
+  });
+
   it("reads a hand going up for a game, and going down", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "want", game: "under-thirteen", more: 1 }))).toEqual({ type: "want", game: "under-thirteen" });
     expect(parseDirectoryRequest(JSON.stringify({ type: "want", game: null }))).toEqual({ type: "want", game: null });
@@ -717,6 +725,20 @@ describe("parseComingNote", () => {
     expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000 }))).toBeNull();
     expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: -1 }))).toBeNull();
     expect(parseComingNote(JSON.stringify({ type: "coming", meet: 1_800_000_000_000, count: 1.5 }))).toBeNull();
+  });
+});
+
+describe("parseOpeningNote", () => {
+  it("reads whose the room of a game is to open: the one who asked, or someone else", () => {
+    expect(parseOpeningNote(JSON.stringify({ type: "opening", game: "under-thirteen", yours: true, more: 1 }))).toEqual({ type: "opening", game: "under-thirteen", yours: true });
+    expect(parseOpeningNote(JSON.stringify({ type: "opening", game: "under-thirteen", yours: false }))).toEqual({ type: "opening", game: "under-thirteen", yours: false });
+  });
+
+  it("is nothing for another message, for what is not a game, or with no word on whose it is", () => {
+    expect(parseOpeningNote(JSON.stringify({ type: "wanting", games: {} }))).toBeNull();
+    expect(parseOpeningNote(JSON.stringify({ type: "opening", game: "chess", yours: true }))).toBeNull();
+    expect(parseOpeningNote(JSON.stringify({ type: "opening", game: "under-thirteen" }))).toBeNull();
+    expect(parseOpeningNote("not json")).toBeNull();
   });
 });
 

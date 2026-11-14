@@ -34,11 +34,12 @@ import {
   type FeedbackAnswer,
   type InboxAnswer,
   type NumbersAnswer,
+  type OpeningNote,
   type WantingNote,
   type WatchingNote,
 } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
-import { wantingOf } from "../shared/want";
+import { opener, wantingOf } from "../shared/want";
 import { ADDRESS_HEADER, countedAs } from "./address";
 import { inboxKey, sameKey, type InboxEnv } from "./inbox";
 
@@ -164,6 +165,8 @@ export class RoomDirectory extends Server<Env> {
   private notCountedSaidAt = 0;
   /** What the viewers were last told of how many hands are up, as it was sent; nothing after the directory has slept, when everyone is told again. */
   private wantingTold: string | null = null;
+  /** Until when (ms since the epoch) the room the hands for a game are waiting for is held for whoever said first they would open it (`opener`). */
+  private opening = new Map<GameId, number>();
   /**
    * How much each sender has lately done of each thing that is written down
    * for them (`mayWrite`): by the thing and by what the sender's address is
@@ -270,6 +273,17 @@ export class RoomDirectory extends Server<Env> {
       // counted for whoever runs the site: which game people came wanting. A hand that goes up and down without end is counted its few times.
       if (request.game !== null && request.game !== want && this.mayWrite("wanted", connection, config.wantCountLimit, now)) this.count([{ what: `wanted:${request.game}`, n: 1 }], now);
       return this.tellWanting(null, null, { id: connection.id, was: want });
+    }
+    if (request.type === "open") {
+      // One of the hands that are enough is about to open the room: the first to say so has it, the others wait
+      // for it on the list (`opener`). Only a hand that is up for the game is answered. Not kept through a sleep,
+      // which comes ten seconds after the last word: longer than it is held.
+      if (want !== request.game) return;
+      const asked = opener(this.opening.get(request.game), now, config.wantOpenSeconds);
+      this.opening.set(request.game, asked.until);
+      const note: OpeningNote = { type: "opening", game: request.game, yours: asked.yours };
+      connection.send(JSON.stringify(note));
+      return;
     }
     connection.setState(stateWith(connection.state, "game", request.game));
     connection.send(this.message(now, request.game, this.counts(now)));

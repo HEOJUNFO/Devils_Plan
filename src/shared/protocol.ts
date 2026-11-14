@@ -314,6 +314,8 @@ export type DirectoryRequest =
   | { type: "inbox"; key: string; drop?: number }
   | { type: "numbers"; key: string }
   | { type: "want"; game: GameId | null }
+  /** This viewer, whose hand is up for `game` with enough others, is about to open the room: answered with an {@link OpeningNote}. */
+  | { type: "open"; game: GameId }
   | { type: "going"; meet: number; who: string; on: boolean }
   | { type: "came"; since: Came };
 
@@ -607,6 +609,24 @@ export function parseComingNote(raw: unknown): ComingNote | null {
   return { type: "coming", meet: data.meet, count: data.count, more: data.more === true, ...(data.mine === true ? { mine: true as const } : {}), ...(typeof data.not === "number" && Number.isSafeInteger(data.not) ? { not: data.not } : {}) };
 }
 
+/**
+ * The directory's answer to a viewer about to open the room the hands are
+ * waiting for (`opener`, `want.ts`): theirs to open, or someone else's who
+ * asked a moment before, whose room will be on the list.
+ */
+export interface OpeningNote {
+  type: "opening";
+  game: GameId;
+  yours: boolean;
+}
+
+/** Parses the directory's word on whose a room is to open, returning `null` for anything else. */
+export function parseOpeningNote(raw: unknown): OpeningNote | null {
+  const data = parseObject(raw, Number.POSITIVE_INFINITY);
+  if (data === null || data.type !== "opening" || !isGameId(data.game) || typeof data.yours !== "boolean") return null;
+  return { type: "opening", game: data.game, yours: data.yours };
+}
+
 /** Parses the directory's word on how many hands are up, returning `null` for anything else. */
 export function parseWantingNote(raw: unknown): WantingNote | null {
   const data = parseObject(raw, Number.POSITIVE_INFINITY);
@@ -692,6 +712,7 @@ export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
     if (data.game !== null && !isGameId(data.game)) return null;
     return { type: "want", game: data.game };
   }
+  if (data.type === "open") return isGameId(data.game) ? { type: "open", game: data.game } : null;
   if (data.type === "going") {
     if (typeof data.meet !== "number" || !Number.isSafeInteger(data.meet) || !isWho(data.who) || typeof data.on !== "boolean") return null;
     return { type: "going", meet: data.meet, who: data.who, on: data.on };
