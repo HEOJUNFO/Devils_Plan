@@ -2883,7 +2883,9 @@ function showOptions(shown: boolean): void {
     if (optionsSheet.hidden) return;
     const within = optionsSheet.contains(document.activeElement);
     optionsSheet.hidden = true;
-    if (within) optionsOpen.focus({ preventScroll: true });
+    // back to the button that opened it, or where the room has just taken that button away to the way out of the
+    // room, which is always there: a button that is not shown takes no keys, and they were left on nothing
+    if (within) (optionsOpen.hidden ? el<HTMLButtonElement>("leave") : optionsOpen).focus({ preventScroll: true });
     return;
   }
   // one sheet at a time
@@ -3198,7 +3200,9 @@ function showSeatMenu(slot: number | null, x = 0, y = 0): void {
   // beside the press, and all of it inside the picture
   seatMenu.style.left = `${Math.max(2, Math.min(x + 6, sceneCanvas.offsetWidth - seatMenu.offsetWidth - 2))}px`;
   seatMenu.style.top = `${Math.max(2, Math.min(y - 8, sceneCanvas.offsetHeight - seatMenu.offsetHeight - 2))}px`;
-  seatHost.focus({ preventScroll: true });
+  // the keys go to the first button that takes them: of a player whose connection is down that is not the first,
+  // and a button that is off takes none, which left the menu open and the keys on the row behind it
+  (seatHost.disabled ? seatKick : seatHost).focus({ preventScroll: true });
 }
 
 /** The menu's buttons as the room now stands: the room is not passed to someone who is away, and nobody is sent out of nothing. */
@@ -3874,7 +3878,10 @@ function setCreating(on: boolean): void {
   creating = on;
   const button = el<HTMLButtonElement>("create-go");
   button.textContent = on ? WORDS.newRoom.making : WORDS.newRoom.go;
+  // the keys were on it, and a button that is off holds none: they go to the one thing left to press meanwhile
+  const held = on && document.activeElement === button;
   button.disabled = on;
+  if (held) el<HTMLButtonElement>("create-cancel").focus({ preventScroll: true });
   button.setAttribute("aria-busy", String(on));
 }
 

@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "키보드로 쓸 때: 연결이 끊긴 사람의 방장 메뉴를 열면 키가 메뉴로 들어가지 않던 것, 「만들기」를 누른 뒤 방이 만들어지는 동안 키가 갈 곳을 잃던 것을 고쳤습니다.",
+        en: "With a keyboard: the host's menu for a player whose connection had dropped opened without taking the keys, and after pressing \"Make\" the keys were lost while the room was being made. Both fixed.",
+      },
+      {
         ko: "방장 메뉴: 메뉴를 연 사이 그 사람이 나가고 다른 사람이 같은 자리에 앉으면, 「내보내기」나 「방장 넘기기」가 새로 온 사람에게 적용될 수 있던 것을 고쳤습니다. 이제 메뉴에 이름이 보이던 그 사람에게만 적용됩니다.",
         en: "Host menu: if the player it was opened for left and someone else took the same seat, \"Remove\" or \"Make host\" could land on the newcomer. It now applies only to the player whose name the menu showed.",
       },
