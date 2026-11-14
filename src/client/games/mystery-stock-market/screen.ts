@@ -122,6 +122,24 @@ const cellRect = (index: number): Box => [4 + (index % CELLS_IN_ROW) * (CELL_W +
 const VIEW_RECT: Box = TOUCH ? [56, 2, 60, 20] : [4, 22, 60, 14];
 /** Where its word is written. Under a finger: level with the word of the menu's button beside it. */
 const VIEW_WORD_Y = VIEW_RECT[1] + (TOUCH ? 5 : 1);
+/**
+ * What everyone held, shown once a game that tells it is over, in place of
+ * the table: the stocks as tabs, four to a row as the charts are; under them
+ * the chosen stock's price over the rounds, and a row for each of those who
+ * held most of it, with a bar for every round.
+ */
+const tabRect = (index: number): Box => [4 + (index % CELLS_IN_ROW) * (CELL_W + 1), CELL_Y + Math.floor(index / CELLS_IN_ROW) * 17, CELL_W - 1, 16];
+/** Where the rounds begin, left of which a row has its player's name; and the room at the right for what they ended with. */
+const LEDGER_BARS_X = 66;
+const LEDGER_END_ROOM = 40;
+/** The chosen stock's price over the rounds: its top and its height. */
+const LEDGER_PRICE_Y = 75;
+const LEDGER_PRICE_H = 20;
+/** The first row, how far apart the rows are, how tall a bar may be, and how many rows there is room for over the line that says what the bars are. */
+const LEDGER_ROW_Y = 98;
+const LEDGER_PITCH = 13;
+const LEDGER_BAR_H = 10;
+const LEDGER_ROWS = 8;
 /** The buttons of the bar while orders are taken. */
 const MINUS_RECT: Box = [6, 238, 16, 28];
 const SHARES_RECT: Box = [24, 238, 52, 28];
@@ -237,6 +255,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   let pad = false;
   /** Whether the charts are on show in place of the table. */
   let charts = false;
+  /** Whether what everyone held is on show in place of either: only once a game that tells it is over. */
+  let ledger = false;
   /** `time` when the game on show was first seen to be over. */
   let endedAt = 0;
   /** By player: a chat line beside their name. */
@@ -375,11 +395,15 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       sent = null;
       if (before !== null) sfx.turn();
     }
+    // (holdings are on show only for the game that told them)
+    if (message.view.ledger === null) ledger = false;
     if (message.view.phase === "ended" && (fresh || before?.view.phase !== "ended")) {
       endedAt = time;
       mode = "trade";
       sent = null;
       hurriedAt = null;
+      // the game was to tell what everyone held, and now does: where it is looked at
+      if (message.view.ledger !== null) say(WORDS.say.ledger);
     }
     if (before !== null && !fresh) {
       if (before.view.round !== message.view.round) {
@@ -475,6 +499,18 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     put = true;
   }
 
+  /**
+   * What the switch over the table brings up next: the charts and the table
+   * in turn, and once a game that tells what everyone held is over, those
+   * holdings between the two, so that the switch names them from the table,
+   * where a game ends.
+   */
+  function nextLook(): "table" | "charts" | "ledger" {
+    if (ledger) return "charts";
+    if (charts) return "table";
+    return latest !== null && latest.view.ledger !== null ? "ledger" : "charts";
+  }
+
   function stepInput(): void {
     if (latest === null) return;
     const pressed = (...codes: string[]): boolean => codes.some((code) => keys.includes(code));
@@ -492,14 +528,17 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     const view = latest.view;
     // Looking is for everyone, at any time: which stock, and the table or the charts.
     if (mode === "trade" || view.phase === "ended") {
-      if (pressed("ArrowUp")) selected = (selected + STOCKS.length - 1) % STOCKS.length;
-      if (pressed("ArrowDown")) selected = (selected + 1) % STOCKS.length;
+      // (the holdings have their stocks side by side: the keys that go sideways step through them too, the game being over)
+      if (pressed("ArrowUp") || (ledger && pressed("ArrowLeft"))) selected = (selected + STOCKS.length - 1) % STOCKS.length;
+      if (pressed("ArrowDown") || (ledger && pressed("ArrowRight"))) selected = (selected + 1) % STOCKS.length;
       if (pressed("KeyC") || clicked(VIEW_RECT, VIEW_REACH)) {
-        charts = !charts;
+        const next = nextLook();
+        ledger = next === "ledger";
+        charts = next === "charts";
         sfx.move();
       }
       STOCKS.forEach((_stock, index) => {
-        if (clicked(charts ? cellRect(index) : rowRect(index))) selected = index;
+        if (clicked(ledger ? tabRect(index) : charts ? cellRect(index) : rowRect(index))) selected = index;
       });
     }
 
@@ -749,6 +788,79 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   }
 
   /**
+   * What everyone held of the chosen stock, round by round, once a game that
+   * tells it is over: the stock's price over the rounds, and under it a row
+   * for each player who ever held it, whoever held most first, with a bar
+   * for what they held when each round ended. A bar lies under the stretch
+   * of the price that its round made, so who held the stock through a rise
+   * or a fall is read straight down. A red mark is the round a player used
+   * their secret on this stock, which the game never said whose it was.
+   */
+  function drawLedger(): void {
+    if (latest === null) return;
+    const view = latest.view;
+    const stock = chosen();
+    if (view.ledger === null || stock === undefined) return;
+    view.stocks.forEach((each, index) => {
+      const rect = tabRect(index);
+      const on = index === selected;
+      frame(rect, on ? C.amberD : inRect(mouse, rect) ? C.steelD : C.steelDD);
+      pen.txt(pen.fit(WORDS.short[each.id], rect[2] - 6), rect[0] + 3, rect[1] + 2, on ? C.amber : C.bone);
+    });
+    const rounds = view.rounds;
+    const column = Math.max(2, Math.floor((SCENE_W - LEDGER_BARS_X - LEDGER_END_ROOM) / rounds));
+    const endX = SCENE_W - 6;
+    const endRoom = endX - (LEDGER_BARS_X + rounds * column) - 3;
+    // the price after each round, the opening first: the point of round n at the right edge of that round's bars
+    const prices = stock.chart.filter((price): price is number => price !== null);
+    if (prices.length > 0) {
+      const low = Math.min(...prices);
+      const high = Math.max(...prices);
+      const at = (n: number, price: number): [number, number] => [
+        LEDGER_BARS_X + n * column - 1,
+        Math.round(high === low ? LEDGER_PRICE_Y + LEDGER_PRICE_H / 2 : LEDGER_PRICE_Y + LEDGER_PRICE_H - 2 - ((price - low) * (LEDGER_PRICE_H - 3)) / (high - low)),
+      ];
+      pen.txt(WORDS.column.price, 6, LEDGER_PRICE_Y + 4, C.dim);
+      stock.chart.forEach((price, n) => {
+        const before = n > 0 ? stock.chart[n - 1] : null;
+        if (price !== null && before !== null && before !== undefined) pen.line(...at(n - 1, before), ...at(n, price), 1, CHART_LINE);
+      });
+      stock.chart.forEach((price, n) => {
+        if (price !== null) pen.px(...at(n, price), 2, 2, CHART_DOT);
+      });
+      pen.txt(figure(prices[prices.length - 1] ?? 0, endRoom), endX, LEDGER_PRICE_Y + 4, C.boneD, "right");
+    }
+    pen.px(4, LEDGER_ROW_Y - 3, SCENE_W - 8, 1, C.steelDD);
+    // those who ever held it, whoever held most first
+    const holders = view.ledger
+      .map((each) => ({ ...each, counts: each.held.map((round) => round[stock.id]) }))
+      .map((each) => ({ ...each, most: Math.max(0, ...each.counts) }))
+      .filter((each) => each.most > 0)
+      .sort((a, b) => b.most - a.most || a.player - b.player);
+    const top = Math.max(1, ...holders.map((each) => each.most));
+    if (holders.length === 0) pen.txt(WORDS.ledger.nobody, 6, LEDGER_ROW_Y, C.dim);
+    holders.slice(0, LEDGER_ROWS).forEach((each, row) => {
+      const y = LEDGER_ROW_Y + row * LEDGER_PITCH;
+      pen.txt(pen.fit(nickOf(each.player), LEDGER_BARS_X - 10), 6, y, view.you === each.player ? C.amber : C.bone);
+      // the rounds that were played, as a line the bars stand on
+      pen.px(LEDGER_BARS_X, y + LEDGER_BAR_H + 1, each.counts.length * column - 1, 1, C.steelDD);
+      each.counts.forEach((count, n) => {
+        if (count <= 0) return;
+        const tall = Math.max(1, Math.round((count * LEDGER_BAR_H) / top));
+        pen.px(LEDGER_BARS_X + n * column, y + LEDGER_BAR_H + 1 - tall, column - 1, tall, view.you === each.player ? C.amber : C.teal);
+      });
+      if (each.secret !== null && each.secret.stock === stock.id) pen.px(LEDGER_BARS_X + (each.secret.round - 1) * column + Math.floor((column - 4) / 2), y, 3, 3, C.crim);
+      const last = each.counts[each.counts.length - 1] ?? 0;
+      pen.txt(last === 0 ? "-" : figure(last, endRoom), endX, y, last === 0 ? C.dim : C.boneD, "right");
+    });
+    // a secret used on this stock by someone who never held it is a row too few to show: it is said in the line under the rows
+    const others = holders.length - Math.min(holders.length, LEDGER_ROWS);
+    const hidBy = view.ledger.filter((each) => each.secret !== null && each.secret.stock === stock.id && !holders.slice(0, LEDGER_ROWS).some((shown) => shown.player === each.player));
+    const under = [WORDS.ledger.legend, ...(others > 0 ? [WORDS.ledger.more(others)] : []), ...hidBy.map((each) => WORDS.ledger.secretBy(pen.fit(nickOf(each.player), 56), each.secret?.round ?? 0))];
+    pen.txt(pen.fit(under.join(" · "), SCENE_W - 12), 6, LEDGER_ROW_Y + LEDGER_ROWS * LEDGER_PITCH, C.dim);
+  }
+
+  /**
    * A word of a rule that is not open, at the place it will be read at: a
    * square for each letter of a run, set evenly over the room they take, and
    * a low mark for a comma or a stop. The room sends the shape and nothing
@@ -817,10 +929,13 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     // the switch between the table and the charts
     const lit = inRect(mouse, VIEW_RECT);
     frame(VIEW_RECT, lit ? C.steel : C.steelDD);
-    pen.txt(pen.fit(charts ? WORDS.button.table : WORDS.button.charts, VIEW_RECT[2] - 4), VIEW_RECT[0] + Math.round(VIEW_RECT[2] / 2), VIEW_WORD_Y, lit ? C.bone : C.boneD, "center");
-    if (charts) drawCharts();
-    else drawTable();
-    drawDetail();
+    pen.txt(pen.fit(WORDS.button[nextLook()], VIEW_RECT[2] - 4), VIEW_RECT[0] + Math.round(VIEW_RECT[2] / 2), VIEW_WORD_Y, lit ? C.bone : C.boneD, "center");
+    if (ledger) drawLedger();
+    else {
+      if (charts) drawCharts();
+      else drawTable();
+      drawDetail();
+    }
     if (latest.frozen) {
       // the game's own clock stands still; this one runs, and ends the game at nought
       const stand = latest.clock.stand === null ? null : Math.max(0, latest.clock.stand - (performance.now() - receivedAt));
@@ -833,6 +948,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     if (latest === null) return [];
     // which rules the game is played by comes first: it is settled before the first round
     const lines: [string, string][] = [[WORDS.log.rulebook[latest.view.rulebook], C.teal]];
+    // and whether what everyone held will be told when it is over: a player knows it while they trade
+    if (latest.view.told) lines.push([WORDS.log.told, C.teal]);
     for (const event of latest.view.history.slice(0, seen)) {
       if (event.type === "round") lines.push([WORDS.log.round(event.round), C.dim]);
       else if (event.type === "opened") lines.push([WORDS.log.opened(event.stage, latest.rules.revealRounds.length), C.amber]);

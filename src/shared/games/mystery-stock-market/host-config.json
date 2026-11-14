@@ -1,3 +1,9 @@
 {
-  "standSeconds": 180
+  "standSeconds": 180,
+  "ways": {
+    "fresh": { "rulebook": "fresh" },
+    "show": { "rulebook": "show" },
+    "fresh-told": { "rulebook": "fresh", "told": true },
+    "show-told": { "rulebook": "show", "told": true }
+  }
 }

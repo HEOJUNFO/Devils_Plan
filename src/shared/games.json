@@ -204,6 +204,20 @@
           "ko": "방송의 규칙",
           "en": "Show's rules"
         }
+      },
+      {
+        "id": "fresh-told",
+        "title": {
+          "ko": "새 규칙 · 끝나면 보유 공개",
+          "en": "New rules · holdings told"
+        }
+      },
+      {
+        "id": "show-told",
+        "title": {
+          "ko": "방송의 규칙 · 끝나면 보유 공개",
+          "en": "Show's rules · holdings told"
+        }
       }
     ]
   }

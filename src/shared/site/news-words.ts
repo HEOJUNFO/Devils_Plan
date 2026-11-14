@@ -36,12 +36,17 @@ const GRASS = name("lay-the-grass");
 const ROULETTE = name("russian-roulette");
 const CUBES = name("count-cubes");
 const POKER = name("memory-poker");
+const MARKET = name("mystery-stock-market");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-14",
     lines: [
+      {
+        ko: `${MARKET.ko}: 방장이 「끝나면 보유 공개」를 고르면, 게임이 끝난 뒤 누가 어느 종목을 언제 얼마나 들고 있었는지 모두가 봅니다.`,
+        en: `${MARKET.en}: when the host chooses "holdings told", once the game is over everyone sees who held how much of each stock, round by round.`,
+      },
       {
         ko: "방에 있던 탭이 닫혀도 3분 안에 사이트를 다시 열면 로비가 하던 방으로 돌아가는 길을 보여 줍니다.",
         en: "When a tab in a room is closed, opening the site again within 3 minutes shows the way back to that room in the lobby.",

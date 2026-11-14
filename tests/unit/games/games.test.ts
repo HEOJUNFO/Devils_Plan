@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { isDeck } from "../../../src/shared/games/lay-the-grass/cards";
 import grassHosting from "../../../src/shared/games/lay-the-grass/host-config.json";
+import marketHosting from "../../../src/shared/games/mystery-stock-market/host-config.json";
+import { isRulebook } from "../../../src/shared/games/mystery-stock-market/rulebook";
 import { REVEAL_VARIANT } from "../../../src/shared/game/host";
 import tableSizes from "../../../src/shared/game/table-sizes.json";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId } from "../../../src/shared/games";
@@ -53,8 +55,19 @@ describe("the games a room can be made for", () => {
     expect(variants.length).not.toBe(1);
   });
 
-  it("lets a room of 미스터리 거래소 be played by rules drawn for each game, which it starts with, or by the show's", () => {
-    expect(GAMES["mystery-stock-market"].variants.map((each) => each.id)).toEqual(["fresh", "show"]);
+  it("lets a room of 미스터리 거래소 be played by rules drawn for each game, which it starts with, or by the show's, with everyone's holdings told at the end or not", () => {
+    // what a room is made with tells nothing at the end: a game is told only where its host asked for that
+    expect(GAMES["mystery-stock-market"].variants.map((each) => each.id)).toEqual(["fresh", "show", "fresh-told", "show-told"]);
+  });
+
+  it("has a way of playing 미스터리 거래소 in the host's settings for every way a room can ask for, each by rules there are, and tells holdings only in the two that say so", () => {
+    const ways: Record<string, { rulebook: string; told?: boolean }> = marketHosting.ways;
+
+    for (const variant of GAMES["mystery-stock-market"].variants) {
+      expect(Object.hasOwn(ways, variant.id), variant.id).toBe(true);
+      expect(isRulebook(ways[variant.id]?.rulebook), variant.id).toBe(true);
+      expect(ways[variant.id]?.told === true, variant.id).toBe(variant.id.endsWith("-told"));
+    }
   });
 
   it("lets a room of 잔디 깔기 be played with cards drawn for each game, which it starts with, or with the show's, over one park or three", () => {

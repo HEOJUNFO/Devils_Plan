@@ -1229,3 +1229,71 @@ describe("미스터리 거래소: the rules a game is played by", () => {
     expect(rulebookOf(over)).toBe("fresh");
   });
 });
+
+describe("미스터리 거래소: holdings told at the end", () => {
+  /** A game of `count` players by the show's rules whose room asked for everyone's holdings to be told when it is over. */
+  function toldGame(count: number): MarketState {
+    const created = createGame({ players: Array.from({ length: count }, (_, n) => n), seed: 7, now: T0, rulebook: "show", told: true }, config);
+    if (!created.ok) throw new Error(`fixture game refused: ${created.reason}`);
+    return created.state;
+  }
+  const [FIRST, SECOND] = STOCKS;
+
+  it("keeps nothing of what anyone held in a game that was not asked to tell it, and tells nothing when it is over", () => {
+    const played = toEnd(buy(game(2), 0, FIRST, 3));
+
+    expect(played.told).toBeUndefined();
+    expect(played.accounts.every((account) => account.ledger === undefined)).toBe(true);
+    expect(viewFor(played, 0, config)).toMatchObject({ told: false, ledger: null });
+  });
+
+  it("says to its players from the first round that holdings will be told, and tells none of them before it is over", () => {
+    const state = toRound(buy(toldGame(3), 0, FIRST, 3), 5);
+
+    for (const viewer of [0, 1, null]) expect(viewFor(state, viewer, config)).toMatchObject({ told: true, ledger: null });
+  });
+
+  it("tells everyone, once it is over, what each player held of each stock when each round ended", () => {
+    // player 0 buys 3 of the first stock in round 1 and sells 1 of them in round 3; player 1 buys 2 of the second in round 2
+    let state = buy(toldGame(3), 0, FIRST, 3);
+    state = buy(endRound(state), 1, SECOND, 2);
+    state = sell(endRound(state), 0, FIRST, 1);
+    const over = toEnd(state);
+
+    for (const viewer of [0, 1, 2, null]) {
+      const ledger = viewFor(over, viewer, config).ledger;
+      const of = (player: number) => ledger?.find((each) => each.player === player)?.held ?? [];
+
+      expect(ledger?.map((each) => each.player)).toEqual([0, 1, 2]);
+      expect(of(0)).toHaveLength(ROUNDS);
+      expect(of(0).map((round) => round[FIRST])).toEqual([3, 3, ...Array.from({ length: ROUNDS - 2 }, () => 2)]);
+      expect(of(1).map((round) => round[SECOND])).toEqual([0, ...Array.from({ length: ROUNDS - 1 }, () => 2)]);
+      expect(of(2).every((round) => STOCKS.every((stock) => round[stock] === 0))).toBe(true);
+    }
+  });
+
+  it("tells whose secret took a stock off the monitor, and in which round they used it", () => {
+    const state = act(toRound(toldGame(2), 4), 1, { type: "secret", stock: SECOND });
+    const ledger = viewFor(toEnd(state), 0, config).ledger;
+
+    expect(ledger?.map((each) => each.secret)).toEqual([null, { stock: SECOND, round: 4 }]);
+  });
+
+  it("tells the rounds that were played of a game cut short", () => {
+    const state = toRound(buy(toldGame(2), 0, FIRST, 1), 3);
+    const ledger = viewFor(abandon(state), null, config).ledger;
+
+    expect(ledger?.map((each) => each.held.length)).toEqual([2, 2]);
+    expect(ledger?.[0]?.held.map((round) => round[FIRST])).toEqual([1, 1]);
+  });
+
+  it("leaves what it kept of earlier rounds as it was when a later action is taken", () => {
+    const before = endRound(buy(toldGame(2), 0, FIRST, 3));
+    const kept = structuredClone(before.accounts[0]?.ledger);
+
+    sell(before, 0, FIRST, 3);
+
+    expect(before.accounts[0]?.ledger).toEqual(kept);
+    expect(kept).toEqual([expect.objectContaining({ [FIRST]: 3 })]);
+  });
+});

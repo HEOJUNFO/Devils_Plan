@@ -515,3 +515,40 @@ describe("미스터리 거래소 in a room: the rules a game is played by", () =
     }
   });
 });
+
+describe("미스터리 거래소 in a room: holdings told at the end", () => {
+  it("tells them only in a room that asked for it, by the rules the room asked for", () => {
+    const players = candidates(2);
+
+    expect(started(players, { variant: "fresh" }).state.told).toBeUndefined();
+    expect(started(players, { variant: "show" }).state.told).toBeUndefined();
+    expect(started(players, { variant: undefined }).state.told).toBeUndefined();
+    expect(started(players, { variant: "fresh-told", seed: 5 }).state).toMatchObject({ told: true, rulebook: "fresh", rules: drawRules(5, shipped.draw) });
+    expect(started(players, { variant: "show-told" }).state).toMatchObject({ told: true, rulebook: "show", rules: showRules(shipped.rules) });
+  });
+
+  it("sends everyone the holdings of every round once such a game has played its rounds out, and nothing of them before", () => {
+    const players = candidates(2);
+    const presence = presenceOf(players);
+    const first = STOCKS[0];
+    let session = act(started(players, { variant: "show-told" }), players, 0, { type: "buy", stock: first, shares: 2 }, T0 + 1000);
+
+    expect(seenBy(session, players, 1, T0 + 2000)).toMatchObject({ view: { told: true, ledger: null } });
+
+    session = runOut(session, presence, ROUNDS + 2);
+    const ledger = seenBy(session, players, 1, T0 + ROUNDS * ROUND_MS + 1000).view.ledger;
+
+    expect(host.running(session)).toBe(false);
+    expect(ledger?.map((each) => each.held.length)).toEqual([ROUNDS, ROUNDS]);
+    expect(ledger?.[0]?.held.every((round) => round[first] === 2)).toBe(true);
+    expect(ledger?.[1]?.held.every((round) => round[first] === 0)).toBe(true);
+  });
+
+  it("carries on with a game stored before holdings could be told, and tells none of it", () => {
+    const players = candidates(2);
+    const session = started(players, { variant: "show" });
+
+    expect(host.usable(JSON.parse(JSON.stringify(session)))).toBe(true);
+    expect(seenBy(session, players, 0, T0 + 1000).view).toMatchObject({ told: false, ledger: null });
+  });
+});

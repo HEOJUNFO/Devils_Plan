@@ -193,6 +193,8 @@ The seventh game built. In the show it is the second main match (2일차 메인 
 - [x] 로비의 게임 목록 (일곱 게임이 한 화면에), 스모크 검사 (`npm run smoke -- --only=mystery-stock-market`)
 - [x] 판마다 새 규칙: 규칙의 열 가지 종류 (`prices.ts`), 뽑기와 방송의 일곱 규칙 (`rulebook.ts`, 범위는 `config.json`의 `draw`), 규칙판의 낱말과 가려진 모양 (`rule-words.ts`), 대기실의 방장 버튼 (`src/shared/games.json`의 `variants`, `src/shared/lobby.ts`), 방이 주는 난수 (`src/shared/hosting.ts`의 `chance`, `src/shared/game/rng.ts`의 `chanceOf`)
 
+- [x] 끝나면 보유 공개 (2026-11-14, 방송에 없음): 방장이 고르는 방식 `fresh-told`·`show-told`. 고른 판만 라운드 끝마다 각자의 종목별 보유를 적어 두고(`Account.ledger`), 끝난 뒤에만 모두에게 보낸다(시크릿을 쓴 사람·종목·라운드도). 게임 중에는 기록 칸이 「끝나면 모두의 보유 공개」라고 말한다. 끝난 화면의 전환 버튼이 「C 보유」가 되어 종목별로 누가 언제 얼마나 들고 있었는지를 주가 아래 막대로 보여 준다. 기본 방식(`fresh`·`show`)은 아무것도 적지 않고 끝나도 알리지 않는다. 자세한 것은 `design/game-brief.md`의 같은 날 항목.
+
 ## Checked
 2026-11-11, 로컬 개발 서버 (`npm run dev -- --port 5273`). 배포 주소에서는 스모크의 이 게임 부분만 돌렸고 (19:46, 12/12) 화면은 보지 않았다.
 

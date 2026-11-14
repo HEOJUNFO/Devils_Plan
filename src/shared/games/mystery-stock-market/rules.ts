@@ -143,6 +143,13 @@ export interface Account {
   opening: number;
   /** The least their assets have been at the start of a round: of two players level at the end, the one with the lower is the lower (the show's rule for last place). */
   lowest: number;
+  /**
+   * (gap) What they held of each stock when each round so far ended, the
+   * first round first: kept only in a game whose room asked for everyone's
+   * holdings to be told once it is over ({@link MarketState.told}), and sent
+   * to nobody before that.
+   */
+  ledger?: PerStock<number>[];
 }
 
 /** Something that happened, as everyone is told it. */
@@ -185,6 +192,12 @@ export interface MarketState {
    */
   rulebook?: Rulebook;
   rules?: PerStock<Rule>;
+  /**
+   * (gap) Whether what everyone held, round by round, is told to all once the
+   * game is over: the room's choice, made before the game and shown to its
+   * players while they play. Absent or `false`: nothing of it is kept.
+   */
+  told?: boolean;
   history: MarketEvent[];
 }
 
@@ -301,6 +314,16 @@ export interface MarketView {
    * or sold since it was hidden: either would give its price away.
    */
   mine: { cash: number | null; shares: PerStock<number>; pieces: number; secret: boolean; done: boolean; assets: number | null } | null;
+  /** Whether everyone's holdings are told once the game is over: said to the players while they play. */
+  told: boolean;
+  /**
+   * What everyone held, in a game that is over and was to tell it; `null`
+   * otherwise. Of each player: their shares of each stock when each round
+   * ended, the first round first (a game cut short has the rounds it
+   * played), and the stock and round of their secret, which the game itself
+   * never said whose it was.
+   */
+  ledger: { player: number; held: PerStock<number>[]; secret: { stock: StockId; round: number } | null }[] | null;
   history: MarketEvent[];
 }
 
@@ -323,6 +346,8 @@ function clone(state: MarketState): MarketState {
       peeks: { ...account.peeks },
       traded: { ...account.traded },
       secret: account.secret === null ? null : { ...account.secret },
+      // (a round's entry is never changed once written: the list is copied, its entries are shared)
+      ...(account.ledger === undefined ? {} : { ledger: [...account.ledger] }),
     })),
     path: [...state.path],
     history: [...state.history],
@@ -390,10 +415,11 @@ function rulesOf(state: MarketState, config: MarketConfig): PerStock<Rule> {
  * from `chance` (the room's numbers that nobody could have guessed), the
  * path first, and from `seed` only where there is none or it runs out. The
  * emblem shows everyone the shape of the path, and from that alone a seed
- * could be found by trying every one.
+ * could be found by trying every one. With `told`, what each player holds at
+ * the end of every round is kept, to be shown to all once the game is over.
  */
 export function createGame(
-  start: { players: readonly number[]; seed: number; now: number; rulebook: Rulebook; chance?: readonly number[] },
+  start: { players: readonly number[]; seed: number; now: number; rulebook: Rulebook; chance?: readonly number[]; told?: boolean },
   config: MarketConfig,
 ): { ok: true; state: MarketState } | { ok: false; reason: MarketStartRefusal } {
   if (!isValidConfig(config)) return { ok: false, reason: "bad-config" };
@@ -404,6 +430,7 @@ export function createGame(
   const chance = chanceOf(start.chance ?? []);
   const path = pathWith(chance(randomSource(seedFrom(start.seed)).next), config.rounds, config.startPrice, config.logo);
   const rules = rulesFor(start.rulebook, chance(rulesNumbers(start.seed)), config.rules, config.draw);
+  const told = start.told === true;
   return {
     ok: true,
     state: {
@@ -429,10 +456,12 @@ export function createGame(
         done: false,
         opening: config.startCash,
         lowest: config.startCash,
+        ...(told ? { ledger: [] } : {}),
       })),
       path,
       rulebook: start.rulebook,
       rules,
+      ...(told ? { told } : {}),
       history: [{ type: "round", round: 1 }],
     },
   };
@@ -545,6 +574,8 @@ function endRound(state: MarketState, now: number, config: MarketConfig): void {
     account.done = false;
     account.opening = worth(state, account);
     account.lowest = Math.min(account.lowest, account.opening);
+    // what they came out of the round holding, for a game that tells it when it is over
+    if (state.told === true) account.ledger = [...(account.ledger ?? []), { ...account.shares }];
   }
   if (round >= config.rounds) {
     state.phase = "ended";
@@ -642,7 +673,8 @@ export function standingsOf(state: MarketState): Standing[] {
  * secret hides has no price in it, and while one does nobody's assets are
  * told. Of a rule only what is open to this player is in it, and of the
  * rest the shape. Once the game is over nothing is kept back: every rule is
- * open, and the path is by then a chart.
+ * open, and the path is by then a chart; in a game that was to tell it,
+ * what everyone held round by round is then in it too.
  */
 export function viewFor(state: MarketState, player: number | null, config: MarketConfig): MarketView {
   const you = player !== null && state.players.includes(player) ? player : null;
@@ -716,6 +748,15 @@ export function viewFor(state: MarketState, player: number | null, config: Marke
             done: account.done,
             assets: blind ? null : worth(state, account),
           },
+    told: state.told === true,
+    ledger:
+      over && state.told === true
+        ? state.accounts.map((each) => ({
+            player: each.player,
+            held: (each.ledger ?? []).map((round) => ({ ...round })),
+            secret: each.secret === null ? null : { ...each.secret },
+          }))
+        : null,
     history: state.history.map((event) => ({ ...event })),
   };
 }

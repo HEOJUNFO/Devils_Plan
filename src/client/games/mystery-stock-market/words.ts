@@ -58,6 +58,7 @@ const ko = {
         "시크릿: 게임 중 한 번, 한 종목에 쓸 수 있습니다. 쓴 다음 두 라운드 동안 그 종목의 주가와 수량이 모두에게 가려지고, 그동안 모든 사람의 자산도 가려집니다 (순위는 보입니다). 그 종목을 가졌거나 거래한 사람은 자기 현금과 자산도 볼 수 없습니다. 누가 썼는지는 알려지지 않습니다.",
         "피스: 모두 3개씩 가지고 시작합니다. 20라운드까지, 1개로 한 종목의 다음에 열릴 규칙 낱말을 혼자 미리 보거나 현금 10,000원으로 바꿀 수 있습니다.",
         "모두가 라운드를 마치면 5분을 기다리지 않고 다음 라운드로 넘어갑니다. 라운드를 마친 사람은 그 라운드에 더 거래할 수 없습니다.",
+        "방장이 「끝나면 보유 공개」를 고른 방에서는 게임이 끝난 뒤 누가 어느 종목을 라운드마다 얼마나 들고 있었는지, 누가 시크릿을 썼는지가 모두에게 보입니다. 고르지 않은 방에서는 끝나도 알려지지 않습니다.",
       ],
       "최종 자산이 150만 원 이상이면 피스 1개, 300만 원 이상이면 2개, 600만 원 이상이면 3개, 1,000만 원 이상이면 상금의 징표를 받은 것으로 표시됩니다. 자산이 같으면 게임 도중 자산이 가장 낮았던 쪽이 아래입니다.",
     ],
@@ -150,6 +151,8 @@ const ko = {
     noShares: "수량을 1 이상으로 넣으세요",
     noMax: "가려져 있어 계산할 수 없습니다",
     opened: "규칙이 더 공개됐습니다",
+    /** Once a game that tells what everyone held is over: where that is looked at. */
+    ledger: byInput("C: 누가 무엇을 들고 있었는지 봅니다", "「보유」를 누르면 누가 무엇을 들었는지 봅니다"),
   },
   /** Over the table while the game stands still; `seconds` until it is given up, where that is known. */
   waitingBack: (seconds: number | null) => (seconds === null ? "돌아오길 기다리는 중" : `돌아오길 기다리는 중 · ${seconds}초`),
@@ -185,6 +188,8 @@ const ko = {
     done: keyed("Enter", "마침"),
     charts: keyed("C", "차트"),
     table: keyed("C", "시세"),
+    /** What everyone held, once a game that tells it is over. */
+    ledger: keyed("C", "보유"),
     use: keyed("Enter", "사용"),
     finish: keyed("Enter", "마침"),
     peek: keyed("1", "규칙"),
@@ -199,9 +204,18 @@ const ko = {
   log: {
     /** The first line of the log: which rules the game is played by. A line of the column, 168 pixels. */
     rulebook: { fresh: "이 판만의 새 규칙", show: "방송의 규칙" } as Record<Rulebook, string>,
+    /** The line under it in a game that tells what everyone held once it is over. */
+    told: "끝나면 모두의 보유 공개",
     round: (round: number) => `라운드 ${round}`,
     opened: (stage: number, of: number) => `규칙 추가 공개 (${stage}/${of})`,
     hidden: (name: string, from: number, until: number) => (from === until ? `시크릿: ${name} ${from}R` : `시크릿: ${name} ${from}~${until}R`),
+  },
+  /** What everyone held, shown in place of the table once a game that tells it is over. The line under the rows is 292 pixels. */
+  ledger: {
+    legend: "막대: 라운드 끝의 보유 · 빨강: 시크릿",
+    more: (players: number) => `외 ${players}명`,
+    secretBy: (who: string, round: number) => `${who} ${round}R 시크릿`,
+    nobody: "아무도 들지 않은 종목입니다",
   },
   /** The results, in the bar: the verdict in large letters 86 pixels wide at most, the lines beside it 280. */
   result: {
@@ -258,6 +272,7 @@ const en: typeof ko = {
         "Secret: once in the game you may use it on one stock. For the two rounds after, that stock's price and volumes are hidden from everyone, and so are everyone's assets (ranks stay). Whoever holds or trades that stock cannot see their own cash and assets either. Nobody is told who used it.",
         "Pieces: everyone starts with 3. Until round 20, one Piece shows you alone the next word to open in one stock's rule, or turns into 10,000 won.",
         "When everyone is done with a round it ends without waiting for the 5 minutes. Once you are done you cannot trade again in that round.",
+        "In a room whose host chose \"holdings told\", once the game is over everyone sees how much of each stock every player held round by round, and who used a Secret. In any other room that stays untold.",
       ],
       "Final assets of 1.5 million won or more are marked as winning 1 Piece, 3 million 2, 6 million 3, and 10 million the prize token. Between equal assets, whoever's assets were ever the lowest during the game ranks lower.",
     ],
@@ -328,6 +343,7 @@ const en: typeof ko = {
     noShares: "Enter 1 share or more",
     noMax: "It is hidden: that cannot be worked out",
     opened: "More of the rules is open",
+    ledger: byInput("C: see who held what", "Press \"held\" to see who held what"),
   },
   waitingBack: (seconds) => (seconds === null ? "Waiting for them to come back" : `Waiting for them to come back · ${seconds}s`),
   coach: {
@@ -354,6 +370,7 @@ const en: typeof ko = {
     done: keyed("Enter", "done"),
     charts: keyed("C", "charts"),
     table: keyed("C", "table"),
+    ledger: keyed("C", "held"),
     use: keyed("Enter", "use"),
     finish: keyed("Enter", "done"),
     peek: keyed("1", "rule"),
@@ -366,9 +383,16 @@ const en: typeof ko = {
   },
   log: {
     rulebook: { fresh: "New rules this game", show: "The show's rules" },
+    told: "Holdings told at the end",
     round: (round) => `Round ${round}`,
     opened: (stage, of) => `More rules open (${stage}/${of})`,
     hidden: (name, from, until) => (from === until ? `Secret: ${name} R${from}` : `Secret: ${name} R${from}-${until}`),
+  },
+  ledger: {
+    legend: "Bars: held at each round's end · red: Secret",
+    more: (players) => `+${players} more`,
+    secretBy: (who, round) => `${who} Secret R${round}`,
+    nobody: "Nobody held this stock",
   },
   result: {
     verdict: (seated, rank) => (seated ? englishOrdinal(rank) : "Over"),

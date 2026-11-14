@@ -40,6 +40,13 @@ import {
 export interface MarketHostConfig {
   /** Seconds a game stands still, with none of its players connected, before it is ended. */
   standSeconds: number;
+  /**
+   * What each way of playing a room can ask for comes to (the `variants` of
+   * the game in `games.json`): whose rules (`rulebook`), and whether what
+   * everyone held round by round is told to all once the game is over
+   * (`told`; left out, it is not).
+   */
+  ways: Record<string, { rulebook: string; told?: boolean }>;
 }
 
 /**
@@ -235,9 +242,11 @@ export const marketHost: GameHost<MarketSession, MarketHostRefusal> = {
         seats.push({ id, token: null, nick: `봇 ${seats.filter((seat) => seat.token === null).length + 1}` });
       }
     }
-    // a room asks for the show's rules by name; any other game draws its own
-    const rulebook: Rulebook = isRulebook(request.variant) ? request.variant : RULEBOOKS[0];
-    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now, rulebook, chance: request.chance }, config);
+    // a room asks for a way of playing by name: whose rules, and whether holdings are told at the end.
+    // Any other game draws its own rules and tells nothing.
+    const way = request.variant !== undefined && Object.hasOwn(hosting.ways, request.variant) ? hosting.ways[request.variant] : undefined;
+    const rulebook: Rulebook = isRulebook(way?.rulebook) ? way.rulebook : RULEBOOKS[0];
+    const created = createGame({ players: seats.map((seat) => seat.id), seed: request.seed, now: request.now, rulebook, chance: request.chance, told: way?.told === true }, config);
     if (!created.ok) return refuse(created.reason);
     seats.sort((a, b) => a.id - b.id);
     const session: MarketSession = {
