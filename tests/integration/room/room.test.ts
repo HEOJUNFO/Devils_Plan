@@ -573,7 +573,8 @@ describe("GameRoom", () => {
     // it was let in a good many times first: a house of players behind one address is not a flood
     expect(refused).toBeGreaterThanOrEqual(2 * roomConfig.maxPlayers);
     expect(other.status).toBe(101);
-  });
+    // (it opens a room for every knock until it is turned away: on a slow build machine that has taken 5.9 s)
+  }, 20_000);
 
   /** Makes rooms from `from` under `stem` until one is refused or `most` are made; how many were made. */
   const roomsMadeFrom = async (from: string | undefined, stem: string, most = MANY): Promise<number> => {
