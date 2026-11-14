@@ -433,6 +433,24 @@ describe("GameRoom", () => {
     a.close();
   });
 
+  it("counts a game that was still on when its last player left as ended, with the room", async () => {
+    // Arrange: a game one player started
+    const said = vi.spyOn(console, "log").mockImplementation(() => {});
+    const a = await open("LGTAQ", { player: 0, create: true, game: ALONE_GAME });
+    await a.lobbyOf(1);
+    a.send({ type: "start", bots: false });
+    await a.cubesWhere();
+
+    // Act: they leave while it is on, and the room goes with them
+    a.send({ type: "leave" });
+    await a.closed;
+
+    // Assert: a game started is a game ended, and no length is said of it
+    const lines = said.mock.calls.map((call) => call.join(" ")).filter((line) => line.startsWith("game "));
+    said.mockRestore();
+    expect(lines).toEqual([`game started: ${ALONE_GAME} 1 players`, `game ended: ${ALONE_GAME} with its room`]);
+  });
+
   it("writes to the log that a room stands empty once its last player has left, with the most who were in it at once", async () => {
     const said = vi.spyOn(console, "log").mockImplementation(() => {});
     const a = await open("LGTAB", { player: 0, create: true, listed: true });

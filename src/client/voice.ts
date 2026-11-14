@@ -182,11 +182,12 @@ export function createVoice(options: {
     }
   }
 
-  async function openMic(): Promise<MediaStream | null> {
-    if (options.fakeMic && context !== null) {
-      const tone = context.createOscillator();
-      const quiet = context.createGain();
-      const out = context.createMediaStreamDestination();
+  /** The microphone, or with `fakeMic` a tone made in `audio` (the context this joining made, not yet the page's: `join`). */
+  async function openMic(audio: AudioContext): Promise<MediaStream | null> {
+    if (options.fakeMic) {
+      const tone = audio.createOscillator();
+      const quiet = audio.createGain();
+      const out = audio.createMediaStreamDestination();
       tone.frequency.value = 330;
       quiet.gain.value = 0.2;
       tone.connect(quiet).connect(out);
@@ -229,7 +230,7 @@ export function createVoice(options: {
       const mine = ++asked;
       asking = mine;
       const made = new AudioContext();
-      const mic = await openMic();
+      const mic = await openMic(made);
       if (asking !== mine) {
         // Left while the browser was asking: what it gave is given straight back. Before, the microphone came on in
         // the lobby, which has no button to turn it off, and the next room entered was told this page was in voice.

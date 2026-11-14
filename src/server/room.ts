@@ -698,6 +698,8 @@ export class GameRoom extends Server<Env> {
     const hadVoice = theirs.some(([, seat]) => seat.voice !== undefined);
     const next = leaveLobby(lobby, player.token);
     const emptied = next.players.length === 0;
+    // the room goes with its last player, and a game still on with it (`forget`, which no longer knows the game)
+    if (emptied && this.playing()) this.sayGone(lobby);
     if (emptied) this.sayEmptied(lobby);
     this.saveLobby(emptied ? null : next);
     for (const [connection] of theirs) this.end(connection, CLOSE_LEFT, "left");
@@ -723,6 +725,7 @@ export class GameRoom extends Server<Env> {
    * nothing.
    */
   private async forget(): Promise<void> {
+    if (this.lobby !== null && this.playing()) this.sayGone(this.lobby);
     // A room cleared with places still held (a deploy cut everyone off, and nobody came back) is said to be empty here.
     if (this.lobby !== null && this.lobby.players.length > 0) this.sayEmptied(this.lobby);
     this.lobby = null;
@@ -1211,6 +1214,16 @@ export class GameRoom extends Server<Env> {
    * waited in alone (`most 1`) are read from these lines. Never the room's
    * code or a name.
    */
+  /**
+   * A game was still on when its room was cleared away: counted as over, for whoever runs the site, as a game
+   * nobody stayed for is when its clock runs out. Without this it was a game started and never ended, and the
+   * day's two numbers told different games. Its length is not said: it would be how long the room stood empty.
+   */
+  private sayGone(lobby: LobbyState): void {
+    console.log(`game ended: ${gameOf(lobby)} with its room`);
+    this.count({ type: "ended", game: gameOf(lobby), minutes: null });
+  }
+
   private sayEmptied(lobby: LobbyState): void {
     const tally = this.tally();
     console.log(`room emptied: ${gameOf(lobby)} ${lobby.listed ? "listed" : "unlisted"} games ${tally.games} most ${tally.most}`);
