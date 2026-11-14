@@ -26,6 +26,10 @@ export interface PrivacyFacts {
   flagLines: number;
   /** How many words to the maker and reports are kept, the latest (`feedback.keep`, `directory-config.json`). */
   wordsKept: number;
+  /** How many faults of a page wait in a browser to be sent (`faults.each`, `directory-config.json`). */
+  faultsWaiting: number;
+  /** How many different faults are kept, the latest (`faults.keep`, `directory-config.json`). */
+  faultsKept: number;
   /** Minutes the note of a room made is kept: the longest of `makeLimits` (`directory-config.json`). */
   madeMinutes: number;
   /** Minutes a browser keeps which room it was last put away in: as long as a room holds an away player's place (`awaySlotSeconds`, `room-config.json`). */
@@ -41,7 +45,7 @@ const ko = {
   /** The link under every page, and the page's own heading. */
   name: "개인정보 안내",
   title: `개인정보 안내: 무엇을 두고 누가 보는지 | ${SITE_NAME}`,
-  description: `가입도 쿠키도 없는 ${SITE_NAME}이 브라우저와 서버에 무엇을 얼마 동안 두는지, 접속 주소와 음성 채팅과 의견은 어떻게 다루는지 적었습니다.`,
+  description: `가입도 쿠키도 없는 ${SITE_NAME}이 브라우저와 서버에 무엇을 얼마 동안 두는지, 접속 주소와 음성 채팅과 의견과 오류 기록은 어떻게 다루는지 적었습니다.`,
   lead: `${SITE_NAME}은 한 사람이 만드는 개인 프로젝트입니다. 가입이 없어서 받는 것이 적지만, 없지는 않습니다. 무엇을 어디에 얼마 동안 두고 누가 볼 수 있는지 그대로 적습니다.`,
   parts: (facts: PrivacyFacts) => ({
     none: {
@@ -100,6 +104,13 @@ const ko = {
       lines: [
         "로비의 「의견 보내기」로 보낸 글은 글, 보낸 시각, 화면의 언어, 사이트 버전만 저장합니다. 닉네임이나 접속 주소는 붙지 않습니다.",
         `신고와 합쳐 최근 ${facts.wordsKept}건까지 두고, 만든 사람만 읽습니다. 답을 받으려고 연락처를 적었다면 그것도 글에 그대로 남습니다.`,
+      ],
+    },
+    faults: {
+      heading: "오류 기록",
+      lines: [
+        "화면의 스크립트가 오류로 멈추면 만든 사람에게 알립니다. 보내는 것은 브라우저가 알려 준 오류 문장, 오류가 난 스크립트 파일의 이름과 줄 번호, 어느 화면이었는지(로비, 대기실, 어느 게임), 브라우저의 종류(예: iOS, 크롬), 화면의 언어, 사이트 버전입니다. 닉네임, 방 코드, 접속 주소, 입력한 글은 붙지 않습니다.",
+        `로비에 연결될 때 보내며, 그때까지 이 브라우저에 최대 ${facts.faultsWaiting}건을 둡니다. 서버에는 서로 다른 오류를 최근 ${facts.faultsKept}건까지 두고, 같은 오류는 몇 번 왔는지만 셉니다. 만든 사람만 읽습니다.`,
       ],
     },
     host: {
@@ -180,6 +191,13 @@ const en: typeof ko = {
         `Together with reports, the latest ${facts.wordsKept} are kept, and only the maker of the site reads them. Contact details you write to get an answer stay in the text as written.`,
       ],
     },
+    faults: {
+      heading: "Error reports",
+      lines: [
+        "If a page's script stops with an error, the maker of the site is told. What is sent is the error sentence the browser gave, the names and line numbers of the script files it came from, which screen was up (the lobby, a waiting room or which game), the kind of browser (such as iOS or Chrome), the page's language and the site's version. No nickname, room code, address or anything you typed is attached.",
+        `It is sent when the lobby is connected; until then up to ${facts.faultsWaiting} wait in this browser. The server keeps the latest ${facts.faultsKept} different errors and only counts how often the same one came. Only the maker of the site reads them.`,
+      ],
+    },
     host: {
       heading: "Where the server is",
       lines: ["The site runs on Cloudflare's servers. As with any site, Cloudflare handles connection details such as your address while serving requests."],
@@ -198,4 +216,4 @@ const en: typeof ko = {
 export const PRIVACY_WORDS: Record<Lang, typeof ko> = { ko, en };
 
 /** The parts of the notice, in the order they are read. */
-export const PRIVACY_PARTS = ["none", "browser", "room", "address", "voice", "words", "host", "ask"] as const satisfies readonly (keyof ReturnType<(typeof ko)["parts"]>)[];
+export const PRIVACY_PARTS = ["none", "browser", "room", "address", "voice", "words", "faults", "host", "ask"] as const satisfies readonly (keyof ReturnType<(typeof ko)["parts"]>)[];

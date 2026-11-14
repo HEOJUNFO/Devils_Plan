@@ -11,6 +11,8 @@
  * The page is read in Korean or in English (`lang.ts`). No sentence is
  * written here or in the markup: the page's own are in `words.ts`.
  */
+// first, so that it listens before anything else of the page runs
+import { takeWaiting, watchFaults } from "./fault";
 import { PartySocket } from "partysocket";
 import { backTrail, FIRST, isKnown } from "../shared/back";
 import { BUILD, outOfDate } from "../shared/build";
@@ -641,6 +643,11 @@ let pingSentAt: number | null = null;
 let pingTimes: number[] = [];
 /** Whether the game on show is still being played. */
 let gameOn = false;
+// which screen is up, for a fault noted from here on (`fault.ts`); one noted is sent at once where the lobby is connected
+watchFaults(
+  () => (currentCode === "" ? "lobby" : gameOn && currentView !== null ? currentView.game : "room"),
+  () => sendFaults(),
+);
 /** The slot of the one player the chat's next line is said to, or `null` when it is said to everyone. */
 let chatTo: ChatTo = { kind: "all" };
 /** Whether a press of the button that forgets the player's record does so: the press before it only asked. */
@@ -1843,6 +1850,8 @@ function watchRooms(): void {
     // a word about the game is offered only where the server keeps them for someone to read
     feedbackButton.hidden = message.feedback !== true;
     takesWords = message.feedback === true;
+    // and what went wrong in this browser's pages since it was last here is told in the same place
+    sendFaults();
     try {
       sessionStorage.setItem(storageKey("takes-words"), takesWords ? "1" : "0");
     } catch {
@@ -2102,6 +2111,20 @@ function feedbackAnswered(sent: boolean): void {
   sayFeedback(sent ? WORDS.feedback.sent : WORDS.feedback.failed, !sent);
 }
 
+/**
+ * Sends the directory what went wrong in this browser's pages and has been
+ * waiting to be told (`fault.ts`), over the connection the lobby has to it.
+ * Where the server keeps no words there is nobody to read them: they wait.
+ * What is sent waits no longer, heard or not: a fault that matters comes again.
+ */
+function sendFaults(): void {
+  if (!takesWords || listSocket === null || listSocket.readyState !== WebSocket.OPEN) return;
+  for (const { fault, build } of takeWaiting()) {
+    const request: DirectoryRequest = { type: "fault", fault, lang, build };
+    listSocket.send(JSON.stringify(request));
+  }
+}
+
 // ---- The inbox: what players wrote, for whoever makes the game -----------------------------------
 
 /** Opens the sheet the inbox is read on, or puts it away with what it showed. */
@@ -2162,8 +2185,13 @@ function inboxAnswered(words: StoredWord[] | null): void {
       head.className = "dim";
       const when = new Date(word.at).toLocaleString(lang === "ko" ? "ko-KR" : "en-US");
       // a player pointed out in a room is kept among the words: over it who and in which game, under it the lines said to be theirs
+      // so is something that went wrong in a page: over it how many times, on which screen and in which browser, under it the error and where it was thrown
       head.textContent =
-        word.flag === undefined ? WORDS.inbox.head(when, word.lang, word.build) : WORDS.inbox.flagHead(when, word.flag.nick, isGameId(word.flag.game) ? GAMES[word.flag.game].title[lang] : word.flag.game);
+        word.fault !== undefined
+          ? WORDS.inbox.faultHead(when, word.fault.n, isGameId(word.fault.where) ? GAMES[word.fault.where].title[lang] : word.fault.where, word.fault.browser, word.build)
+          : word.flag === undefined
+            ? WORDS.inbox.head(when, word.lang, word.build)
+            : WORDS.inbox.flagHead(when, word.flag.nick, isGameId(word.flag.game) ? GAMES[word.flag.game].title[lang] : word.flag.game);
       // what a stranger wrote is shown as text and nothing else
       const text = document.createElement("p");
       text.className = "word";

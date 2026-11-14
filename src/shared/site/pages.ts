@@ -355,6 +355,8 @@ const PRIVACY_FACTS: PrivacyFacts = {
   roomHours: roomConfig.emptyRoomTtlMinutes / 60,
   flagLines: chatConfig.flag.lines,
   wordsKept: directoryConfig.feedback.keep,
+  faultsWaiting: directoryConfig.faults.each,
+  faultsKept: directoryConfig.faults.keep,
   madeMinutes: Math.max(...directoryConfig.makeLimits.map((limit) => limit.windowSeconds)) / 60,
   seatMinutes: roomConfig.awaySlotSeconds / 60,
   weekDays: numbersConfig.weekDays,

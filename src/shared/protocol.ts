@@ -13,6 +13,7 @@ import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host
 import type { PokerHostRefusal, PokerSnapshot } from "./games/memory-poker/host";
 import type { MarketHostRefusal, MarketSnapshot } from "./games/mystery-stock-market/host";
 import type { UnderHostRefusal, UnderSnapshot } from "./games/under-thirteen/host";
+import { parseFault, parseFaultNote, type Fault, type FaultConfig } from "./fault";
 import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
@@ -22,6 +23,7 @@ import { parseWanting, type Wanting } from "./want";
 import type { JoinRejection, LobbyView } from "./lobby";
 import type { GameSnapshot, MoveRefusal, SettingRefusal, StartRefusal } from "./session";
 import { parseRtcSignal, type RtcSignal, type VoiceConfig, type VoiceMember } from "./voice";
+import directoryConfig from "./directory-config.json";
 import roomConfig from "./room-config.json";
 import voiceConfigJson from "./voice-config.json";
 
@@ -267,7 +269,7 @@ export interface NumbersAnswer {
 }
 
 /**
- * Client → directory, the five things it reads of what a viewer sends.
+ * Client → directory, the things it reads of what a viewer sends.
  *
  * `show`: the rooms of this game only, or of every game (`null`, which is
  * what a viewer is shown until they ask). Asked again on every reconnect: a
@@ -276,6 +278,10 @@ export interface NumbersAnswer {
  * `feedback`: a word about the game for whoever makes it (`feedback.ts`),
  * with the language the page is read in and the build it is. Nothing of the
  * player goes with it. Answered with a {@link FeedbackAnswer}.
+ *
+ * `fault`: something that went wrong in this page (`fault.ts`), with the
+ * language the page is read in and the build it is. Nothing of the player
+ * goes with it, and nothing is answered.
  *
  * `inbox`: the words kept, for whoever makes the game, with the key they
  * are read with (`src/server/inbox.ts`). The key is in the message, never in
@@ -304,6 +310,7 @@ export interface NumbersAnswer {
 export type DirectoryRequest =
   | { type: "show"; game: GameId | null }
   | { type: "feedback"; text: string; lang: Lang; build: string }
+  | { type: "fault"; fault: Fault; lang: Lang; build: string }
   | { type: "inbox"; key: string; drop?: number }
   | { type: "numbers"; key: string }
   | { type: "want"; game: GameId | null }
@@ -316,6 +323,8 @@ export const MAX_DIRECTORY_REQUEST_LENGTH = 4096;
 const MAX_BUILD_LENGTH = 16;
 /** The longest a key to the inbox is read. */
 const MAX_KEY_LENGTH = 200;
+/** How much of a fault a page sends (`faults`, `directory-config.json`). */
+const faultConfig: FaultConfig = directoryConfig.faults;
 
 /** Client → server. */
 export type ClientMessage =
@@ -618,6 +627,9 @@ export function parseInboxAnswer(raw: unknown): InboxAnswer | null {
     // a player pointed out in a room: who and in which game go with it, where both are said
     const flag = typeof word.flag === "object" && word.flag !== null ? (word.flag as Record<string, unknown>) : null;
     if (flag !== null && typeof flag.nick === "string" && typeof flag.game === "string") kept.flag = { nick: flag.nick, game: flag.game };
+    // something that went wrong in a page: where, in which browser and how many times go with it, where all three are said
+    const fault = typeof word.fault === "object" && word.fault !== null ? parseFaultNote(JSON.stringify(word.fault)) : null;
+    if (fault !== null) kept.fault = fault;
     words.push(kept);
   }
   return { type: "inbox", words };
@@ -641,6 +653,12 @@ export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
     // which build the page says it is helps read the word and is trusted for nothing: cut short, whatever it is
     const build = typeof data.build === "string" ? data.build.slice(0, MAX_BUILD_LENGTH) : "";
     return { type: "feedback", text: data.text, lang: data.lang, build };
+  }
+  if (data.type === "fault") {
+    const fault = parseFault(data.fault, faultConfig);
+    if (fault === null || !isLang(data.lang)) return null;
+    const build = typeof data.build === "string" ? data.build.slice(0, MAX_BUILD_LENGTH) : "";
+    return { type: "fault", fault, lang: data.lang, build };
   }
   if (data.type === "inbox") {
     if (typeof data.key !== "string" || data.key === "" || data.key.length > MAX_KEY_LENGTH) return null;

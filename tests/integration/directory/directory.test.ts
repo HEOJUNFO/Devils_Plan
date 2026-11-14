@@ -567,7 +567,7 @@ const directoryStub = (): DurableObjectStub => env.RoomDirectory.get(env.RoomDir
 /** Gives the directory a key to its inbox, and starts it with nothing kept, none of the day's words taken and no wrong key tried. */
 async function withKey(key: string | null = KEY): Promise<void> {
   await runInDurableObject(directoryStub(), (object, state) => {
-    for (const table of ["feedback", "words", "misses"]) state.storage.sql.exec(`DELETE FROM ${table}`);
+    for (const table of ["feedback", "words", "misses", "faulted"]) state.storage.sql.exec(`DELETE FROM ${table}`);
     (object as unknown as { inboxKey(): string | null }).inboxKey = () => key;
   });
 }
@@ -957,6 +957,105 @@ describe("RoomDirectory: a word about the game", () => {
     expect(lines.join("\n")).not.toContain("guess");
     expect(lines.join("\n")).not.toContain(KEY);
     inbox.close();
+  });
+});
+
+describe("RoomDirectory: something that went wrong in a page", () => {
+  afterEach(keyAsItIs);
+
+  /** A fault as a page sends it (`fault.ts`). */
+  const fault = (message = "Uncaught TypeError: x is not a function"): Fault => ({ message, frames: ["main-AbC1.js:1:2345"], where: "lay-the-grass", browser: "ios" });
+
+  /** Sends `sent` as a page of build `build` does. Nothing is answered: the next thing asked of the directory is answered after it. */
+  function tell(inbox: Inbox<Answer>, sent: Fault, build = "abc1234"): void {
+    const request: DirectoryRequest = { type: "fault", fault: sent, lang: "ko", build };
+    inbox.sendRaw(JSON.stringify(request));
+  }
+
+  it("keeps a fault for the reader, with its screen, its browser and that it came once", async () => {
+    await withKey();
+    const page = await writer();
+
+    tell(page, fault());
+    const words = await read(page);
+
+    expect(words).toHaveLength(1);
+    expect(words?.[0]).toMatchObject({ text: "Uncaught TypeError: x is not a function\nmain-AbC1.js:1:2345", lang: "ko", build: "abc1234", fault: { where: "lay-the-grass", browser: "ios", n: 1 } });
+    page.close();
+  });
+
+  it("keeps the same fault from the same build once, and counts how many times it came", async () => {
+    await withKey();
+    const first = await writer();
+    const second = await writer();
+
+    tell(first, fault());
+    tell(second, { ...fault(), where: "room", browser: "chrome" });
+    await read(first);
+    const words = await read(second);
+
+    expect(words).toHaveLength(1);
+    expect(words?.[0].fault).toEqual({ where: "room", browser: "chrome", n: 2 });
+    first.close();
+    second.close();
+  });
+
+  it("keeps the same fault from another build apart", async () => {
+    await withKey();
+    const page = await writer();
+
+    tell(page, fault(), "abc1234");
+    tell(page, fault(), "def5678");
+
+    expect((await read(page))?.map((word) => word.build)).toEqual(["def5678", "abc1234"]);
+    page.close();
+  });
+
+  it("keeps none where there is no key to read it with", async () => {
+    await withKey(null);
+    const page = await writer();
+    tell(page, fault());
+    // asked with no key set, so not answered with words: the rows are looked at
+    await read(page);
+
+    const kept = await runInDurableObject(directoryStub(), (_object, state) => state.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM words").one().n);
+
+    expect(kept).toBe(0);
+    page.close();
+  });
+
+  it("takes from one sender no more than a few in a while", async () => {
+    await withKey();
+    const page = await writer();
+    const most = directoryConfig.faults.senderLimit.burst;
+
+    for (let n = 0; n <= most; n++) tell(page, fault(`fault ${n}`));
+
+    expect(await read(page)).toHaveLength(most);
+    page.close();
+  });
+
+  it("leaves what players wrote where it was, however many faults come", async () => {
+    await withKey();
+    await writeAsNew("a word that stays");
+    const page = await writer();
+
+    tell(page, fault());
+    const words = await read(page);
+
+    expect(words?.map((word) => word.fault === undefined)).toEqual([false, true]);
+    expect(words?.[1].text).toBe("a word that stays");
+    page.close();
+  });
+
+  it("reads a fault that is not one as a page sends it for no request", async () => {
+    await withKey();
+    const page = await writer();
+
+    page.sendRaw(JSON.stringify({ type: "fault", fault: { ...fault(), frames: ["https://example.com/?room=ABCDE:1:2"] }, lang: "ko", build: "a" }));
+
+    expect(await read(page)).toEqual([]);
+    page.close();
   });
 });
 

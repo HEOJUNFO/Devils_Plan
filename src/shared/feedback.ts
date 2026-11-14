@@ -15,6 +15,7 @@
  * account, and nothing is done to anyone by it. It tells whoever runs the
  * site what is being said in the rooms. Pure functions over plain data.
  */
+import type { FaultNote } from "./fault";
 import type { MessageLimit } from "./lobby";
 import type { Lang } from "./lang";
 import { cleanLine, cutTo } from "./text";
@@ -68,6 +69,13 @@ export interface StoredWord {
   build: string;
   /** There when this is a player pointed out in a room, with `text` the lines said to be theirs: the nickname they went by and the game the room was for. */
   flag?: { nick: string; game: string };
+  /**
+   * There when this is something that went wrong in a player's page
+   * (`fault.ts`), with `text` its sentence and where it was thrown from: the
+   * screen and browser of the page that last sent it, and how many times it
+   * has been sent. `at` is when it was last.
+   */
+  fault?: FaultNote;
 }
 
 /** Tunable values of pointing a player out. Loaded from `chat-config.json` (`flag`). */

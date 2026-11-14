@@ -8,6 +8,7 @@
  * it. Pure functions over plain data, so the same code is unit-tested directly
  * and run inside the directory's Durable Object.
  */
+import type { FaultConfig } from "./fault";
 import type { FeedbackConfig } from "./feedback";
 import type { GoingConfig } from "./going";
 import { GAME_IDS, isGameId, type GameId } from "./games";
@@ -38,6 +39,8 @@ export interface DirectoryConfig {
   showLimit: MessageLimit;
   /** A word about the game, sent through the directory: how long, and how many (`feedback.ts`). */
   feedback: FeedbackConfig;
+  /** Something that went wrong in a player's page, sent through the directory: how much of it, and how many (`fault.ts`). */
+  faults: FaultConfig;
   /**
    * How many rooms one network address may make: each entry so many within
    * its window, and all of them hold at once (a few in a minute, and a good

@@ -98,6 +98,8 @@ const ko = {
     head: (when: string, lang: string, build: string) => `${when} · ${lang} · ${build}`,
     /** Over a player pointed out in a room, in place of `head`: when, the name they went by, the game. Under it, the lines said to be theirs. */
     flagHead: (when: string, nick: string, game: string) => `${when} · 신고 · ${nick} · ${game}`,
+    /** Over something that went wrong in a player's page, in place of `head`: when it last did, how many times, the screen (`lobby`, `room` or a game's name), the browser and the build. Under it, the error and where it was thrown. */
+    faultHead: (when: string, times: number, where: string, browser: string, build: string) => `${when} · 오류 ${times}회 · ${where} · ${browser} · ${build}`,
     drop: "지우기",
     dropConfirm: "한 번 더 누르면 지움",
   },
@@ -669,6 +671,7 @@ const en: typeof ko = {
     count: (count) => `${count} written, newest first`,
     head: (when, lang, build) => `${when} · ${lang} · ${build}`,
     flagHead: (when, nick, game) => `${when} · Report · ${nick} · ${game}`,
+    faultHead: (when, times, where, browser, build) => `${when} · Error ×${times} · ${where} · ${browser} · ${build}`,
     drop: "Delete",
     dropConfirm: "Press again to delete",
   },

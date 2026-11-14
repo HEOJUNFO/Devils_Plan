@@ -277,6 +277,15 @@ describe("the notice of what is kept of a visitor", () => {
     }
   });
 
+  it("says how many faults of a page wait in a browser and how many are kept, as the settings have them", () => {
+    const { each, keep } = directoryConfig.faults;
+
+    expect(notice("ko")).toContain(`이 브라우저에 최대 ${each}건을 둡니다`);
+    expect(notice("ko")).toContain(`최근 ${keep}건까지`);
+    expect(notice("en")).toContain(`up to ${each} wait in this browser`);
+    expect(notice("en")).toContain(`the latest ${keep} different errors`);
+  });
+
   it("names whose servers a browser asks when voice chat connects", () => {
     // stun:stun.cloudflare.com:3478 is Cloudflare's, stun:stun.l.google.com:19302 Google's: a server added to the settings has to be named here too
     const owners = voiceConfig.stunUrls.map((url) => url.split(":")[1]?.split(".").slice(-2)[0] ?? "");

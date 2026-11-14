@@ -15,6 +15,7 @@ import {
   type DirectoryEntry,
 } from "../shared/directory";
 import chatConfig from "../shared/chat-config.json";
+import { faultText, parseFaultNote, type FaultNote } from "../shared/fault";
 import { normalizeFeedback, parseFlag, type Flag, type FlagConfig, type StoredWord } from "../shared/feedback";
 import { comingOf, mayAnswer, mayGiveAnother } from "../shared/going";
 import { isLang } from "../shared/lang";
@@ -57,6 +58,8 @@ export const FLAG_PATH = "/flag";
 const ADDRESS_MAX_LENGTH = 45;
 /** How long a word about the game counts against the day's limit, in ms. */
 const DAY_MS = 86_400_000;
+/** Throws away all but the latest so many of what players wrote and of players pointed out. Faults are kept among them and counted apart (`takeFault`). */
+const TRIM_WORDS = "DELETE FROM words WHERE fault IS NULL AND id NOT IN (SELECT id FROM words WHERE fault IS NULL ORDER BY id DESC LIMIT ?)";
 /** How often at most the log is told that the numbers could not be written, in ms: while they cannot, every visit fails alike. */
 const NOT_COUNTED_SAY_EVERY_MS = 60_000;
 
@@ -145,6 +148,8 @@ export class RoomDirectory extends Server<Env> {
   private wantingTold: string | null = null;
   /** How many words about the game each viewer has sent lately, by connection id. Forgotten in sleep: the day's limit is kept. */
   private readonly feedbackPace = new Map<string, Pace>();
+  /** How many faults each sender has sent lately, by what their address is counted as (by connection id where there is none). Forgotten in sleep: the day's limit is kept. */
+  private readonly faultPace = new Map<string, Pace>();
 
   /** Runs on first start and on every wake from hibernation. */
   onStart(): void {
@@ -168,6 +173,14 @@ export class RoomDirectory extends Server<Env> {
     } catch {
       this.ctx.storage.sql.exec("ALTER TABLE words ADD COLUMN flag TEXT");
     }
+    // Something that went wrong in a page (`fault.ts`) is kept among them too, with where, in which browser and how many times.
+    try {
+      this.ctx.storage.sql.exec("SELECT fault FROM words LIMIT 0");
+    } catch {
+      this.ctx.storage.sql.exec("ALTER TABLE words ADD COLUMN fault TEXT");
+    }
+    // one row for each fault taken, kept a day: when, and nothing of what or who
+    this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS faulted (at INTEGER NOT NULL)");
     // one row for each wrong key the inbox was tried with, kept for as long as the limit on them looks back
     this.ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS misses (at INTEGER NOT NULL)");
     // the site's numbers by the day (`numbers.ts`): how many of each thing, and nothing of who
@@ -201,7 +214,8 @@ export class RoomDirectory extends Server<Env> {
 
   /**
    * A viewer picked a game, or every game again: they are sent that list now
-   * and from now on. Or a viewer wrote a word about the game, which is kept;
+   * and from now on. Or a viewer wrote a word about the game, which is kept,
+   * or their page said that something went wrong in it, which is kept too;
    * raised or lowered a hand for a game; said they will come to the next
    * meeting; or said whether their browser has come before, which is
    * counted. Anything else a viewer sends is not read.
@@ -211,6 +225,7 @@ export class RoomDirectory extends Server<Env> {
     if (request === null) return;
     const now = Date.now();
     if (request.type === "feedback") return this.takeFeedback(connection, request, now);
+    if (request.type === "fault") return this.takeFault(connection, request, now);
     if (request.type === "inbox") return this.readInbox(connection, request, now);
     if (request.type === "numbers") return this.readNumbers(connection, request.key, now);
     // A page of ours asks once for each game picked; one that is not may not make the directory sort without end.
@@ -380,7 +395,7 @@ export class RoomDirectory extends Server<Env> {
     sql.exec("INSERT INTO feedback (at) VALUES (?)", now);
     sql.exec("INSERT INTO words (at, text, lang, build) VALUES (?, ?, ?, ?)", now, text, request.lang, request.build);
     // the latest so many are kept: the oldest make way
-    sql.exec("DELETE FROM words WHERE id NOT IN (SELECT id FROM words ORDER BY id DESC LIMIT ?)", limits.keep);
+    sql.exec(TRIM_WORDS, limits.keep);
     console.log("feedback kept");
     answer(true);
   }
@@ -405,13 +420,15 @@ export class RoomDirectory extends Server<Env> {
     const sql = this.ctx.storage.sql;
     if (request.drop !== undefined) sql.exec("DELETE FROM words WHERE id = ?", request.drop);
     const rows = sql
-      .exec<{ id: number; at: number; text: string; lang: string; build: string; flag: string | null }>("SELECT id, at, text, lang, build, flag FROM words ORDER BY id DESC")
+      .exec<{ id: number; at: number; text: string; lang: string; build: string; flag: string | null; fault: string | null }>("SELECT id, at, text, lang, build, flag, fault FROM words ORDER BY id DESC")
       .toArray();
     answer(
       rows.map((row) => {
         const word: StoredWord = { id: row.id, at: row.at, text: row.text, lang: isLang(row.lang) ? row.lang : ("en" as const), build: row.build };
         const flag = row.flag === null ? null : flagOf(row.flag);
         if (flag !== null) word.flag = flag;
+        const fault = row.fault === null ? null : parseFaultNote(row.fault);
+        if (fault !== null) word.fault = fault;
         return word;
       }),
     );
@@ -432,8 +449,52 @@ export class RoomDirectory extends Server<Env> {
       return;
     }
     sql.exec("INSERT INTO words (at, text, lang, build, flag) VALUES (?, ?, ?, ?, ?)", now, flag.lines.join("\n"), "", "", JSON.stringify({ nick: flag.nick, game: flag.game }));
-    sql.exec("DELETE FROM words WHERE id NOT IN (SELECT id FROM words ORDER BY id DESC LIMIT ?)", config.feedback.keep);
+    sql.exec(TRIM_WORDS, config.feedback.keep);
     console.log("a flag kept");
+  }
+
+  /**
+   * Keeps what a viewer's page says went wrong in it (`fault.ts`) among the
+   * words about the game, for whoever makes it to read with them. A fault
+   * already kept from the same build is not kept twice: its count goes up
+   * and its time, screen and browser become those of this one. Not where
+   * nobody could read it, when this sender has sent their few for now, nor
+   * once the day's faults from everyone together have all been taken: each
+   * is a row written, and a page that is not ours could send them without
+   * end. The sender is the address the page comes from, so that opening
+   * more connections sends no more. Nothing is answered, and the log gets
+   * that one was kept, never what it said.
+   */
+  private takeFault(connection: Connection<ViewerState>, request: Extract<DirectoryRequest, { type: "fault" }>, now: number): void {
+    if (!this.takesFeedback()) return;
+    const limits = config.faults;
+    const windowMs = limits.senderLimit.windowSeconds * 1000;
+    // those whose window has passed are forgotten, so that what is remembered is of the senders of one window
+    for (const [sender, kept] of this.faultPace) if (now - kept.since >= windowMs) this.faultPace.delete(sender);
+    const sender = connection.state?.from ?? connection.id;
+    const paced = pace(this.faultPace.get(sender), now, limits.senderLimit.burst, limits.senderLimit.windowSeconds);
+    this.faultPace.set(sender, paced.pace);
+    if (!paced.ok) return;
+    // Nothing is waited for from here to the rows, so no other fault comes between the count and the row.
+    const sql = this.ctx.storage.sql;
+    sql.exec("DELETE FROM faulted WHERE at <= ?", now - DAY_MS);
+    if (sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM faulted").one().n >= limits.dayLimit) {
+      console.log("a fault turned away: the day's faults are all taken");
+      return;
+    }
+    sql.exec("INSERT INTO faulted (at) VALUES (?)", now);
+    const { where, browser } = request.fault;
+    const text = faultText(request.fault);
+    const known = sql.exec<{ id: number; fault: string }>("SELECT id, fault FROM words WHERE fault IS NOT NULL AND text = ? AND build = ? LIMIT 1", text, request.build).toArray()[0];
+    const note: FaultNote = { where, browser, n: (known === undefined ? 0 : (parseFaultNote(known.fault)?.n ?? 0)) + 1 };
+    if (known !== undefined) {
+      sql.exec("UPDATE words SET at = ?, lang = ?, fault = ? WHERE id = ?", now, request.lang, JSON.stringify(note), known.id);
+    } else {
+      sql.exec("INSERT INTO words (at, text, lang, build, fault) VALUES (?, ?, ?, ?, ?)", now, text, request.lang, request.build, JSON.stringify(note));
+      // the latest so many faults are kept, counted apart from what players wrote: neither pushes the other out
+      sql.exec("DELETE FROM words WHERE fault IS NOT NULL AND id NOT IN (SELECT id FROM words WHERE fault IS NOT NULL ORDER BY id DESC LIMIT ?)", limits.keep);
+    }
+    console.log("a fault kept");
   }
 
   /**

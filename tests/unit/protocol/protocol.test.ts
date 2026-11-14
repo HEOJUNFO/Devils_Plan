@@ -513,6 +513,16 @@ describe("parseInboxAnswer", () => {
     }
   });
 
+  it("reads something that went wrong in a page with where, in which browser and how many times, and leaves out a note that is not one", () => {
+    const kept = { id: 9, at: 1_800_000_000_000, text: "TypeError: x\nmain.js:1:2", lang: "ko", build: "abc1234" };
+    const fault = { where: "lobby", browser: "chrome", n: 3 };
+
+    expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [{ ...kept, fault }] }))).toEqual({ type: "inbox", words: [{ ...kept, fault }] });
+    for (const note of ["lobby", { where: "lobby", browser: "chrome" }, { ...fault, n: 0 }, { ...fault, n: "3" }]) {
+      expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: [{ ...kept, fault: note }] }))).toEqual({ type: "inbox", words: [kept] });
+    }
+  });
+
   it("reads that the inbox did not open", () => {
     expect(parseInboxAnswer(JSON.stringify({ type: "inbox", words: null }))).toEqual({ type: "inbox", words: null });
   });
@@ -533,6 +543,28 @@ describe("parseInboxAnswer", () => {
 });
 
 describe("parseDirectoryRequest", () => {
+  /** A fault as a page sends it (`fault.ts`). */
+  const FAULT = { message: "Uncaught TypeError: x is not a function", frames: ["main-AbC1.js:1:2345"], where: "lay-the-grass", browser: "ios" };
+
+  it("reads what a page says went wrong in it, with the language and the build of the page", () => {
+    const raw = JSON.stringify({ type: "fault", fault: FAULT, lang: "ko", build: "abc1234" });
+
+    expect(parseDirectoryRequest(raw)).toEqual({ type: "fault", fault: FAULT, lang: "ko", build: "abc1234" });
+  });
+
+  it("keeps only the fields of a fault, and cuts a build's name short", () => {
+    const raw = JSON.stringify({ type: "fault", fault: { ...FAULT, nick: "ann", address: "https://example.com/?room=ABCDE" }, lang: "en", build: "x".repeat(200), token: "secret" });
+
+    expect(parseDirectoryRequest(raw)).toEqual({ type: "fault", fault: FAULT, lang: "en", build: "x".repeat(16) });
+  });
+
+  it("rejects a fault that is not one as a page sends it, or in a language there are no words for", () => {
+    for (const fault of [undefined, "broke", { ...FAULT, message: "" }, { ...FAULT, frames: ["https://example.com/?room=ABCDE:1:2"] }, { ...FAULT, where: "somewhere" }, { ...FAULT, browser: "netscape" }]) {
+      expect(parseDirectoryRequest(JSON.stringify({ type: "fault", fault, lang: "en", build: "a" }))).toBeNull();
+    }
+    expect(parseDirectoryRequest(JSON.stringify({ type: "fault", fault: FAULT, lang: "xx", build: "a" }))).toBeNull();
+  });
+
   it("reads a word about the game, with the language and the build of the page it was written on", () => {
     const raw = JSON.stringify({ type: "feedback", text: "the list is slow", lang: "en", build: "abc1234" });
 
