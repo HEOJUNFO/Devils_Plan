@@ -261,6 +261,7 @@ const ko = {
     swap: "게임",
     /** The same button with how many have asked for another game (`src/shared/wish.ts`). */
     swapCount: (count: number) => (count > 0 ? `게임 ${count}` : "게임"),
+    wishCount: (count: number) => (count > 0 ? `다음 게임 ${count}` : "다음 게임"),
     swapHelp: "누르면 이 방에서 할 게임을 바꿉니다",
     /** To the host, while some have asked for another game. */
     swapAsked: (count: number) => `${count}명이 다른 게임을 골랐습니다. 누르면 이 방에서 할 게임을 바꿉니다`,
@@ -302,6 +303,7 @@ const ko = {
     seatsHelp: "사람을 고르면 방장을 넘기거나 내보낼 수 있습니다",
     becameHost: (nick: string) => `${nick} 님이 방장이 됐습니다`,
     needPlayers: (min: number, here: number) => `${min}명이 모이면 방장이 시작할 수 있습니다. 지금 ${here}명.`,
+    hostAlone: (min: number) => `「링크 복사」로 친구를 부르세요. ${min}명이 모이면 시작할 수 있습니다.`,
     brokenTeam: (team: number, size: number, teamSize: number) =>
       `팀 ${team}은 ${size}명이라 팀이 아닙니다 (${teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`,
     hostReady: (bots: boolean, alone: boolean) => `${bots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}${alone ? "혼자서도 할 수 있습니다. " : ""}준비되면 시작하세요.`,
@@ -741,6 +743,7 @@ const en: typeof ko = {
     pingGrade: { good: "Good connection", fair: "Fair connection", poor: "Slow connection" },
     swap: "Game",
     swapCount: (count) => (count > 0 ? `Game ${count}` : "Game"),
+    wishCount: (count) => (count > 0 ? `Next game ${count}` : "Next game"),
     swapHelp: "Press to change the game this room plays",
     swapAsked: (count) => `${count === 1 ? "1 player has" : `${count} players have`} picked another game. Press to change the game this room plays`,
     wishHelp: "Press to pick the game you want next",
@@ -769,6 +772,7 @@ const en: typeof ko = {
     seatsHelp: "Pick a player to pass the host on or remove them",
     becameHost: (nick) => `${nick} is the host now`,
     needPlayers: (min, here) => `The host can start once ${min} are here. ${here} now.`,
+    hostAlone: (min) => `Press Invite to bring friends. You can start once ${min} are here.`,
     brokenTeam: (team, size, teamSize) => `Team ${team} has ${size}, not ${teamSize}, so it is no team: its players start alone.`,
     hostReady: (bots, alone) => `${bots ? "Bots fill the empty seats (development). " : ""}${alone ? "You can play alone. " : ""}Start when ready.`,
     hostOthers: "Start when ready. Press a player to pass host or remove.",

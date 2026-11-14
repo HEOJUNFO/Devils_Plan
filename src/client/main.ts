@@ -2274,8 +2274,21 @@ function renderStatus(): void {
   status.textContent = away ?? WORDS.room.statusSpoken(here, view.maxPlayers);
 }
 
-/** Says in the chat who has come into the room and who has gone since it was last sent. */
+/**
+ * Says in the chat who has come into the room and who has gone since it was
+ * last sent. Over the results of a game the chat is one of several tabs and
+ * the room is out of sight: what changes the room there (someone gone, the
+ * host another, the game another, which also takes back everyone's "one
+ * more") marks the tab as a line someone typed does, so that it is not read
+ * only by chance.
+ */
 function noteComings(before: LobbyView, after: LobbyView): void {
+  let marked = false;
+  const mark = (): void => {
+    if (table === null || gameOn || chatOpen) return;
+    unread++;
+    marked = true;
+  };
   const was = new Map(before.players.map((p) => [p.slot, p.nick]));
   const is = new Map(after.players.map((p) => [p.slot, p.nick]));
   for (const [slot, nick] of is) {
@@ -2284,10 +2297,15 @@ function noteComings(before: LobbyView, after: LobbyView): void {
     call("came");
   }
   // someone the host sent out is said to have been sent out, not to have gone
-  for (const [slot, nick] of was) if (!is.has(slot)) chat.note({ kind: sentOut.has(slot) ? "kicked" : "went", nick });
+  for (const [slot, nick] of was) {
+    if (is.has(slot)) continue;
+    chat.note({ kind: sentOut.has(slot) ? "kicked" : "went", nick });
+    mark();
+  }
   sentOut.clear();
   if (after.game !== before.game) {
     chat.note({ kind: "game", game: after.game });
+    mark();
     tipRules(after.game);
   }
   // 탈락전: turned on or off by the host; or everyone is in again with no winner said, because too few were left
@@ -2312,8 +2330,12 @@ function noteComings(before: LobbyView, after: LobbyView): void {
   const here = (view: LobbyView, slot: number | null): boolean => view.players.some((p) => p.slot === slot && p.connected);
   if (after.host !== before.host && here(after, before.host) && here(before, after.host)) {
     const host = after.host === null ? undefined : is.get(after.host);
-    if (host !== undefined) chat.note({ kind: "host", nick: host });
+    if (host !== undefined) {
+      chat.note({ kind: "host", nick: host });
+      mark();
+    }
   }
+  if (marked) syncChat();
 }
 
 /** Pings the room, and notes when: the answer says how long the way there and back is. */
@@ -2956,7 +2978,8 @@ function renderRoom(code: string, view: LobbyView): void {
   if (isHost || asked.wish === (view.wish ?? null) || asked.wish === view.game) delete asked.wish;
   const wishing = wishCount(shownWishes(view));
   swapButton.hidden = false;
-  swapButton.textContent = WORDS.room.swapCount(wishing);
+  // (the host's changes the room's game; everyone else's says which game they would like next, and is named for that)
+  swapButton.textContent = isHost ? WORDS.room.swapCount(wishing) : WORDS.room.wishCount(wishing);
   swapButton.title = !isHost ? WORDS.room.wishHelp : wishing > 0 ? WORDS.room.swapAsked(wishing) : WORDS.room.swapHelp;
   tellWishes();
   if (!swapSheet.hidden) showSwap(true);
@@ -3064,7 +3087,9 @@ function renderRoom(code: string, view: LobbyView): void {
     : !enough
       ? short
         ? WORDS.room.knockoutShort(game.minPlayers, playing.length)
-        : WORDS.room.needPlayers(game.minPlayers, playing.length)
+        : isHost && view.players.length === 1
+          ? WORDS.room.hostAlone(game.minPlayers)
+          : WORDS.room.needPlayers(game.minPlayers, playing.length)
       : sittingOut && !isHost
         ? WORDS.room.knockoutWatching
       : broken !== undefined
