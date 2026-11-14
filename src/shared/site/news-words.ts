@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "러시안 룰렛: 규칙 창을 열어 둔 사이 차례 시간이 지나가면, 지난 차례에 고른 수나 놓친 맞바꿈이 화면에 그대로 남던 것을 고쳤습니다. 아무도 남지 않아 방이 끝까지 둔 판은 이제 순위·왕관·탈락전에 세지 않습니다.",
+        en: "Russian Roulette: when the turn clock ran out while the rules sheet was open, the move chosen for the turn that had gone, or a swap that was lost, stayed on the screen. Fixed. A game the room played out because nobody stayed no longer counts for places, the crown or the knockout.",
+      },
+      {
         ko: "기억 포커: 인원이 홀수(5명 이상)일 때 한 사람이 매 라운드 셋이 겨루는 조에 들어가던 것을 고쳤습니다. 이제 남는 한 명은 셋 조에 덜 들어갔던 짝에 들어갑니다. 러시안 룰렛 규칙 안내에는 4명·5명 탁자의 실탄 수와, 맞바꿀 칸을 고르다 시간을 넘기면 어떻게 되는지를 적었습니다.",
         en: "Memory Poker: with an odd number of players (5 or more), one player was in the group of three every round. The player left over now joins the pair that has been in a group of three least. The Russian Roulette rules now say how many live rounds a table of 4 or 5 has, and what happens when the time runs out while you pick the chambers to swap.",
       },

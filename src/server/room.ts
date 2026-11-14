@@ -1141,6 +1141,9 @@ export class GameRoom extends Server<Env> {
     if (knockout && this.hostSlot() !== slot) return this.refuse(connection, "not-host");
     const seated = playersIn(lobby).filter((p) => presence.connected.has(p.token));
     const first = [...seated].sort((a, b) => (a.seq ?? a.slot) - (b.seq ?? b.slot))[0];
+    // Nobody still in is connected (the last of them dropped as the host pressed): said as what it is. Asked in
+    // the host's own name, a game would answer a host who is sitting out that only the host may start.
+    if (knockout && first === undefined) return this.refuse(connection, "too-few");
     const result = this.host().start(
       this.session,
       seated,
@@ -1167,8 +1170,9 @@ export class GameRoom extends Server<Env> {
     // For the log: which game, and how many people sat down to it. Never the room's code or a name.
     const tally = this.tally();
     this.save(TALLY_KEY, { ...tally, games: tally.games + 1, began: Date.now() } satisfies Tally);
-    console.log(`game started: ${gameOf(lobby)} ${presence.connected.size} players`);
-    this.count({ type: "started", game: gameOf(lobby), players: presence.connected.size });
+    // those who play it: in a room playing 탈락전 the ones sitting out are connected and are not at the table
+    console.log(`game started: ${gameOf(lobby)} ${seated.length} players`);
+    this.count({ type: "started", game: gameOf(lobby), players: seated.length });
     await this.commitSession(result.session);
   }
 

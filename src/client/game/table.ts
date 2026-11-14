@@ -297,6 +297,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let sel: Selection | null = null;
   /** `time` when that move was chosen. */
   let selAt = 0;
+  /** How many moves the table had made when it was chosen: it is for the move awaited then and no other. */
+  let selMoves = 0;
   /** A move has been sent and the room has not answered yet. */
   let pending = false;
   /** The host has asked for the next game and the room has not answered yet. */
@@ -730,6 +732,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     else if (i <= 3) sel = { mode: "confirm", act: i, pair: 0, amount: 1 };
     else sel = { mode: "amount", act: 4, pair: 0, amount: 1 };
     selAt = time;
+    selMoves = latest.view.history.length;
     sfx.pick();
   }
 
@@ -776,7 +779,18 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (help && (pressed("Escape", "Enter") || clicks.length > 0)) help = false;
     // the page's own buttons lie over the frame: they give way while the sheet is up
     if (help !== was) handlers.covered(help);
-    if (help || was) return;
+    // What is chosen is chosen for the move awaited then. The table goes on under the rules sheet, which takes
+    // the keys and returns just below: the clock can end that turn there and the turn come round again before
+    // the sheet is closed. What was chosen for the turn that is gone is let go (a swap that was forfeited
+    // could otherwise only be confirmed, and refused), and the turn that has come is called afresh.
+    if (sel !== null && latest.view.history.length !== selMoves) {
+      sel = null;
+      couldAct = false;
+    }
+    if (help || was) {
+      if (!(canAct() && !passing())) couldAct = false;
+      return;
+    }
     if (fired && latest.view.phase === "ended") {
       resultsAt ??= time;
       // The log is read back once the game is over: a row with the up and down keys, a screenful with the page
@@ -809,6 +823,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (able && sel === null && latest.view.phase === "swap") {
       sel = { mode: "swap", act: 4, pair: swapDefault(), amount: 1 };
       selAt = time;
+      selMoves = latest.view.history.length;
       if (!couldAct) sfx.earn();
     }
     couldAct = able;

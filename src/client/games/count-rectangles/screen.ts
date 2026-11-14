@@ -406,7 +406,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       flash = null;
       pointed = null;
     }
-    const wasClosed = latest !== null && latest.view.outcome !== null && !fresh;
+    // (the same problem's: one that opened and closed while the connection was down is another, with its own count and time)
+    const wasClosed = latest !== null && latest.view.outcome !== null && !fresh && latest.view.round === message.view.round;
     if (message.view.outcome !== null && !wasClosed) {
       revealFrom = time;
       revealEach = litSeconds(message.clock.next, message.view.solutions?.length ?? 0);
