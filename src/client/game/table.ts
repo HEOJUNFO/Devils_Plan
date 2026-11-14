@@ -801,13 +801,15 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     }
     // a turn the room passes asks nothing of the player: no call to move, and nothing to choose
     const able = canAct() && !passing();
-    if (able && !couldAct) {
-      sfx.turn();
-      if (latest.view.phase === "swap") {
-        sel = { mode: "swap", act: 4, pair: swapDefault(), amount: 1 };
-        selAt = time;
-        sfx.earn();
-      }
+    if (able && !couldAct) sfx.turn();
+    // The swap a seat has earned is put up for as long as it is owed and nothing is being chosen, not only
+    // at the moment the move becomes the seat's. A swap confirmed while the connection was down is not
+    // sent and leaves nothing chosen; the move was the seat's before and after, so that moment never came
+    // again, and a seat with no credits left had no way back to its swap.
+    if (able && sel === null && latest.view.phase === "swap") {
+      sel = { mode: "swap", act: 4, pair: swapDefault(), amount: 1 };
+      selAt = time;
+      if (!couldAct) sfx.earn();
     }
     couldAct = able;
     let picked: number | null = null;

@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-14",
     lines: [
       {
+        ko: `${ROULETTE.ko}: 연결이 끊긴 사이에 맞바꾸기를 확정해도 고르던 화면이 그대로 남습니다. 다시 연결되면 한 번 더 누르면 됩니다. 전에는 맞바꾸기가 사라져 판이 멈출 수 있었습니다.`,
+        en: `${ROULETTE.en}: a swap confirmed while the connection is down stays on the screen, to be confirmed again once it is back. Before, the swap could vanish and leave the table waiting.`,
+      },
+      {
         ko: "방에 같은 닉네임이 이미 있으면 뒤에 번호가 붙습니다(「철수 2」). 채팅에서 누가 한 말인지 헷갈리지 않습니다.",
         en: "If a nickname is already in the room, yours gets a number after it (\"Ann 2\"), so a line of chat is never mistaken for someone else's.",
       },
