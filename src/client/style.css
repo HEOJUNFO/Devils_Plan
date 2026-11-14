@@ -1359,6 +1359,11 @@ button.choice[aria-pressed="true"] {
   gap: 8px;
 }
 
+/* (not there in the sheet of a player who is not the host: 탈락전 is the host's to turn on) */
+#swap-knockout-row[hidden] {
+  display: none;
+}
+
 #swap-knockout {
   flex: none;
   padding: 0 6px;

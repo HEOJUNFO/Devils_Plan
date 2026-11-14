@@ -277,6 +277,36 @@ describe("viewLobby", () => {
     expect("reading" in viewLobby(state, new Set([0]), 0, config, false, new Set([1]))).toBe(false);
   });
 
+  it("tells everyone how many asked for each other game, and each viewer which they asked for", () => {
+    const config = testConfig();
+    const state = lobbyWith(3, config);
+    const there = new Set([0, 1, 2]);
+    const other = GAME_IDS.find((id) => id !== gameOf(state))!;
+    const wished = new Map([
+      [1, other],
+      [2, other],
+    ]);
+
+    expect(viewLobby(state, there, 0, config, false, undefined, wished)).toMatchObject({ wishes: { [other]: 2 } });
+    expect("wish" in viewLobby(state, there, 0, config, false, undefined, wished)).toBe(false);
+    expect(viewLobby(state, there, 1, config, false, undefined, wished)).toMatchObject({ wishes: { [other]: 2 }, wish: other });
+  });
+
+  it("says nothing of another game while nobody has asked for one", () => {
+    const config = testConfig();
+    const state = lobbyWith(2, config);
+    const there = new Set([0, 1]);
+    const other = GAME_IDS.find((id) => id !== gameOf(state))!;
+
+    expect("wishes" in viewLobby(state, there, 0, config)).toBe(false);
+    expect("wishes" in viewLobby(state, there, 0, config, false, undefined, new Map())).toBe(false);
+    // the host's own word, a word for the room's own game, and the word of someone who is gone are not counted
+    expect("wishes" in viewLobby(state, there, 0, config, false, undefined, new Map([[0, other]]))).toBe(false);
+    expect("wishes" in viewLobby(state, there, 1, config, false, undefined, new Map([[1, gameOf(state)]]))).toBe(false);
+    expect("wish" in viewLobby(state, there, 1, config, false, undefined, new Map([[1, gameOf(state)]]))).toBe(false);
+    expect("wishes" in viewLobby(state, new Set([0]), 0, config, false, undefined, new Map([[1, other]]))).toBe(false);
+  });
+
   it("marks who leads each team, of those connected", () => {
     const config = testConfig({ maxPlayers: TEAM_SIZE * 2 });
     let state = roomOf(TEAM_GAME, 3, config);

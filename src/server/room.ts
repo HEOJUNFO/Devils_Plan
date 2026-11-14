@@ -17,6 +17,7 @@ import {
   createLobby,
   dropLapsed,
   findPlayer,
+  gameHolds,
   gameOf,
   handHost,
   hostOf,
@@ -124,6 +125,8 @@ interface Seat {
   voice?: { muted: boolean };
   /** There while its page has the rules open in the waiting room (`reading.ts`). Kept here and not in storage. */
   reading?: true;
+  /** The game its player asked for as the room's next (`wish.ts`). Kept here and not in storage. */
+  wish?: GameId;
 }
 
 /**
@@ -414,7 +417,7 @@ export class GameRoom extends Server<Env> {
         ? "setting"
         : parsed.type === "rtc"
           ? "signal"
-          : parsed.type === "team" || parsed.type === "ready" || parsed.type === "reading"
+          : parsed.type === "team" || parsed.type === "ready" || parsed.type === "reading" || parsed.type === "wish"
             ? "choice"
             : "other";
     if (parsed.type !== "chat" && parsed.type !== "quick" && parsed.type !== "leave" && !this.withinPace(seat.slot, sort)) {
@@ -440,6 +443,7 @@ export class GameRoom extends Server<Env> {
     else if (parsed.type === "team") this.handleTeam(connection, seat, parsed.team);
     else if (parsed.type === "ready") await this.handleReady(seat, parsed.ready);
     else if (parsed.type === "reading") this.handleReading(connection, seat, parsed.reading);
+    else if (parsed.type === "wish") this.handleWish(connection, seat, parsed.game);
     else if (parsed.type === "host") await this.handleHost(connection, seat.slot, parsed.to);
     else if (parsed.type === "kick") await this.handleKick(connection, seat.slot, parsed.slot);
     else if (parsed.type === "here") await this.handleHere(seat.slot);
@@ -863,6 +867,12 @@ export class GameRoom extends Server<Env> {
     // while the room is still for the game that end is of: what compares and clears it is that game's
     if (this.session !== null) await this.commitSession(null);
     this.saveLobby(next);
+    // which game next has been answered: everyone's word for one is taken back
+    for (const [member, seat] of this.members()) {
+      if (seat.wish === undefined) continue;
+      const { wish: _wish, ...plain } = seat;
+      member.setState(plain);
+    }
     this.broadcastLobby();
     // For the log: which game a room turns to from which. Never the room's code or a name.
     console.log(`game changed: ${gameOf(lobby)} to ${game}`);
@@ -904,6 +914,32 @@ export class GameRoom extends Server<Env> {
     connection.setState(reading ? { ...plain, reading: true } : plain);
     // nobody is told it during a game: it is said again when the room is next sent
     if (!this.playing()) this.broadcastLobby();
+  }
+
+  /**
+   * Notes which other game a connection's player would like the room to play
+   * next, or that they ask for none, and tells everyone how many ask for
+   * each (`wish.ts`). Not the host's to say, who changes the game; not for
+   * the game the room is for, nor for one that has no place for someone
+   * here; not during a game. Kept with the connection: nothing is written.
+   */
+  private handleWish(connection: Connection<ConnectionState>, seat: Seat, game: GameId | null): void {
+    const lobby = this.lobby;
+    if (lobby === null || this.playing()) return;
+    const asked = game === gameOf(lobby) ? null : game;
+    if (asked !== null && this.hostSlot() === seat.slot) return;
+    if (asked !== null && !gameHolds(lobby.players.map((p) => p.slot), asked, config)) return this.refuse(connection, "bad-setting");
+    if ((seat.wish ?? null) === asked) return;
+    const { wish: _wish, ...plain } = seat;
+    connection.setState(asked === null ? plain : { ...plain, wish: asked });
+    this.broadcastLobby();
+  }
+
+  /** The game each slot's connection asked for as the room's next, by slot. */
+  private wishedBySlot(): Map<number, GameId> {
+    const wished = new Map<number, GameId>();
+    for (const [, seat] of this.members()) if (seat.wish !== undefined && !wished.has(seat.slot)) wished.set(seat.slot, seat.wish);
+    return wished;
   }
 
   /** The slots with a connection whose page has the rules open. */
@@ -1426,12 +1462,14 @@ export class GameRoom extends Server<Env> {
     const connected = new Set(members.map(([, seat]) => seat.slot));
     // who has the rules open is said in a waiting room, where a start is waited for, and not over a game
     const reading = this.playing() ? undefined : this.readingSlots();
+    // and so is which game is asked for next
+    const wished = this.playing() ? undefined : this.wishedBySlot();
     for (const [member, seat] of members) {
       const message: ServerMessage = {
         type: "lobby",
         room: this.name,
         build: BUILD,
-        ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered(), reading),
+        ...viewLobby(lobby, connected, seat.slot, config, this.voiceOffered(), reading, wished),
       };
       member.send(JSON.stringify(message));
     }

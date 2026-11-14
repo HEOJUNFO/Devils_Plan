@@ -8,6 +8,7 @@
  */
 import { DEFAULT_GAME, GAMES, type GameId } from "./games";
 import { readersFor } from "./reading";
+import { wishCount, wishesOf, type Wishes } from "./wish";
 import { cleanLine, cutTo } from "./text";
 
 /** Tunable lobby values. Loaded from `room-config.json`. */
@@ -296,6 +297,10 @@ export interface LobbyView {
   players: PublicPlayer[];
   /** How many of the others have the rules open (`reading.ts`); not there for none. */
   reading?: number;
+  /** How many have asked for each other game to be the room's next (`wish.ts`); not there while nobody has. */
+  wishes?: Wishes;
+  /** The game the viewer has asked for; not there for none. */
+  wish?: GameId;
 }
 
 /** Why a join was refused. */
@@ -849,7 +854,9 @@ export function setListed(state: LobbyState, listed: boolean): LobbyState {
  * The lobby as the player in `viewerSlot` may see it: every player's slot,
  * nickname and connection status, and no tokens. `reading` are the slots
  * with a connection that said its player has the rules open: the viewer is
- * told how many of the others, not who (`reading.ts`).
+ * told how many of the others, not who (`reading.ts`). `wished` is the game
+ * each slot's connection asked for as the room's next: everyone is told how
+ * many asked for each, and the viewer which they asked for (`wish.ts`).
  */
 export function viewLobby(
   state: LobbyState,
@@ -858,12 +865,18 @@ export function viewLobby(
   config: RoomConfig,
   voice = false,
   reading?: ReadonlySet<number>,
+  wished?: ReadonlyMap<number, GameId>,
 ): LobbyView {
   const leaders = leadersOf(state, connectedSlots);
   const host = hostOf(state, connectedSlots);
   // of those who hold a seat: a connection whose seat has passed to someone else speaks for nobody
   const seated = new Set(state.players.map((p) => p.slot));
   const readers = reading === undefined ? 0 : readersFor(new Set([...reading].filter((slot) => seated.has(slot))), connectedSlots, viewerSlot);
+  const asked = new Map([...(wished ?? [])].filter(([slot]) => seated.has(slot)));
+  const wishes = wishesOf(asked, connectedSlots, host?.slot ?? null, gameOf(state));
+  // the viewer's own word, where it is one of those counted
+  const mine = asked.get(viewerSlot);
+  const wish = mine !== undefined && mine !== gameOf(state) && viewerSlot !== host?.slot && connectedSlots.has(viewerSlot) ? mine : undefined;
   return {
     you: viewerSlot,
     maxPlayers: capacityOf(gameOf(state), config),
@@ -888,5 +901,7 @@ export function viewLobby(
       wins: p.wins ?? 0,
     })),
     ...(readers > 0 ? { reading: readers } : {}),
+    ...(wishCount(wishes) > 0 ? { wishes } : {}),
+    ...(wish !== undefined ? { wish } : {}),
   };
 }

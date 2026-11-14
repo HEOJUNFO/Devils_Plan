@@ -1529,6 +1529,41 @@ describe("GameRoom: being ready, and the host", () => {
     a.close();
   });
 
+  it("tells everyone how many asked for another game, and takes the word back once the host has changed the game", async () => {
+    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
+    const a = await open("RDYWA", { player: 0, create: true });
+    const b = await open("RDYWA", { player: 1 });
+    await a.lobbyOf(2);
+
+    b.send({ type: "wish", game: other });
+
+    expect((await a.lobbyWhere((l) => l.wishes !== undefined)).wishes).toEqual({ [other]: 1 });
+    expect((await b.lobbyWhere((l) => l.wishes !== undefined)).wish).toBe(other);
+    a.send({ type: "pick", game: other });
+    const changed = await b.lobbyWhere((l) => l.game === other);
+    expect(changed.wishes).toBeUndefined();
+    expect(changed.wish).toBeUndefined();
+    a.close();
+    b.close();
+  });
+
+  it("does not take the host's word for another game, and lets a player take theirs back", async () => {
+    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
+    const a = await open("RDYWB", { player: 0, create: true });
+    const b = await open("RDYWB", { player: 1 });
+    await a.lobbyOf(2);
+
+    a.send({ type: "wish", game: other });
+    b.send({ type: "wish", game: other });
+
+    // the room answers in the order it was asked: had it taken the host's word, there would be two
+    expect((await a.lobbyWhere((l) => l.wishes !== undefined)).wishes).toEqual({ [other]: 1 });
+    b.send({ type: "wish", game: null });
+    expect((await a.lobbyWhere((l) => l.wishes === undefined)).wishes).toBeUndefined();
+    a.close();
+    b.close();
+  });
+
   it("does not take the host's word that they are ready: the host starts", async () => {
     const a = await open("RDYAB", { player: 0, create: true });
     const b = await open("RDYAB", { player: 1 });

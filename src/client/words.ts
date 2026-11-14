@@ -259,7 +259,13 @@ const ko = {
     pingGrade: { good: "연결 좋음", fair: "연결 보통", poor: "연결 느림" },
     /** On the host's button that opens the choice of another game for the room: short, beside two others. */
     swap: "게임",
+    /** The same button with how many have asked for another game (`src/shared/wish.ts`). */
+    swapCount: (count: number) => (count > 0 ? `게임 ${count}` : "게임"),
     swapHelp: "누르면 이 방에서 할 게임을 바꿉니다",
+    /** To the host, while some have asked for another game. */
+    swapAsked: (count: number) => `${count}명이 다른 게임을 골랐습니다. 누르면 이 방에서 할 게임을 바꿉니다`,
+    /** To a player who is not the host: the button opens their own choice. */
+    wishHelp: "누르면 다음에 하고 싶은 게임을 고릅니다",
     /** In the chat, when the host has made the room one for another game. */
     gameChanged: (game: string) => `이제 이 방의 게임은 ${game}입니다`,
     /** On the button of everyone but the host: said once, taken back with the same button. */
@@ -337,6 +343,15 @@ const ko = {
   swap: {
     title: "게임 바꾸기",
     hint: "바꾸면 준비 표시와 팀 선택은 처음으로 돌아갑니다.",
+    /** The title while some have asked for another game: what the numbers beside the games are. */
+    titleAsked: "게임 바꾸기 · 숫자는 고른 사람 수",
+    /** The sheet of a player who is not the host: which game they would like next (`src/shared/wish.ts`). */
+    wishTitle: "다음에 하고 싶은 게임",
+    wishHint: "방장은 고른 사람 수만 보고, 바꿀지 정합니다.",
+    /** A game's button there, for a screen reader: its name, how many asked for it, whether the reader did. */
+    choiceHelp: (title: string, count: number, mine: boolean) => `${title}: ${count}명이 골랐습니다${mine ? " (나 포함)" : ""}`,
+    /** The game the room is for now, in a sheet where it cannot be asked for. */
+    now: (title: string) => `${title} · 지금`,
     tooMany: "지금 인원이 다 들어가지 않는 게임은 고를 수 없습니다.",
     close: "닫기",
   },
@@ -717,7 +732,10 @@ const en: typeof ko = {
     ping: (ms) => `Ping ${ms} ms`,
     pingGrade: { good: "Good connection", fair: "Fair connection", poor: "Slow connection" },
     swap: "Game",
+    swapCount: (count) => (count > 0 ? `Game ${count}` : "Game"),
     swapHelp: "Press to change the game this room plays",
+    swapAsked: (count) => `${count === 1 ? "1 player has" : `${count} players have`} picked another game. Press to change the game this room plays`,
+    wishHelp: "Press to pick the game you want next",
     gameChanged: (game) => `This room now plays ${game}`,
     ready: "Ready",
     unready: "Not ready",
@@ -774,6 +792,11 @@ const en: typeof ko = {
   swap: {
     title: "Change the game",
     hint: "Changing it takes back ready marks and teams.",
+    titleAsked: "Change the game · numbers: players who want it",
+    wishTitle: "Game you want next",
+    wishHint: "The host sees the counts only, and decides.",
+    choiceHelp: (title, count, mine) => `${title}: picked by ${count}${mine ? ", you among them" : ""}`,
+    now: (title) => `${title} · now`,
     tooMany: "A game that cannot hold everyone here cannot be picked.",
     close: "Close",
   },

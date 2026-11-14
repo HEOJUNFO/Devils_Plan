@@ -68,6 +68,7 @@ import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
 import { againOf, hostCallDue, waitsOnHost } from "../shared/again";
 import { readingNow } from "../shared/reading";
+import { wishAfter, wishCount, wishesWith } from "../shared/wish";
 import { afterRefusedMake } from "../shared/reopen";
 import { calendarOf, type CalendarEvent } from "../shared/calendar";
 import { firstDay, linkedOf, mayPlan, parseLinked, standing as appointmentStands, stepped, type AppointmentConfig } from "../shared/appointment";
@@ -535,7 +536,11 @@ let warming: ReturnType<typeof setTimeout> | null = null;
  * goes on from them: the room's answer is a moment away, and a button that
  * stays as it was until then reads as a press not taken.
  */
-let asked: { listed?: boolean; turnSeconds?: number; variant?: string; team?: number; ready?: boolean } = {};
+let asked: { listed?: boolean; turnSeconds?: number; variant?: string; team?: number; ready?: boolean; wish?: GameId | null } = {};
+/** Whether the room has spoken on the connection now open: a new one starts with nothing this page said on the last. */
+let roomSpoke = false;
+/** The game this player asked the room for as its next, as the room last said it, or `null` for none: said again on a new connection (`src/shared/wish.ts`). */
+let keptWish: GameId | null = null;
 /** When this player last pressed or typed anything on the page: how the page knows, asked by the room, that its host is there. */
 let lastInputAt = Date.now();
 /** Whether the room has asked if the host is there and the page could not say so by itself: the next press answers. */
@@ -2640,20 +2645,37 @@ el<HTMLButtonElement>("quick-close").addEventListener("click", () => showQuick(f
  */
 function showSwap(shown: boolean): void {
   const view = currentView;
-  if (!shown || view === null || !isHost || table !== null) {
+  if (!shown || view === null || table !== null) {
     swapSheet.hidden = true;
     return;
   }
   showOptions(false);
   const slots = view.players.map((p) => p.slot);
+  // The host's sheet changes the game. Everyone else's says which game they would like next: the same games,
+  // each with how many have asked for it, the room's own game not among those to ask for.
+  const hosting = isHost;
+  const wishes = shownWishes(view);
+  const mine = hosting ? null : myWish(view);
+  // the keys stay on the game they were on when the sheet is drawn again under them
+  const keysAt = [...swapChoices.children].indexOf(document.activeElement as Element);
   const choices = GAME_IDS.map((id) => {
     const button = document.createElement("button");
+    const count = wishes[id] ?? 0;
+    const title = GAMES[id].title[lang];
     button.type = "button";
     button.className = "choice";
-    button.textContent = GAMES[id].title[lang];
-    button.setAttribute("aria-pressed", String(id === view.game));
-    button.disabled = id !== view.game && !gameHolds(slots, id, config);
+    button.textContent = !hosting && id === view.game ? WORDS.swap.now(title) : count > 0 ? `${title} · ${count}` : title;
+    if (count > 0) button.setAttribute("aria-label", WORDS.swap.choiceHelp(title, count, id === mine));
+    button.setAttribute("aria-pressed", String(hosting ? id === view.game : id === mine));
+    const holds = gameHolds(slots, id, config);
+    button.disabled = hosting ? id !== view.game && !holds : id === view.game || !holds;
+    button.dataset.full = String(!holds && id !== view.game);
     button.addEventListener("click", () => {
+      if (!hosting) {
+        const next = wishAfter(mine, id);
+        askRoom({ type: "wish", game: next }, { wish: next });
+        return;
+      }
       if (id !== view.game) send({ type: "pick", game: id });
       showSwap(false);
       swapButton.focus({ preventScroll: true });
@@ -2661,7 +2683,11 @@ function showSwap(shown: boolean): void {
     return button;
   });
   swapChoices.replaceChildren(...choices);
-  swapNote.textContent = choices.some((button) => button.disabled) ? WORDS.swap.tooMany : "";
+  if (keysAt >= 0) (choices[keysAt]?.disabled === false ? choices[keysAt] : el<HTMLButtonElement>("swap-close"))?.focus({ preventScroll: true });
+  el("swap-title").textContent = !hosting ? WORDS.swap.wishTitle : wishCount(wishes) > 0 ? WORDS.swap.titleAsked : WORDS.swap.title;
+  el("swap-hint").textContent = hosting ? WORDS.swap.hint : WORDS.swap.wishHint;
+  el("swap-knockout-row").hidden = !hosting;
+  swapNote.textContent = choices.some((button) => button.dataset.full === "true") ? WORDS.swap.tooMany : "";
   swapNote.hidden = swapNote.textContent === "";
   const knockout = view.knockout === true;
   swapKnockout.textContent = knockout ? WORDS.room.knockoutOn : WORDS.room.knockoutOff;
@@ -2669,7 +2695,17 @@ function showSwap(shown: boolean): void {
   swapKnockout.classList.toggle("primary", knockout);
   const opening = swapSheet.hidden;
   swapSheet.hidden = false;
-  if (opening) (choices[GAME_IDS.indexOf(view.game as GameId)] ?? choices[0])?.focus({ preventScroll: true });
+  if (opening) (choices.find((button, at) => !button.disabled && (hosting ? GAME_IDS[at] === view.game : mine === null || GAME_IDS[at] === mine)) ?? el<HTMLButtonElement>("swap-close")).focus({ preventScroll: true });
+}
+
+/** The game this player has asked for as the room's next, with what they pressed since the room last spoke; `null` for none. */
+function myWish(view: LobbyView): GameId | null {
+  return asked.wish !== undefined ? asked.wish : (view.wish ?? null);
+}
+
+/** How many have asked for each game, as the page shows it: the room's count, with this player's own word as they last pressed it. */
+function shownWishes(view: LobbyView): ReturnType<typeof wishesWith> {
+  return view.host === view.you ? { ...view.wishes } : wishesWith(view.wishes, view.wish ?? null, myWish(view));
 }
 
 /**
@@ -2848,8 +2884,13 @@ function renderRoom(code: string, view: LobbyView): void {
   if (!isHost) hostAsked = false;
   syncSeatMenu();
   // the choice of another game is the host's, and is drawn again for who is here now
-  swapButton.hidden = !isHost;
-  swapButton.title = WORDS.room.swapHelp;
+  // For the host it changes the room's game; for everyone else it opens which game they would like next. It says
+  // how many have asked for another (`src/shared/wish.ts`).
+  if (isHost || asked.wish === (view.wish ?? null)) delete asked.wish;
+  const wishing = wishCount(shownWishes(view));
+  swapButton.hidden = false;
+  swapButton.textContent = WORDS.room.swapCount(wishing);
+  swapButton.title = !isHost ? WORDS.room.wishHelp : wishing > 0 ? WORDS.room.swapAsked(wishing) : WORDS.room.swapHelp;
   if (!swapSheet.hidden) showSwap(true);
   // The host starts; everyone else says when they are ready, on the button that stands where the host's start does.
   const me = view.players.find((p) => p.slot === view.you);
@@ -3020,9 +3061,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // a connection that came back is a new one to the room: say again that this page is in voice
     voice.announce();
     online = true;
-    // and, if the rules are still open, that they are: the room kept that with the connection that is gone
+    // What the room kept with the connection that is gone is said again once it has spoken on this one, and so
+    // has let this player in: that the rules are open, and which game was asked for.
     readingSaid = false;
-    syncReading();
+    roomSpoke = false;
     roomDown = null;
     live = opened(Date.now());
     renderStatus();
@@ -3084,7 +3126,13 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       staleSince = null;
       returning = false;
       quickRest = null;
+      const first = !roomSpoke;
+      roomSpoke = true;
+      // a game asked for on a connection that has gone is asked for again on this one
+      const again = first && currentCode === code && keptWish !== null && message.wish === undefined && message.host !== message.you ? keptWish : null;
+      keptWish = again ?? message.wish ?? null;
       renderRoom(code, message);
+      if (again !== null) send({ type: "wish", game: again });
       // The room has a place of its own in the browser's history, above the lobby's, where the player pressed
       // their way in (`src/shared/back.ts`); the address of the place the page is at then names the room.
       back.sync();
@@ -3890,7 +3938,7 @@ el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
  * room knows already.
  */
 function syncReading(): void {
-  const now = (): boolean => readingNow(!rules.hidden, !room.hidden && currentView !== null, table !== null);
+  const now = (): boolean => readingNow(!rules.hidden, !room.hidden && currentView !== null && roomSpoke, table !== null);
   if (now() === readingSaid) {
     clearTimeout(readingTimer);
     readingTimer = undefined;
