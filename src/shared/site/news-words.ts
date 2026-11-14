@@ -38,12 +38,25 @@ const CUBES = name("count-cubes");
 const POKER = name("memory-poker");
 const MARKET = name("mystery-stock-market");
 const RECT = name("count-rectangles");
+const HEAVY = name("under-thirteen");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-15",
     lines: [
+      {
+        ko: `${HEAVY.ko}·${POKER.ko}: 내가 아직 내지 않았거나 고르지 않았는데 시간이 5초 남으면, 1초마다 소리가 납니다.`,
+        en: `${HEAVY.en} and ${POKER.en}: with 5 seconds left and your move not made, each second now ticks aloud.`,
+      },
+      {
+        ko: "대기실: 화면을 보고 있을 때도 누가 들어오면 짧은 소리가 납니다.",
+        en: "Waiting room: a short sound now marks someone coming in while you have the page in front of you, too.",
+      },
+      {
+        ko: `${RECT.ko}: 방의 모두가 한 팀이면 겨룰 상대가 없다는 것을 시작 전에 알려 줍니다.`,
+        en: `${RECT.en}: when everyone in the room is on one team, the waiting room now says there is no other side before you start.`,
+      },
       {
         ko: "로비의 모임 줄: 모임까지 한 시간 넘게 남았을 때는 분을 빼고 「12시간 뒤」처럼 시간만 보여 줍니다.",
         en: "The meet-up line in the lobby: with an hour or more to go it now shows hours only, as in \"in 12h\".",

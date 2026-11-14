@@ -125,6 +125,8 @@ const ko = {
     /** A game's line: hands raised for it in the lobby, games started and ended, and a game's players and minutes on average. */
     game: (name: string, wanted: number, started: number, ended: number, players: number | null, minutes: number | null) =>
       `${name}: 손 든 횟수 ${wanted} · 시작 ${started} · 끝 ${ended}${players === null ? "" : ` · 평균 ${players}명`}${minutes === null ? "" : ` · 평균 ${minutes}분`}`,
+    /** After a game's line: rooms made for it, and of the rooms that stood empty as its own, those someone waited in alone, those where people came and nothing was started, and those where a game was started a second time. */
+    gameRooms: (made: number, alone: number, unplayed: number, again: number) => `방 ${made}개 (혼자 비움 ${alone} · 시작 못 함 ${unplayed} · 두 판 이상 ${again})`,
     hours: (list: string) => `시간대별 방문: ${list}`,
     hour: (hour: number, visits: number) => `${hour}시 ${visits}`,
   },
@@ -354,6 +356,8 @@ const ko = {
       `목록에 올라 있습니다 · ${min}명이면 시작${meet === null ? "" : meet.on ? ` · ${meet.time}까지 ${meet.game} 모임` : ` · 다음 모임 ${meet.time} ${meet.game}`}`,
     brokenTeam: (team: number, size: number, teamSize: number) =>
       `팀 ${team}: ${size}명이라 팀이 아닙니다 (${teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`,
+    /** Everyone who is to play is on the one team: the game starts, with no other side to beat to an answer. One line of the bar under the room, in either language: a second runs into the links below it. */
+    oneSide: (team: number) => `모두 팀 ${team}이라 상대가 없습니다. 겨루려면 누군가 「혼자 하기」로 바꾸세요.`,
     hostReady: (bots: boolean, alone: boolean) => `${bots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}${alone ? "혼자서도 할 수 있습니다. " : ""}준비되면 시작하세요.`,
     /** To the host with others in the room: what a press on one of them does. */
     hostOthers: "준비되면 시작하세요. 사람을 누르면 방장을 넘기거나 내보냅니다.",
@@ -693,6 +697,7 @@ const en: typeof ko = {
     way: { link: "link", list: "list", quick: "quick join", code: "code", meet: "meet-up" },
     game: (name, wanted, started, ended, players, minutes) =>
       `${name}: hands raised ${wanted} · ${started} started · ${ended} finished${players === null ? "" : ` · ${players} to a game`}${minutes === null ? "" : ` · ${minutes} min a game`}`,
+    gameRooms: (made, alone, unplayed, again) => `rooms ${made} (left alone ${alone} · never started ${unplayed} · played again ${again})`,
     hours: (list) => `Visits by hour: ${list}`,
     hour: (hour, visits) => `${hour}h ${visits}`,
   },
@@ -844,6 +849,7 @@ const en: typeof ko = {
     hostAloneListed: (min, meet) =>
       `Listed · start at ${min}${meet === null ? "" : meet.on ? ` · ${meet.game} meet-up until ${meet.time}` : ` · meet-up ${meet.time}, ${meet.game}`}`,
     brokenTeam: (team, size, teamSize) => `Team ${team} has ${size}, not ${teamSize}, so it is no team: its players start alone.`,
+    oneSide: (team) => `All on team ${team}: no other side. To play each other, one goes "Solo".`,
     hostReady: (bots, alone) => `${bots ? "Bots fill the empty seats (development). " : ""}${alone ? "You can play alone. " : ""}Start when ready.`,
     hostOthers: "Start when ready. Press a player to pass host or remove.",
     hostAllReady: "Everyone is ready. Start the game.",

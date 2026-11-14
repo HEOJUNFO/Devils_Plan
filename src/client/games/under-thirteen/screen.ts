@@ -85,7 +85,7 @@ const TILE_H = 27;
 const TILES_IN_ROW = 8;
 /** The widest a name is drawn in the list of players, in pixels. */
 const NAME_WIDTH = 62;
-/** With this many seconds or fewer left, the clock turns red. */
+/** With this many seconds or fewer left, the clock turns red, and a player the game is waiting on hears each of them ticked. */
 const HURRY_FROM = 5;
 /** Seconds the results are on show before Enter starts another game: the host may have been pressing Enter for a rock. */
 const RESULTS_HOLD = 1.5;
@@ -176,6 +176,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   let time = 0;
   /** How many events of the history have been shown, counted from the game's start. */
   let seen = 0;
+  /** The last second of the player's own time that was ticked aloud. */
+  let ticked = -1;
   /** How many events the history had dropped off its front when the latest message came: it keeps two rounds. */
   let dropped = 0;
   /** Something has been sent and the room has not answered yet. */
@@ -581,6 +583,14 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
       }
       // the room has answered and its word of the move has been passed over, or was never in it
       if (ahead === null) shownAhead = null;
+      // my own time is nearly up, with my chip not put in or my rock not answered for: a tick a second
+      const mine = submitting() || asked() ? left(latest.clock.phase) : null;
+      const second = mine === null ? null : Math.ceil(mine / 1000);
+      if (second === null || second > HURRY_FROM) ticked = -1;
+      else if (second !== ticked) {
+        ticked = second;
+        if (second > 0) sfx.move();
+      }
     }
     stepInput();
     keys.length = 0;

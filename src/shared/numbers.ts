@@ -83,6 +83,9 @@ const DAY_MS = 86_400_000;
 const MOST_MINUTES = 24 * 60;
 const MOST_PEOPLE = 64;
 
+/** A room in which this many games were started had its people stay for another. */
+const AGAIN_GAMES = 2;
+
 const isCount = (value: unknown, most: number): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= most;
 
 /** Reads what a room told the directory, returning `null` for anything that is not one of the four. */
@@ -120,12 +123,19 @@ export function atMeet(event: RoomEvent, meet: { on: boolean; game: GameId } | n
  *
  * A room that stands empty with no game ever started in it is counted
  * again, by why: `alone` where nobody else ever came (someone waited and
- * left), `unplayed` where people came and still nothing was started.
+ * left), `unplayed` where people came and still nothing was started. One in
+ * which a game was started a second time is counted as `again`: its people
+ * stayed for another.
+ *
+ * A room made, and one that stood empty so, is counted of its game as well.
+ * The game is the room's at that moment: a host who changes the game of a
+ * room made for one leaves it to be counted empty of another, so a game's
+ * rooms made and its rooms left need not add up on a day.
  */
 export function countsOf(event: RoomEvent, meeting = false): Count[] {
   switch (event.type) {
     case "made":
-      return [{ what: "made", n: 1 }, ...(event.listed ? [{ what: "made-listed", n: 1 }] : [])];
+      return [{ what: "made", n: 1 }, { what: `made:${event.game}`, n: 1 }, ...(event.listed ? [{ what: "made-listed", n: 1 }] : [])];
     case "joined":
       // one row, by the way: how many came in at all is the ways added up
       return [{ what: `via:${event.via}`, n: 1 }];
@@ -142,8 +152,12 @@ export function countsOf(event: RoomEvent, meeting = false): Count[] {
         { what: `ended:${event.game}`, n: 1 },
         ...(event.minutes === null ? [] : [{ what: `timed:${event.game}`, n: 1 }, { what: `minutes:${event.game}`, n: event.minutes }]),
       ];
-    case "emptied":
-      return [{ what: "emptied", n: 1 }, ...(event.games > 0 ? [] : [{ what: event.most <= 1 ? "alone" : "unplayed", n: 1 }])];
+    case "emptied": {
+      if (event.games >= AGAIN_GAMES) return [{ what: "emptied", n: 1 }, { what: `again:${event.game}`, n: 1 }];
+      if (event.games > 0) return [{ what: "emptied", n: 1 }];
+      const why = event.most <= 1 ? "alone" : "unplayed";
+      return [{ what: "emptied", n: 1 }, { what: why, n: 1 }, { what: `${why}:${event.game}`, n: 1 }];
+    }
   }
 }
 
@@ -231,10 +245,21 @@ export function firstKept(today: number, config: NumbersConfig): number {
   return today - config.keepDays + 1;
 }
 
-/** A game's part of a day: hands raised for it in the lobby (`want.ts`), games started and ended, the players of a started game on average, and the minutes of an ended one. `null` where nothing was counted to work one out from. */
+/**
+ * A game's part of a day: hands raised for it in the lobby (`want.ts`), rooms
+ * made for it, games started and ended, the players of a started game on
+ * average, and the minutes of an ended one (`null` where nothing was counted
+ * to work one out from); and of the rooms that stood empty as its own, those
+ * someone waited in `alone`, those where people came and nothing was started
+ * (`unplayed`), and those where a game was started a second time (`again`).
+ */
 export interface GameRead {
   game: GameId;
   wanted: number;
+  made: number;
+  alone: number;
+  unplayed: number;
+  again: number;
   started: number;
   ended: number;
   players: number | null;
@@ -261,7 +286,7 @@ export interface DayRead {
   came: Record<Came, number>;
   /** How those who came into a room somebody else made got there, each way that anyone took, in the order of `JOIN_WAYS`. */
   ways: { via: JoinWay; n: number }[];
-  /** The games a hand was raised for or something was started or ended of, in the order the games are listed in. */
+  /** The games a hand was raised for, a room was made for or stood empty as, or something was started or ended of, in the order the games are listed in. */
   games: GameRead[];
   /** The hours somebody came in, earliest first, with how many visits. */
   hours: { hour: number; visits: number }[];
@@ -277,11 +302,15 @@ export function readDay(numbers: DayNumbers): DayRead {
   const games = GAME_IDS.map((game) => ({
     game,
     wanted: of(`wanted:${game}`),
+    made: of(`made:${game}`),
+    alone: of(`alone:${game}`),
+    unplayed: of(`unplayed:${game}`),
+    again: of(`again:${game}`),
     started: of(`started:${game}`),
     ended: of(`ended:${game}`),
     players: mean(of(`players:${game}`), of(`started:${game}`)),
     minutes: mean(of(`minutes:${game}`), of(`timed:${game}`)),
-  })).filter((each) => each.started > 0 || each.ended > 0 || each.wanted > 0);
+  })).filter((each) => each.started > 0 || each.ended > 0 || each.wanted > 0 || each.made > 0 || each.alone > 0 || each.unplayed > 0 || each.again > 0);
   const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, visits: of(`hour:${hour}`) })).filter((each) => each.visits > 0);
   return {
     date: new Date(numbers.day * DAY_MS).toISOString().slice(0, 10),

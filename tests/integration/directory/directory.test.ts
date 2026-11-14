@@ -1416,8 +1416,8 @@ describe("RoomDirectory: the numbers of the day", () => {
     }
 
     expect(await counted()).toEqual({
-      made: 2, "made-listed": 1, started: 2, "started:under-thirteen": 2, "players:under-thirteen": 6,
-      ended: 1, "ended:under-thirteen": 1, "timed:under-thirteen": 1, "minutes:under-thirteen": 11, emptied: 2, alone: 1,
+      made: 2, "made:under-thirteen": 1, "made:count-cubes": 1, "made-listed": 1, started: 2, "started:under-thirteen": 2, "players:under-thirteen": 6,
+      ended: 1, "ended:under-thirteen": 1, "timed:under-thirteen": 1, "minutes:under-thirteen": 11, emptied: 2, alone: 1, "alone:count-cubes": 1, "again:under-thirteen": 1,
     });
   });
 

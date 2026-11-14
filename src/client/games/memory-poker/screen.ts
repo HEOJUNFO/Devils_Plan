@@ -80,7 +80,7 @@ const DASH_ON = 4;
 const DASH_OFF = 3;
 /** The widest a name is drawn in the list of players, in pixels. */
 const NAME_WIDTH = 62;
-/** With this many seconds or fewer of a phase left, the clock turns red. */
+/** With this many seconds or fewer of a phase left, the clock turns red, and a player who has not locked their cards in hears each of them ticked. */
 const HURRY_FROM = 5;
 /**
  * Seconds the results are on show before Enter starts another game: the host
@@ -141,6 +141,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
   let time = 0;
   /** How many events of the history have been shown. */
   let seen = 0;
+  /** The last second of the player's own time to choose that was ticked aloud. */
+  let ticked = -1;
   /** A final choice has been sent and the room has not answered yet. */
   let pending = false;
   /** The host has asked for the next game and the room has not answered yet. */
@@ -387,6 +389,14 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       while (seen < latest.view.history.length) show(latest.view.history[seen++]);
       // the room has answered and its word of the choice has been passed over, or was never in it
       if (!pending) lockSounded = false;
+      // my time to choose is nearly up and my cards are not locked in: a tick a second
+      const mine = canChoose() ? left(latest.clock.phase) : null;
+      const second = mine === null ? null : Math.ceil(mine / 1000);
+      if (second === null || second > HURRY_FROM) ticked = -1;
+      else if (second !== ticked) {
+        ticked = second;
+        if (second > 0) sfx.move();
+      }
     }
     stepInput();
     keys.length = 0;

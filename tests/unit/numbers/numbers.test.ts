@@ -79,8 +79,8 @@ describe("a game that began at a meeting", () => {
 
 describe("countsOf", () => {
   it("counts a room made, and again where it is on the list", () => {
-    expect(countsOf({ type: "made", game: "count-cubes", listed: false })).toEqual([{ what: "made", n: 1 }]);
-    expect(countsOf({ type: "made", game: "count-cubes", listed: true })).toEqual([{ what: "made", n: 1 }, { what: "made-listed", n: 1 }]);
+    expect(countsOf({ type: "made", game: "count-cubes", listed: false })).toEqual([{ what: "made", n: 1 }, { what: "made:count-cubes", n: 1 }]);
+    expect(countsOf({ type: "made", game: "count-cubes", listed: true })).toEqual([{ what: "made", n: 1 }, { what: "made:count-cubes", n: 1 }, { what: "made-listed", n: 1 }]);
   });
 
   it("counts a game started, of its game, with its players", () => {
@@ -102,9 +102,14 @@ describe("countsOf", () => {
   });
 
   it("counts a room that stood empty unplayed by why: nobody else came, or people came and nothing was started", () => {
-    expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 0, most: 1 })).toEqual([{ what: "emptied", n: 1 }, { what: "alone", n: 1 }]);
-    expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 0, most: 3 })).toEqual([{ what: "emptied", n: 1 }, { what: "unplayed", n: 1 }]);
-    expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 2, most: 1 })).toEqual([{ what: "emptied", n: 1 }]);
+    expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 0, most: 1 })).toEqual([{ what: "emptied", n: 1 }, { what: "alone", n: 1 }, { what: "alone:count-cubes", n: 1 }]);
+    expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 0, most: 3 })).toEqual([{ what: "emptied", n: 1 }, { what: "unplayed", n: 1 }, { what: "unplayed:count-cubes", n: 1 }]);
+    expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 1, most: 1 })).toEqual([{ what: "emptied", n: 1 }]);
+  });
+
+  it("counts a room that stood empty after a second game was started in it as one whose people stayed for another", () => {
+    expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 2, most: 1 })).toEqual([{ what: "emptied", n: 1 }, { what: "again:count-cubes", n: 1 }]);
+    expect(countsOf({ type: "emptied", game: "memory-poker", listed: false, games: 5, most: 4 })).toEqual([{ what: "emptied", n: 1 }, { what: "again:memory-poker", n: 1 }]);
   });
 });
 
@@ -187,6 +192,7 @@ describe("readDay", () => {
       counts: {
         visits: 40, people: 31, peak: 6, made: 12, "made-listed": 9, started: 3, ended: 2, emptied: 11, alone: 5, unplayed: 2,
         "wanted:under-thirteen": 6, "wanted:memory-poker": 1, "started:under-thirteen": 3, "players:under-thirteen": 13, "ended:under-thirteen": 2, "timed:under-thirteen": 2, "minutes:under-thirteen": 25,
+        "made:under-thirteen": 7, "made:lay-the-grass": 5, "alone:lay-the-grass": 4, "alone:under-thirteen": 1, "unplayed:under-thirteen": 2, "again:under-thirteen": 1,
         "hour:9": 30, "hour:21": 10, "started-meet": 2, "via:meet": 3, "via:link": 4, "via:advert": 9,
         "came:first": 20, "came:day": 5, "came:longer": 1, "came:never": 8,
       },
@@ -199,8 +205,10 @@ describe("readDay", () => {
       // the ways anyone took, in the order the ways are listed in
       ways: [{ via: "link", n: 4 }, { via: "meet", n: 3 }],
       games: [
-        { game: "memory-poker", wanted: 1, started: 0, ended: 0, players: null, minutes: null },
-        { game: "under-thirteen", wanted: 6, started: 3, ended: 2, players: 4.3, minutes: 12.5 },
+        // a game nothing was started of is still read where a room was made for it
+        { game: "lay-the-grass", wanted: 0, made: 5, alone: 4, unplayed: 0, again: 0, started: 0, ended: 0, players: null, minutes: null },
+        { game: "memory-poker", wanted: 1, made: 0, alone: 0, unplayed: 0, again: 0, started: 0, ended: 0, players: null, minutes: null },
+        { game: "under-thirteen", wanted: 6, made: 7, alone: 1, unplayed: 2, again: 1, started: 3, ended: 2, players: 4.3, minutes: 12.5 },
       ],
       hours: [{ hour: 9, visits: 30 }, { hour: 21, visits: 10 }],
     });
@@ -210,7 +218,7 @@ describe("readDay", () => {
     const day = readDay({ day: MONDAY_DAY + 6, counts: { "ended:count-cubes": 1 } });
 
     expect(day).toMatchObject({ date: "2026-11-22", weekday: 6, visits: 0, made: 0, hours: [], startedAtMeet: 0, ways: [] });
-    expect(day.games).toEqual([{ game: "count-cubes", wanted: 0, started: 0, ended: 1, players: null, minutes: null }]);
+    expect(day.games).toEqual([{ game: "count-cubes", wanted: 0, made: 0, alone: 0, unplayed: 0, again: 0, started: 0, ended: 1, players: null, minutes: null }]);
   });
 });
 

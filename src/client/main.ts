@@ -2339,7 +2339,10 @@ function numbersAnswered(days: DayNumbers[] | null): void {
         `${WORDS.numbers.rooms(day.made, day.listed)} · ${WORDS.numbers.games(day.started, day.ended)}`,
         WORDS.numbers.left(day.alone, day.unplayed),
         WORDS.numbers.ways(day.ways.map((each) => `${WORDS.numbers.way[each.via]} ${each.n}`).join(" · "), day.startedAtMeet),
-        ...day.games.map((each) => WORDS.numbers.game(GAMES[each.game].title[lang], each.wanted, each.started, each.ended, each.players, each.minutes)),
+        ...day.games.map(
+          (each) =>
+            `${WORDS.numbers.game(GAMES[each.game].title[lang], each.wanted, each.started, each.ended, each.players, each.minutes)} · ${WORDS.numbers.gameRooms(each.made, each.alone, each.unplayed, each.again)}`,
+        ),
         ...(day.hours.length === 0 ? [] : [WORDS.numbers.hours(day.hours.map((each) => WORDS.numbers.hour(each.hour, each.visits)).join(" · "))]),
       ].join("\n");
       row.append(head, text);
@@ -2678,6 +2681,10 @@ function noteComings(before: LobbyView, after: LobbyView): void {
     if (was.has(slot)) continue;
     chat.note({ kind: "came", nick });
     call("came");
+    // With the tab in front the call above does nothing, and a host who is talking to the friends they are waiting
+    // with is not reading the list: a seat taken is heard. Not over a game, where someone come to watch is no
+    // player's business.
+    if (document.visibilityState === "visible" && !gameOn) sfx.seat(slot);
   }
   // someone the host sent out is said to have been sent out, not to have gone
   for (const [slot, nick] of was) {
@@ -3468,6 +3475,9 @@ function renderRoom(code: string, view: LobbyView): void {
   // in a room playing 탈락전 the game is for those still in
   const playing = view.knockout === true ? connected.filter((p) => !p.out) : connected;
   const enough = wantBots || (playing.length >= game.minPlayers && playing.length <= game.maxPlayers);
+  // Everyone who is to play is on one full team: the game starts, with nobody to beat to an answer. Friends who
+  // came to play each other are told before they start, not by a game that is over in two answers.
+  const oneSide = !wantBots && playing.length > 1 && broken === undefined && playing.every((p) => p.team > 0 && p.team === playing[0].team) ? playing[0].team : null;
   startButton.disabled = !isHost || !enough || startAsked;
   startButton.textContent = startAsked ? WORDS.room.starting : WORDS.room.start;
   startButton.setAttribute("aria-busy", String(startAsked));
@@ -3494,6 +3504,8 @@ function renderRoom(code: string, view: LobbyView): void {
         ? WORDS.room.knockoutWatching
       : broken !== undefined
         ? WORDS.room.brokenTeam(broken[0], broken[1], game.teamSize)
+      : oneSide !== null
+        ? WORDS.room.oneSide(oneSide)
         : isHost
           ? allReady
             ? WORDS.room.hostAllReady
