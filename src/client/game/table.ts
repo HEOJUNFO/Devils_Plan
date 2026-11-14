@@ -117,6 +117,12 @@ const RESULTS_HOLD = 1.5;
  * shown (the longest is a little over a second, as is the seat draw), and the player is called at the room's word.
  */
 const EARLY_HOLD = 1.5;
+/**
+ * How long the button lit by a move pressed too soon waits before a finger on it makes the move. Longer than
+ * `AGAIN_HOLD`: a finger that pressed early presses again when nothing seemed to come of it, and that second
+ * press must still only choose.
+ */
+const EARLY_AGAIN_HOLD = 1;
 /** Seconds each kind of move stays on show. */
 const SHOW = { look: 0.7, rotate1: 0.8, rotate2: 1.05, tamper: 0.56, swap: 1.0, forfeit: 0.5, hidden: 0.56, pass: 0.4, out: 0.3 };
 /** With more moves than this waiting, they are shown faster. */
@@ -323,7 +329,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   /** Whether the player could act at the last step; a change to yes is announced. */
   let couldAct = false;
   /** A move pressed when the turn was the player's by the room's word and the screen had not caught up, and when: taken up once it has. */
-  let early: { act: number; at: number } | null = null;
+  let early: { act: number; at: number; moves: number } | null = null;
   /** The last second of the player's own turn that was ticked aloud. */
   let ticked = -1;
   const playing: PlayingFx[] = [];
@@ -803,15 +809,22 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (!able) {
       sel = null;
       // The turn is mine by the room's word, and the move before it is still being shown: a move pressed now is not lost.
-      if (picked !== null && waits() && !pending && !offline) early = { act: picked, at: time };
-      else if (!waits()) early = null;
+      // It is answered at the press (its button lights, with the sound of a choice), so that it is not pressed again.
+      if (picked !== null && waits() && !pending && !offline) {
+        early = { act: picked, at: time, moves: truth?.view.history.length ?? -1 };
+        sfx.pick();
+      } else if (!waits()) early = null;
       return;
     }
-    // (not over the swap, which has to be made first, nor over a move pressed since)
-    if (picked === null && sel === null && early !== null && time - early.at <= EARLY_HOLD) picked = early.act;
+    // (not over the swap, which has to be made first, nor over a move pressed since; and not on a later turn: this
+    // clock stands still while the tab is hidden, so the press is also held to the moves the room had told of then)
+    const kept = picked === null && sel === null && early !== null && time - early.at <= EARLY_HOLD && early.moves === truth?.view.history.length;
+    if (kept && early !== null) picked = early.act;
     early = null;
     if (sel === null) {
       if (picked !== null) choose(picked);
+      // under a finger the lit button makes the move when pressed again: not by the press that only repeats the early one
+      if (kept && sel !== null) selAt = time + EARLY_AGAIN_HOLD - AGAIN_HOLD;
       return;
     }
     if (sel.mode !== "swap") {
@@ -1436,7 +1449,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       const rect = buttonRect(i);
       const [x, y, w, h] = rect;
       const can = live && view.credits >= prices[i] && !(sel !== null && sel.mode === "swap");
-      const on = live && sel !== null && sel.act === i;
+      // (a move pressed too soon lights its button while it is kept: `early`)
+      const on = (live && sel !== null && sel.act === i) || (!live && early !== null && early.act === i && time - early.at <= EARLY_HOLD);
       if (on && sel !== null && sel.mode === "amount") {
         // counting credits out for the swap: one fewer, the count, one more
         const most = Math.min(rules.tamperMaxPerTurn, view.credits);

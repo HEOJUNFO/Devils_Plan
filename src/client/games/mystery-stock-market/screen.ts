@@ -137,6 +137,13 @@ const DONE_RECT: Box = [396, 238, 78, 28];
 const THIRD_RECT: Box = [232, 238, 78, 28];
 const SECOND_RECT: Box = [314, 238, 78, 28];
 const LAST_RECT: Box = [396, 238, 78, 28];
+/**
+ * How long a question is up before a finger or a click answers it. Its buttons lie where the button that asked it
+ * was (피스 under "현금으로", 마침 under "취소"): the second press of a double press is not its answer.
+ */
+const QUESTION_HOLD = 0.35;
+/** How long the bar goes on saying that a press came while a move was on its way, where the move is back sooner. */
+const HURRIED_SHOWN = 0.8;
 const AGAIN_RECT: Box = [386, 225, 90, 15];
 const LOBBY_RECT: Box = [386, 250, 90, 15];
 /**
@@ -222,6 +229,10 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   /** Whether that number was put there by a button and not typed: the next figure typed then takes its place. */
   let put = true;
   let mode: Mode = "trade";
+  /** When the question that is up was asked, by this screen's clock. */
+  let modeAt = 0;
+  /** When a press last came while a move was on its way, by this screen's clock; `null` once a move has gone since. */
+  let hurriedAt: number | null = null;
   /** Whether the pad of figures is on show in place of the bar's buttons. */
   let pad = false;
   /** Whether the charts are on show in place of the table. */
@@ -394,22 +405,36 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
 
   // ---- Input -----------------------------------------------------------------------------------------
   /**
+   * Whether a move is on its way to the room. The press that asked is then told so and comes to nothing: the bar's
+   * line says it while the move is out (`standing`), not as a note, which would outlive it and cover what the
+   * move did.
+   */
+  function busy(): boolean {
+    if (sent === null) return false;
+    hurriedAt = time;
+    sfx.deny();
+    return true;
+  }
+
+  /** Puts a question in the bar. */
+  function question(asked: Exclude<Mode, "trade">): void {
+    mode = asked;
+    modeAt = time;
+  }
+
+  /**
    * Asks the room for `move` in the round being played, and shows it at once where its outcome can be told here
    * (`ahead`). Whether it went: not while the move before it is on its way (the bar says so: a second press is
    * not counted and not lost without a word), and not without a connection.
    */
   function ask(move: MarketMove): boolean {
-    if (latest === null) return false;
-    if (sent !== null) {
-      say(WORDS.say.wait);
-      sfx.deny();
-      return false;
-    }
+    if (latest === null || busy()) return false;
     if (!handlers.act({ ...move, round: latest.view.round })) {
       say(WORDS.notSent);
       return false;
     }
     sent = move;
+    hurriedAt = null;
     ahead = foreseen(move, latest);
     if (ahead === null) return true;
     sayDone(move, latest.rules);
@@ -493,17 +518,18 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     }
 
     if (mode !== "trade") {
-      // the bar is asking whether the player means it
-      if (pressed("Escape") || clicked(LAST_RECT, BAR_REACH)) {
+      // the bar is asking whether the player means it (a key answers at once; a button once the question has been up a moment)
+      const answered = (rect: Box): boolean => time - modeAt >= QUESTION_HOLD && clicked(rect, BAR_REACH);
+      if (pressed("Escape") || answered(LAST_RECT)) {
         mode = "trade";
       } else if (mode === "piece") {
         // (a question stays up when its answer did not go, so that it can be answered again)
-        if (pressed("Digit1", "Numpad1") || clicked(THIRD_RECT, BAR_REACH)) {
+        if (pressed("Digit1", "Numpad1") || answered(THIRD_RECT)) {
           if (ask({ type: "peek", stock: stock.id })) mode = "trade";
-        } else if (pressed("Digit2", "Numpad2") || clicked(SECOND_RECT, BAR_REACH)) {
+        } else if (pressed("Digit2", "Numpad2") || answered(SECOND_RECT)) {
           if (ask({ type: "cash" })) mode = "trade";
         }
-      } else if (pressed("Enter", "NumpadEnter") || clicked(SECOND_RECT, BAR_REACH)) {
+      } else if (pressed("Enter", "NumpadEnter") || answered(SECOND_RECT)) {
         if (ask(mode === "secret" ? { type: "secret", stock: stock.id } : { type: "done" })) mode = "trade";
       }
       return;
@@ -564,17 +590,22 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
 
     if (pressed("KeyB") || clicked(BUY_RECT, BAR_REACH)) order("buy");
     else if (pressed("KeyS") || clicked(SELL_RECT, BAR_REACH)) order("sell");
+    // (no question is put while a move is on its way: the bar does not draw one then, and it would be answered unseen)
     else if (pressed("KeyX") || clicked(SECRET_RECT, BAR_REACH)) {
-      if (own.secret) mode = "secret";
+      if (busy()) return;
+      if (own.secret) question("secret");
       else {
         say(WORDS.refused["secret-used"]);
         sfx.deny();
       }
     } else if (pressed("KeyP") || clicked(PIECE_RECT, BAR_REACH)) {
+      if (busy()) return;
       if (view.round > latest.rules.pieceRounds) say(WORDS.refused["pieces-closed"]);
       else if (own.pieces < 1) say(WORDS.refused["no-pieces"]);
-      else mode = "piece";
-    } else if (pressed("Enter", "NumpadEnter") || clicked(DONE_RECT, BAR_REACH)) mode = "done";
+      else question("piece");
+    } else if (pressed("Enter", "NumpadEnter") || clicked(DONE_RECT, BAR_REACH)) {
+      if (!busy()) question("done");
+    }
   }
 
   // ---- One step of the screen's clock ---------------------------------------------------------------
@@ -884,6 +915,8 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     }
     // what was asked of the room is on its way: said at once, over whatever the last move left written
     // (a move drawn ahead has been said already: its own words stand)
+    // (and where a press came in that time, that it was not counted: until the move is back, or a moment longer)
+    if (hurriedAt !== null && !offline && (sent !== null || time - hurriedAt < HURRIED_SHOWN)) return [WORDS.say.wait, C.amber];
     if (sent !== null && ahead === null && !offline) return [WORDS.standing.sending, C.boneD];
     if (noteT > 0) return [note, C.amber];
     if (offline) return [WORDS.standing.offline, C.crim];

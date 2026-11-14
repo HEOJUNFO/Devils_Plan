@@ -145,6 +145,12 @@ const AGAIN_RECT: Box = [386, 225, 90, 15];
 const LOBBY_RECT: Box = [386, 250, 90, 15];
 /** A whole stand, as a place to click. */
 const standRect = (index: number): Box => [STAND_X + index * STAND_STEP, SUM_Y, STAND_W, FLOOR_Y + 21 - SUM_Y];
+/**
+ * The part of a stand that places the rock of a chip of one colour when pressed: the stand below its sum. The sum
+ * is a few pixels under the page's own buttons (나가기, 음성), and a finger meant for those must not place a rock.
+ */
+const STAND_BODY_FROM = 26;
+const standBody = (index: number): Box => [STAND_X + index * STAND_STEP, SUM_Y + STAND_BODY_FROM, STAND_W, FLOOR_Y + 21 - SUM_Y - STAND_BODY_FROM];
 
 /** A clock that has `ms` left, as minutes and seconds. */
 function clockOf(ms: number): string {
@@ -537,7 +543,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     } else {
       // A chip of one colour has one stand. That stand under a finger, or its number, places as the button does
       // (as either does with the rainbow chip); another stand or number is told why it does nothing.
-      const chosen = STANDS.filter((_, index) => pressed(`Digit${index + 1}`, `Numpad${index + 1}`) || clicked(standRect(index)));
+      const chosen = STANDS.filter((_, index) => pressed(`Digit${index + 1}`, `Numpad${index + 1}`) || clicked(standBody(index)));
       if (pressed("Enter", "NumpadEnter") || clicked(PLACE_RECT) || (own !== null && chosen.includes(own))) placeOn(null);
       else if (own !== null && chosen.length > 0 && !pending) {
         say(WORDS.say.oneStand(WORDS.stand[own]));
