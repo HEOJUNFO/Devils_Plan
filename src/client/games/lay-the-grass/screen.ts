@@ -41,7 +41,7 @@ import { rowsOf } from "../../../shared/text";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C, shade } from "../../game/palette";
-import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { TOUCH } from "../../touch";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
@@ -558,9 +558,11 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
 
     const view = latest.view;
     if (view.phase === "ended") {
-      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
+      // (the two buttons take no press in the first moment the results are up: `RESULTS_PRESS_HOLD`)
+      const pressable = time - endedAt >= RESULTS_PRESS_HOLD;
+      if (pressed("Escape", "Backspace") || (pressable && clicked(LOBBY_RECT, LOBBY_REACH))) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && pressable && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) askAgain();
         // (someone who is not the host says with the same key that they would play one more: the tab beside the log shows it)
         else if (!handlers.wantAgain()) say(WORDS.refused["not-host"]);

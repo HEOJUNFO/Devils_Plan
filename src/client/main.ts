@@ -125,6 +125,8 @@ const FEEDBACK_WAIT_MS = 10_000;
 
 /** How long the way out of a game waits for its second press. */
 const LEAVE_CONFIRM_MS = 3000;
+/** How soon after the first press the second counts: a double press is one press, not both. */
+const LEAVE_AGAIN_MS = 350;
 
 /** Why the room would not let this page in, in words. */
 const REJECT_TEXT: Record<RejectReason, string> = WORDS.reject;
@@ -589,6 +591,8 @@ let shownGame: number | null = null;
 let dismissedGame: number | null = null;
 /** Set while the way out of a game waits for its second press. */
 let leaveArmed: ReturnType<typeof setTimeout> | null = null;
+/** When it was pressed the first time (`performance.now()`). */
+let leaveArmedAt = 0;
 /** Whether the connection to the room is up; the waiting room says so when it is not. */
 let online = false;
 /**
@@ -3732,10 +3736,12 @@ variantButton.addEventListener("click", () => {
 // button sits where a stray click lands.
 leaveGameButton.addEventListener("click", () => {
   if (leaveArmed !== null) {
+    if (performance.now() - leaveArmedAt < LEAVE_AGAIN_MS) return;
     disarmLeave();
     leaveRoom();
     return;
   }
+  leaveArmedAt = performance.now();
   leaveGameButton.textContent = WORDS.game.leaveConfirm;
   // the longer words reach over where the voice controls sit beside the button: they give way meanwhile
   frame.classList.add("leaving");

@@ -20,6 +20,14 @@ import type { Press, Reach } from "../../shared/frame";
 export const AGAIN_REACH: Reach = [6, 3, 4, 5];
 export const LOBBY_REACH: Reach = [6, 5, 4, 5];
 
+/**
+ * How long a game's results are up, in seconds, before those two buttons take a press. They come up where the
+ * game's own buttons were (a pad's "입력", "놓기", "말하기"), at the moment the room says the game is over: the
+ * second press of a double press, or a press already on its way when someone else ended the game, is not a
+ * press of theirs. (Keys wait longer, `RESULTS_HOLD` of each screen: Enter is held down, a finger is not.)
+ */
+export const RESULTS_PRESS_HOLD = 0.8;
+
 /** A place on the screen, in its own pixels. */
 export interface Point {
   x: number;

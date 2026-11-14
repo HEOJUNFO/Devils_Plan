@@ -29,7 +29,7 @@ import {
 } from "../../game/draw";
 import { FIGURE_COUNT, figureRects } from "../../game/figures";
 import { C } from "../../game/palette";
-import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "../../game/pointer";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import * as fxlib from "../../game/pixelfx.js";
 import { lessMotion } from "../../game/motion";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
@@ -119,6 +119,8 @@ const TICK_FROM = 3;
  * ended this one.
  */
 const RESULTS_HOLD = 1.5;
+/** How long the pad of figures is up before it takes a press: it comes up where the buzzer was. */
+const PAD_HOLD = 0.35;
 /** What the two options of each card are called. */
 const OPTION_NAMES = WORDS.choice.options;
 
@@ -232,6 +234,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   /** The option of the third choice pointed at and not yet confirmed. */
   let pointed: Option | null = null;
   let buzzed = false;
+  /** Since when the answer has been this player's to give, by this screen's clock; `null` while it is not. */
+  let floorAt: number | null = null;
   /** Enter was pressed during that wait: the answer goes as soon as it is this player's to give. */
   let queued = false;
   let host = false;
@@ -453,9 +457,11 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     if (help || was) return;
     const view = latest.view;
     if (view.phase === "ended") {
-      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
+      // (the two buttons take no press in the first moment the results are up: `RESULTS_PRESS_HOLD`)
+      const pressable = time - endedAt >= RESULTS_PRESS_HOLD;
+      if (pressed("Escape", "Backspace") || (pressable && clicked(LOBBY_RECT, LOBBY_REACH))) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - endedAt >= RESULTS_HOLD) || (host && pressable && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) askAgain();
         // (someone who is not the host says with the same key that they would play one more: the tab beside the log shows it)
         else if (!handlers.wantAgain()) say(WORDS.refused["not-host"]);
@@ -495,6 +501,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       return;
     }
     const toAnswer = answering();
+    if (!toAnswer) floorAt = null;
+    else floorAt ??= time;
     // A slow frame can hold several keys: they are taken in the order pressed (see `typing.ts`).
     let typing: readonly string[] = keys;
     if (!toAnswer && !buzzed) {
@@ -528,7 +536,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const most = `${latest.rules.maxSaid}`.length;
     // the pad is on screen only once the answer is this player's; its buttons count as the keys they stand for
     const pad: string[] = [];
-    if (toAnswer) {
+    // (not in its first moment: the pad comes up where the buzzer was, and a second press of the buzzer is no figure)
+    if (toAnswer && floorAt !== null && time - floorAt >= PAD_HOLD) {
       for (let digit = 0; digit <= 9; digit++) if (clicked(digitRect(digit), PAD_REACH)) pad.push(`Digit${digit}`);
       if (clicked(ERASE_RECT, PAD_REACH)) pad.push("Backspace");
       if (clicked(SAY_RECT, PAD_REACH)) pad.push("Enter");

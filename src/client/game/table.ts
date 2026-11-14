@@ -57,7 +57,7 @@ import { CHAIR_DOWN, FIGURE_COUNT } from "./figures";
 import { makeRoom, type LabelBox, type LabelRoom } from "./labels";
 import { C } from "./palette";
 import * as fxlib from "./pixelfx.js";
-import { AGAIN_REACH, LOBBY_REACH, watchPointer } from "./pointer";
+import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "./pointer";
 import { lessMotion } from "./motion";
 import { isMuted, setMuted, sfx, startAudio } from "./sound";
 import { WORDS } from "./words";
@@ -123,6 +123,11 @@ const EARLY_HOLD = 1.5;
  * press must still only choose.
  */
 const EARLY_AGAIN_HOLD = 1;
+/**
+ * How long the swap is up before it can be made. It comes up by itself, a second or so after the press that put
+ * the credits in, with its "확인" where that press was: a second press of that one is not the swap.
+ */
+const SWAP_HOLD = 0.8;
 /** Seconds each kind of move stays on show. */
 const SHOW = { look: 0.7, rotate1: 0.8, rotate2: 1.05, tamper: 0.56, swap: 1.0, forfeit: 0.5, hidden: 0.56, pass: 0.4, out: 0.3 };
 /** With more moves than this waiting, they are shown faster. */
@@ -783,9 +788,11 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       if (pressed("PageUp") || clicked(LOG_UPPER)) logBack += LOG_ROWS - 1;
       if (pressed("PageDown") || clicked(LOG_LOWER)) logBack -= LOG_ROWS - 1;
       logBack = Math.max(0, Math.min(most, logBack));
-      if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
+      // (the two buttons take no press in the first moment the results are up: `RESULTS_PRESS_HOLD`)
+      const pressable = time - resultsAt >= RESULTS_PRESS_HOLD;
+      if (pressed("Escape", "Backspace") || (pressable && clicked(LOBBY_RECT, LOBBY_REACH))) {
         handlers.lobby();
-      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - resultsAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - resultsAt >= RESULTS_HOLD) || (host && pressable && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) askAgain();
         // (someone who is not the host says with the same key that they would play one more: the tab beside the log shows it)
         else if (!handlers.wantAgain()) say(WORDS.refused["not-host"]);
@@ -798,6 +805,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       sfx.turn();
       if (latest.view.phase === "swap") {
         sel = { mode: "swap", act: 4, pair: swapDefault(), amount: 1 };
+        selAt = time;
         sfx.earn();
       }
     }
@@ -863,6 +871,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         const at = pairAt(p.x, p.y, n, ringAngle());
         if (at === null) continue;
         if (at === sel.pair) {
+          // (the pair the swap comes up on is not made by a press already on its way: `SWAP_HOLD`)
+          if (sel.mode === "swap" && time - selAt < SWAP_HOLD) continue;
           confirm();
           return;
         }
@@ -885,6 +895,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
         return;
       }
     }
+    if (sel.mode === "swap" && time - selAt < SWAP_HOLD) return;
     if (pressed("Enter", "NumpadEnter", "Space") || clicked(OK_RECT, OK_REACH)) confirm();
   }
 
