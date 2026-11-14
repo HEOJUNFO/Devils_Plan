@@ -110,6 +110,8 @@ const STEP = 1 / 60;
 const TAU = Math.PI * 2;
 /** Seconds the seats take to fill when a game starts. */
 const DEAL_SECONDS = 1.2;
+/** How long the results are up before Enter is taken for the next game or for one more: the key also confirms a move, and may still be down from the last one. As in the other games. */
+const RESULTS_HOLD = 1.5;
 /** Seconds each kind of move stays on show. */
 const SHOW = { look: 0.7, rotate1: 0.8, rotate2: 1.05, tamper: 0.56, swap: 1.0, forfeit: 0.5, hidden: 0.56, pass: 0.4, out: 0.3 };
 /** With more moves than this waiting, they are shown faster. */
@@ -302,6 +304,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   let fire: Fire | null = null;
   /** The volley of this game has been shown to its end. */
   let fired = false;
+  /** When the results came up, on this screen's clock; `null` while they are not up. */
+  let resultsAt: number | null = null;
   /** How many rows the log is read back by, once the game is over: 0 shows its newest rows. */
   let logBack = 0;
   let fallen: boolean[] = [];
@@ -462,6 +466,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     fallen = new Array<boolean>(n).fill(false);
     revealed = new Array<0 | 1 | null>(n).fill(null);
     fired = false;
+    resultsAt = null;
     logBack = 0;
     couldAct = false;
     // A game met part-way is shown as it stands; only a game seen from its first moment gets the seat draw.
@@ -754,6 +759,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     if (help !== was) handlers.covered(help);
     if (help || was) return;
     if (fired && latest.view.phase === "ended") {
+      resultsAt ??= time;
       // The log is read back once the game is over: a row with the up and down keys, a screenful with the page
       // keys or a press on its upper or lower half. It has more rows than it shows at a table that tells the
       // hidden moves at the end.
@@ -765,7 +771,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       logBack = Math.max(0, Math.min(most, logBack));
       if (pressed("Escape", "Backspace") || clicked(LOBBY_RECT, LOBBY_REACH)) {
         handlers.lobby();
-      } else if (pressed("Enter", "NumpadEnter", "KeyR") || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
+      } else if ((pressed("Enter", "NumpadEnter", "KeyR") && time - resultsAt >= RESULTS_HOLD) || (host && clicked(AGAIN_RECT, AGAIN_REACH))) {
         if (host) askAgain();
         // (someone who is not the host says with the same key that they would play one more: the tab beside the log shows it)
         else if (!handlers.wantAgain()) say(WORDS.refused["not-host"]);
