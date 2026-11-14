@@ -1033,6 +1033,13 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         pen.px(x, y + box.cell - 1, box.cell, 1, colour);
         pen.px(x, y, 1, box.cell, colour);
         pen.px(x + box.cell - 1, y, 1, box.cell, colour);
+        // where it does not fit, each cell is crossed out: some players' grass is as red as the red that says so
+        if (!ok) {
+          for (let i = 2; i < box.cell - 2; i++) {
+            pen.px(x + i, y + i, 1, 1, C.ink);
+            pen.px(x + box.cell - 1 - i, y + i, 1, 1, C.ink);
+          }
+        }
       }
       // the cells cut off: where they were, so that one can be put back
       if (cut.length > 0) {
@@ -1227,7 +1234,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       const chose = view.phase === "choose" && view.choosing?.chosen.includes(player) === true;
       const voice = info === undefined || info.bot || info.left ? "out" : handlers.voice(player);
       const nameColour = gone ? C.dim : me() === player ? C.amber : C.bone;
-      const tileColour = held(player, "attack") !== null ? C.crim : C.boneD;
+      const attacking = held(player, "attack") !== null;
+      const tileColour = attacking ? C.crim : C.boneD;
       // a pair: the partner's colour beside their own
       const pair = view.pairs.find((each) => each.includes(player));
       const partner = pair === undefined ? null : pair[0] === player ? pair[1] : pair[0];
@@ -1246,6 +1254,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
         }
         if (tile !== null) {
           pen.txt(`${tile}`, end, y, tileColour, "right");
+          // who holds 공격 has their tile's number underlined as well as red
+          if (attacking) pen.px(end - pen.width(`${tile}`), y + 11, pen.width(`${tile}`), 1, C.crim);
           end -= pen.width(`${tile}`) + 2;
         }
         const room = end - (ex + 7) - (voice !== "out" ? VOICE_MARK_W + 2 : 0);
@@ -1264,7 +1274,10 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       pen.txt(name, ex + 27, y, nameColour);
       showInitial(player, info?.nick ?? "", name, ex + 27, y);
       if (voice !== "out") drawVoiceMark(pen, ex + 27 + pen.width(name) + 2, y, voice, time);
-      if (tile !== null) pen.txt(WORDS.panel.tile(tile), ex + 112, y, tileColour, "right");
+      if (tile !== null) {
+        pen.txt(WORDS.panel.tile(tile), ex + 112, y, tileColour, "right");
+        if (attacking) pen.px(ex + 112 - pen.width(WORDS.panel.tile(tile)), y + 11, pen.width(WORDS.panel.tile(tile)), 1, C.crim);
+      }
       if (laid) pen.txt(WORDS.panel.laid, ex + 117, y, C.teal);
       else if (failed) pen.txt(WORDS.panel.failed, ex + 117, y, C.crim);
       else if (view.phase === "choose") pen.txt(chose ? WORDS.panel.chose : "…", ex + 117, y, C.boneD);

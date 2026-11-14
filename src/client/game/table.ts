@@ -1319,6 +1319,8 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       pen.ell(x + 5, 46, 3, 2, C.hatch);
       pen.px(x + 3, 45, 2, 2, C.crim);
       pen.px(x + 6, 45, 2, 2, C.teal);
+      // the bar that is under the letter of one that held a round (`drawHatch`)
+      pen.px(x + 3, 48, 2, 1, C.brass);
       pen.txt(WORDS.panel.since(mine !== null && view.credits !== null && view.doubt[mine] > 0 ? view.doubt[mine] : null), x + 13, 40, C.boneD);
     }
     pen.px(x, 55, 168, 1, C.steelDD);

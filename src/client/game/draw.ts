@@ -388,8 +388,10 @@ export function drawChair(pen: Pen, x: number, y: number, back: boolean): void {
 /**
  * One chamber. A pale rim means the whole table has seen it; amber ticks mean
  * only this player knows it (seen alone, or worked out). A chamber known only
- * as it was, with a hidden action made since, is shut again: its letter alone
- * keeps the colour of what was seen in it.
+ * as it was, with a hidden action made since, is shut again: its letter
+ * keeps the colour of what was seen in it, and a brass bar is under the
+ * letter of one that held a round, so that the two are told apart without
+ * telling red from green.
  */
 export function drawHatch(pen: Pen, x: number, y: number, info: HatchInfo, letter: string): void {
   const [known, source, doubtful = false] = info;
@@ -398,6 +400,8 @@ export function drawHatch(pen: Pen, x: number, y: number, info: HatchInfo, lette
     pen.ell(x, y, HATCH_RX, HATCH_RY, C.steelDD);
     pen.ell(x, y, HATCH_RX - 1, HATCH_RY - 1, C.hatch);
     pen.txt(letter, x, y - 6, known === 1 ? C.crim : C.teal, "center");
+    // and not by the colour alone: a brass bar under the letter of one that held a round, as an open one that holds a round is brass inside
+    if (known === 1) pen.px(x - 2, y + 5, 5, 1, C.brass);
   } else if (known === 1) {
     pen.ell(x, y, HATCH_RX, HATCH_RY, C.crimD);
     pen.ell(x, y, HATCH_RX - 2, HATCH_RY - 2, C.brass);

@@ -355,13 +355,14 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       said.set(event.player, { text: "!", colour: C.amber, t: 12 });
       sfx.pick();
     } else if (event.type === "right") {
-      said.set(event.player, { text: `${event.said}`, colour: C.teal, t: 6 });
+      // a ring after a right answer and a cross after a wrong one: the two are not told apart by green and red alone
+      said.set(event.player, { text: `${event.said} ○`, colour: C.teal, t: 6 });
       flash = { colour: C.teal, t: 0.6 };
       sfx.earn();
       const x = standsAt(event.player);
       addFx(fxlib.confetti, { x, y: FIGURES_Y, seed: 11 + event.round }, [x - 100, FIGURES_Y - 110, 200, 140]);
     } else if (event.type === "wrong") {
-      said.set(event.player, { text: `${event.said}`, colour: C.crim, t: 4 });
+      said.set(event.player, { text: `${event.said} ×`, colour: C.crim, t: 4 });
       flash = { colour: C.crim, t: 0.6 };
       sfx.deny();
     } else if (event.type === "silent") {

@@ -37,12 +37,17 @@ const ROULETTE = name("russian-roulette");
 const CUBES = name("count-cubes");
 const POKER = name("memory-poker");
 const MARKET = name("mystery-stock-market");
+const RECT = name("count-rectangles");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-14",
     lines: [
+      {
+        ko: `빨강과 초록을 가려 보기 어려워도 알아보도록 표시를 더했습니다. ${ROULETTE.ko}: 전에 실탄을 본 약실은 글자 아래에 줄이 있습니다. ${GRASS.ko}: 놓을 수 없는 자리는 칸마다 ×가 그려지고, 공격을 고른 사람의 타일 번호에 밑줄이 있습니다. ${RECT.ko}: 답 옆에 ○나 ×가 붙습니다.`,
+        en: `Marks were added for players who cannot tell red from green. ${ROULETTE.en}: a chamber that held a round when it was last seen has a bar under its letter. ${GRASS.en}: a place where the tile does not fit is crossed out cell by cell, and the tile number of a player who took Attack is underlined. ${RECT.en}: an answer is followed by ○ or ×.`,
+      },
       {
         ko: "대기실에서 「QR」을 누르면 초대 링크가 QR 코드로 보입니다. 옆에 있는 사람이 폰 카메라로 찍어 들어옵니다.",
         en: "Press \"QR\" in the waiting room and the invite link is shown as a QR code, for someone beside you to point a phone at.",
