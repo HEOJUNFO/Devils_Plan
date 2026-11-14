@@ -44,7 +44,9 @@ export function startAudio(): void {
     output.gain.value = gainOf(chosen, config);
     output.connect(context.destination);
   }
-  if (context.state === "suspended") void context.resume();
+  // Not running: suspended (made before any press), or what Safari on a phone calls "interrupted" (the tab was put
+  // behind, a call came) and leaves so until asked. Asked again on every press; a refusal leaves it as it was.
+  if (context.state !== "running") void context.resume().catch(() => undefined);
 }
 
 /** Whether sound is muted. */
