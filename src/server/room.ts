@@ -478,7 +478,7 @@ export class GameRoom extends Server<Env> {
     }
     // one the room ended itself has been dealt with where it was ended
     if (connection.state?.kind !== "player") return;
-    await this.dropped(connection.state.voice !== undefined);
+    await this.dropped(connection.state.voice !== undefined, connection.state.slot);
   }
 
   /**
@@ -486,10 +486,19 @@ export class GameRoom extends Server<Env> {
    * {@link onClose}. A connection that has ended is no longer among the
    * room's connections, so everything here is worked out from those that are.
    */
-  private async dropped(hadVoice: boolean): Promise<void> {
+  private async dropped(hadVoice: boolean, slot: number): Promise<void> {
     const lobby = this.lobby;
     if (lobby === null) return;
     this.openStorage();
+    // The host went with this connection: a wait on the host was a wait on them, and the question the room may have
+    // put to their page was not put to whoever is host now. It starts anew for the new host: left running, its
+    // answer's time ran out on a host who was never asked, and the room was passed on from them within seconds.
+    const before = hostOf(lobby, new Set([...this.connectedSlots(), slot]))?.slot ?? null;
+    if (before === slot && this.hostSlot() !== slot) {
+      if (this.timers.get("host") !== null) await this.timers.clear("host");
+      if (this.timers.get("host-answer") !== null) await this.timers.clear("host-answer");
+      await this.scheduleHost();
+    }
     const noted = markAway(lobby, this.connectedSlots(), Date.now());
     if (noted !== lobby) this.saveLobby(noted);
     this.broadcastLobby();
@@ -524,7 +533,7 @@ export class GameRoom extends Server<Env> {
       const last = this.lastHeardAt(connection);
       if (last === null || last > limit) continue;
       this.end(connection, CLOSE_STALE, "stale");
-      await this.dropped(seat.voice !== undefined);
+      await this.dropped(seat.voice !== undefined, seat.slot);
     }
   }
 

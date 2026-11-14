@@ -1858,6 +1858,32 @@ describe("GameRoom: being ready, and the host", () => {
     c.close();
   });
 
+  it("starts its wait anew for the new host when the host it asked drops before answering", async () => {
+    // Arrange: everyone but the host is ready, the wait ran out, and the host's page has been asked
+    const stub = env.GameRoom.getByName("RDYHD");
+    const a = await open("RDYHD", { player: 0, create: true, game: ALONE_GAME });
+    const b = await open("RDYHD", { player: 1, game: ALONE_GAME });
+    const c = await open("RDYHD", { player: 2, game: ALONE_GAME });
+    await a.lobbyOf(3);
+    c.send({ type: "ready", ready: true });
+    b.send({ type: "ready", ready: true });
+    await a.lobbyWhere((l) => l.players[1].ready && l.players[2].ready);
+    await runNextAlarm(stub);
+    expect(await a.nextOf("host-check")).toEqual({ type: "host-check" });
+
+    // Act: the host's connection drops before it answers; whoever came next is host
+    const dropped = Date.now();
+    a.close();
+    await b.lobbyWhere((l) => l.host === 1);
+
+    // Assert: the new host has the whole wait, and is then asked themselves, not passed over unasked
+    expect(await scheduledAlarm(stub)).toBeGreaterThanOrEqual(dropped + HOST_IDLE_MS);
+    await runNextAlarm(stub);
+    expect(await b.nextOf("host-check")).toEqual({ type: "host-check" });
+    b.close();
+    c.close();
+  });
+
   it("does not wait on the host of a room with fewer players than its game takes", async () => {
     const stub = env.GameRoom.getByName("RDYAT");
     const a = await open("RDYAT", { player: 0, create: true });
