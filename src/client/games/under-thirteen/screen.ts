@@ -201,6 +201,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   let noteT = 0;
   /** The spot pointed at to stand at, before it is taken. */
   let spot: number | null = null;
+  /** The spot this page asked the room for, kept while the spots are being taken: unlike `pending` it outlasts a lost line, since the asking may have reached the room. */
+  let tookSpot: number | null = null;
   /** The card and the chip picked to put in, before they are. */
   let card: number | null = null;
   let chip: Chip | null = null;
@@ -309,6 +311,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (fresh) {
       speech.clear();
       spot = null;
+      tookSpot = null;
       card = null;
       chip = null;
       if (latest !== null) sfx.turn();
@@ -325,8 +328,9 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
         if (message.view.phase === "submit") sfx.turn();
         const at = mine === null ? -1 : message.view.players.indexOf(mine);
         // the room stood this player: they had no spot, and none they asked for is the one they have
-        if (mine !== null && at >= 0 && message.view.phase === "submit" && !before.includes(mine) && !(pending && spot === at)) say(WORDS.say.stoodForYou(at + 1));
+        if (mine !== null && at >= 0 && message.view.phase === "submit" && !before.includes(mine) && tookSpot !== at) say(WORDS.say.stoodForYou(at + 1));
         spot = null;
+        tookSpot = null;
       }
     }
     if (message.view.phase === "ended" && (fresh || latest?.view.phase !== "ended")) endedAt = time;
@@ -387,7 +391,9 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     // The player stands there from the press. Whether someone else was a moment sooner is the room's to say:
     // where its next word has them at this spot, that is what is shown.
     sendAhead({ type: "take", spot: at }, (view) => (view.spots[at] !== null || view.spots.includes(mine) ? view : { ...view, spots: view.spots.map((who, n) => (n === at ? mine : who)) }));
-    if (pending) sfx.move();
+    if (!pending) return;
+    tookSpot = at;
+    sfx.move();
   }
 
   function placeOn(stand: Stand | null): void {
@@ -1118,6 +1124,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     refused(reason: string): void {
       starting = false;
       pending = false;
+      tookSpot = null;
       takeBack();
       say(WORDS.refused[reason] ?? WORDS.refusedOther);
       sfx.deny();

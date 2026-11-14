@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-14",
     lines: [
       {
+        ko: `${POKER.ko}: 연결이 끊기기 직전에 뒤집은 카드가 방에 닿지 않았으면, 다시 연결됐을 때 고른 것으로 보이지 않습니다. 전에는 화면에만 고른 것으로 남아, 시간이 다 되면 다른 카드로 겨루게 될 수 있었습니다.`,
+        en: `${POKER.en}: a card turned just before the connection dropped is no longer shown as picked on coming back if it never reached the room. Before, it stayed picked on the screen alone, and the round could be played with another card when time ran out.`,
+      },
+      {
         ko: `${ROULETTE.ko}: 연결이 끊긴 사이에 맞바꾸기를 확정해도 고르던 화면이 그대로 남습니다. 다시 연결되면 한 번 더 누르면 됩니다. 전에는 맞바꾸기가 사라져 판이 멈출 수 있었습니다.`,
         en: `${ROULETTE.en}: a swap confirmed while the connection is down stays on the screen, to be confirmed again once it is back. Before, the swap could vanish and leave the table waiting.`,
       },

@@ -828,6 +828,9 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       lockSounded = false;
       // whether the choice reached the room is not known: the game the room sends on coming back will say
       if (truth !== null) latest = truth;
+      // a card turned just before the line was seen to be down may never have reached the room: the cells the
+      // room holds on coming back are taken up, so that what is seen picked is what will be shown
+      touched = null;
       offline = true;
     },
     setHost(value: boolean): void {
