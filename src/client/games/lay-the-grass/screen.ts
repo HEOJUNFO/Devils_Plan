@@ -1393,8 +1393,10 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
     else if (below !== "") pen.txt(pen.fit(below, RESULT_WIDTH), 96, 254, C.boneD);
     else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : handlers.out() ? WORDS.result.waitHostOut : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) button(AGAIN_RECT, WORDS.button.again, "", !starting, !starting);
-    button(LOBBY_RECT, WORDS.button.lobby, "", false, true);
+    // (dim while they take no press yet: `RESULTS_PRESS_HOLD`)
+    const pressable = time - endedAt >= RESULTS_PRESS_HOLD;
+    if (host) button(AGAIN_RECT, WORDS.button.again, "", !starting && pressable, !starting && pressable);
+    button(LOBBY_RECT, WORDS.button.lobby, "", false, pressable);
   }
 
   function drawBar(): void {

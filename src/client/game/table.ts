@@ -1403,10 +1403,11 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     return [WORDS.prompt.turn(steps, LETTERS[j], known, view.doubt[j] > 0), known === 1 ? C.crim : C.amber];
   }
 
-  function smallButton(rect: readonly [number, number, number, number], label: string, strong: boolean): void {
+  /** A small button of the bar; `live` false where it takes no press yet, and is drawn dim. */
+  function smallButton(rect: readonly [number, number, number, number], label: string, strong: boolean, live = true): void {
     pen.px(rect[0], rect[1], rect[2], rect[3], strong ? C.amberD : C.steelDD);
-    pen.px(rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2, inRect(mouse, rect) ? C.btnH : C.btn);
-    pen.txt(label, rect[0] + Math.round(rect[2] / 2), rect[1] + 2, strong ? C.amber : C.bone, "center");
+    pen.px(rect[0] + 1, rect[1] + 1, rect[2] - 2, rect[3] - 2, live && inRect(mouse, rect) ? C.btnH : C.btn);
+    pen.txt(label, rect[0] + Math.round(rect[2] / 2), rect[1] + 2, strong ? C.amber : live ? C.bone : C.dim, "center");
   }
 
   /** Whether the turn is this player's by the room's last word, and theirs to take: not one the room passes for them. */
@@ -1435,8 +1436,10 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
     pen.txt(WORDS.result.fallen(result.hitSeats.map((seat) => pen.fit(nickOf(seat), LOG_NAME_WIDTH)).join(", ")), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(note, 96, 254, C.amber);
     else pen.txt(starting ? WORDS.prompt.sending : host ? WORDS.result.hostNext : handlers.out() ? WORDS.result.waitHostOut : WORDS.result.waitHost, 96, 254, C.boneD);
-    if (host) smallButton(AGAIN_RECT, WORDS.button.again, !starting);
-    smallButton(LOBBY_RECT, WORDS.button.lobby, false);
+    // (dim while they take no press yet: `RESULTS_PRESS_HOLD`)
+    const pressable = resultsAt !== null && time - resultsAt >= RESULTS_PRESS_HOLD;
+    if (host) smallButton(AGAIN_RECT, WORDS.button.again, !starting && pressable, pressable);
+    smallButton(LOBBY_RECT, WORDS.button.lobby, false, pressable);
   }
 
   function drawBar(): void {
