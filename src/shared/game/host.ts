@@ -58,9 +58,10 @@ export const rouletteHost: GameHost<Session, StartRefusal | MoveRefusal> = {
   attend: (session, presence, now) => sessionPresence(session, presence, now, config),
   view: sessionSnapshot,
   running: (session) => session.state.phase !== "ended",
-  // the last volley is the game's own end for a seat: those it hit are last, the rest first
+  // the last volley is the game's own end for a seat: those it hit are last, the rest first; a game the room
+  // played out with none of its players there is cut short, as the other games' abandoned endings are
   places: (session) => {
-    if (session.state.phase !== "ended") return null;
+    if (session.state.phase !== "ended" || session.playedOut === true) return null;
     const hit = new Set(volley(session.state).hitSeats);
     return session.tokens.map((token, seat) => ({ token, place: hit.has(seat) ? 2 : 1 }));
   },

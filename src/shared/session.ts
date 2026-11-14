@@ -86,6 +86,14 @@ export interface Session {
    */
   desertedAt?: number | null;
   /**
+   * That the game was ended by a move the room made with none of the table's
+   * players connected: a table deserted long enough, or one all of whose
+   * players have left. Such a game is over so that the room can be used
+   * again; it is cut short, and nobody is given a place for it
+   * (`rouletteHost.places`). Absent for any other game.
+   */
+  playedOut?: true;
+  /**
    * When the room passes for the player now awaited, who has no credits left
    * and is connected; `null` or absent while no pass is the room's to make (a
    * game stored before the room made them has none).
@@ -187,8 +195,10 @@ function awaitedSeat(state: GameState): number {
  * nobody at all in the room nothing runs: a game can be put down and taken
  * up again.
  */
-function settle(session: Session, presence: Presence, now: number, config: SessionConfig, moved: boolean): Session {
+function settle(session: Session, presence: Presence, now: number, config: SessionConfig, moved: boolean, byRoom = false): Session {
   let state = session.state;
+  /** Whether the game was still going on before the room's last move: `byRoom` says the state handed in is already after one. */
+  const wasOn = byRoom || state.phase !== "ended";
   let turnStartedAt = moved ? now : session.turnStartedAt;
   // While nobody was connected no clock ran (see below): a limit on a turn
   // starts afresh for whoever is awaited when someone is back, or the time the
@@ -266,7 +276,9 @@ function settle(session: Session, presence: Presence, now: number, config: Sessi
       }
     }
   }
-  return { ...session, state, turnStartedAt, awaySince, deadline, desertedAt, passAt, chance };
+  // ended by a move of the room's (one made here, or the one handed in) with none of its players there: cut short
+  const playedOut = session.playedOut === true || (wasOn && state.phase === "ended" && (roomMoved || byRoom) && !playerHere);
+  return { ...session, state, turnStartedAt, awaySince, deadline, desertedAt, passAt, chance, ...(playedOut ? { playedOut: true as const } : {}) };
 }
 
 /**
@@ -373,7 +385,7 @@ export function sessionTimeout(session: Session, presence: Presence, now: number
   const result = applyTimeout(session.state, session.rules);
   if (!result.ok) return session;
   // a table deserted long enough has the rest of its moves made in the same breath (see `settle`)
-  return settle({ ...session, state: result.state }, presence, now, config, true);
+  return settle({ ...session, state: result.state }, presence, now, config, true, true);
 }
 
 /**

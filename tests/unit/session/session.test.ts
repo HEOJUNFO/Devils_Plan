@@ -415,6 +415,41 @@ describe("a table all of whose players are away", () => {
     expect(ended.desertedAt ?? null).toBeNull();
   });
 
+  it("gives nobody a place when the room played it out with none of its players there: such a game is cut short", () => {
+    let session = sessionPresence(started(), deserted, T0, CONFIG);
+    for (let step = 0; step < 100 && session.deadline !== null && session.deadline < T0 + STAND_MS; step++) {
+      session = sessionTimeout(session, deserted, session.deadline, CONFIG);
+    }
+
+    const ended = sessionTimeout(session, deserted, T0 + STAND_MS, CONFIG);
+
+    expect(ended.state.phase).toBe("ended");
+    expect(rouletteHost.places?.(ended)).toBeNull();
+  });
+
+  it("gives nobody a place either when every one of its players has left the room and the room made all their moves", () => {
+    const session = started();
+    const gone: Presence = { seated: new Set([WATCHER]), connected: new Set([WATCHER]) };
+
+    const ended = sessionPresence(session, gone, T0 + 1000, CONFIG);
+
+    expect(ended.state.phase).toBe("ended");
+    expect(rouletteHost.places?.(ended)).toBeNull();
+  });
+
+  it("gives its players their places when the clock ended the game with one of them there", () => {
+    const timed: SessionConfig = { ...CONFIG, rules: { ...RULES, turnSeconds: 30 } };
+    const players = candidates(SMALLEST);
+    const here = presenceOf(players);
+    let session = started(SMALLEST, timed);
+    for (let step = 0; step < 500 && session.state.phase !== "ended" && session.deadline !== null; step++) {
+      session = sessionTimeout(session, here, session.deadline, timed);
+    }
+
+    expect(session.state.phase).toBe("ended");
+    expect(rouletteHost.places?.(session)).toHaveLength(SMALLEST);
+  });
+
   it("is looked at again when it has been deserted long enough, though no move falls due before then", () => {
     // a table where the awaited player's own time is far longer than the time a deserted table is given
     const patient: SessionConfig = { ...CONFIG, awayTurnSeconds: CONFIG.standSeconds * 10 };
