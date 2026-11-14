@@ -1565,7 +1565,8 @@ describe("GameRoom: being ready, and the host", () => {
   });
 
   it("tells everyone how many asked for another game, and takes the word back once the host has changed the game", async () => {
-    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
+    // the game asked for, and a third the host turns to instead: a word for the game picked would not be counted anyway
+    const [other, third] = GAME_IDS.filter((id) => id !== DEFAULT_GAME && holds(id) >= 2) as [GameId, GameId];
     const a = await open("RDYWA", { player: 0, create: true });
     const b = await open("RDYWA", { player: 1 });
     await a.lobbyOf(2);
@@ -1574,8 +1575,8 @@ describe("GameRoom: being ready, and the host", () => {
 
     expect((await a.lobbyWhere((l) => l.wishes !== undefined)).wishes).toEqual({ [other]: 1 });
     expect((await b.lobbyWhere((l) => l.wishes !== undefined)).wish).toBe(other);
-    a.send({ type: "pick", game: other });
-    const changed = await b.lobbyWhere((l) => l.game === other);
+    a.send({ type: "pick", game: third });
+    const changed = await b.lobbyWhere((l) => l.game === third);
     expect(changed.wishes).toBeUndefined();
     expect(changed.wish).toBeUndefined();
     a.close();
@@ -1591,12 +1592,32 @@ describe("GameRoom: being ready, and the host", () => {
     a.send({ type: "wish", game: other });
     b.send({ type: "wish", game: other });
 
-    // the room answers in the order it was asked: had it taken the host's word, there would be two
+    // the host's word brought no answer: the first the room says of another game is the other player's, counted once
     expect((await a.lobbyWhere((l) => l.wishes !== undefined)).wishes).toEqual({ [other]: 1 });
+    expect((await b.lobbyWhere((l) => l.wishes !== undefined)).wish).toBe(other);
     b.send({ type: "wish", game: null });
     expect((await a.lobbyWhere((l) => l.wishes === undefined)).wishes).toBeUndefined();
     a.close();
     b.close();
+  });
+
+  it("takes a word for another game as the player's, whichever of their connections says it or takes it back", async () => {
+    const other = GAME_IDS.find((id) => id !== DEFAULT_GAME && holds(id) >= 2)!;
+    const a = await open("RDYWC", { player: 0, create: true });
+    const b = await open("RDYWC", { player: 1 });
+    await a.lobbyOf(2);
+    // the same player in a second tab
+    const again = await open("RDYWC", { player: 1 });
+    await again.lobbyOf(2);
+
+    b.send({ type: "wish", game: other });
+    expect((await a.lobbyWhere((l) => l.wishes !== undefined)).wishes).toEqual({ [other]: 1 });
+    again.send({ type: "wish", game: null });
+
+    expect((await a.lobbyWhere((l) => l.wishes === undefined)).wishes).toBeUndefined();
+    a.close();
+    b.close();
+    again.close();
   });
 
   it("does not take the host's word that they are ready: the host starts", async () => {

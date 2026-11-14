@@ -940,7 +940,9 @@ export class GameRoom extends Server<Env> {
   /**
    * Notes which other game a connection's player would like the room to play
    * next, or that they ask for none, and tells everyone how many ask for
-   * each (`wish.ts`). Not the host's to say, who changes the game; not for
+   * each (`wish.ts`). Not the host's to say, who changes the game (a word
+   * said before they were host is not counted while they are, and stands
+   * again if they pass the room on before changing the game); not for
    * the game the room is for, nor for one that has no place for someone
    * here; not during a game. Kept with the connection: nothing is written.
    */
@@ -950,10 +952,16 @@ export class GameRoom extends Server<Env> {
     const asked = game === gameOf(lobby) ? null : game;
     if (asked !== null && this.hostSlot() === seat.slot) return;
     if (asked !== null && !gameHolds(lobby.players.map((p) => p.slot), asked, config)) return this.refuse(connection, "bad-setting");
-    if ((seat.wish ?? null) === asked) return;
-    const { wish: _wish, ...plain } = seat;
-    connection.setState(asked === null ? plain : { ...plain, wish: asked });
-    this.broadcastLobby();
+    // The word is the player's, not one connection's: a second tab, or a connection left over from before a
+    // network changed, would else go on saying what the player has since taken back.
+    let changed = false;
+    for (const [member, each] of this.members()) {
+      if (each.slot !== seat.slot || (each.wish ?? null) === asked) continue;
+      const { wish: _wish, ...plain } = each;
+      member.setState(asked === null ? plain : { ...plain, wish: asked });
+      changed = true;
+    }
+    if (changed) this.broadcastLobby();
   }
 
   /** The game each slot's connection asked for as the room's next, by slot. */

@@ -68,7 +68,7 @@ import { meetNear, type Meet, type MeetConfig } from "../shared/meet";
 import { comingTo, isWho, meetPress, newWho, type Coming } from "../shared/going";
 import { againOf, hostCallDue, waitsOnHost } from "../shared/again";
 import { readingNow } from "../shared/reading";
-import { wishAfter, wishCount, wishesWith } from "../shared/wish";
+import { sayAgain, wishAfter, wishCount, wishesWith } from "../shared/wish";
 import { afterRefusedMake } from "../shared/reopen";
 import { calendarOf, type CalendarEvent } from "../shared/calendar";
 import { firstDay, linkedOf, mayPlan, parseLinked, standing as appointmentStands, stepped, type AppointmentConfig } from "../shared/appointment";
@@ -538,12 +538,16 @@ let warming: ReturnType<typeof setTimeout> | null = null;
  * stays as it was until then reads as a press not taken.
  */
 let asked: { listed?: boolean; turnSeconds?: number; variant?: string; team?: number; ready?: boolean; wish?: GameId | null } = {};
+/** The game (by when it started) over whose results the host was told in the chat that some asked for another; `null` for none. Said once a game. */
+let wishesSaidFor: number | null = null;
 /** The time the room last said its people meet, as this page last noted it in the chat; `null` for none. A change is said once. */
 let saidWhen: number | null = null;
 /** Whether the room has spoken on the connection now open: a new one starts with nothing this page said on the last. */
 let roomSpoke = false;
-/** The game this player asked the room for as its next, as the room last said it, or `null` for none: said again on a new connection (`src/shared/wish.ts`). */
+/** The game this player asked the room for as its next and has not taken back, or `null` for none: said again where the room has lost it with a connection (`sayAgain` of `src/shared/wish.ts`). */
 let keptWish: GameId | null = null;
+/** Whether it has been said again on the connection now open. */
+let wishSaidAgain = false;
 /** When this player last pressed or typed anything on the page: how the page knows, asked by the room, that its host is there. */
 let lastInputAt = Date.now();
 /** Whether the room has asked if the host is there and the page could not say so by itself: the next press answers. */
@@ -777,6 +781,7 @@ const chat = createChat(
       if (note.kind === "to-left") return WORDS.chat.toLeft;
       if (note.kind === "when") return WORDS.when.note(whenOf(note.at));
       if (note.kind === "when-made") return WORDS.when.made(whenOf(note.at));
+      if (note.kind === "wishes") return WORDS.swap.askedNote(note.count);
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
       if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
       if (note.kind === "not-sent") return WORDS.chat.notSent;
@@ -2541,7 +2546,9 @@ function renderWhen(): void {
   whenCopy.disabled = !open;
   // The host says the time picked to the room, where everyone in it reads it, also who comes in later; with the
   // room's own time picked, the button takes it back.
-  const told = roomWhenOf(currentView) === at;
+  // (a time that has come, which the sheet no longer opens on, is taken back whatever is picked)
+  const roomAt = roomWhenOf(currentView);
+  const told = roomAt !== null && (roomAt === at || !mayPlan(roomAt, Date.now()));
   whenTell.hidden = !isHost;
   whenTell.textContent = told ? WORDS.when.untell : WORDS.when.tell;
   whenTell.disabled = !told && !open;
@@ -2614,7 +2621,8 @@ for (const [id, by, label] of [
 }
 whenTell.addEventListener("click", () => {
   const at = whenPicked();
-  if (roomWhenOf(currentView) === at) send({ type: "when", at: null });
+  const roomAt = roomWhenOf(currentView);
+  if (roomAt !== null && (roomAt === at || !mayPlan(roomAt, Date.now()))) send({ type: "when", at: null });
   else if (mayPlan(at, Date.now())) send({ type: "when", at });
   renderWhen();
 });
@@ -2696,6 +2704,7 @@ function showSwap(shown: boolean): void {
     button.addEventListener("click", () => {
       if (!hosting) {
         const next = wishAfter(mine, id);
+        keptWish = next;
         askRoom({ type: "wish", game: next }, { wish: next });
         return;
       }
@@ -2719,6 +2728,37 @@ function showSwap(shown: boolean): void {
   const opening = swapSheet.hidden;
   swapSheet.hidden = false;
   if (opening) (choices.find((button, at) => !button.disabled && (hosting ? GAME_IDS[at] === view.game : mine === null || GAME_IDS[at] === mine)) ?? el<HTMLButtonElement>("swap-close")).focus({ preventScroll: true });
+}
+
+/**
+ * Over the results of a game the host starts the next one from there, and
+ * the button that says how many asked for another game is in the waiting
+ * room under them: the host is told in the chat, once for the game, with
+ * the mark on the chat's tab. Called when the room speaks and when a game
+ * ends, whichever comes last.
+ */
+function tellWishes(): void {
+  const view = currentView;
+  if (view === null || view.host !== view.you || table === null || gameOn || shownGame === null || wishesSaidFor === shownGame) return;
+  const wishing = wishCount(view.wishes);
+  if (wishing === 0) return;
+  wishesSaidFor = shownGame;
+  chat.note({ kind: "wishes", count: wishing });
+  if (!chatOpen) unread++;
+  syncChat();
+}
+
+/**
+ * Says to the room again which game this player asked for, where the room
+ * has lost it: with the connection that said it, or because it came during
+ * a game, when the room takes none (`sayAgain`). Called when the room
+ * speaks and when a game ends.
+ */
+function keepWish(): void {
+  const view = currentView;
+  if (view === null || keptWish === null) return;
+  if (!sayAgain({ kept: keptWish, counted: view.wish ?? null, said: wishSaidAgain, playing: gameOn, host: view.host === view.you, pending: asked.wish !== undefined })) return;
+  if (send({ type: "wish", game: keptWish })) wishSaidAgain = true;
 }
 
 /** The game this player has asked for as the room's next, with what they pressed since the room last spoke; `null` for none. */
@@ -2817,9 +2857,10 @@ function renderRoom(code: string, view: LobbyView): void {
     // When the room's people meet: said once, where it stays to be read. The room's own time where its host
     // said one; else the time of the link that led here.
     const linked = appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null ? appointment.at : null;
+    // (a page loaded again has the line among those it kept, unless the host has said another time since)
     const first = roomWhenOf(view) ?? linked;
-    if (first !== null && !chat.noted("when")) chat.note({ kind: "when", at: first });
-    saidWhen = roomWhenOf(view);
+    if (first !== null && !chat.noted("when", first) && (roomWhenOf(view) !== null || !chat.noted("when"))) chat.note({ kind: "when", at: first });
+    saidWhen = first;
   } else {
     if (currentView !== null) noteComings(currentView, view);
     // the host has said a time to the room, or another one
@@ -2920,11 +2961,13 @@ function renderRoom(code: string, view: LobbyView): void {
   // the choice of another game is the host's, and is drawn again for who is here now
   // For the host it changes the room's game; for everyone else it opens which game they would like next. It says
   // how many have asked for another (`src/shared/wish.ts`).
-  if (isHost || asked.wish === (view.wish ?? null)) delete asked.wish;
+  // (a press that crossed the host's change to that very game was answered by the change)
+  if (isHost || asked.wish === (view.wish ?? null) || asked.wish === view.game) delete asked.wish;
   const wishing = wishCount(shownWishes(view));
   swapButton.hidden = false;
   swapButton.textContent = WORDS.room.swapCount(wishing);
   swapButton.title = !isHost ? WORDS.room.wishHelp : wishing > 0 ? WORDS.room.swapAsked(wishing) : WORDS.room.swapHelp;
+  tellWishes();
   if (!swapSheet.hidden) showSwap(true);
   // The host starts; everyone else says when they are ready, on the button that stands where the host's start does.
   const me = view.players.find((p) => p.slot === view.you);
@@ -3099,6 +3142,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
     // has let this player in: that the rules are open, and which game was asked for.
     readingSaid = false;
     roomSpoke = false;
+    wishSaidAgain = false;
     roomDown = null;
     live = opened(Date.now());
     renderStatus();
@@ -3160,13 +3204,14 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       staleSince = null;
       returning = false;
       quickRest = null;
-      const first = !roomSpoke;
       roomSpoke = true;
-      // a game asked for on a connection that has gone is asked for again on this one
-      const again = first && currentCode === code && keptWish !== null && message.wish === undefined && message.host !== message.you ? keptWish : null;
-      keptWish = again ?? message.wish ?? null;
+      // Which game this player asked for is the page's to remember: the room keeps it with a connection. Another
+      // room, or the host having changed the game (which answers the question), and it is no longer asked; what
+      // the room counts for the player where nothing is on its way (a press in another tab) is what was asked.
+      if (currentCode !== code || currentView === null || currentView.game !== message.game) keptWish = null;
+      else if (message.wish !== undefined && asked.wish === undefined) keptWish = message.wish;
       renderRoom(code, message);
-      if (again !== null) send({ type: "wish", game: again });
+      keepWish();
       // The room has a place of its own in the browser's history, above the lobby's, where the player pressed
       // their way in (`src/shared/back.ts`); the address of the place the page is at then names the room.
       back.sync();
@@ -3196,7 +3241,11 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       keptTable = false;
       const over = message.view.phase === "ended";
       // a game has begun that was not on a moment ago
-      if (!over && !gameOn) call("started");
+      if (!over && !gameOn) {
+        call("started");
+        // a press for another game that crossed the start was not taken: it is not shown as if it had been
+        delete asked.wish;
+      }
       gameOn = !over;
       // a game played to its end goes into the player's own record, once
       if (over && noteFinish(message)) syncRecord();
@@ -3220,6 +3269,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0):
       waited = waits;
       // whether the game is over, and with it whether there is a result to pass on
       syncShare();
+      // and, to the host, whether some asked for another game before this one
+      tellWishes();
+      // a word for another game that the room did not take during the game is said now
+      if (over) keepWish();
       keepAwake();
       return;
     }

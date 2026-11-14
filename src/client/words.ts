@@ -352,6 +352,8 @@ const ko = {
     choiceHelp: (title: string, count: number, mine: boolean) => `${title}: ${count}명이 골랐습니다${mine ? " (나 포함)" : ""}`,
     /** The game the room is for now, in a sheet where it cannot be asked for. */
     now: (title: string) => `${title} · 지금`,
+    /** In the host's chat over the results of a game, where the next is started from: the count is on a button of the waiting room. */
+    askedNote: (count: number) => `${count}명이 다른 게임을 골랐습니다. 대기실의 「게임」에서 봅니다.`,
     tooMany: "지금 인원이 다 들어가지 않는 게임은 고를 수 없습니다.",
     close: "닫기",
   },
@@ -802,6 +804,7 @@ const en: typeof ko = {
     wishHint: "The host sees the counts only, and decides.",
     choiceHelp: (title, count, mine) => `${title}: picked by ${count}${mine ? ", you among them" : ""}`,
     now: (title) => `${title} · now`,
+    askedNote: (count) => `${count === 1 ? "1 player has" : `${count} players have`} picked another game. See "Game" in the waiting room.`,
     tooMany: "A game that cannot hold everyone here cannot be picked.",
     close: "Close",
   },

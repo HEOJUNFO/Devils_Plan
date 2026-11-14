@@ -67,3 +67,31 @@ export function wishesWith(wishes: Wishes | undefined, was: GameId | null, now: 
   if (now !== null) next[now] = (next[now] ?? 0) + 1;
   return next;
 }
+
+/** How a page stands towards the room, as far as saying its player's word again goes. */
+export interface WishStanding {
+  /** The game the player asked for and has not taken back, as the page remembers it; `null` for none. */
+  kept: GameId | null;
+  /** The game the room counts for them now; `null` for none. */
+  counted: GameId | null;
+  /** Whether the page has said it again on the connection now open. */
+  said: boolean;
+  /** Whether a game is being played: the room takes no word then. */
+  playing: boolean;
+  /** Whether the player is the host, whose word the room does not take. */
+  host: boolean;
+  /** Whether a press of theirs is on its way to the room and not answered. */
+  pending: boolean;
+}
+
+/**
+ * Whether a page says its player's word to the room again: the room does
+ * not count what the page remembers (the connection that said it is gone,
+ * with all the room kept of it), the room would take it now, and the page
+ * has not said it on this connection already. Once a connection, so that a
+ * word the room will not take is not said over and over.
+ */
+export function sayAgain(standing: WishStanding): boolean {
+  if (standing.kept === null || standing.kept === standing.counted) return false;
+  return !standing.said && !standing.playing && !standing.host && !standing.pending;
+}

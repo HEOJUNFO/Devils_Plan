@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GAME_IDS, type GameId } from "../../../src/shared/games";
-import { wishAfter, wishCount, wishesOf, wishesWith } from "../../../src/shared/wish";
+import { sayAgain, wishAfter, wishCount, wishesOf, wishesWith, type WishStanding } from "../../../src/shared/wish";
 
 /** The game the room is for, and two others. */
 const NOW: GameId = GAME_IDS[0]!;
@@ -81,5 +81,39 @@ describe("wishesWith", () => {
     wishesWith(wishes, ONE, OTHER);
 
     expect(wishes).toEqual({ [ONE]: 1 });
+  });
+});
+
+describe("sayAgain", () => {
+  /** A page that remembers a word the room does not count, on a connection where nothing was said again, in a waiting room. */
+  const LOST: WishStanding = { kept: ONE, counted: null, said: false, playing: false, host: false, pending: false };
+
+  it("says again a word the room has lost", () => {
+    expect(sayAgain(LOST)).toBe(true);
+  });
+
+  it("says again a word the room counts as another: a connection left over still says the old one", () => {
+    expect(sayAgain({ ...LOST, counted: OTHER })).toBe(true);
+  });
+
+  it("says nothing where there is no word, or the room counts it", () => {
+    expect(sayAgain({ ...LOST, kept: null })).toBe(false);
+    expect(sayAgain({ ...LOST, counted: ONE })).toBe(false);
+  });
+
+  it("says it once a connection", () => {
+    expect(sayAgain({ ...LOST, said: true })).toBe(false);
+  });
+
+  it("waits for a game to end: the room takes no word during one", () => {
+    expect(sayAgain({ ...LOST, playing: true })).toBe(false);
+  });
+
+  it("is not the host's to say", () => {
+    expect(sayAgain({ ...LOST, host: true })).toBe(false);
+  });
+
+  it("leaves a press that is on its way to be answered", () => {
+    expect(sayAgain({ ...LOST, pending: true })).toBe(false);
   });
 });

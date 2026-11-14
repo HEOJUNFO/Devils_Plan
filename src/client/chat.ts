@@ -41,7 +41,9 @@ export type ChatNote =
   /** This player covered what someone says on their own screen, or uncovered it; or pointed them out to whoever runs the site. */
   | { kind: "hid" | "shown" | "flagged"; nick: string }
   /** The link that brought this player here says when the room's people meet (`when`), or this player copied a link that says so (`when-made`): the moment, put in the reader's words and clock when the note is shown (`src/shared/appointment.ts`). */
-  | { kind: "when" | "when-made"; at: number };
+  | { kind: "when" | "when-made"; at: number }
+  /** To the host, over the results of a game: how many have asked for another game as the room's next (`src/shared/wish.ts`). */
+  | { kind: "wishes"; count: number };
 
 /** The kinds of note that name a player, and those that do not. */
 const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked", "out", "champion", "top", "hid", "shown", "flagged"];
@@ -71,8 +73,9 @@ function isLine(value: unknown): value is Line {
   if (typeof line.text === "string") return true;
   if (line.quick !== undefined) return isQuickWord(line.quick) && typeof line.who === "string";
   if (typeof line.note !== "object" || line.note === null) return false;
-  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown; won?: unknown; all?: unknown; at?: unknown };
+  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown; won?: unknown; all?: unknown; at?: unknown; count?: unknown };
   if (note.kind === "when" || note.kind === "when-made") return typeof note.at === "number";
+  if (note.kind === "wishes") return typeof note.count === "number";
   if (note.kind === "game") return typeof note.game === "string";
   if (note.kind === "pieces") return typeof note.nick === "string" && typeof note.won === "number" && typeof note.all === "number";
   return typeof note.kind === "string" && (PLAIN_NOTES.includes(note.kind) || (NAMED_NOTES.includes(note.kind) && typeof note.nick === "string"));
@@ -96,8 +99,8 @@ export interface Chat {
   linesOf(from: number, who: string, count: number): string[];
   /** Something worth a line happened: someone came or went, a line was refused. */
   note(note: ChatNote): void;
-  /** Whether a note of `kind` is among the lines on show. */
-  noted(kind: ChatNote["kind"]): boolean;
+  /** Whether a note of `kind` is among the lines on show; with `at`, one that says that moment. */
+  noted(kind: ChatNote["kind"], at?: number): boolean;
   /** The connection to the room went: the lines on their way are not coming back. */
   lost(): void;
   /** Puts the cursor in the box. */
@@ -322,8 +325,8 @@ export function createChat(
       }
       add({ note });
     },
-    noted(kind: ChatNote["kind"]): boolean {
-      return lines.some((line) => line.note?.kind === kind);
+    noted(kind: ChatNote["kind"], at?: number): boolean {
+      return lines.some((line) => line.note?.kind === kind && (at === undefined || ("at" in line.note && line.note.at === at)));
     },
     lost(): void {
       if (waiting.length === 0) return;
