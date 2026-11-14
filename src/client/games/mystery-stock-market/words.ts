@@ -145,6 +145,8 @@ const ko = {
     peeked: (name: string) => `${name}의 다음 규칙 낱말이 열렸습니다 (나만 봄)`,
     cashed: (amount: string) => `피스 1개를 ${amount}으로 바꿨습니다`,
     paused: "판이 멈춰 있습니다",
+    /** A press made while the move before it is on its way to the room: it was not counted. */
+    wait: "앞의 것을 보내는 중입니다 · 잠시 뒤 다시 누르세요",
     noShares: "수량을 1 이상으로 넣으세요",
     noMax: "가려져 있어 계산할 수 없습니다",
     opened: "규칙이 더 공개됐습니다",
@@ -322,6 +324,7 @@ const en: typeof ko = {
     peeked: (name) => `The next word of ${name}'s rule is open to you alone`,
     cashed: (amount) => `One Piece turned into ${amount}`,
     paused: "The game is paused",
+    wait: "Still sending the last one · press again in a moment",
     noShares: "Enter 1 share or more",
     noMax: "It is hidden: that cannot be worked out",
     opened: "More of the rules is open",

@@ -393,15 +393,28 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   }
 
   // ---- Input -----------------------------------------------------------------------------------------
-  /** Asks the room for `move` in the round being played, and shows it at once where its outcome can be told here (`ahead`). */
-  function ask(move: MarketMove): void {
-    if (latest === null || sent !== null) return;
-    if (!handlers.act({ ...move, round: latest.view.round })) return say(WORDS.notSent);
+  /**
+   * Asks the room for `move` in the round being played, and shows it at once where its outcome can be told here
+   * (`ahead`). Whether it went: not while the move before it is on its way (the bar says so: a second press is
+   * not counted and not lost without a word), and not without a connection.
+   */
+  function ask(move: MarketMove): boolean {
+    if (latest === null) return false;
+    if (sent !== null) {
+      say(WORDS.say.wait);
+      sfx.deny();
+      return false;
+    }
+    if (!handlers.act({ ...move, round: latest.view.round })) {
+      say(WORDS.notSent);
+      return false;
+    }
     sent = move;
     ahead = foreseen(move, latest);
-    if (ahead === null) return;
+    if (ahead === null) return true;
     sayDone(move, latest.rules);
     latest = { ...latest, view: ahead(latest.view) };
+    return true;
   }
 
   /** Takes back a move drawn ahead of the room: the game is shown as the room last sent it. */
@@ -484,16 +497,14 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       if (pressed("Escape") || clicked(LAST_RECT, BAR_REACH)) {
         mode = "trade";
       } else if (mode === "piece") {
+        // (a question stays up when its answer did not go, so that it can be answered again)
         if (pressed("Digit1", "Numpad1") || clicked(THIRD_RECT, BAR_REACH)) {
-          ask({ type: "peek", stock: stock.id });
-          mode = "trade";
+          if (ask({ type: "peek", stock: stock.id })) mode = "trade";
         } else if (pressed("Digit2", "Numpad2") || clicked(SECOND_RECT, BAR_REACH)) {
-          ask({ type: "cash" });
-          mode = "trade";
+          if (ask({ type: "cash" })) mode = "trade";
         }
       } else if (pressed("Enter", "NumpadEnter") || clicked(SECOND_RECT, BAR_REACH)) {
-        ask(mode === "secret" ? { type: "secret", stock: stock.id } : { type: "done" });
-        mode = "trade";
+        if (ask(mode === "secret" ? { type: "secret", stock: stock.id } : { type: "done" })) mode = "trade";
       }
       return;
     }
