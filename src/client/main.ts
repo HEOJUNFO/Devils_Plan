@@ -688,7 +688,14 @@ let inboxShown = false;
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
 let chosenGame: GameId = isGameId(storedGame) ? storedGame : DEFAULT_GAME;
-let chosenListed = localStorage.getItem(storageKey("listed")) !== "0";
+/** Whether this player's rooms go on the list, as they last chose it themselves: what the browser keeps. */
+let listedOwn = localStorage.getItem(storageKey("listed")) !== "0";
+/**
+ * Whether the room about to be made goes on the list. The player's own choice, unless something set it for the one
+ * room (a link's room opened again is not listed, a room opened for those waiting is): that lasts for that room and
+ * is not kept as the player's choice.
+ */
+let chosenListed = listedOwn;
 
 /** Puts the way out of a game back to its first press. */
 function disarmLeave(): void {
@@ -2531,6 +2538,8 @@ function showNewRoom(): void {
   // the wait after the press. It is opened now, to a code picked now; the press then only has to say "make it".
   // a link whose room has closed is opened again under its own code
   nextCode = reopenCode ?? generateRoomCode(Math.random, config);
+  // what was set for one room (a link's, opened again) does not outlast it: any other room starts from the player's own choice
+  if (reopenCode === null) chosenListed = listedOwn;
   warmRest();
   showLobbyLinks(false);
   renderNewRoom();
@@ -3756,7 +3765,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
     if (message.reason === "not-found" && code === reopenJoined) {
       // The room could not be opened again and there is none to go into either (the limit on rooms made, most
       // likely): said as a room that could not be made, which is what was asked for.
+      // The link's code is kept for the next try: the player has gone nowhere else, and a room made under another
+      // code would be one the link does not lead to.
       reopenJoined = null;
+      reopenCode = code;
       showLobby(REJECT_TEXT["code-taken"]);
       return;
     }
@@ -3787,7 +3799,7 @@ function createRoom(): void {
   if (nick === null) return;
   setEntering(null);
   localStorage.setItem(storageKey("game"), chosenGame);
-  localStorage.setItem(storageKey("listed"), chosenListed ? "1" : "0");
+  localStorage.setItem(storageKey("listed"), listedOwn ? "1" : "0");
   // under the code the form picked when it opened, which a connection may be open to already
   const code = nextCode ?? generateRoomCode(Math.random, config);
   nextCode = null;
@@ -4047,10 +4059,12 @@ el<HTMLButtonElement>("create-go").addEventListener("click", createRoom);
 el<HTMLButtonElement>("create-cancel").addEventListener("click", closeNewRoom);
 listedYes.addEventListener("click", () => {
   chosenListed = true;
+  listedOwn = true;
   renderNewRoom();
 });
 listedNo.addEventListener("click", () => {
   chosenListed = false;
+  listedOwn = false;
   renderNewRoom();
 });
 joinButton.addEventListener("click", joinFromInput);
@@ -4831,7 +4845,9 @@ setInterval(() => {
 function putAway(): void {
   // For the browser, not the tab: a tab that is closed or dropped in a room leaves which room and when, so that the
   // site opened again offers the way back while the room holds the place (`offerSeat`).
-  if (currentCode !== "") keep(SEAT_KEY, leaveSeat(currentCode, Date.now()));
+  // (When: since the room last heard from this page, where that is known to be a while ago: the line was already down,
+  // or what is shown is what was kept. The room counts from then, and the way back is offered no longer than it holds the place.)
+  if (currentCode !== "") keep(SEAT_KEY, leaveSeat(currentCode, staleSince ?? roomDown ?? Date.now()));
   // what this page shows is itself what was kept, the room not heard from yet: that is left as it is, with its age
   if (returning) return;
   try {
@@ -4898,10 +4914,12 @@ seatTalk?.addEventListener("message", (event) => {
  * the address already names a room.
  */
 function offerSeat(): void {
-  if (socket !== null || currentCode !== "" || codeInput.value !== "") return;
   const stored = kept(SEAT_KEY);
   const left = seatLeft(stored, Date.now(), config.awaySlotSeconds, (code) => isValidRoomCode(code, config));
+  // What is too old to be offered is taken away whenever the page is opened, as the notice of what is kept says:
+  // also where nothing would be offered anyway (a link brought the page, and its room's code is in the box).
   if (left === null) return keep(SEAT_KEY, null);
+  if (socket !== null || currentCode !== "" || codeInput.value !== "") return;
   seatCode = left.code;
   codeInput.value = left.code;
   syncEntry();

@@ -45,6 +45,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "하던 방으로 돌아가는 길: 연결이 먼저 끊긴 뒤에 탭을 닫으면, 방이 자리를 이미 내놓은 뒤에도 돌아가는 길을 보여 주던 것을 고쳤습니다. 이제 방이 자리를 지켜 주는 동안만 보여 줍니다. 닫힌 방의 링크로 방을 다시 열다가 「방을 만들지 못했습니다」가 나온 뒤 다시 만들면, 이제 그 링크의 방으로 열립니다. 그렇게 연 방이 비공개여도 다음에 만드는 방은 전에 고른 공개·비공개 그대로입니다.",
+        en: "The way back to your room: if the connection had dropped before the tab was closed, the way back was still offered after the room had given your place up. It is now offered only while the room holds the place. When reopening a closed room from its link fails with \"The room could not be made\" and you try again, the room now opens under that link. A room reopened that way is private, and the next room you make still starts from the Public or Private choice you made before.",
+      },
+      {
         ko: "빠른 입장: 방 목록이 아직 오기 전에 누르면 「기다리는 방이 없습니다」라고 하고 그 누름이 사라지던 것을 고쳤습니다. 이제 목록이 오면 바로 들어갑니다. 방장이 내보낸 방은 빠른 입장이 건너뜁니다. 모임 줄은 모임이 시작하거나 끝나는 순간에 바로 다시 그려지고, 달력 파일의 글자 처리 하나를 바로잡았습니다.",
         en: "Quick join: pressed before the list of rooms had arrived, it said that no room was waiting and the press was lost. It now enters as soon as the list comes. A room whose host sent you out is passed over. The meet-up line is redrawn the moment a meet-up starts or ends, and one mark in the calendar file is now written as the format asks.",
       },
