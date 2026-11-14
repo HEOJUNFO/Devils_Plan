@@ -5,7 +5,8 @@ import chatConfig from "../../../src/shared/chat-config.json";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import roomConfig from "../../../src/shared/room-config.json";
 import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, playPath, privacyPath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
-import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, invitePicture, slugOf } from "../../../src/shared/site/paths";
+import { NEWS, NEWS_WORDS } from "../../../src/shared/site/news-words";
+import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, invitePicture, newsPath, slugOf } from "../../../src/shared/site/paths";
 import { siteStyle } from "../../../src/shared/site/style";
 import voiceConfig from "../../../src/shared/voice-config.json";
 import { ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "../../../src/shared/site/words";
@@ -56,12 +57,13 @@ const canonical = (body: string): string => one(body, /<link rel="canonical" hre
 const alternate = (body: string, lang: string): string => one(body, new RegExp(`<link rel="alternate" hreflang="${lang}" href="([^"]*)"`));
 
 describe("the pages a search engine reads", () => {
-  it("are a page about the games, a page of rules for each game and the notice of what is kept, in every language", () => {
+  it("are a page about the games, a page of rules for each game, what changed lately and the notice of what is kept, in every language", () => {
     const addresses = pages().map((page) => page.address);
 
-    expect(addresses).toHaveLength(LANGS.length * (GAME_IDS.length + 2));
+    expect(addresses).toHaveLength(LANGS.length * (GAME_IDS.length + 3));
     for (const lang of LANGS) {
       expect(addresses).toContain(homePath(lang));
+      expect(addresses).toContain(newsPath(lang));
       expect(addresses).toContain(privacyPath(lang));
       for (const game of GAME_IDS) expect(addresses).toContain(gamePath(lang, game));
     }
@@ -190,6 +192,48 @@ describe("the pages a search engine reads", () => {
       expect(page.body).toContain(`href="${BUILT.font}"`);
     }
     expect(siteStyle(BUILT.font)).toContain(`url("${BUILT.font}")`);
+  });
+});
+
+describe("the page of what changed lately", () => {
+  /** The page in `lang`. */
+  const news = (lang: Lang): string => {
+    const found = pages().find((page) => page.address === newsPath(lang));
+    if (found === undefined) throw new Error(`no news in ${lang}`);
+    return found.body;
+  };
+
+  it.each(pages())("$address links to it in its own language", ({ lang, body }) => {
+    expect(body).toContain(`<a href="${newsPath(lang)}">${NEWS_WORDS[lang].name}</a>`);
+  });
+
+  it("has every day once, the newest first, each a real day", () => {
+    const dates = NEWS.map((day) => day.date);
+
+    expect(dates.length).toBeGreaterThan(0);
+    expect(dates).toEqual([...new Set(dates)].sort().reverse());
+    for (const date of dates) expect(new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10)).toBe(date);
+  });
+
+  it("says every change of every day in each language, under the day as that language writes it", () => {
+    for (const lang of LANGS) {
+      const body = unescape(news(lang));
+
+      for (const { date, lines } of NEWS) {
+        expect(body).toContain(`<time datetime="${date}">`);
+        expect(lines.length).toBeGreaterThan(0);
+        for (const line of lines) {
+          expect(line[lang].trim()).not.toBe("");
+          expect(body).toContain(`<li>${line[lang]}</li>`);
+        }
+      }
+    }
+    expect(news("ko")).toContain("2026년 11월 11일");
+    expect(news("en")).toContain("November 11, 2026");
+  });
+
+  it("leads back to the lobby in the page's language", () => {
+    for (const lang of LANGS) expect(news(lang)).toContain(`<p class="act"><a class="button" href="${playPath(lang)}">`);
   });
 });
 

@@ -52,3 +52,8 @@ export function invitePicture(lang: Lang, game: GameId): string {
  * the room's code. Kept for the tab, not the browser, and read once.
  */
 export const INVITED_GAME_KEY = "brain-survival.invited";
+
+/** The address of what changed on the site lately, in `lang`: the build's pages link to it, and so does the lobby's line with the build's number. */
+export function newsPath(lang: Lang): string {
+  return `/${lang}/news/`;
+}

@@ -27,6 +27,8 @@ const ko = {
     turnFull: "가로 전체 화면으로 보기",
     /** In the lobby's bar: which build the page is, to name when something is reported. */
     version: (build: string) => `버전 ${build}`,
+    /** What the build's number leads to, said when a mouse rests on it and to a screen reader. */
+    news: "최근에 바뀐 것",
     /** On the button that opens the sheet for a word about the game. */
     feedback: "의견 보내기",
   },
@@ -593,6 +595,7 @@ const en: typeof ko = {
     turnWhen: (when) => `Meet ${when}`,
     turnFull: "Go full screen, sideways",
     version: (build) => `Version ${build}`,
+    news: "What changed lately",
     feedback: "Send feedback",
   },
   feedback: {

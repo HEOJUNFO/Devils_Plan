@@ -51,7 +51,7 @@ import {
   type RejectReason,
 } from "../shared/protocol";
 import { liftFor, placeFrame } from "../shared/frame";
-import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, slugOf } from "../shared/site/paths";
+import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, newsPath, slugOf } from "../shared/site/paths";
 import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptCode, keptRoom, leaveSeat, seatLeft } from "../shared/resume";
 import { hearersOf, namesOf, teammatesOf, toggled, type ChatTo, type Hearer } from "../shared/aside";
@@ -406,6 +406,9 @@ function writeWords(): void {
     ["menu-close", WORDS.menu.close],
   ];
   for (const [id, text] of said) el(id).textContent = text;
+  // the build's number leads to what changed lately, in the language the page is read in
+  el("version").setAttribute("href", newsPath(lang));
+  el("version").title = WORDS.site.news;
   // said to a screen reader of what has no words on show
   const labelled: [id: string, text: string][] = [
     ["code", WORDS.entry.code],

@@ -24,7 +24,8 @@ import directoryConfig from "../directory-config.json";
 import { GAMES, GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
 import roomConfig from "../room-config.json";
-import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, invitePath, invitePicture, slugOf } from "./paths";
+import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, invitePath, invitePicture, newsPath, slugOf } from "./paths";
+import { NEWS, NEWS_WORDS } from "./news-words";
 import { PRIVACY_PARTS, PRIVACY_WORDS, type PrivacyFacts } from "./privacy-words";
 import { LANG_NAMES, ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "./words";
 
@@ -230,7 +231,7 @@ ${spec.main}
 <footer class="foot">
 <p>${SITE_NAME} · ${escapeHtml(words.frame.footer)}</p>
 <p>${escapeHtml(words.frame.notTheShow)}</p>
-<p><a href="${homePath(lang)}">${escapeHtml(words.frame.home)}</a> · <a href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a> · <a href="${privacyPath(lang)}">${escapeHtml(PRIVACY_WORDS[lang].name)}</a> · ${otherLangs}</p>
+<p><a href="${homePath(lang)}">${escapeHtml(words.frame.home)}</a> · <a href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a> · <a href="${newsPath(lang)}">${escapeHtml(NEWS_WORDS[lang].name)}</a> · <a href="${privacyPath(lang)}">${escapeHtml(PRIVACY_WORDS[lang].name)}</a> · ${otherLangs}</p>
 </footer>
 </body>
 </html>
@@ -384,6 +385,36 @@ ${sections.join("\n")}`;
   return page(built, { lang, path, title: notice.title, description: notice.description, others: PRIVACIES, fallback: PRIVACIES[FALLBACK_LANG], data, main });
 }
 
+/** What changed lately in each language. */
+const NEWSES = Object.fromEntries(LANGS.map((lang) => [lang, newsPath(lang)])) as Record<Lang, string>;
+
+/** What changed on the site lately, in `lang`: a heading for each day and under it that day's changes, newest first. */
+function newsPage(lang: Lang, built: Built): string {
+  const words = SITE_WORDS[lang];
+  const news = NEWS_WORDS[lang];
+  const path = newsPath(lang);
+  const days = NEWS.map(({ date, lines }) => {
+    const [year = 0, month = 0, day = 0] = date.split("-").map(Number);
+    return `<h2><time datetime="${date}">${escapeHtml(news.day(year, month, day))}</time></h2>\n<ul>\n${lines.map((line) => `<li>${escapeHtml(line[lang])}</li>`).join("\n")}\n</ul>`;
+  });
+  const main = `<nav class="trail" aria-label="${escapeHtml(words.frame.trail)}"><a href="${homePath(lang)}">${escapeHtml(words.frame.home)}</a> › ${escapeHtml(news.name)}</nav>
+<h1>${escapeHtml(news.name)}</h1>
+<p class="lead">${escapeHtml(news.lead)}</p>
+${days.join("\n")}
+<p class="act"><a class="button" href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a></p>`;
+  const data = [
+    { "@type": "WebPage", "@id": `${ORIGIN}${path}#page`, url: ORIGIN + path, name: news.name, description: news.description, inLanguage: lang, dateModified: NEWS[0]?.date, isPartOf: { "@id": SITE_ID } },
+    {
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        { "@type": "ListItem", position: 1, name: words.frame.home, item: ORIGIN + homePath(lang) },
+        { "@type": "ListItem", position: 2, name: news.name, item: ORIGIN + path },
+      ],
+    },
+  ];
+  return page(built, { lang, path, title: news.title, description: news.description, others: NEWSES, fallback: NEWSES[FALLBACK_LANG], data, main });
+}
+
 /** Every address a search engine is to index, each with the same page by language and the one for a reader of neither. */
 export function siteAddresses(): { path: string; others: Record<Lang, string>; fallback: string }[] {
   const games = GAME_IDS.map((game) => Object.fromEntries(LANGS.map((lang) => [lang, gamePath(lang, game)])) as Record<Lang, string>);
@@ -391,6 +422,7 @@ export function siteAddresses(): { path: string; others: Record<Lang, string>; f
     { path: "/", others: HOMES, fallback: "/" },
     ...LANGS.map((lang) => ({ path: HOMES[lang], others: HOMES, fallback: "/" })),
     ...games.flatMap((others) => LANGS.map((lang) => ({ path: others[lang], others, fallback: others[FALLBACK_LANG] }))),
+    ...LANGS.map((lang) => ({ path: NEWSES[lang], others: NEWSES, fallback: NEWSES[FALLBACK_LANG] })),
     ...LANGS.map((lang) => ({ path: PRIVACIES[lang], others: PRIVACIES, fallback: PRIVACIES[FALLBACK_LANG] })),
   ];
 }
@@ -423,7 +455,8 @@ function llms(): string {
     const words = SITE_WORDS[lang];
     const games = GAME_IDS.map((game) => `- [${GAMES[game].title[lang]}](${ORIGIN}${gamePath(lang, game)}): ${GAMES[game].summary[lang]} ${players(lang, game)}.`);
     const notice = PRIVACY_WORDS[lang];
-    return `## ${words.home.games} (${LANG_NAMES[lang]})\n\n- [${words.home.heading(count)}](${ORIGIN}${homePath(lang)}): ${words.frame.footer}.\n${games.join("\n")}\n- [${notice.name}](${ORIGIN}${privacyPath(lang)}): ${notice.description}`;
+    const news = NEWS_WORDS[lang];
+    return `## ${words.home.games} (${LANG_NAMES[lang]})\n\n- [${words.home.heading(count)}](${ORIGIN}${homePath(lang)}): ${words.frame.footer}.\n${games.join("\n")}\n- [${news.name}](${ORIGIN}${newsPath(lang)}): ${news.description}\n- [${notice.name}](${ORIGIN}${privacyPath(lang)}): ${notice.description}`;
   };
   const first = SITE_WORDS[FALLBACK_LANG];
   return `# ${SITE_NAME}
@@ -537,6 +570,7 @@ export function siteFiles(sheets: Sheets, built: Built): SiteFile[] {
   const pages = LANGS.flatMap((lang) => [
     { path: `${lang}/index.html`, body: homePage(lang, built) },
     ...GAME_IDS.map((game) => ({ path: `${gamePath(lang, game).slice(1)}index.html`, body: gamePage(lang, game, sheets[game][lang], built) })),
+    { path: `${newsPath(lang).slice(1)}index.html`, body: newsPage(lang, built) },
     { path: `${privacyPath(lang).slice(1)}index.html`, body: privacyPage(lang, built) },
   ]);
   return [...pages, { path: "sitemap.xml", body: sitemap() }, { path: "robots.txt", body: robots() }, { path: "llms.txt", body: llms() }, { path: MANIFEST_PATH, body: manifest() }];

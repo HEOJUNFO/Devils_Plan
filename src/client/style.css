@@ -1095,6 +1095,7 @@ button.choice[aria-pressed="true"] {
 #tally-open,
 #when-open,
 #code-hide,
+#version,
 #feedback {
   height: auto;
   padding: 0;
@@ -1110,6 +1111,7 @@ button.choice[aria-pressed="true"] {
   #tally-open:hover,
   #when-open:hover,
   #code-hide:hover,
+  #version:hover,
   #feedback:hover {
     color: var(--bone);
   }
