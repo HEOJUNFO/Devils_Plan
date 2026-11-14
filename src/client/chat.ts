@@ -42,12 +42,14 @@ export type ChatNote =
   | { kind: "hid" | "shown" | "flagged"; nick: string }
   /** The link that brought this player here says when the room's people meet (`when`), or this player copied a link that says so (`when-made`): the moment, put in the reader's words and clock when the note is shown (`src/shared/appointment.ts`). */
   | { kind: "when" | "when-made"; at: number }
+  /** The host took back the time they had said the room's people meet, while it was still ahead. */
+  | { kind: "when-off" }
   /** To the host, over the results of a game: how many have asked for another game as the room's next (`src/shared/wish.ts`). */
   | { kind: "wishes"; count: number };
 
 /** The kinds of note that name a player, and those that do not. */
 const NAMED_NOTES: readonly string[] = ["came", "went", "host", "kicked", "out", "champion", "top", "hid", "shown", "flagged"];
-const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time", "to-gone", "to-left", "knockout-on", "knockout-off", "knockout-again"];
+const PLAIN_NOTES: readonly string[] = ["not-sent", "too-fast", "voice-joined", "voice-listen-only", "voice-not-here", "first-time", "to-gone", "to-left", "knockout-on", "knockout-off", "knockout-again", "when-off"];
 
 /** One line as shown: something a player said, or a note from the page itself. */
 interface Line {

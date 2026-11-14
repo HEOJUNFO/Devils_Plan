@@ -781,6 +781,7 @@ const chat = createChat(
       if (note.kind === "to-left") return WORDS.chat.toLeft;
       if (note.kind === "when") return WORDS.when.note(whenOf(note.at));
       if (note.kind === "when-made") return WORDS.when.made(whenOf(note.at));
+      if (note.kind === "when-off") return WORDS.when.noteOff;
       if (note.kind === "wishes") return WORDS.swap.askedNote(note.count);
       if (note.kind === "host") return WORDS.room.becameHost(note.nick);
       if (note.kind === "game") return WORDS.room.gameChanged(isGameId(note.game) ? GAMES[note.game].title[lang] : WORDS.room.newGame);
@@ -2853,6 +2854,8 @@ function renderRoom(code: string, view: LobbyView): void {
     // the host has said a time to the room, or another one
     const at = roomWhenOf(view);
     if (at !== null && at !== saidWhen) chat.note({ kind: "when", at });
+    // or has taken it back while it was still ahead (a time that has come goes without a word)
+    else if (view.when === undefined && currentView?.when !== undefined && currentView.when > Date.now()) chat.note({ kind: "when-off" });
     saidWhen = at;
   }
   currentCode = code;

@@ -399,6 +399,7 @@ const ko = {
     invite: (game: string, when: string) => (game === "" ? `${when}에 같이 해요` : `${when}에 ${game} 같이 해요`),
     /** In the chat of someone the link brought into the room, and of whoever copied one. */
     note: (when: string) => `약속 시간: ${when}`,
+    noteOff: "약속 시간이 지워졌습니다",
     made: (when: string) => `약속 링크를 복사했습니다: ${when}`,
     /** What a calendar calls it, where the game is not known: with one it is the meeting's own word (`meet.event`). */
     event: (site: string) => `${site} 약속`,
@@ -839,6 +840,7 @@ const en: typeof ko = {
     close: "Close",
     invite: (game, when) => (game === "" ? `Play with me: ${when}` : `Play ${game} with me: ${when}`),
     note: (when) => `Meeting time: ${when}`,
+    noteOff: "Meeting time cleared",
     made: (when) => `Link copied: ${when}`,
     event: (site) => `${site} game night`,
   },
