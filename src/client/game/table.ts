@@ -818,9 +818,17 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
       sel = null;
       // The turn is mine by the room's word, and the move before it is still being shown: a move pressed now is not lost.
       // It is answered at the press (its button lights, with the sound of a choice), so that it is not pressed again.
-      if (picked !== null && waits() && !pending && !offline) {
-        early = { act: picked, at: time, moves: truth?.view.history.length ?? -1 };
-        sfx.pick();
+      // (Only a move that can be chosen when the screen has caught up: not over a swap that is on its way up, and
+      // one there are no credits for is told so now, not a second later.)
+      if (picked !== null && waits() && !pending && !offline && truth !== null && truth.view.phase === "turn") {
+        if ((truth.view.credits ?? 0) < costs(truth.rules)[picked]) {
+          early = null;
+          say(WORDS.refused["not-enough-credits"]);
+          sfx.deny();
+        } else {
+          early = { act: picked, at: time, moves: truth.view.history.length };
+          sfx.pick();
+        }
       } else if (!waits()) early = null;
       return;
     }

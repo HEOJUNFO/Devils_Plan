@@ -454,6 +454,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     if (help && (pressed("Escape", "Enter") || clicks.length > 0)) help = false;
     // the page's own buttons lie over the frame: they give way while the sheet is up
     if (help !== was) handlers.covered(help);
+    // (results that were under the sheet are up from now: their buttons wait as they do when a game ends in sight)
+    if (was && !help && latest.view.phase === "ended") endedAt = time;
     if (help || was) return;
     const view = latest.view;
     if (view.phase === "ended") {
@@ -536,11 +538,14 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const most = `${latest.rules.maxSaid}`.length;
     // the pad is on screen only once the answer is this player's; its buttons count as the keys they stand for
     const pad: string[] = [];
-    // (not in its first moment: the pad comes up where the buzzer was, and a second press of the buzzer is no figure)
-    if (toAnswer && floorAt !== null && time - floorAt >= PAD_HOLD) {
-      for (let digit = 0; digit <= 9; digit++) if (clicked(digitRect(digit), PAD_REACH)) pad.push(`Digit${digit}`);
-      if (clicked(ERASE_RECT, PAD_REACH)) pad.push("Backspace");
-      if (clicked(SAY_RECT, PAD_REACH)) pad.push("Enter");
+    if (toAnswer) {
+      // In its first moment a press where the buzzer was is the buzzer's second press, not a figure (`PAD_HOLD`).
+      // The rest of the pad takes a press at once: someone who buzzed with the answer ready types it straight away.
+      const early = floorAt === null || time - floorAt < PAD_HOLD;
+      const onPad = (rect: readonly [number, number, number, number]): boolean => clicks.some((p) => hits(p, rect, PAD_REACH) && !(early && hits(p, BUZZ_RECT)));
+      for (let digit = 0; digit <= 9; digit++) if (onPad(digitRect(digit))) pad.push(`Digit${digit}`);
+      if (onPad(ERASE_RECT)) pad.push("Backspace");
+      if (onPad(SAY_RECT)) pad.push("Enter");
     }
     const result = typeAnswer(typed, [...typing, ...pad], most);
     if (result.typed.length > typed.length || (result.typed !== typed && result.typed.length === typed.length)) sfx.move();

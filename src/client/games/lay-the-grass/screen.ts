@@ -554,6 +554,8 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
     else if (sheet !== "none" && (pressed("Escape", "Enter") || clicks.length > 0)) sheet = "none";
     // the page's own buttons lie over the frame: they give way while a sheet is up
     if ((sheet !== "none") !== (was !== "none")) handlers.covered(sheet !== "none");
+    // (results that were under the sheet are up from now: their buttons wait as they do when a game ends in sight)
+    if (was !== "none" && sheet === "none" && latest.view.phase === "ended") endedAt = time;
     if (sheet !== "none" || was !== "none") return;
 
     const view = latest.view;

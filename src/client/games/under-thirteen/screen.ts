@@ -464,6 +464,8 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (help && (pressed("Escape", "Enter") || clicks.length > 0)) help = false;
     // the page's own buttons lie over the frame: they give way while the sheet is up
     if (help !== was) handlers.covered(help);
+    // (results that were under the sheet are up from now: their buttons wait as they do when a game ends in sight)
+    if (was && !help && latest.view.phase === "ended") endedAt = time;
     if (help || was) return;
 
     const view = latest.view;
