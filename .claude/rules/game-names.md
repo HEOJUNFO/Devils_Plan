@@ -2,6 +2,7 @@
 paths:
   - "src/shared/games.json"
   - "src/**/words.ts"
+  - "src/shared/site/**"
   - "wrangler.jsonc"
   - "package.json"
 ---
@@ -58,6 +59,7 @@ assistant translates plainly and says so in its report. Terms and sentences:
     its space, as the show writes it.
   - The game's own screens (the lobby, a room, a game) and the picture a
     shared link shows (`public/og-*.png`) do not carry the show's name.
+  - A new game's page of rules names the show the same way.
   - In English the season is "season 3": its English name was not found in
     what the project has read.
 - Game ids (`russian-roulette`, `lay-the-grass`, `under-thirteen`) are not

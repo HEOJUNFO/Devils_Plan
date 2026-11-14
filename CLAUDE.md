@@ -16,102 +16,75 @@ Each agent owns a specific domain, enforcing separation of concerns and quality.
 
 ## Project Rules (Devils_Plan)
 
-Rules the user set for this project, on 2026-11-11 unless a rule gives another
-date. Where they differ from
-the framework's defaults in this file, these win. The rule file named under a
-rule has the user's own words, the history, and the detail. A part marked
-*reading* is the assistant's reading, not the user's words.
+The user's rules for this project. Where they differ from the framework's
+defaults in this file, these win. The file named under a rule has the user's
+own words, the date, the history and the detail (there, a part marked
+*reading* is the assistant's reading, not the user's words): read it before
+acting near a rule's edge.
 
 - **Multiplayer is the product; bots are a test aid.** Real users are only
   offered games against other people. One basic bot per game that makes legal
-  moves and can finish a game, and no more: no skill levels, no bot
-  personalities, no single-player screens. Dull or weak bots are not a defect.
-  큐브 세기 and 네모 세기 can be started by one player, with no bots; the
-  other games cannot. *Reading:* a new game gets a start for one player only
-  when the user says so or it is plainly a game one person can play, and the
-  report says which. Detail: `.claude/rules/bots.md`.
-- **A game is shown under the name the show gives it.** Also where the show
-  made the name up ("무거운 13", "미스터리 거래소"). No game is given a name
-  of the assistant's own. The rules are used as documented; the show's
-  logo, cast, set and screen layout are not used, and its title only as the
-  next rule says. Game ids stay as they are,
-  the project is `brain-survival`, and its address is
-  `play.brain-survival.workers.dev`. Detail: `.claude/rules/game-names.md`.
-- **A search for the show finds the site.** The user, 2026-11-12: "데블스플랜을
-  검색했을때 나왔으면좋겠어 우리사이트가". The pages a search engine reads
-  name the show: the titles and descriptions of `/`, of `/ko/` and `/en/`, and
-  of each game's page of rules, and their opening sentences
-  (`src/shared/site/words.ts`). *Reading:* the show is named in sentences,
-  as what the games are from, and every such page says under it that the site
-  is not the broadcaster's; the game's own screens and the picture a shared
-  link shows do not carry the show's name. A new game's page names the show
-  the same way. Detail: `.claude/rules/game-names.md`.
+  moves and can finish a game: no skill levels, bot personalities or
+  single-player screens, and dull or weak bots are not a defect. Only 큐브
+  세기 and 네모 세기 start with one player, with no bots; a new game does only
+  when the user says so or it is plainly one person's game, and the report
+  says which. `.claude/rules/bots.md`
+- **A game is shown under the name the show gives it**, also where the show
+  made the name up ("무거운 13", "미스터리 거래소"); none gets a name of the
+  assistant's own. The rules are used as documented; the show's logo, cast,
+  set and screen layout are not used. Game ids stay as they are, the project
+  is `brain-survival`, the address `play.brain-survival.workers.dev`.
+  `.claude/rules/game-names.md`
+- **A search for the show finds the site.** The pages a search engine reads
+  (`/`, `/ko/`, `/en/`, each game's page of rules: `src/shared/site/words.ts`)
+  name the show in their titles, descriptions and opening sentences, as what
+  the games are from, and say under it that the site is not the
+  broadcaster's. The game's own screens and the picture a shared link shows
+  do not carry the show's name. A new game's page does the same.
+  `.claude/rules/game-names.md`
 - **The game is read in Korean and in English.** Every sentence a player
-  reads is there in both; a new game or a new sentence comes with both. A
-  screen's sentences are in the `words.ts` beside it, never in the markup or
-  the screen's code, and the room sends reasons and events, never sentences.
-  *Reading:* English names and terms are those of the show's English release
-  where one can be found, else a plain translation that the report names; an
-  English sentence is looked at on its 480 by 270 screen, not only
-  type-checked. Detail: `.claude/rules/languages.md`.
+  reads is there in both; a new one comes with both. A screen's sentences are
+  in the `words.ts` beside it, never in the markup or the screen's code, and
+  the room sends reasons and events, never sentences. English terms are those
+  of the show's English release where found, else a plain translation the
+  report names; an English sentence is looked at on its 480 by 270 screen.
+  `.claude/rules/languages.md`
 - **The lobby is a list of rooms.** Before making a room a player sees the
   open rooms and can join one, make one, or enter a code. The user:
   "내가말한로비는 여러방리스트가 있는 로비말한거야". A screen with only a
   nickname and a code is not the lobby.
-- **Check what was changed, not everything.** After a change, run the tests
-  of the files touched and look at the screen touched. No run of the entire
-  test suite, no mutation run over a whole list, no walk through every screen.
-  The user: "전체검사는하지마 앞으로도계속 수정한부분에대한 부분검사해
-  프로젝트룰에추가". Where this differs from the testing standards in this
-  file, this wins. *Reading:* the type check stays (one command of a few
-  seconds that cannot be pointed at a part), and CI still runs the whole suite
-  on every push. What was not checked is said in the commit and in the report.
+- **Check what was changed, not everything.** Run the tests of the files
+  touched and look at the screen touched: no whole test suite, no mutation
+  run over a whole list, no walk through every screen. The type check stays.
+  What was not checked is said in the commit and in the report.
+  `.claude/rules/checks.md`
 - **The integration tests are not run here.** Nothing under
-  `tests/integration` is run on this machine. The user, 2026-11-13, when the
-  assistant had run that whole folder twice in one session after changing the
-  room and the directory, and single files of it several times more:
-  "통합테스트돌리지말라니까왜돌려또 프로젝트룰에추가해". "A change to the
-  server means running the integration tests" was a habit of the assistant's
-  own, never a rule, and is withdrawn. CI runs them on every push, and the
-  Cloudflare build runs them before it deploys, so a push that breaks one is
-  not deployed. *Reading:* one integration file run by name is not run either
-  (the user said "통합테스트", not "all of them"); a change to the server is
-  checked here by the type check, the unit tests of the files touched and the
-  screen; the commit and the report say the integration tests were not run
-  here; after a push, CI's result is read and reported, and a failure there is
-  fixed before anything else. An integration test that is added or changed is
-  pushed without having been seen to fail or pass here, and the report says
-  so. Where this differs from "watch it fail" in the test standards, this
-  wins.
-- **A screen is looked at with ego-browser or browser-skill.** Browser checks
-  (a changed screen, a phone's size, touch) are done with the `ego-browser`
-  skill or the `browser-skill` skill (`bsk`). The user, 2026-11-12, when the
-  assistant was setting up another browser tool for phone checks: "우리
-  에고브라우저랑 브라우저스킬있는데 그거사용하면되지않나? 맞으면
-  룰에추가해". It was right: both were tried on the local server that day and
-  both stand in for a phone (750 by 340 at 3x, touch, `pointer: coarse`).
-  *Reading:* ego-browser first, as its own guide asks; another browser tool
-  only for what neither can do, and the report says which tool produced the
-  evidence. Neither is a phone: what only a real one shows (Safari, fingers,
-  the on-screen keyboard) is reported as not checked. Detail:
-  `.claude/rules/browser-checks.md`.
-- **A push is on the deployed address within three minutes.** From a push to
-  main to the end of the Cloudflare build that deploys it, and of the GitHub
-  CI run beside it, no more than three minutes. The user, 2026-11-12, on
-  hearing that the last three pushes had taken 1 min 19 s to 2 min 16 s to
-  deploy and the CI run 38 to 59 s: "앞으로 3분이넘지않게 고려하게
-  프로젝트룰에적용해줘". *Reading:* this is weighed when a change adds to
-  what a push runs (tests, a build step, a package to install), not measured
-  on every push; after such a push the two times are read from the commit's
-  check runs and said in the report. The Cloudflare check gives one time for
-  its start and its end, so its length is counted from the start of the
-  GitHub run of the same commit. Where a change would take a push past three
-  minutes, the user is told before it is pushed, with what could be made
-  faster; no test is removed or skipped to keep the time.
+  `tests/integration` is run on this machine, not one file by name either. A
+  change to the server is checked by the type check, the unit tests of the
+  files touched and the screen. An integration test added or changed is
+  pushed unseen, and the commit and the report say so. After a push, CI's
+  result is read and reported, and a failure there is fixed before anything
+  else. `.claude/rules/checks.md`
+- **A screen is looked at with ego-browser or browser-skill** (`bsk`),
+  ego-browser first; another browser tool only for what neither can do, and
+  the report says which tool produced the evidence. Neither is a phone: what
+  only a real one shows (Safari, fingers, the on-screen keyboard) is reported
+  as not checked. `.claude/rules/browser-checks.md`
+- **A push is on the deployed address within three minutes**: the Cloudflare
+  build that deploys it and the GitHub CI run beside it. Weighed when a change
+  adds to what a push runs; after such a push both times are read from the
+  commit's check runs and reported. Where a change would pass three minutes,
+  the user is told before it is pushed, with what could be made faster; no
+  test is removed or skipped to keep the time. `.claude/rules/deploy-time.md`
 
 ## Project Structure
 
-@.claude/docs/directory-structure.md
+Code is in `src/` (`client/`, `server/`, `shared/`); unit tests in
+`tests/unit/`, integration tests in `tests/integration/`. Design records are
+in `design/`, technical docs in `docs/`, production records in `production/`
+(screenshots kept as evidence: `production/qa/evidence/`), throwaway builds in
+`prototypes/`. The framework's full layout and its code root for each engine:
+`.claude/docs/directory-structure.md`, read on demand.
 
 ## Engine Version Reference
 
@@ -124,18 +97,30 @@ rule has the user's own words, the history, and the detail. A part marked
 
 ## Technical Preferences
 
-`project.yaml` at the repo root is the primary config store — engine, specialists,
-naming, platform, performance, modes. Skills resolve it via `resolve_config`
-(see `.claude/docs/config-resolution.md`).
-
-`.claude/docs/technical-preferences.md` is the **legacy fallback**, read on demand
-when a key is absent from `project.yaml`. It is not imported here: before
-`/setup-engine` runs it is almost entirely `[TO BE CONFIGURED]` placeholders, and
-after it runs `project.yaml` holds the real values.
+`project.yaml` at the repo root is the primary config store (engine,
+specialists, naming, platform, performance, modes); skills resolve it via
+`resolve_config` (`.claude/docs/config-resolution.md`).
+`.claude/docs/technical-preferences.md` is the legacy fallback, read on demand
+when a key is absent from `project.yaml`.
 
 ## Coordination Rules
 
-@.claude/docs/coordination-rules.md
+Read `.claude/docs/coordination-rules.md` on demand: before a `team-*` or
+other orchestration skill, when agents disagree, or to choose a model tier.
+Always in force:
+
+- Leadership agents delegate to department leads, leads to specialists. A
+  disagreement goes to the shared parent, else to `creative-director`
+  (design) or `technical-director` (technical).
+- An agent does not modify files outside its own domain without explicit
+  delegation.
+- Design docs are read by section: find the heading with Grep (`^#`), Read
+  that range. `validate-read.sh` refuses a whole-file read of a doc over 40 KB.
+- **Nothing goes upstream.** Never file, open or comment on an issue or pull
+  request in an engine, plugin or vendor repository, even when asked. Write a
+  draft; the user submits it.
+- Independent agents are spawned in one message. A BLOCKED agent is surfaced
+  at once, and a partial report is still produced.
 
 ## Collaboration Protocol
 
@@ -155,12 +140,25 @@ Every task follows: **Question -> Options -> Decision -> Draft -> Approval**
 
 See `docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for full protocol and examples.
 
-> **First session?** Say "make me a game" (`/prototype`), or run `/start` to begin
-> the guided onboarding flow.
-
 ## Coding Standards
 
-@.claude/docs/coding-standards.md
+Read `.claude/docs/coding-standards.md` on demand: when writing a design
+document, closing a story, or changing CI. Always in force:
+
+- Public APIs have doc comments. Gameplay values are data-driven (config
+  files), never hardcoded. Dependency injection over singletons, so that
+  public methods can be unit-tested.
+- Commits use Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`,
+  `test:`, `refactor:`) and reference the design document or task.
+- Tests first for gameplay systems. Evidence before work is called done: for
+  logic a passing unit test, for UI and visuals a screenshot kept in
+  `production/qa/evidence/`. A parse check is not a run: a change a player
+  can see is launched and looked at before it closes.
+- Tests are deterministic and isolated; unit tests do no network or file I/O.
+- CI runs the whole suite on every push. A failing test is fixed, never
+  disabled or skipped.
+- How many ADRs and GDD sections are required depends on `modes.workflow`
+  (`.claude/docs/workflow-modes.md`).
 
 ## Context Management
 
