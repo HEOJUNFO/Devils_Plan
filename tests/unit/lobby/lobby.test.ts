@@ -293,6 +293,26 @@ describe("viewLobby", () => {
     expect(viewLobby(state, there, 1, config, false, undefined, wished)).toMatchObject({ wishes: { [other]: 2 }, wish: other });
   });
 
+  it("does not count a word for a game that has no place for someone who is in the room", () => {
+    const config = testConfig({ maxPlayers: GAMES[ALONE_GAME].maxPlayers });
+    const small = SOLO_GAME;
+    const large = TEAM_GAME;
+    const fits = GAMES[small].maxPlayers;
+    const wished = new Map([
+      [1, small],
+      [2, large],
+    ]);
+    const all = (count: number): Set<number> => new Set(Array.from({ length: count }, (_, slot) => slot));
+
+    const roomy = viewLobby(roomOf(ALONE_GAME, fits, config), all(fits), 1, config, false, undefined, wished);
+    const crowded = viewLobby(roomOf(ALONE_GAME, fits + 1, config), all(fits + 1), 1, config, false, undefined, wished);
+
+    expect(roomy).toMatchObject({ wishes: { [small]: 1, [large]: 1 }, wish: small });
+    // one more has come in than the small game seats: the host could not change to it, and is not shown a count for it
+    expect(crowded.wishes).toEqual({ [large]: 1 });
+    expect("wish" in crowded).toBe(false);
+  });
+
   it("says nothing of another game while nobody has asked for one", () => {
     const config = testConfig();
     const state = lobbyWith(2, config);

@@ -872,7 +872,9 @@ export function setListed(state: LobbyState, listed: boolean): LobbyState {
  * with a connection that said its player has the rules open: the viewer is
  * told how many of the others, not who (`reading.ts`). `wished` is the game
  * each slot's connection asked for as the room's next: everyone is told how
- * many asked for each, and the viewer which they asked for (`wish.ts`).
+ * many asked for each, and the viewer which they asked for (`wish.ts`); a
+ * word for a game that has no place for everyone in the room is left out
+ * for as long as that is so.
  */
 export function viewLobby(
   state: LobbyState,
@@ -888,7 +890,9 @@ export function viewLobby(
   // of those who hold a seat: a connection whose seat has passed to someone else speaks for nobody
   const seated = new Set(state.players.map((p) => p.slot));
   const readers = reading === undefined ? 0 : readersFor(new Set([...reading].filter((slot) => seated.has(slot))), connectedSlots, viewerSlot);
-  const asked = new Map([...(wished ?? [])].filter(([slot]) => seated.has(slot)));
+  // nor is a word counted for a game that has no place for someone who is here now: the host could not change to it
+  const slots = state.players.map((p) => p.slot);
+  const asked = new Map([...(wished ?? [])].filter(([slot, game]) => seated.has(slot) && gameHolds(slots, game, config)));
   const wishes = wishesOf(asked, connectedSlots, host?.slot ?? null, gameOf(state));
   // the viewer's own word, where it is one of those counted
   const mine = asked.get(viewerSlot);
