@@ -2063,8 +2063,15 @@ syncRecord();
 
 /** Opens the sheet a word about the game is written on, or puts it away; what was written and not sent is kept while the page is open. */
 function showFeedback(open: boolean): void {
-  feedbackSheet.hidden = !open;
-  if (!open) return;
+  if (!open) {
+    if (feedbackSheet.hidden) return;
+    // the keys go back to the button that opened the sheet, where they were in it
+    const within = feedbackSheet.contains(document.activeElement);
+    feedbackSheet.hidden = true;
+    if (within) feedbackButton.focus({ preventScroll: true });
+    return;
+  }
+  feedbackSheet.hidden = false;
   // one sheet over the lobby at a time
   showRecord(false);
   feedbackNote.textContent = "";
@@ -2490,12 +2497,15 @@ function closeNewRoom(): void {
   setCreating(false);
   // the room that was going to be made is not: the connection opened to it is let go, for the likeliest room if there is one
   nextCode = null;
+  // the keys go back to the button that opened the form, where they were in it
+  const within = newRoom.contains(document.activeElement) || rules.contains(document.activeElement) || document.activeElement === rulesOpen;
   newRoom.hidden = true;
   warmRest();
   entry.hidden = false;
   rules.hidden = true;
   lobbyBar();
   showLobbyLinks(true);
+  if (within) createButton.focus({ preventScroll: true });
 }
 
 // ---- A room, before a game ---------------------------------------------------------------------------
@@ -4429,6 +4439,7 @@ rulesOpen.addEventListener("click", () => {
   lightRules();
   const sheet = CLIENTS[game].sheet;
   const title = document.createElement("h2");
+  title.id = "rules-title";
   title.textContent = sheet.title;
   // the rules in three lines first, each under what it answers; the sheet itself follows
   const brief = document.createElement("dl");
@@ -4452,9 +4463,14 @@ rulesOpen.addEventListener("click", () => {
   rules.hidden = false;
   el<HTMLButtonElement>("rules-close").focus();
 });
-el<HTMLButtonElement>("rules-close").addEventListener("click", () => {
+/** Puts the sheet of rules away; the keys go back to the button that opened it, where they were in the sheet and it is still there. */
+function closeRules(): void {
+  if (rules.hidden) return;
+  const within = rules.contains(document.activeElement);
   rules.hidden = true;
-});
+  if (within && !rulesOpen.hidden) rulesOpen.focus({ preventScroll: true });
+}
+el<HTMLButtonElement>("rules-close").addEventListener("click", closeRules);
 
 /**
  * Says to the room that this player has the rules open in its waiting room,
@@ -4500,12 +4516,7 @@ const SHEETS: readonly (readonly [HTMLElement, () => void])[] = [
   [tallySheet, () => showTally(false)],
   [qrSheet, () => showQr(false)],
   [inboxSheet, () => showInbox(false)],
-  [
-    rules,
-    () => {
-      rules.hidden = true;
-    },
-  ],
+  [rules, closeRules],
   [newRoom, closeNewRoom],
   [
     roomsGames,
@@ -4527,6 +4538,37 @@ addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!gameMenu.hidden) openMenu(false);
   else closeTop();
+});
+
+/** What Tab stops at in `sheet`, in order: what is shown and can be pressed or written in. */
+function stopsIn(sheet: HTMLElement): HTMLElement[] {
+  return [...sheet.querySelectorAll<HTMLElement>("button, input, textarea, select, a[href]")].filter(
+    (each) => !(each as HTMLButtonElement).disabled && each.tabIndex >= 0 && each.getClientRects().length > 0,
+  );
+}
+
+// A sheet that says it is the only thing to be used (`aria-modal`) keeps Tab inside itself: without this the
+// keys walk on to the lobby's form and the rows behind the sheet, which it covers.
+addEventListener("keydown", (event) => {
+  if (event.key !== "Tab") return;
+  // the topmost sheet that is on the screen (one left open inside a panel that is put away is not)
+  const sheet = !gameMenu.hidden ? gameMenu : SHEETS.find(([each]) => !each.hidden && each.getClientRects().length > 0)?.[0];
+  if (sheet === undefined || sheet.getAttribute("aria-modal") !== "true") return;
+  const stops = stopsIn(sheet);
+  if (stops.length === 0) return;
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  const at = document.activeElement;
+  if (!sheet.contains(at)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  } else if (event.shiftKey && at === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && at === last) {
+    event.preventDefault();
+    first.focus();
+  }
 });
 
 /**

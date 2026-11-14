@@ -588,6 +588,8 @@ button.choice[aria-pressed="true"] {
   border-color: var(--amber-dim);
   background: #3a2a12;
   color: var(--amber);
+  /* a bar along its foot as well: the three colours alone differ too little from an unpicked one to be told apart without colour */
+  box-shadow: inset 0 -2px 0 var(--amber);
 }
 
 /*
@@ -765,7 +767,8 @@ button.choice[aria-pressed="true"] {
 #notice {
   min-height: 26px;
   margin-top: 6px;
-  color: var(--crimson);
+  /* a lighter red than --crimson, which on this panel is 4.46 to 1: this is 5.07 */
+  color: #ea4b57;
 }
 
 .room-code {
@@ -1366,7 +1369,8 @@ button.choice[aria-pressed="true"] {
   position: absolute;
   right: 180px;
   top: 3px;
-  color: var(--dim);
+  /* silent: dimmer than when heard, and still read (--dim on a button is 4.1 to 1) */
+  color: var(--bone-dim);
 }
 
 #sound[aria-pressed="true"] {

@@ -42,6 +42,15 @@ const RECT = name("count-rectangles");
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
+    date: "2026-11-15",
+    lines: [
+      {
+        ko: "키보드로 쓰기 편해졌습니다. 의견·규칙·새 방 창을 닫으면 열었던 버튼으로 돌아가고, 창이 열려 있는 동안 Tab이 그 안에서만 돕니다. 고른 게임과 공개·비공개에는 색 말고도 아래에 줄이 생겼습니다.",
+        en: "Easier with a keyboard: closing the feedback, rules or new-room sheet returns to the button that opened it, and Tab stays inside a sheet while it is open. The game and the Public or Private choice you picked now have a bar under them as well as a colour.",
+      },
+    ],
+  },
+  {
     date: "2026-11-14",
     lines: [
       {
