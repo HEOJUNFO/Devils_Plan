@@ -27,7 +27,7 @@ const ko = {
         "조작 (1~3): 모두가 낸 크레딧이 합쳐 6이 되면, 그때 낸 사람이 이웃한 두 칸의 탄을 맞바꿈. 넘친 크레딧은 사라지고 다시 0부터 모임",
       ],
       "공개 조사와 회전 말고는 누가 했는지만 '비공개 행동'으로 알려집니다. 무엇을 했는지, 조작 크레딧이 얼마나 모였는지, 탄이 바뀌었는지는 알려 주지 않습니다.",
-      "남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없고, 다 쓰면 차례마다 자동으로 패스됩니다 (패스도 비공개 행동). 절반이 크레딧을 다 쓰면 그 즉시 끝나고, 총구가 향한 자리부터 시계 방향으로 한 발씩 격발합니다.",
+      "남은 크레딧은 본인만 압니다. 크레딧이 남아 있으면 쉴 수 없고, 다 쓰면 차례마다 자동으로 패스됩니다 (패스도 비공개 행동). 절반(5명이면 2명)이 크레딧을 다 쓰면 그 즉시 끝나고, 총구가 향한 자리부터 시계 방향으로 한 발씩 격발합니다.",
     ],
   } as RulesSheet,
   /** Why the room refused a move, for the bar. */
@@ -209,7 +209,7 @@ const en: typeof ko = {
         "Tamper (1 to 3): the credits all players put in add up in one place. Whoever takes them to 6 swaps the rounds of two neighbouring chambers; what is over 6 is lost and the count starts again",
       ],
       "Only a public check and a turn are announced as they are. Anything else is announced as a hidden action: the table hears who, not what. Nobody is told how many credits have gathered, or that two rounds changed places.",
-      "Only you know how many credits you have left. While you have credits you cannot pass; once you run out you automatically pass on every turn, and that too is announced as a hidden action. The game ends the moment half the players have spent theirs, and the gun fires one shot at each seat, clockwise from the one the muzzle points at.",
+      "Only you know how many credits you have left. While you have credits you cannot pass; once you run out you automatically pass on every turn, and that too is announced as a hidden action. The game ends the moment half the players (two of five) have spent theirs, and the gun fires one shot at each seat, clockwise from the one the muzzle points at.",
     ],
   } as RulesSheet,
   refused: {
