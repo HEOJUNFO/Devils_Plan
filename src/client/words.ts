@@ -52,6 +52,10 @@ const ko = {
     /** One game's line: how many were played, and how many at the top, by what that game calls its top. */
     row: (played: number, top: number, kind: string) => `${played}판 · ${kind} ${top}번`,
     kinds: { alive: "생존", won: "승리", first: "1위" },
+    /** The sheet's heading: how many of the games have their mark, a game played to its end with others. */
+    stamps: (done: number, all: number) => `내 기록 · 도장 ${done}/${all}`,
+    /** In place of the count, on the line of a game with no mark yet. */
+    notYet: "아직 안 해 봄",
     clear: "기록 지우기",
     clearSure: "정말 지우기",
     close: "닫기",
@@ -65,6 +69,18 @@ const ko = {
     row: (games: number, wins: number, pieces: number) => `${games}판 · 1위 ${wins}번${pieces > 0 ? ` · 피스 ${pieces}개` : ""}`,
     /** After the name on the reader's own line. */
     me: " (나)",
+    close: "닫기",
+    /** The two buttons beside it: the tally passed on as a picture, and on to the sheet that sets when the room meets next. */
+    share: "그림으로 공유",
+    when: "다음 약속",
+    /** The line the picture is passed on with, before `share.come`. */
+    said: (games: number) => `같이 ${games}판 한 방의 전적`,
+  },
+  /** The room's invitation as a QR code, in the waiting room: the link on the bar's third line and the sheet it opens. */
+  qr: {
+    open: "QR",
+    title: "QR로 초대",
+    hint: "폰 카메라로 찍으면 이 방으로 들어옵니다.",
     close: "닫기",
   },
   /** What players have written about the game, for whoever makes it: opened with `?inbox` and the key. */
@@ -615,6 +631,8 @@ const en: typeof ko = {
     hint: "Kept in this browser only. A game counts when two or more played it to the end.",
     row: (played, top, kind) => `${played} played · ${kind} ${top}`,
     kinds: { alive: "Alive", won: "Won", first: "1st" },
+    stamps: (done, all) => `My record · ${done}/${all} stamped`,
+    notYet: "not played yet",
     clear: "Clear record",
     clearSure: "Really clear",
     close: "Close",
@@ -625,6 +643,15 @@ const en: typeof ko = {
     hint: "Games two or more played to the end in this room. A player who leaves takes their line along.",
     row: (games, wins, pieces) => `${games} played · top ${wins}${pieces > 0 ? ` · ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}`,
     me: " (you)",
+    close: "Close",
+    share: "Share picture",
+    when: "Next time",
+    said: (games) => `Our room after ${games} ${games === 1 ? "game" : "games"}`,
+  },
+  qr: {
+    open: "QR",
+    title: "Invite by QR",
+    hint: "Point a phone's camera at it to come into this room.",
     close: "Close",
   },
   inbox: {

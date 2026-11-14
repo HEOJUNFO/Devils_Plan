@@ -153,6 +153,25 @@ export function forgotten(record: MyRecord): MyRecord {
   return { games: {}, seen: [...record.seen] };
 }
 
+/**
+ * A game's mark on the board of every game, which the record's sheet is:
+ * not yet played to its end with others, played, or come out of at the top
+ * at least once.
+ */
+export type Stamp = "none" | "played" | "top";
+
+/** The mark `record` has for `game`. */
+export function stampOf(record: MyRecord, game: GameId): Stamp {
+  const tally = record.games[game];
+  if (tally === undefined || tally.played <= 0) return "none";
+  return tally.top > 0 ? "top" : "played";
+}
+
+/** How many of `games` have a mark in `record`. */
+export function stampsIn(record: MyRecord, games: readonly GameId[]): number {
+  return games.filter((game) => stampOf(record, game) !== "none").length;
+}
+
 /** Whether `record` has any game in it. */
 export function playedAny(record: MyRecord): boolean {
   return Object.keys(record.games).length > 0;

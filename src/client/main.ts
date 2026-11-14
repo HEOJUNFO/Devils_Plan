@@ -19,7 +19,8 @@ import { louder, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
-import { playedAny, TOP_KIND } from "../shared/record";
+import { qrCode } from "../shared/qr";
+import { playedAny, stampOf, stampsIn, TOP_KIND } from "../shared/record";
 import {
   gameHolds,
   generateRoomCode,
@@ -80,6 +81,7 @@ import roomConfig from "../shared/room-config.json";
 import soundConfig from "../shared/sound-config.json";
 import voiceConfig from "../shared/voice-config.json";
 import { createChat } from "./chat";
+import { Pen, W as FRAME_W } from "./game/draw";
 import { C } from "./game/palette";
 import { buzz, isMuted, sfx, soundLevel, startAudio, stepSound } from "./game/sound";
 import { CLIENTS, type GameScreen, type WaitingScene } from "./games";
@@ -267,7 +269,11 @@ const recordSheet = el<HTMLElement>("record-sheet");
 const recordList = el<HTMLUListElement>("record-list");
 const tallyOpen = el<HTMLButtonElement>("tally-open");
 const codeHide = el<HTMLButtonElement>("code-hide");
+const qrOpen = el<HTMLButtonElement>("qr-open");
+const qrSheet = el<HTMLElement>("qr-sheet");
+const qrCanvas = el<HTMLCanvasElement>("qr-code");
 const tallySheet = el<HTMLElement>("tally-sheet");
+const tallyShare = el<HTMLButtonElement>("tally-share");
 const tallyList = el<HTMLUListElement>("tally-list");
 const recordClear = el<HTMLButtonElement>("record-clear");
 
@@ -355,6 +361,12 @@ function writeWords(): void {
     ["tally-title", WORDS.tally.title],
     ["tally-hint", WORDS.tally.hint],
     ["tally-close", WORDS.tally.close],
+    ["tally-share", WORDS.tally.share],
+    ["qr-open", WORDS.qr.open],
+    ["qr-title", WORDS.qr.title],
+    ["qr-hint", WORDS.qr.hint],
+    ["qr-close", WORDS.qr.close],
+    ["tally-when", WORDS.tally.when],
     ["inbox-title", wantNumbers ? WORDS.numbers.title : WORDS.inbox.title],
     ["inbox-open", WORDS.inbox.open],
     ["inbox-close", WORDS.inbox.close],
@@ -1104,6 +1116,7 @@ function syncScene(): void {
   // the link for an invitation that says when is the waiting room's, on its bar
   whenOpen.hidden = !seen;
   if (!seen) showWhen(false);
+  syncQr();
   sceneCanvas.hidden = currentCode === "";
   scene?.setRunning(seen);
   renderSound();
@@ -1850,18 +1863,24 @@ function showRecord(open: boolean): void {
   }
   // one sheet over the lobby at a time: this one and the one for a word about the game lie in the same place
   showFeedback(false);
-  const { games } = myRecord();
+  // every game has a line, played or not: the sheet is the board of them, each with its mark
+  const record = myRecord();
+  el("record-title").textContent = WORDS.record.stamps(stampsIn(record, GAME_IDS), GAME_IDS.length);
   recordList.replaceChildren(
-    ...GAME_IDS.flatMap((game) => {
-      const tally = games[game];
-      if (tally === undefined) return [];
+    ...GAME_IDS.map((game) => {
+      const tally = record.games[game];
+      const stamp = stampOf(record, game);
       const row = document.createElement("li");
+      row.className = `stamp-${stamp}`;
       const name = document.createElement("span");
-      name.textContent = GAMES[game].title[lang];
+      const mark = document.createElement("i");
+      mark.className = "stamp";
+      mark.setAttribute("aria-hidden", "true");
+      name.append(mark, GAMES[game].title[lang]);
       const count = document.createElement("span");
-      count.textContent = WORDS.record.row(tally.played, tally.top, WORDS.record.kinds[TOP_KIND[game]]);
+      count.textContent = tally === undefined || stamp === "none" ? WORDS.record.notYet : WORDS.record.row(tally.played, tally.top, WORDS.record.kinds[TOP_KIND[game]]);
       row.append(name, count);
-      return [row];
+      return row;
     }),
   );
   el<HTMLButtonElement>("record-close").focus({ preventScroll: true });
@@ -1882,11 +1901,16 @@ function syncTally(): void {
   else if (!tallySheet.hidden) fillTally();
 }
 
-/** Writes the lines of the room's tally: a player to a line, whoever was at the top most often first, then whoever played most, then by seat. */
+/** The players of `view` in the tally's order: whoever was at the top most often first, then whoever played most, then by seat. */
+function tallied(view: LobbyView): LobbyView["players"] {
+  return [...view.players].sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0) || (b.games ?? 0) - (a.games ?? 0) || a.slot - b.slot);
+}
+
+/** Writes the lines of the room's tally: a player to a line. */
 function fillTally(): void {
   const view = currentView;
   if (view === null) return;
-  const rows = [...view.players].sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0) || (b.games ?? 0) - (a.games ?? 0) || a.slot - b.slot);
+  const rows = tallied(view);
   tallyList.replaceChildren(
     ...rows.map((player) => {
       const row = document.createElement("li");
@@ -1914,6 +1938,61 @@ function showTally(open: boolean): void {
 }
 
 tallyOpen.addEventListener("click", () => showTally(true));
+
+/** The picture of a room's tally: how far its heading and its first line are from the top, how far apart the lines are, and its margins. */
+const TALLY_PICTURE = { headY: 8, firstY: 30, pitch: 15, side: 12, foot: 8, nameWidth: 220 };
+
+/**
+ * The room's tally as a picture, the frame's width and as tall as its lines:
+ * its heading, and a line for each player as the sheet has them, without the
+ * mark for the reader's own. Never the room's code, which is not for
+ * everyone. `null` where the browser draws no picture.
+ */
+function tallyPicture(view: LobbyView): Blob | null {
+  const rows = tallied(view);
+  const look = TALLY_PICTURE;
+  const canvas = document.createElement("canvas");
+  canvas.width = FRAME_W;
+  canvas.height = look.firstY + rows.length * look.pitch + look.foot;
+  const context = canvas.getContext("2d");
+  if (context === null) return null;
+  context.imageSmoothingEnabled = false;
+  const pen = new Pen(context);
+  pen.px(0, 0, canvas.width, canvas.height, C.night);
+  pen.txt(WORDS.tally.title, look.side, look.headY, C.amber);
+  pen.px(look.side, look.firstY - 6, canvas.width - 2 * look.side, 1, C.steelDD);
+  rows.forEach((player, at) => {
+    const y = look.firstY + at * look.pitch;
+    pen.txt(pen.fit(player.nick, look.nameWidth), look.side, y, (player.wins ?? 0) > 0 && at === 0 ? C.amber : C.bone);
+    pen.txt(WORDS.tally.row(player.games ?? 0, player.wins ?? 0, player.pieces ?? 0), canvas.width - look.side, y, C.boneD, "right");
+  });
+  return pictureOf([{ canvas, width: canvas.width, height: canvas.height, smooth: false }], {
+    width: canvas.width,
+    height: canvas.height,
+    scale: PICTURE.scale,
+    ground: C.night,
+    strip: { height: PICTURE.stripHeight, ground: C.bar, ink: C.boneD, text: location.host },
+  });
+}
+
+// The room's tally passed on as a picture with a line and where the games are played: the site, never the room.
+tallyShare.addEventListener("click", () => {
+  const view = currentView;
+  if (view === null) return;
+  const games = Math.max(0, ...view.players.map((player) => player.games ?? 0));
+  const said = `${WORDS.tally.said(games)} · ${WORDS.share.come}`;
+  const address = `${location.origin}/`;
+  const plain = (): void => passOn(tallyShare, WORDS.tally.share, said, address, `${said}\n${address}`);
+  // made in the press itself: a browser hands a file on only in the press that asked for it
+  const picture = tallyPicture(view);
+  if (picture === null) return plain();
+  passPicture(tallyShare, WORDS.tally.share, picture, said, address, `${said}\n${address}`, plain);
+});
+// from what the room has played to when it plays next: the sheet that sets a time, which the waiting room has
+el<HTMLButtonElement>("tally-when").addEventListener("click", () => {
+  showTally(false);
+  showWhen(true);
+});
 codeHide.addEventListener("click", () => {
   codeHidden = !codeHidden;
   keep("hide-code", codeHidden ? "1" : null);
@@ -1922,6 +2001,8 @@ codeHide.addEventListener("click", () => {
   // the code, the title and the button are the room's to write; the address is this page's
   renderRoom(currentCode, currentView);
   writeAddress(currentCode);
+  // (a covered code takes the QR code with it: it is the same way in)
+  syncQr();
   if (codeHidden) {
     // said once, where it was pressed: what is covered, and that the invitation still works
     hint = WORDS.room.codeHiddenHint;
@@ -2723,6 +2804,7 @@ function showWhen(shown: boolean): void {
   showTo(false);
   showOptions(false);
   showSwap(false);
+  showQr(false);
   const now = new Date();
   const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   // the room's own time first, where its host said one; else the time of the link that led here
@@ -3014,6 +3096,7 @@ function renderRoom(code: string, view: LobbyView): void {
   // the link that sets a time says the room's, where it has one; the sheet, if open, says what its host's button does now
   whenOpen.textContent = roomWhenOf(view) === null ? WORDS.when.open : WORDS.when.set(whenOf(roomWhenOf(view) ?? 0));
   if (!whenSheet.hidden) renderWhen();
+  syncQr();
   syncTally();
   // who the chat's next line is said to, as the room now stands
   renderTo();
@@ -3323,6 +3406,8 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
     if (event.code === CLOSE_LEFT) {
       // The room let this player go without this page asking: they left in
       // another window, or were away so long that their place was given up.
+      // (a tab put away in the room has kept the way back to it: there is none now)
+      keep(SEAT_KEY, null);
       disconnect();
       writeAddress("");
       showLobby(WORDS.room.left);
@@ -3993,12 +4078,83 @@ function passOn(
   });
 }
 
+/**
+ * The link that invites someone to the room this page is in. It goes through
+ * the page that tells whatever draws a card for a link (a messenger) which
+ * game this is, in the language of the one inviting, and on to the room at
+ * once. The code follows the `#` and is sent to nobody. Where the room's
+ * host has said when its people meet, the link says so too (`linkedOf`).
+ */
+function inviteLink(): string {
+  const invited = currentView !== null && isGameId(currentView.game) ? currentView.game : null;
+  return `${location.origin}${invited === null ? location.pathname : invitePath(lang, invited)}#${linkedOf(currentCode, roomWhenOf(currentView))}`;
+}
+
+// ---- The invitation as a QR code ------------------------------------------------------------------
+
+/** How many of the frame's pixels a module of the code is, and how many light modules are left around it (the standard asks for four). */
+const QR_LOOK = { module: 3, margin: 4 };
+
+/**
+ * Draws the room's invitation as a QR code: dark on light, whatever the
+ * page's colours, since that is what a camera reads. One pixel of the
+ * canvas to a module, shown larger by the style sheet. Returns whether there
+ * was a code to draw: a link too long for one has none.
+ */
+function drawQr(): boolean {
+  const modules = currentCode === "" ? null : qrCode(inviteLink());
+  const context = qrCanvas.getContext("2d");
+  if (modules === null || context === null) return false;
+  const side = modules.length + 2 * QR_LOOK.margin;
+  qrCanvas.width = side;
+  qrCanvas.height = side;
+  qrCanvas.style.width = `${side * QR_LOOK.module}px`;
+  qrCanvas.style.height = `${side * QR_LOOK.module}px`;
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, side, side);
+  context.fillStyle = "#000000";
+  modules.forEach((line, row) => line.forEach((dark, column) => dark && context.fillRect(column + QR_LOOK.margin, row + QR_LOOK.margin, 1, 1)));
+  return true;
+}
+
+/**
+ * Offers the code in the waiting room, as the link that sets a time is, and
+ * not in a browser that covers the room's code: whoever shows this screen to
+ * others would be showing them the way in. An open sheet follows the room:
+ * a time its host says is in the link, and so in the code.
+ */
+function syncQr(): void {
+  qrOpen.hidden = currentCode === "" || table !== null || codeHidden;
+  if (qrOpen.hidden || (!qrSheet.hidden && !drawQr())) showQr(false);
+}
+
+/** Shows the sheet with the invitation as a QR code, or puts it away. */
+function showQr(open: boolean): void {
+  if (!open || qrOpen.hidden || !drawQr()) {
+    if (qrSheet.hidden) return;
+    // the keys go back to the link that opened the sheet, where it is still there
+    const within = qrSheet.contains(document.activeElement);
+    qrSheet.hidden = true;
+    if (within && !qrOpen.hidden) qrOpen.focus({ preventScroll: true });
+    return;
+  }
+  // one sheet at a time
+  showQuick(false);
+  showTo(false);
+  showOptions(false);
+  showSwap(false);
+  showWhen(false);
+  showTally(false);
+  qrSheet.hidden = false;
+  el<HTMLButtonElement>("qr-close").focus({ preventScroll: true });
+}
+
+qrOpen.addEventListener("click", () => showQr(qrSheet.hidden === true));
+el<HTMLButtonElement>("qr-close").addEventListener("click", () => showQr(false));
+
 copyButton.addEventListener("click", () => {
   const invited = currentView !== null && isGameId(currentView.game) ? currentView.game : null;
-  // Through the page that tells whatever draws a card for a link (a messenger) which game this is, in the
-  // language of the one inviting; it goes on to the room at once. The code follows the `#` and is sent to nobody.
-  // (where the room's host has said when its people meet, the link says so too: `linkedOf`)
-  const link = `${location.origin}${invited === null ? location.pathname : invitePath(lang, invited)}#${linkedOf(currentCode, roomWhenOf(currentView))}`;
+  const link = inviteLink();
   const game = invited === null ? "" : GAMES[invited].title[lang];
   // copied, it is the link alone, as an address is pasted; the sheet sends a line with it
   passOn(copyButton, WORDS.room.copy, game === "" ? "" : WORDS.share.invite(game), link, link, () => {
@@ -4283,6 +4439,7 @@ const SHEETS: readonly (readonly [HTMLElement, () => void])[] = [
   [feedbackSheet, () => showFeedback(false)],
   [recordSheet, () => showRecord(false)],
   [tallySheet, () => showTally(false)],
+  [qrSheet, () => showQr(false)],
   [inboxSheet, () => showInbox(false)],
   [
     rules,
@@ -4540,14 +4697,17 @@ let seatCode = "";
  */
 function offerSeat(): void {
   if (socket !== null || currentCode !== "" || codeInput.value !== "") return;
-  const left = seatLeft(kept(SEAT_KEY), Date.now(), config.awaySlotSeconds, (code) => isValidRoomCode(code, config));
+  const stored = kept(SEAT_KEY);
+  const left = seatLeft(stored, Date.now(), config.awaySlotSeconds, (code) => isValidRoomCode(code, config));
   if (left === null) return keep(SEAT_KEY, null);
   seatCode = left.code;
   codeInput.value = left.code;
   syncEntry();
   setTimeout(() => {
     // the room has let the place go by now: the offer goes, unless the box holds another code or the player went in
-    keep(SEAT_KEY, null);
+    // (what is kept is taken away only if it is still what was offered: a tab put away in a room since then has
+    // written its own, this one among them, and that one is not three minutes old)
+    if (kept(SEAT_KEY) === stored) keep(SEAT_KEY, null);
     const offered = seatCode;
     seatCode = "";
     if (offered !== "" && socket === null && codeInput.value.trim().toUpperCase() === offered) codeInput.value = "";

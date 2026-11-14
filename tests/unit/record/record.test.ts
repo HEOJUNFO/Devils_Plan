@@ -8,7 +8,10 @@ import {
   playedAny,
   recordFrom,
   recordText,
+  stampOf,
+  stampsIn,
   TOP_KIND,
+  type MyRecord,
   type Finish,
   type GameMessage,
   type RecordConfig,
@@ -217,5 +220,26 @@ describe("playedAny", () => {
   it("is whether any game has been counted", () => {
     expect(playedAny(noRecord())).toBe(false);
     expect(playedAny(counted(noRecord(), finish("A.1"), CONFIG))).toBe(true);
+  });
+});
+
+describe("the board of every game", () => {
+  const record: MyRecord = { games: { "russian-roulette": { played: 2, top: 0 }, "memory-poker": { played: 3, top: 1 }, "count-cubes": { played: 0, top: 0 } }, seen: [] };
+
+  it("marks a game played to its end with others, and marks it otherwise once the player came out of one at the top", () => {
+    expect(stampOf(record, "russian-roulette")).toBe("played");
+    expect(stampOf(record, "memory-poker")).toBe("top");
+  });
+
+  it("has no mark for a game never counted, nor for one kept with nothing played", () => {
+    expect(stampOf(record, "lay-the-grass")).toBe("none");
+    expect(stampOf(record, "count-cubes")).toBe("none");
+    expect(GAME_IDS.every((game) => stampOf(noRecord(), game) === "none")).toBe(true);
+  });
+
+  it("counts the games that have a mark", () => {
+    expect(stampsIn(record, GAME_IDS)).toBe(2);
+    expect(stampsIn(noRecord(), GAME_IDS)).toBe(0);
+    expect(stampsIn(record, ["memory-poker", "lay-the-grass"])).toBe(1);
   });
 });

@@ -126,7 +126,7 @@
           whoever shows their screen to people who are not asked in: covers the room's code on this screen, or
           shows it again.
         -->
-        <p id="room-links" class="dim"><button id="tally-open" type="button" aria-haspopup="dialog" hidden></button><button id="when-open" type="button" aria-haspopup="dialog" hidden></button><button id="code-hide" type="button" aria-pressed="false" hidden></button></p>
+        <p id="room-links" class="dim"><button id="tally-open" type="button" aria-haspopup="dialog" hidden></button><button id="when-open" type="button" aria-haspopup="dialog" hidden></button><button id="code-hide" type="button" aria-pressed="false" hidden></button><button id="qr-open" type="button" aria-haspopup="dialog" hidden></button></p>
         <!-- The other language the page can be read in, named in that language; offered in the lobby. -->
         <button id="lang" type="button" hidden></button>
         <!-- In the lobby: the player's own record, once there is a game in it; the button for a word about the game, where one can be sent on; and which build the page is. -->
@@ -295,7 +295,19 @@
         <p id="tally-hint" class="dim"></p>
         <ul id="tally-list"></ul>
         <div class="row">
+          <button id="tally-share" type="button"></button>
+          <button id="tally-when" type="button"></button>
           <button id="tally-close" type="button" class="primary"></button>
+        </div>
+      </section>
+
+      <!-- The room's invitation as a QR code, for a phone beside this screen: drawn here, from the link the invite button copies. -->
+      <section id="qr-sheet" role="dialog" aria-modal="true" aria-labelledby="qr-title" hidden>
+        <h2 id="qr-title"></h2>
+        <canvas id="qr-code"></canvas>
+        <p id="qr-hint" class="dim"></p>
+        <div class="row">
+          <button id="qr-close" type="button" class="primary"></button>
         </div>
       </section>
 

@@ -44,6 +44,18 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-14",
     lines: [
       {
+        ko: "대기실에서 「QR」을 누르면 초대 링크가 QR 코드로 보입니다. 옆에 있는 사람이 폰 카메라로 찍어 들어옵니다.",
+        en: "Press \"QR\" in the waiting room and the invite link is shown as a QR code, for someone beside you to point a phone at.",
+      },
+      {
+        ko: "「방 전적」을 그림으로 공유할 수 있고, 거기서 바로 다음 약속을 잡을 수 있습니다.",
+        en: "The room tally can be shared as a picture, and leads straight on to setting the next time to meet.",
+      },
+      {
+        ko: "「내 기록」이 일곱 게임의 도장판이 되었습니다: 해 본 게임과 아직 안 해 본 게임이 한눈에 보입니다.",
+        en: "\"My record\" is now a board of all seven games: which you have played and which you have not, at a glance.",
+      },
+      {
         ko: `${MARKET.ko}: 방장이 「끝나면 보유 공개」를 고르면, 게임이 끝난 뒤 누가 어느 종목을 언제 얼마나 들고 있었는지 모두가 봅니다.`,
         en: `${MARKET.en}: when the host chooses "holdings told", once the game is over everyone sees who held how much of each stock, round by round.`,
       },

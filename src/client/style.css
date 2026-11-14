@@ -1095,6 +1095,7 @@ button.choice[aria-pressed="true"] {
 #tally-open,
 #when-open,
 #code-hide,
+#qr-open,
 #version,
 #feedback {
   height: auto;
@@ -1111,6 +1112,7 @@ button.choice[aria-pressed="true"] {
   #tally-open:hover,
   #when-open:hover,
   #code-hide:hover,
+  #qr-open:hover,
   #version:hover,
   #feedback:hover {
     color: var(--bone);
@@ -1214,6 +1216,68 @@ button.choice[aria-pressed="true"] {
 #tally-list li span:last-child {
   color: var(--amber);
   white-space: nowrap;
+}
+
+/* The room's invitation as a QR code: a sheet over the waiting room, as wide as the code and its words need. The code is dark on light whatever the page's colours, and its modules are kept square and sharp at any size of the frame. */
+#qr-sheet {
+  position: absolute;
+  left: 150px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  width: 180px;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  background: var(--bar);
+  line-height: 15px;
+  text-align: center;
+}
+
+#qr-sheet[hidden] {
+  display: none;
+}
+
+#qr-sheet h2 {
+  color: var(--amber);
+  font-size: 12px;
+}
+
+/* (a canvas of the frame lies at its corner: this one is among the sheet's words) */
+#qr-code {
+  position: static;
+  flex: none;
+}
+
+#qr-sheet .row {
+  align-self: stretch;
+  justify-content: flex-end;
+}
+
+/* The record's sheet is the board of every game: a mark before each name, hollow until the game has been played to its end with others, filled once it has, and amber once the player came out of one at the top. */
+#record-list .stamp {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border: 1px solid var(--bone-dim);
+}
+
+#record-list .stamp-played .stamp {
+  border-color: var(--teal);
+  background: var(--teal);
+}
+
+#record-list .stamp-top .stamp {
+  border-color: var(--amber);
+  background: var(--amber);
+}
+
+#record-list li.stamp-none span,
+#record-list li.stamp-none span:last-child {
+  color: var(--bone-dim);
 }
 
 /* The inbox, for whoever makes the game: nearly the whole frame, its list scrolling. */
