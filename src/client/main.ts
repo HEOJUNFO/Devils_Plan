@@ -2490,6 +2490,14 @@ frame.addEventListener(
 /** The lobby: the rooms anyone can join, a nickname, and a room to make or enter by code. */
 function showLobby(message = ""): void {
   voice.leave();
+  // In the lobby there is nothing to keep of a room for a reload. `putAway` throws it away the next time the tab is
+  // hidden, which a tab already hidden when it was taken out of its room (left in another tab of this browser, sent
+  // out) never is again before the browser drops it: brought back, it went into the room that was left.
+  try {
+    sessionStorage.removeItem(storageKey("room"));
+  } catch {
+    // a closed store keeps nothing
+  }
   setEntering(null);
   setCreating(false);
   asked = {};
