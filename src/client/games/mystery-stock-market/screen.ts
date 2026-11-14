@@ -135,10 +135,12 @@ const LEDGER_END_ROOM = 40;
 /** The chosen stock's price over the rounds: its top and its height. */
 const LEDGER_PRICE_Y = 75;
 const LEDGER_PRICE_H = 20;
-/** The first row, how far apart the rows are, how tall a bar may be, and how many rows there is room for over the line that says what the bars are. */
+/** The first row, how far apart the rows are, how tall a bar may be (under the mark of a secret), and how many rows there is room for over the line that says what the bars are. */
 const LEDGER_ROW_Y = 98;
 const LEDGER_PITCH = 13;
-const LEDGER_BAR_H = 10;
+const LEDGER_BAR_H = 8;
+/** How far under a row's top its bars stand: the mark of a secret has the three pixels over the tallest of them. */
+const LEDGER_BASE = 11;
 const LEDGER_ROWS = 8;
 /** The buttons of the bar while orders are taken. */
 const MINUS_RECT: Box = [6, 238, 16, 28];
@@ -390,6 +392,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       typed = "1";
       put = true;
       charts = false;
+      ledger = false;
       mode = "trade";
       pad = false;
       sent = null;
@@ -843,11 +846,11 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       const y = LEDGER_ROW_Y + row * LEDGER_PITCH;
       pen.txt(pen.fit(nickOf(each.player), LEDGER_BARS_X - 10), 6, y, view.you === each.player ? C.amber : C.bone);
       // the rounds that were played, as a line the bars stand on
-      pen.px(LEDGER_BARS_X, y + LEDGER_BAR_H + 1, each.counts.length * column - 1, 1, C.steelDD);
+      pen.px(LEDGER_BARS_X, y + LEDGER_BASE, each.counts.length * column - 1, 1, C.steelDD);
       each.counts.forEach((count, n) => {
         if (count <= 0) return;
         const tall = Math.max(1, Math.round((count * LEDGER_BAR_H) / top));
-        pen.px(LEDGER_BARS_X + n * column, y + LEDGER_BAR_H + 1 - tall, column - 1, tall, view.you === each.player ? C.amber : C.teal);
+        pen.px(LEDGER_BARS_X + n * column, y + LEDGER_BASE - tall, column - 1, tall, view.you === each.player ? C.amber : C.teal);
       });
       if (each.secret !== null && each.secret.stock === stock.id) pen.px(LEDGER_BARS_X + (each.secret.round - 1) * column + Math.floor((column - 4) / 2), y, 3, 3, C.crim);
       const last = each.counts[each.counts.length - 1] ?? 0;

@@ -1929,6 +1929,8 @@ function showTally(open: boolean): void {
   // the keys go back to the button that opened the sheet, where it is still there
   const within = tallySheet.contains(document.activeElement);
   tallySheet.hidden = !open;
+  // (the QR code's sheet lies over the same place)
+  if (open) showQr(false);
   if (!open) {
     if (within && !tallyOpen.hidden) tallyOpen.focus({ preventScroll: true });
     return;
@@ -2584,6 +2586,7 @@ function renderPing(): void {
 function showQuick(shown: boolean): void {
   // one sheet over the chat at a time
   showTo(false);
+  if (shown) showQr(false);
   if (shown) showWho(null);
   if (!shown || currentCode === "") {
     if (quickSheet.hidden) return;
@@ -2654,6 +2657,7 @@ function showTo(shown: boolean): void {
     return;
   }
   showQuick(false);
+  showQr(false);
   showWho(null);
   const view = currentView;
   /** Each button with whether it is pressed as things stand, so that a press of one shows on the others. */
@@ -2713,6 +2717,7 @@ function showOptions(shown: boolean): void {
   // one sheet at a time
   showQuick(false);
   showSwap(false);
+  showQr(false);
   optionsSheet.hidden = false;
   (optionsList.querySelector<HTMLButtonElement>("button:not(:disabled):not([hidden])") ?? el<HTMLButtonElement>("options-close")).focus({ preventScroll: true });
 }
@@ -2914,6 +2919,7 @@ function showSwap(shown: boolean): void {
     return;
   }
   showOptions(false);
+  showQr(false);
   const slots = view.players.map((p) => p.slot);
   // The host's sheet changes the game. Everyone else's says which game they would like next: the same games,
   // each with how many have asked for it, the room's own game not among those to ask for.
@@ -3407,7 +3413,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       // The room let this player go without this page asking: they left in
       // another window, or were away so long that their place was given up.
       // (a tab put away in the room has kept the way back to it: there is none now)
-      keep(SEAT_KEY, null);
+      dropSeat(code);
       disconnect();
       writeAddress("");
       showLobby(WORDS.room.left);
@@ -3443,7 +3449,7 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       join = { ...settled, create: false };
       // in the room, on a page that is in front: there is no way back to offer, to this tab or another
       seatCode = "";
-      if (document.visibilityState === "visible") keep(SEAT_KEY, null);
+      if (document.visibilityState === "visible") dropSeat(code);
       // a link's room that was to be opened again is open, by this player or by another before them
       reopenCode = null;
       reopenJoined = null;
@@ -3890,7 +3896,7 @@ function joinFromInput(): void {
 
 function leaveRoom(): void {
   // left on purpose: there is no way back to offer
-  keep(SEAT_KEY, null);
+  dropSeat(currentCode);
   seatCode = "";
   showOptions(false);
   voice.leave();
@@ -4679,11 +4685,22 @@ function putAway(): void {
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") putAway();
   // back in front, in its room: nobody has a way back to be offered
-  else if (currentCode !== "") keep(SEAT_KEY, null);
+  else if (currentCode !== "") dropSeat(currentCode);
 });
 
 /** Under which name this browser keeps the room it was last put away in (`leaveSeat`). */
 const SEAT_KEY = "seat";
+
+/**
+ * Takes away the way back that this browser keeps, where it is the way to
+ * room `code` (or is no way to anywhere any more). The browser keeps one for
+ * all its tabs: a tab in one room, or let go of by it, does not take away
+ * what another tab kept of another room since.
+ */
+function dropSeat(code: string): void {
+  const left = seatLeft(kept(SEAT_KEY), Date.now(), config.awaySlotSeconds, (each) => isValidRoomCode(each, config));
+  if (left === null || left.code === code) keep(SEAT_KEY, null);
+}
 /** The code of the room the form offers the way back to (`offerSeat`), for as long as the box for a room's code holds it; "" for none. */
 let seatCode = "";
 
