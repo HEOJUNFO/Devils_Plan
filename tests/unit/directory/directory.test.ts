@@ -10,6 +10,7 @@ import {
   newlyOpen,
   parseReport,
   peopleLooking,
+  quickNext,
   quickPicks,
   roomsShown,
   watchingOf,
@@ -525,6 +526,26 @@ describe("quickPicks", () => {
   it("has nothing to try when no room is waiting", () => {
     expect(quickPicks([])).toEqual([]);
     expect(quickPicks([listing("AAAA", { playing: true })])).toEqual([]);
+  });
+});
+
+describe("quickNext", () => {
+  it("goes on to the best room of the list as it is now that was not tried", () => {
+    const rooms = [listing("AAAA", { players: 3 }), listing("BBBB", { players: 2 }), listing("CCCC", { players: 1 })];
+
+    expect(quickNext(rooms, new Set(["AAAA"]))).toBe("BBBB");
+    expect(quickNext(rooms, new Set(["AAAA", "BBBB"]))).toBe("CCCC");
+  });
+
+  it("passes over a room that has filled or started since the press", () => {
+    const rooms = [listing("AAAA", { players: 4, maxPlayers: 4 }), listing("BBBB", { players: 4, maxPlayers: 4 }), listing("CCCC", { playing: true }), listing("DDDD")];
+
+    expect(quickNext(rooms, new Set(["AAAA"]))).toBe("DDDD");
+  });
+
+  it("has nowhere to go on to when every room waiting was tried", () => {
+    expect(quickNext([listing("AAAA")], new Set(["AAAA"]))).toBeUndefined();
+    expect(quickNext([], new Set())).toBeUndefined();
   });
 });
 

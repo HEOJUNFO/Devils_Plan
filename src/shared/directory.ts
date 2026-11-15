@@ -312,6 +312,17 @@ export function quickPicks(rooms: readonly RoomListing[]): string[] {
   return rooms.filter((room) => !room.playing && room.players < room.maxPlayers).map((room) => room.code);
 }
 
+/**
+ * The room a quick join goes on to when the one it tried had filled or gone:
+ * the best to join of `rooms` as the list has them now, leaving out those
+ * already `tried`. Read off the list as it is now, not as it was at the
+ * press: of many who press together, each is turned away from the same
+ * room, and the next room on a list that old has filled the same way.
+ */
+export function quickNext(rooms: readonly RoomListing[], tried: ReadonlySet<string>): string | undefined {
+  return quickPicks(rooms).find((code) => !tried.has(code));
+}
+
 /** What the lobby shows of the list it was sent. */
 export interface RoomsShown {
   /** The rows, in the order sent. */

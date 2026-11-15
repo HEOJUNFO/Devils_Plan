@@ -16,7 +16,7 @@ import { takeWaiting, watchFaults } from "./fault";
 import { PartySocket } from "partysocket";
 import { backTrail, FIRST, isKnown } from "../shared/back";
 import { BUILD, outOfDate } from "../shared/build";
-import { minutesPlayed, newlyOpen, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
+import { minutesPlayed, newlyOpen, quickNext, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
 import { louder, pressing, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
@@ -676,6 +676,18 @@ let waking = false;
 
 /** The rooms a quick join has yet to try, best first, while one is on its way in; `null` when none is. */
 let quickRest: string[] | null = null;
+/** The rooms the quick join now on its way has been turned away from, by code: it does not go back to one (`quickNext`). */
+const quickTried = new Set<string>();
+/** Whether a finger or a mouse button is down on the list of rooms: the list is not redrawn under it (`holdList`). */
+let listHeld = false;
+/** Whether the directory sent a list while the one on show was held: it is drawn when the hold is let go. */
+let listStale = false;
+/** The timer that lets the list go (`holdList`). */
+let listLetGo = 0;
+/** How long the list stays as it is after the press on it ends, so the click that follows finds the row it was made on, in milliseconds. */
+const LIST_HELD_AFTER_MS = 120;
+/** How long a press that never ends (a button let go outside the window) holds the list at most, in milliseconds. */
+const LIST_HELD_MOST_MS = 3000;
 /** The build the server last said it is, where that is another than this page's and the page is to be loaded again for it. */
 let newerBuild: string | null = null;
 
@@ -1771,6 +1783,7 @@ setInterval(() => {
 
 /** Draws the list of rooms as last sent, for the game picked. */
 function renderRooms(): void {
+  listStale = false;
   renderMeet();
   renderWant();
   // what is shown is worked out from what was sent: a newer server may list a game this page has not heard of, which cannot be played here
@@ -1917,7 +1930,10 @@ function watchRooms(): void {
     // after, with rooms the first had no place for.
     if (newlyOpen(roomsSent, message).length > 0) call("room");
     roomsSent = message;
-    renderRooms();
+    // Not under a press: the row pressed would be gone before the press ended, and the press lost or taken by
+    // the row that came into its place. The list sent is kept and drawn when the press is over.
+    if (listHeld) listStale = true;
+    else renderRooms();
     // a press on the quick join that came before the list did: taken up now, unless the player has gone on to something else
     if (quickWaited) {
       quickWaited = false;
@@ -3829,7 +3845,15 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
     }
     if (message.reason === "kicked") sentOutOf.add(code);
     // A quick join found the room full or gone by the time it got there, or one this player was sent out of: the next one waiting is tried.
-    const next = message.reason === "full" || message.reason === "not-found" || message.reason === "kicked" ? quickRest?.shift() : undefined;
+    let next: string | undefined;
+    if (quickRest !== null && (message.reason === "full" || message.reason === "not-found" || message.reason === "kicked")) {
+      quickTried.add(code);
+      // A quick join reads the list as it is now: the one it was made from is as old as the press, and its next
+      // room has filled for everyone who pressed at the same time. A meeting's rooms are tried in their own order.
+      if (restVia === "quick" && roomsSent !== null) {
+        next = quickNext(roomsShown(roomsSent.rooms, roomsSent.counts, listedGame).rooms, new Set([...quickTried, ...sentOutOf]));
+      } else next = quickRest.shift();
+    }
     if (next !== undefined) {
       connect(next, false, nick, 0, restVia);
       setEntering(next);
@@ -3960,6 +3984,26 @@ function quickJoin(): void {
   joinRoom(first, "quick");
   quickRest = rest;
   restVia = "quick";
+  quickTried.clear();
+}
+
+/**
+ * Keeps the list of rooms as it is while it is pressed, and for a moment after: a list the directory sends
+ * meanwhile is drawn once the press is over. For `after` milliseconds from now, the hold then lets go.
+ */
+function holdList(after: number): void {
+  listHeld = true;
+  window.clearTimeout(listLetGo);
+  listLetGo = window.setTimeout(() => {
+    listHeld = false;
+    if (listStale) renderRooms();
+  }, after);
+}
+roomList.addEventListener("pointerdown", () => holdList(LIST_HELD_MOST_MS));
+for (const over of ["pointerup", "pointercancel"]) {
+  document.addEventListener(over, () => {
+    if (listHeld) holdList(LIST_HELD_AFTER_MS);
+  });
 }
 
 /** A press on the quick join made before the list of rooms had come: taken up when it comes (`quickJoin`). */

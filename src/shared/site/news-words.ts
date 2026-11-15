@@ -46,6 +46,14 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: `${CUBES.ko}: 정답을 맞히면 색종이가 날립니다. ${MARKET.ko}: 1위로 끝나면 색종이가 날립니다. ${HEAVY.ko}: 받침대가 비워질 때 그 자리에서 연기가 피어오릅니다.`,
+        en: `${CUBES.en}: a right answer throws confetti. ${MARKET.en}: finishing first throws confetti. ${HEAVY.en}: a stand that is cleared goes up in a puff of smoke.`,
+      },
+      {
+        ko: "로비: 방 목록의 한 줄을 누르고 있는 동안에는 목록이 다시 그려지지 않습니다. 누르는 순간 줄이 바뀌어 다른 방에 들어가거나 누름이 사라지는 일이 없습니다. 빠른 입장은 가려던 방이 찼을 때, 그 순간의 목록에서 다음 방을 고릅니다.",
+        en: "Lobby: the list of rooms is not redrawn while one of its rows is being pressed, so a press no longer lands on another room or goes missing when the rows change under it. When the room a quick join was headed for has filled, it picks the next from the list as it is at that moment.",
+      },
+      {
         ko: "폰에서: 대기실의 안내 줄이 길어 아래의 「약속 잡기」 줄과 겹쳐 보이던 것을 고쳤습니다. 혼자 기다리는 방장의 안내와 팀 안내가 한 줄에 들어갑니다.",
         en: "On a phone: a long hint in the waiting room ran into the row of links under it. Fixed: the hint for a host waiting alone and the hints about teams now fit on one line.",
       },
