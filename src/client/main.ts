@@ -1389,7 +1389,8 @@ function sayCame(): void {
   if (since === null) return;
   keep(CAME_KEY, String(today));
   if (cameDay(kept(CAME_KEY)) !== today) return;
-  const request: DirectoryRequest = { type: "came", since };
+  // (with the language of this page and whether it is pressed with a finger: counted with the word, `CameHow`)
+  const request: DirectoryRequest = { type: "came", since, lang, touch: TOUCH };
   listSocket.send(JSON.stringify(request));
 }
 
@@ -2336,6 +2337,7 @@ function numbersAnswered(days: DayNumbers[] | null): void {
       text.textContent = [
         WORDS.numbers.lobby(day.visits, day.people, day.peak),
         WORDS.numbers.came(day.came.first, day.came.day, day.came.week, day.came.longer, numbersConfig.weekDays),
+        WORDS.numbers.cameHow(day.langs.ko, day.langs.en, day.presses.touch, day.presses.keys),
         `${WORDS.numbers.rooms(day.made, day.listed)} · ${WORDS.numbers.games(day.started, day.ended)}`,
         WORDS.numbers.left(day.alone, day.unplayed),
         WORDS.numbers.ways(day.ways.map((each) => `${WORDS.numbers.way[each.via]} ${each.n}`).join(" · "), day.startedAtMeet),

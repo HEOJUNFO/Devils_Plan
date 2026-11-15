@@ -115,6 +115,8 @@ const ko = {
     /** The browsers that said that day whether they had come before (`CAME` of `numbers.ts`): new ones, and those back after a day, within the week (of so many `days`, as the numbers' settings have it), or longer. */
     came: (first: number, day: number, week: number, longer: number, days: number) =>
       `처음 온 브라우저 ${first} · 다시 온 브라우저 ${day + week + longer} (어제 ${day} · ${days}일 안 ${week} · 더 오래 ${longer})`,
+    /** Of those browsers, how their pages were read and pressed (`CameHow` of `numbers.ts`): by language, and by a finger or by keys. */
+    cameHow: (ko: number, en: number, touch: number, keys: number) => `그 브라우저들: 한국어 ${ko} · 영어 ${en} · 손가락 ${touch} · 마우스·키보드 ${keys}`,
     rooms: (made: number, listed: number) => `만든 방 ${made}개 (공개 ${listed}개)`,
     games: (started: number, ended: number) => `시작한 판 ${started} · 끝난 판 ${ended}`,
     /** Rooms that stood empty with no game ever started: nobody else came, or people came and nothing was started. */
@@ -695,6 +697,7 @@ const en: typeof ko = {
     day: (date, weekday) => `${date} (${weekday})`,
     lobby: (visits, people, peak) => `Lobby: ${visits} ${visits === 1 ? "visit" : "visits"} · ${people} by address · ${peak} at once at most`,
     came: (first, day, week, longer, days) => `Browsers new: ${first} · back: ${day + week + longer} (from yesterday ${day} · within ${days} days ${week} · longer ${longer})`,
+    cameHow: (ko, en, touch, keys) => `Those browsers: Korean ${ko} · English ${en} · finger ${touch} · mouse and keys ${keys}`,
     rooms: (made, listed) => `Rooms made: ${made} (${listed} public)`,
     games: (started, ended) => `Games started: ${started} · finished: ${ended}`,
     left: (alone, unplayed) => `Rooms left after waiting alone: ${alone} · gathered, never started: ${unplayed}`,

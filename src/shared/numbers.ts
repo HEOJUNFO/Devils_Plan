@@ -1,4 +1,5 @@
 import { GAME_IDS, isGameId, type GameId } from "./games";
+import { LANGS, type Lang } from "./lang";
 
 /**
  * What the site counts of itself by the day, for whoever runs it: how many
@@ -246,9 +247,29 @@ export function cameOf(last: number | null, today: number, config: NumbersConfig
   return today - last <= config.weekDays ? "week" : "longer";
 }
 
-/** What a browser's word adds to the day's numbers: one more of that word. */
-export function cameCounts(came: Came): Count[] {
-  return [{ what: `came:${came}`, n: 1 }];
+/**
+ * How a page that says its word is read and pressed: the language it is
+ * shown in, and whether its player's main way to press is a finger. Two
+ * things every page of the site knows of itself, said with the word so that
+ * whoever runs the site can tell which of the two languages and which of the
+ * two screens its people came with; the word's one number is counted by
+ * them, and nothing is kept that one browser could be told from another by.
+ */
+export interface CameHow {
+  lang: Lang;
+  touch: boolean;
+}
+
+/** The two ways to press, as the numbers name them. */
+const PRESSES = ["touch", "keys"] as const;
+
+/**
+ * What a browser's word adds to the day's numbers: one more of that word,
+ * counted by `how` its page is read and pressed where the page said. One
+ * number either way: a page of a build before this said the word alone.
+ */
+export function cameCounts(came: Came, how?: CameHow): Count[] {
+  return [{ what: how === undefined ? `came:${came}` : `came:${came}:${how.lang}:${how.touch ? "touch" : "keys"}`, n: 1 }];
 }
 
 /** The first day whose numbers are still kept on `today`. */
@@ -299,6 +320,9 @@ export interface DayRead {
   startedAtMeet: number;
   /** The browsers that said their word that day, by the word ({@link CAME}): new ones, and those back after a day, within the week, or longer. */
   came: Record<Came, number>;
+  /** Of those, the ones whose page said how it is read and pressed ({@link CameHow}): by language, and by a finger or keys. */
+  langs: Record<Lang, number>;
+  presses: { touch: number; keys: number };
   /** How those who came into a room somebody else made got there, each way that anyone took, in the order of `JOIN_WAYS`. */
   ways: { via: JoinWay; n: number }[];
   /** The games a hand was raised for, a room was made for or stood empty as, or something was started or ended of, in the order the games are listed in. */
@@ -328,6 +352,10 @@ export function readDay(numbers: DayNumbers): DayRead {
     players: mean(of(`players:${game}`), of(`started:${game}`)),
     minutes: mean(of(`minutes:${game}`), of(`timed:${game}`)),
   })).filter((each) => each.started > 0 || each.ended > 0 || each.wanted > 0 || each.made > 0 || each.alone > 0 || each.unplayed > 0 || each.again > 0);
+  // a word is counted alone (a page of an older build) or by how its page is read and pressed: all of them are that word
+  const cameBy = (which: (lang: Lang, press: (typeof PRESSES)[number], came: Came) => boolean): number =>
+    CAME.reduce((sum, came) => sum + LANGS.reduce((inLang, lang) => inLang + PRESSES.reduce((n, press) => n + (which(lang, press, came) ? of(`came:${came}:${lang}:${press}`) : 0), 0), 0), 0);
+  const cameAll = (word: Came): number => of(`came:${word}`) + cameBy((_lang, _press, came) => came === word);
   const hours = Array.from({ length: 24 }, (_, hour) => ({ hour, visits: of(`hour:${hour}`) })).filter((each) => each.visits > 0);
   return {
     date: new Date(numbers.day * DAY_MS).toISOString().slice(0, 10),
@@ -342,7 +370,9 @@ export function readDay(numbers: DayNumbers): DayRead {
     alone: of("alone"),
     unplayed: of("unplayed"),
     startedAtMeet: of("started-meet"),
-    came: { first: of("came:first"), day: of("came:day"), week: of("came:week"), longer: of("came:longer") },
+    came: { first: cameAll("first"), day: cameAll("day"), week: cameAll("week"), longer: cameAll("longer") },
+    langs: { ko: cameBy((lang) => lang === "ko"), en: cameBy((lang) => lang === "en") },
+    presses: { touch: cameBy((_lang, press) => press === "touch"), keys: cameBy((_lang, press) => press === "keys") },
     ways: JOIN_WAYS.map((via) => ({ via, n: of(`via:${via}`) })).filter((each) => each.n > 0),
     games,
     hours,

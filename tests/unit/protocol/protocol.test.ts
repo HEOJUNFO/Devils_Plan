@@ -615,6 +615,11 @@ describe("parseDirectoryRequest", () => {
     expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "often" }))).toBeNull();
     expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: 3 }))).toBeNull();
     expect(parseDirectoryRequest(JSON.stringify({ type: "came" }))).toBeNull();
+    // with how the page is read and pressed: both, or neither
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "first", lang: "en", touch: true }))).toEqual({ type: "came", since: "first", lang: "en", touch: true });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "first", lang: "fr", touch: true }))).toEqual({ type: "came", since: "first" });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "first", lang: "ko" }))).toEqual({ type: "came", since: "first" });
+    expect(parseDirectoryRequest(JSON.stringify({ type: "came", since: "first", lang: "ko", touch: "yes" }))).toEqual({ type: "came", since: "first" });
   });
 
   it("rejects a hand for a game there is not, or for none said", () => {

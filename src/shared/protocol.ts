@@ -17,7 +17,7 @@ import { parseFault, parseFaultNote, type Fault, type FaultConfig } from "./faul
 import type { StoredWord } from "./feedback";
 import { DEFAULT_GAME, isGameId, type GameId } from "./games";
 import { isLang, type Lang } from "./lang";
-import { isCame, isJoinWay, parseDays, type Came, type DayNumbers, type JoinWay } from "./numbers";
+import { isCame, isJoinWay, parseDays, type Came, type CameHow, type DayNumbers, type JoinWay } from "./numbers";
 import { isWho, type Coming } from "./going";
 import { parseWanting, type Wanting } from "./want";
 import type { JoinRejection, LobbyView } from "./lobby";
@@ -306,6 +306,9 @@ export interface NumbersAnswer {
  * `came`: this browser says, the first time of a day it comes, whether it
  * has come before and about how long ago (`cameOf` of `numbers.ts`): for the
  * site's numbers by the day and nothing else. Nobody is told anything of it.
+ * With it, the language the page is shown in and whether it is pressed with
+ * a finger (`CameHow`): both or neither, and a page of an older build says
+ * neither.
  */
 export type DirectoryRequest =
   | { type: "show"; game: GameId | null }
@@ -317,7 +320,7 @@ export type DirectoryRequest =
   /** This viewer, whose hand is up for `game` with enough others, is about to open the room: answered with an {@link OpeningNote}. */
   | { type: "open"; game: GameId }
   | { type: "going"; meet: number; who: string; on: boolean }
-  | { type: "came"; since: Came };
+  | ({ type: "came"; since: Came } & Partial<CameHow>);
 
 /**
  * The name a host's page showed in the slot it asks about (`host`, `kick`), where it sent one: the room does
@@ -725,7 +728,12 @@ export function parseDirectoryRequest(raw: unknown): DirectoryRequest | null {
     if (typeof data.meet !== "number" || !Number.isSafeInteger(data.meet) || !isWho(data.who) || typeof data.on !== "boolean") return null;
     return { type: "going", meet: data.meet, who: data.who, on: data.on };
   }
-  if (data.type === "came") return isCame(data.since) ? { type: "came", since: data.since } : null;
+  if (data.type === "came") {
+    if (!isCame(data.since)) return null;
+    // how the page is read and pressed, where it says both: half of it is no use, and the word is still counted
+    const how = isLang(data.lang) && typeof data.touch === "boolean" ? { lang: data.lang, touch: data.touch } : {};
+    return { type: "came", since: data.since, ...how };
+  }
   if (data.type !== "show") return null;
   if (data.game !== null && !isGameId(data.game)) return null;
   return { type: "show", game: data.game };

@@ -205,6 +205,9 @@ describe("whether a browser has come before", () => {
   });
 
   it("adds one to the number of the word said, and knows the four words", () => {
+    // counted by how the page is read and pressed, where it said: still one number a word
+    expect(cameCounts("first", { lang: "en", touch: true })).toEqual([{ what: "came:first:en:touch", n: 1 }]);
+    expect(cameCounts("week", { lang: "ko", touch: false })).toEqual([{ what: "came:week:ko:keys", n: 1 }]);
     expect(CAME.map((came) => cameCounts(came))).toEqual([
       [{ what: "came:first", n: 1 }],
       [{ what: "came:day", n: 1 }],
@@ -226,13 +229,17 @@ describe("readDay", () => {
         "made:under-thirteen": 7, "made:lay-the-grass": 5, "alone:lay-the-grass": 4, "waits:lay-the-grass": 3, "waited:lay-the-grass": 10, "left:under-thirteen": 1, "alone:under-thirteen": 1, "unplayed:under-thirteen": 2, "again:under-thirteen": 1,
         "hour:9": 30, "hour:21": 10, "started-meet": 2, "via:meet": 3, "via:link": 4, "via:advert": 9,
         "came:first": 20, "came:day": 5, "came:longer": 1, "came:never": 8,
+        // pages that said how they are read and pressed: each is one more of its word
+        "came:first:ko:touch": 6, "came:first:en:keys": 3, "came:week:ko:keys": 2, "came:first:fr:touch": 9, "came:first:ko:pen": 9,
       },
     });
 
     expect(day).toEqual({
       date: "2026-11-16", weekday: 0, visits: 40, people: 31, peak: 6, made: 12, listed: 9, started: 3, ended: 2, alone: 5, unplayed: 2,
       startedAtMeet: 2,
-      came: { first: 20, day: 5, week: 0, longer: 1 },
+      came: { first: 29, day: 5, week: 2, longer: 1 },
+      langs: { ko: 8, en: 3 },
+      presses: { touch: 6, keys: 5 },
       // the ways anyone took, in the order the ways are listed in
       ways: [{ via: "link", n: 4 }, { via: "meet", n: 3 }],
       games: [

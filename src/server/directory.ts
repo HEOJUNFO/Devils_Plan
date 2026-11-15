@@ -263,7 +263,8 @@ export class RoomDirectory extends Server<Env> {
     if (request.type === "going") return this.takeGoing(connection, request, from, now);
     if (request.type === "came") {
       // counted for whoever runs the site: do those who come come back. The word is added to its number and not kept with anything.
-      if (!this.cameSaid.has(connection.id)) this.count(cameCounts(request.since), now);
+      const how = request.lang !== undefined && request.touch !== undefined ? { lang: request.lang, touch: request.touch } : undefined;
+      if (!this.cameSaid.has(connection.id)) this.count(cameCounts(request.since, how), now);
       this.cameSaid.add(connection.id);
       return;
     }
