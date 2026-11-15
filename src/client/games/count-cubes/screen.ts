@@ -23,7 +23,9 @@ import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
+import { createBursts } from "../../game/bursts";
 import { C } from "../../game/palette";
+import { confetti } from "../../game/pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { LOG_PITCH, PANEL_WIDTH, entryAt, isCrowded, panelLayout, underList } from "../panel";
@@ -73,6 +75,8 @@ export interface CubesScreen {
 const STEP = 1 / 60;
 /** Where the solid is drawn: the part of the scene under the page's own buttons. */
 const PICTURE = { x: 8, y: 24, w: 288, h: 190 };
+/** A right answer of the player's own throws confetti over the solid, from this far above the foot of its picture. */
+const RIGHT_BURST_FOOT = 6;
 /** Degrees the solid turns, and tilts, in a second while an arrow key is held down. */
 const TURN_SPEED = 120;
 const TILT_SPEED = 60;
@@ -207,6 +211,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   let endedAt = 0;
   /** By player: a chat line beside their name. */
   const speech = new Map<number, { lines: string[]; t: number }>();
+  const bursts = createBursts();
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
@@ -256,6 +261,8 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       if (event.player === mine) {
         say(WORDS.say.right(event.place));
         sfx.win();
+        // over the solid, which the player has done with: the line above and the sound say the same
+        bursts.add(confetti, { x: PICTURE.x + Math.round(PICTURE.w / 2), y: PICTURE.y + PICTURE.h - RIGHT_BURST_FOOT, seed: 7 + event.place }, [PICTURE.x, PICTURE.y, PICTURE.w, PICTURE.h]);
       } else sfx.pick();
     } else if (event.type === "wrong") {
       if (event.player === mine) {
@@ -283,6 +290,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
       seen = message.view.history.length;
       typed = "";
       speech.clear();
+      bursts.clear();
       // another solid is first looked at from its own low corner
       angle = FIRST_VIEW;
       if (latest !== null) sfx.turn();
@@ -397,6 +405,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     const dt = STEP;
     time += dt;
     if (noteT > 0) noteT -= dt;
+    bursts.step(dt);
     for (const [player, line] of speech) {
       line.t -= dt;
       if (line.t <= 0) speech.delete(player);
@@ -687,6 +696,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
     drawScene();
     drawPanel();
     drawBar();
+    bursts.draw(ctx);
   }
 
   // ---- The screen, the loop and the listeners ---------------------------------------------------------

@@ -19,7 +19,9 @@ import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
+import { createBursts } from "../../game/bursts";
 import { C } from "../../game/palette";
+import { confetti } from "../../game/pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { lang } from "../../lang";
@@ -67,6 +69,8 @@ export interface MarketScreen {
 
 /** One step of the screen's clock, in seconds. */
 const STEP = 1 / 60;
+/** First place throws confetti from the foot of the table, in a box this far to each side and this far above. */
+const FIRST_BURST = { side: 100, above: 132 };
 /** The table: where its heads are, where its first row is and how far apart the rows are. */
 const HEAD_Y = 24;
 const ROW_Y = 39;
@@ -263,6 +267,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
   let endedAt = 0;
   /** By player: a chat line beside their name. */
   const speech = new Map<number, { lines: string[]; t: number }>();
+  const bursts = createBursts();
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
@@ -313,8 +318,12 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     } else {
       const own = latest?.view.you ?? null;
       const rank = latest?.view.standings.find((each) => each.player === own)?.rank;
-      if (rank === 1) sfx.win();
-      else if (rank !== undefined) sfx.lose();
+      if (rank === 1) {
+        sfx.win();
+        // over the table, above the line that says the place: the game is over and nothing there is pressed
+        const x = Math.round(SCENE_W / 2);
+        bursts.add(confetti, { x, y: BAR_Y - 2, seed: 11 }, [x - FIRST_BURST.side, BAR_Y - FIRST_BURST.above, FIRST_BURST.side * 2, FIRST_BURST.above]);
+      } else if (rank !== undefined) sfx.lose();
     }
   }
 
@@ -388,6 +397,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       // A game met part-way is shown as it stands; only what happens from here on is played out.
       seen = message.view.history.length;
       speech.clear();
+      bursts.clear();
       selected = 0;
       typed = "1";
       put = true;
@@ -661,6 +671,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     const dt = STEP;
     time += dt;
     if (noteT > 0) noteT -= dt;
+    bursts.step(dt);
     for (const [player, line] of speech) {
       line.t -= dt;
       if (line.t <= 0) speech.delete(player);
@@ -1198,6 +1209,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     drawScene();
     drawPanel();
     drawBar();
+    bursts.draw(ctx);
   }
 
   // ---- The screen, the loop and the listeners ---------------------------------------------------------

@@ -15,7 +15,9 @@ import { hits, type Box, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
+import { createBursts } from "../../game/bursts";
 import { C } from "../../game/palette";
+import { poof } from "../../game/pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { TOUCH, keyed } from "../../touch";
@@ -74,6 +76,8 @@ const SUM_Y = 27;
 const FLOOR_Y = 141;
 const ROCK_W = 20;
 const ROCK_H = 13;
+/** A stand cleared of its rocks goes up in a puff from its floor, in a box this far to each side, this far above and this far below. */
+const CLEAR_BURST = { side: 56, above: 80, below: 12 };
 const ROCKS_IN_ROW = 4;
 const ROCK_GAP = 2;
 /** How many rows of rocks a stand has room for; of more rocks than that, the latest are drawn. */
@@ -212,6 +216,13 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
   let endedAt = 0;
   /** By player: a chat line beside their name. */
   const speech = new Map<number, { lines: string[]; t: number }>();
+  const bursts = createBursts();
+
+  /** The puff over a stand that has just been cleared: whose points it cost is said by a line and a sound. */
+  function puff(stand: Stand): void {
+    const x = STAND_X + STANDS.indexOf(stand) * STAND_STEP + Math.round(STAND_W / 2);
+    bursts.add(poof, { x, y: FLOOR_Y }, [x - CLEAR_BURST.side, FLOOR_Y - CLEAR_BURST.above, CLEAR_BURST.side * 2, CLEAR_BURST.above + CLEAR_BURST.below]);
+  }
 
   /** The keys pressed since the last step, in the order they were pressed. */
   const keys: string[] = [];
@@ -265,10 +276,13 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     else if (event.type === "passed") sfx.back();
     else if (event.type === "placed") {
       if (event.cleared === 0) sfx.move();
-      else if (event.player === mine) {
-        say(WORDS.say.penalty(event.cleared));
-        sfx.lose();
-      } else sfx.deny();
+      else {
+        puff(event.stand);
+        if (event.player === mine) {
+          say(WORDS.say.penalty(event.cleared));
+          sfx.lose();
+        } else sfx.deny();
+      }
     }
   }
 
@@ -312,6 +326,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     } else dropped += wasAt;
     if (fresh) {
       speech.clear();
+      bursts.clear();
       spot = null;
       tookSpot = null;
       card = null;
@@ -440,6 +455,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     if (!pending) return;
     if (cleared === 0) sfx.move();
     else {
+      puff(on);
       say(WORDS.say.penalty(cleared));
       sfx.lose();
     }
@@ -570,6 +586,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     const dt = STEP;
     time += dt;
     if (noteT > 0) noteT -= dt;
+    bursts.step(dt);
     for (const [player, line] of speech) {
       line.t -= dt;
       if (line.t <= 0) speech.delete(player);
@@ -1069,6 +1086,7 @@ export function createUnderScreen(canvas: HTMLCanvasElement, handlers: UnderHand
     drawScene();
     drawPanel();
     drawBar();
+    bursts.draw(ctx);
   }
 
   // ---- The screen, the loop and the listeners ---------------------------------------------------------
