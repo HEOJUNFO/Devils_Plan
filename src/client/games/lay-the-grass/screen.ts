@@ -419,6 +419,15 @@ export function createGrassScreen(canvas: HTMLCanvasElement, handlers: GrassHand
       sfx.earn();
     } else if (event.type === "fail" || event.type === "skip") {
       sfx.deny();
+    } else if (event.type === "ended") {
+      // the game is over: a player hears how they came out of it, as the results lead with it (someone who watched hears nothing)
+      const mine = me();
+      const players = latest?.view.players ?? [];
+      const own = players.find((player) => player.id === mine);
+      if (own !== undefined) {
+        if (own.score === Math.max(...players.map((player) => player.score))) sfx.win();
+        else sfx.lose();
+      }
     }
   }
 

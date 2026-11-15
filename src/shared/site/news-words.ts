@@ -46,6 +46,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: `${GRASS.ko}·${RECT.ko}: 판이 끝나면 이겼는지 졌는지 소리로도 알려 줍니다. ${POKER.ko}: 대결을 이기면 색종이가 날립니다.`,
+        en: `${GRASS.en} and ${RECT.en}: the end of a game now sounds a win or a loss. ${POKER.en}: winning a showdown throws confetti.`,
+      },
+      {
         ko: `${HEAVY.ko}·${POKER.ko}: 내가 아직 내지 않았거나 고르지 않았는데 시간이 5초 남으면, 1초마다 소리가 납니다.`,
         en: `${HEAVY.en} and ${POKER.en}: with 5 seconds left and your move not made, each second now ticks aloud.`,
       },

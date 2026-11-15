@@ -379,6 +379,13 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       sfx.pick();
     } else if (event.type === "score") {
       sfx.earn();
+    } else if (event.type === "ended") {
+      // the game is over: a player hears how they came out of it, as the results lead with it (someone who watched hears nothing)
+      const me = mine();
+      if (me !== null && latest !== null) {
+        if (latest.view.units[me.unit].place > 0) sfx.win();
+        else sfx.lose();
+      }
     }
   }
 

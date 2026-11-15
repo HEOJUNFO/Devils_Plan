@@ -15,8 +15,10 @@ import type { Outcome, PokerEvent } from "../../../shared/games/memory-poker/rul
 import { hits, type Press, type Reach } from "../../../shared/frame";
 import type { ServerMessage } from "../../../shared/protocol";
 import type { VoiceMark } from "../../../shared/voice";
+import { createBursts } from "../../game/bursts";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
+import { confetti } from "../../game/pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { TOUCH } from "../../touch";
@@ -75,6 +77,10 @@ const SIDE_W = 124;
 const CARD_W = 36;
 const CARD_H = 44;
 const SHARED_Y = 20;
+/** Where the player's own hand of a round is named, once the hands are shown: the first of the rows under "against". */
+const OWN_ROW_Y = 92;
+/** A round won throws confetti from under that row, in a box this far to each side, this far above and this far below. */
+const WIN_BURST = { side: 62, above: 110, below: 12 };
 /** The dashes of the frame round an opponent's card, and the gaps between them, in pixels. */
 const DASH_ON = 4;
 const DASH_OFF = 3;
@@ -143,6 +149,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
   let seen = 0;
   /** The last second of the player's own time to choose that was ticked aloud. */
   let ticked = -1;
+  /** What is thrown over the scene for a round won. */
+  const bursts = createBursts();
   /** A final choice has been sent and the room has not answered yet. */
   let pending = false;
   /** The host has asked for the next game and the room has not answered yet. */
@@ -224,8 +232,13 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       else sfx.move();
     } else if (event.type === "shown") {
       const mark = mine === null ? null : markOf(mine, event.outcomes);
-      if (mark === "win") sfx.win();
-      else if (mark === "loss") sfx.lose();
+      if (mark === "win") {
+        sfx.win();
+        // over the player's own row, beside the board and clear of it: the row's word and colour say the same
+        const x = SIDE_X + Math.round(SIDE_W / 2);
+        const y = OWN_ROW_Y + 26;
+        bursts.add(confetti, { x, y, seed: 7 + (latest?.view.round ?? 0) }, [x - WIN_BURST.side, y - WIN_BURST.above, WIN_BURST.side * 2, WIN_BURST.above + WIN_BURST.below]);
+      } else if (mark === "loss") sfx.lose();
       else sfx.back();
     }
   }
@@ -257,6 +270,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       // A game met part-way is shown as it stands; only what happens from here on is played out.
       seen = message.view.history.length;
       speech.clear();
+      bursts.clear();
       touched = null;
       cursorOn = false;
       if (latest !== null) sfx.turn();
@@ -381,6 +395,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     const dt = STEP;
     time += dt;
     if (noteT > 0) noteT -= dt;
+    bursts.step(dt);
     for (const [player, line] of speech) {
       line.t -= dt;
       if (line.t <= 0) speech.delete(player);
@@ -509,7 +524,7 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
     pen.txt(pen.fit(WORDS.versus(others.map((player) => nickOf(player)).join(", ")), SIDE_W), x, 75, C.bone);
     if (view.shown !== null) {
       const shown = view.shown;
-      let y = 92;
+      let y = OWN_ROW_Y;
       for (const player of [mine, ...others]) {
         const hand = shown.hands.find((each) => each.player === player);
         const mark = markOf(player, shown.outcomes);
@@ -758,6 +773,8 @@ export function createPokerScreen(canvas: HTMLCanvasElement, handlers: PokerHand
       return;
     }
     drawScene();
+    // (under the panel and the bar, which are drawn over whatever of it reaches them)
+    bursts.draw(ctx);
     drawPanel();
     drawBar();
   }
