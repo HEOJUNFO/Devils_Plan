@@ -27,6 +27,17 @@ export function louder(now: Call | null, next: Call): Call {
   return now !== null && CALLS.indexOf(now) > CALLS.indexOf(next) ? now : next;
 }
 
+/**
+ * Whether a call has a clock running on the player it calls: a turn that is
+ * theirs, and the room asking its host whether they are there. Each is lost
+ * by not coming back in time, which a line of chat is not: the page calls
+ * for these with a sound of their own, so that from another tab the one is
+ * not taken for the other.
+ */
+export function pressing(call: Call): boolean {
+  return call === "turn" || call === "host";
+}
+
 /** The mark a title starts with while it calls: a tab's title is cut from the right, so what calls comes first. */
 export const CALL_MARK = "●";
 

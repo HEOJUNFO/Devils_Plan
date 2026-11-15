@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CALLS, CALL_MARK, louder, titleFor } from "../../../src/shared/calling";
+import { CALLS, CALL_MARK, louder, pressing, titleFor } from "../../../src/shared/calling";
 
 describe("louder", () => {
   it("takes the first call there is", () => {
@@ -39,5 +39,11 @@ describe("titleFor", () => {
 
     expect(title).toBe(`${CALL_MARK} 내 차례 · 러시안 룰렛 · ABCDE`);
     expect(title.indexOf("내 차례")).toBeLessThan(title.indexOf("러시안"));
+  });
+});
+
+describe("pressing", () => {
+  it("is a call with a clock running on the player: their turn, and the room asking its host", () => {
+    expect(CALLS.filter(pressing)).toEqual(["host", "turn"]);
   });
 });

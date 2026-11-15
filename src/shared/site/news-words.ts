@@ -46,6 +46,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "다른 탭을 보고 있을 때: 내 차례와 방장을 찾는 호출은 세 음으로, 채팅·입장·게임 시작 같은 알림은 두 음으로 부릅니다. 소리만 듣고도 서둘러야 하는지 알 수 있습니다.",
+        en: "While you are on another tab: your turn and the room's call for its host now ring three notes, and chat, someone coming in or a game starting ring two, so the sound alone says whether to hurry.",
+      },
+      {
         ko: `${GRASS.ko}·${RECT.ko}: 판이 끝나면 이겼는지 졌는지 소리로도 알려 줍니다. ${POKER.ko}: 대결을 이기면 색종이가 날립니다.`,
         en: `${GRASS.en} and ${RECT.en}: the end of a game now sounds a win or a loss. ${POKER.en}: winning a showdown throws confetti.`,
       },

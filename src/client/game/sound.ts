@@ -163,10 +163,15 @@ export const sfx = {
     noise(0.5, 0.9, 2400);
     tone(140, 0.35, "sine", 0.6, 0, 40);
   },
-  /** Something in the room is the player's to see, and their tab is behind others (`calling.ts`): two soft notes, rising. */
-  call: () => {
+  /**
+   * Something in the room is the player's to see, and their tab is behind others (`calling.ts`): two soft notes,
+   * rising. `pressing`: a clock is running on them for it (their turn, the room asking its host), and a third
+   * note goes above the two, so that it is not heard as a line of chat.
+   */
+  call: (pressing = false) => {
     tone(784, 0.12, "triangle", 0.22);
-    tone(1175, 0.2, "triangle", 0.2, 0.13);
+    tone(1175, pressing ? 0.12 : 0.2, "triangle", 0.2, 0.13);
+    if (pressing) tone(1568, 0.22, "triangle", 0.2, 0.26);
   },
   win: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, "triangle", 0.2, i * 0.11)),
   lose: () => [392, 330, 262, 196].forEach((f, i) => tone(f, 0.22, "sawtooth", 0.14, i * 0.16)),

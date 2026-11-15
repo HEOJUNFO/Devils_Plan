@@ -17,7 +17,7 @@ import { PartySocket } from "partysocket";
 import { backTrail, FIRST, isKnown } from "../shared/back";
 import { BUILD, outOfDate } from "../shared/build";
 import { minutesPlayed, newlyOpen, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
-import { louder, titleFor, type Call } from "../shared/calling";
+import { louder, pressing, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
@@ -324,7 +324,7 @@ function call(what: Call): void {
   writeTitle();
   // Sounded when the title has something new to say, and for every turn and every asking of the host, which
   // each have a clock running. Not for each line of a chat that goes on while the tab is away.
-  if (calling !== before || what === "turn" || what === "host") sfx.call();
+  if (calling !== before || pressing(what)) sfx.call(pressing(what));
 }
 
 document.addEventListener("visibilitychange", () => {
