@@ -46,6 +46,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "폰에서: 대기실의 안내 줄이 길어 아래의 「약속 잡기」 줄과 겹쳐 보이던 것을 고쳤습니다. 혼자 기다리는 방장의 안내와 팀 안내가 한 줄에 들어갑니다.",
+        en: "On a phone: a long hint in the waiting room ran into the row of links under it. Fixed: the hint for a host waiting alone and the hints about teams now fit on one line.",
+      },
+      {
         ko: "다른 탭을 보고 있을 때: 내 차례와 방장을 찾는 호출은 세 음으로, 채팅·입장·게임 시작 같은 알림은 두 음으로 부릅니다. 소리만 듣고도 서둘러야 하는지 알 수 있습니다.",
         en: "While you are on another tab: your turn and the room's call for its host now ring three notes, and chat, someone coming in or a game starting ring two, so the sound alone says whether to hurry.",
       },

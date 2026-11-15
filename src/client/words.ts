@@ -354,17 +354,17 @@ const ko = {
      * To a host alone in a room off the list: the two ways anyone gets there. "링크 복사" and "공개로" are the
      * buttons' own names (`room.invite`, `room.toListed`).
      */
-    hostAlone: (min: number) => `「링크 복사」로 친구를 부르거나 「공개로」 목록에 올리세요. ${min}명이면 시작.`,
+    hostAlone: (min: number) => `「링크 복사」로 부르거나 「공개로」 목록에 올리세요. ${min}명이면 시작.`,
     /**
      * To a host alone in a room on the list, who has nobody to send a link to: that the room can be found, and when
      * people are asked to gather (`src/shared/meet.ts`), `on` while they are: `time` is then when that ends.
      */
     hostAloneListed: (min: number, meet: { time: string; game: string; on: boolean } | null) =>
-      `목록에 올라 있습니다 · ${min}명이면 시작${meet === null ? "" : meet.on ? ` · ${meet.time}까지 ${meet.game} 모임` : ` · 다음 모임 ${meet.time} ${meet.game}`}`,
+      `목록에 있습니다 · ${min}명이면 시작${meet === null ? "" : meet.on ? ` · ${meet.time}까지 ${meet.game} 모임` : ` · 다음 모임 ${meet.time} ${meet.game}`}`,
     brokenTeam: (team: number, size: number, teamSize: number) =>
-      `팀 ${team}: ${size}명이라 팀이 아닙니다 (${teamSize}명이어야 함). 시작하면 각자 혼자 합니다.`,
-    /** Everyone who is to play is on the one team: the game starts, with no other side to beat to an answer. One line of the bar under the room, in either language: a second runs into the links below it. */
-    oneSide: (team: number) => `모두 팀 ${team}이라 상대가 없습니다. 겨루려면 누군가 「혼자 하기」로 바꾸세요.`,
+      `팀 ${team}: ${size}명이라 팀이 아닙니다 (${teamSize}명이어야 함). 각자 혼자 시작`,
+    /** Everyone who is to play is on the one team: the game starts, with no other side to beat to an answer. One line of the bar under the room, in either language, as is every hint here: a second runs into the links below it, and under a finger the line is shorter by the rules button (about 55 letters, or 27 of Hangul). */
+    oneSide: (team: number) => `모두 팀 ${team}: 상대가 없습니다. 「혼자 하기」로 겨루세요`,
     hostReady: (bots: boolean, alone: boolean) => `${bots ? "빈 자리는 봇이 채웁니다 (개발용). " : ""}${alone ? "혼자서도 할 수 있습니다. " : ""}준비되면 시작하세요.`,
     /** To the host with others in the room: what a press on one of them does. */
     hostOthers: "준비되면 시작하세요. 사람을 누르면 방장을 넘기거나 내보냅니다.",
@@ -854,11 +854,11 @@ const en: typeof ko = {
     seatsHelp: "Pick a player to pass the host on or remove them",
     becameHost: (nick) => `${nick} is the host now`,
     needPlayers: (min, here) => `The host can start once ${min} are here. ${here} now.`,
-    hostAlone: (min) => `Press Invite for friends, or Go public to be listed. Start at ${min}.`,
+    hostAlone: (min) => `Invite friends, or Go public to be listed. Start at ${min}.`,
     hostAloneListed: (min, meet) =>
-      `Listed · start at ${min}${meet === null ? "" : meet.on ? ` · ${meet.game} meet-up until ${meet.time}` : ` · meet-up ${meet.time}, ${meet.game}`}`,
-    brokenTeam: (team, size, teamSize) => `Team ${team} has ${size}, not ${teamSize}, so it is no team: its players start alone.`,
-    oneSide: (team) => `All on team ${team}: no other side. To play each other, one goes "Solo".`,
+      `Listed · start at ${min}${meet === null ? "" : meet.on ? ` · ${meet.game} meet-up to ${meet.time}` : ` · meet-up ${meet.time}, ${meet.game}`}`,
+    brokenTeam: (team, size, teamSize) => `Team ${team} has ${size}, not ${teamSize}: no team, so its players start alone.`,
+    oneSide: (team) => `All on team ${team}: nobody to play. Go "Solo" to play each other.`,
     hostReady: (bots, alone) => `${bots ? "Bots fill the empty seats (development). " : ""}${alone ? "You can play alone. " : ""}Start when ready.`,
     hostOthers: "Start when ready. Press a player to pass host or remove.",
     hostAllReady: "Everyone is ready. Start the game.",

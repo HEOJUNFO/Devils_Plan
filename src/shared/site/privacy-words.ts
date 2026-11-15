@@ -151,7 +151,7 @@ const en: typeof ko = {
         "If you say in the lobby that you will come to a meet-up, which meet-up it is and a second random value, used to take that word back, are kept in this browser.",
         "A room's recent chat, how it last looked and whom you hid in it are kept only while that tab is open, in case the page is loaded again.",
         `When a tab in a room is closed or hidden, the room's code and the time are kept in this browser, only to offer you the way back to that room if you return within ${facts.seatMinutes} minutes. After that they are not used, and they are removed the next time the page is opened.`,
-        `The day you last came to the lobby is kept in this browser. To count how many people come back, the first time you come to the lobby on a day it sends the server one of four words: "new", "came yesterday", "came within ${facts.weekDays} days" or "came longer ago". With that word go whether the page is in Korean or English and whether its screen is pressed with a finger. The day itself is not sent.`,
+        `The day you last came to the lobby is kept in this browser. To count how many people come back, the first time you come to the lobby on a day it sends the server one of four words: "new", "came yesterday", "came within ${facts.weekDays} days" or "came longer ago". Along with that word it sends whether the page is in Korean or English and whether it is being used on a touch screen. The day itself is not sent.`,
         "Clearing this site's data in your browser's settings removes all of it.",
       ],
     },
