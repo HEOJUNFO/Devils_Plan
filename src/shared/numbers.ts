@@ -160,7 +160,8 @@ export function countsOf(event: RoomEvent, meeting = false): Count[] {
       return [
         { what: "ended", n: 1 },
         { what: `ended:${event.game}`, n: 1 },
-        ...(event.minutes === null ? [] : [{ what: `timed:${event.game}`, n: 1 }, { what: `minutes:${event.game}`, n: event.minutes }]),
+        // (a game its players left is not timed: its minutes would be how long it stood still, and the average is of games played)
+        ...(event.minutes === null || event.left === true ? [] : [{ what: `timed:${event.game}`, n: 1 }, { what: `minutes:${event.game}`, n: event.minutes }]),
         ...(event.left === true ? [{ what: `left:${event.game}`, n: 1 }] : []),
       ];
     case "emptied": {
@@ -182,6 +183,23 @@ export function countsOf(event: RoomEvent, meeting = false): Count[] {
 export function gameMinutes(began: unknown, now: number): number | null {
   if (typeof began !== "number" || !Number.isFinite(began)) return null;
   return Math.max(0, Math.round((now - began) / MINUTE_MS));
+}
+
+/**
+ * When the people of a room that stands empty were last in it. `aways`: for
+ * each of its last people, when they were found gone (ms since the epoch),
+ * or `undefined` for one who was there until `now` (they left by the
+ * button). A room is not said to stand empty until some minutes after a
+ * closed page (the place is held for whoever comes back): a wait counted to
+ * `now` would be that much longer than anyone waited.
+ */
+export function lastHere(aways: readonly (number | undefined)[], now: number): number {
+  let last = Number.NEGATIVE_INFINITY;
+  for (const away of aways) {
+    if (away === undefined || !Number.isFinite(away)) return now;
+    last = Math.max(last, away);
+  }
+  return aways.length === 0 ? now : Math.min(last, now);
 }
 
 /** The day `now` is on where the day is counted, from the epoch. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import numbersConfig from "../../../src/shared/numbers-config.json";
-import { CAME, JOIN_WAYS, atMeet, cameCounts, cameDay, cameOf, countsOf, dayOf, firstKept, gameMinutes, hourOf, isCame, isJoinWay, parseDays, parseRoomEvent, readDay, visitCounts, type NumbersConfig, type RoomEvent } from "../../../src/shared/numbers";
+import { CAME, JOIN_WAYS, atMeet, cameCounts, cameDay, cameOf, countsOf, dayOf, firstKept, gameMinutes, hourOf, isCame, isJoinWay, lastHere, parseDays, parseRoomEvent, readDay, visitCounts, type NumbersConfig, type RoomEvent } from "../../../src/shared/numbers";
 
 /** Counted in Korea, kept thirty days; back within five days is back within the week. */
 const CONFIG: NumbersConfig = { utcOffsetMinutes: 540, keepDays: 30, weekDays: 5 };
@@ -120,11 +120,10 @@ describe("countsOf", () => {
   });
 
   it("counts a game that ended with nobody at it as left, among those ended", () => {
+    // (and not timed: its minutes are how long it stood still)
     expect(countsOf({ type: "ended", game: "under-thirteen", minutes: 3, left: true })).toEqual([
       { what: "ended", n: 1 },
       { what: "ended:under-thirteen", n: 1 },
-      { what: "timed:under-thirteen", n: 1 },
-      { what: "minutes:under-thirteen", n: 3 },
       { what: "left:under-thirteen", n: 1 },
     ]);
     expect(countsOf({ type: "ended", game: "under-thirteen", minutes: null, left: true })).toEqual([{ what: "ended", n: 1 }, { what: "ended:under-thirteen", n: 1 }, { what: "left:under-thirteen", n: 1 }]);
@@ -141,6 +140,20 @@ describe("countsOf", () => {
   it("counts a room that stood empty after a second game was started in it as one whose people stayed for another", () => {
     expect(countsOf({ type: "emptied", game: "count-cubes", listed: true, games: 2, most: 1 })).toEqual([{ what: "emptied", n: 1 }, { what: "again:count-cubes", n: 1 }]);
     expect(countsOf({ type: "emptied", game: "memory-poker", listed: false, games: 5, most: 4 })).toEqual([{ what: "emptied", n: 1 }, { what: "again:memory-poker", n: 1 }]);
+  });
+});
+
+describe("lastHere", () => {
+  it("is when the last of a room's people was found gone, and now where one was still there", () => {
+    expect(lastHere([1_000], 200_000)).toBe(1_000);
+    expect(lastHere([1_000, 5_000, 3_000], 200_000)).toBe(5_000);
+    expect(lastHere([1_000, undefined], 200_000)).toBe(200_000);
+    expect(lastHere([], 200_000)).toBe(200_000);
+  });
+
+  it("is never after now, and now for a moment that is no moment", () => {
+    expect(lastHere([300_000], 200_000)).toBe(200_000);
+    expect(lastHere([Number.NaN], 200_000)).toBe(200_000);
   });
 });
 

@@ -50,7 +50,7 @@ import {
   type LobbyState,
   type RoomConfig,
 } from "../shared/lobby";
-import { gameMinutes, type RoomEvent } from "../shared/numbers";
+import { gameMinutes, lastHere, type RoomEvent } from "../shared/numbers";
 import { pace, type Pace } from "../shared/pace";
 import {
   CLOSE_LEFT,
@@ -1231,7 +1231,8 @@ export class GameRoom extends Server<Env> {
     const tally = this.tally();
     console.log(`room emptied: ${gameOf(lobby)} ${lobby.listed ? "listed" : "unlisted"} games ${tally.games} most ${tally.most}`);
     // of a room nobody else came into and nothing was started in: how long its one person waited
-    const waited = tally.games === 0 && tally.most <= 1 ? gameMinutes(tally.since, Date.now()) : null;
+    // (to when they were last here: after a closed page the room holds the place some minutes before it stands empty)
+    const waited = tally.games === 0 && tally.most <= 1 ? gameMinutes(tally.since, lastHere(lobby.players.map((p) => p.awaySince), Date.now())) : null;
     this.count({ type: "emptied", game: gameOf(lobby), listed: lobby.listed === true, games: tally.games, most: tally.most, ...(waited === null ? {} : { waited }) });
     if (this.stored) this.save(TALLY_KEY, null);
   }
