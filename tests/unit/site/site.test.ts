@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { GAMES, GAME_IDS, type GameId } from "../../../src/shared/games";
-import { LANGS, type Lang } from "../../../src/shared/lang";
+import { FALLBACK_LANG, LANGS, type Lang } from "../../../src/shared/lang";
 import chatConfig from "../../../src/shared/chat-config.json";
 import directoryConfig from "../../../src/shared/directory-config.json";
 import numbersConfig from "../../../src/shared/numbers-config.json";
@@ -8,6 +8,7 @@ import roomConfig from "../../../src/shared/room-config.json";
 import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, playPath, privacyPath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
 import { NEWS, NEWS_WORDS } from "../../../src/shared/site/news-words";
 import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, invitePicture, newsPath, slugOf } from "../../../src/shared/site/paths";
+import { langOfAddress, missingLang, missingPage } from "../../../src/shared/site/missing";
 import { siteStyle } from "../../../src/shared/site/style";
 import voiceConfig from "../../../src/shared/voice-config.json";
 import { ORIGIN, OWNER_CODES, SITE_NAME, SITE_WORDS } from "../../../src/shared/site/words";
@@ -475,5 +476,56 @@ describe("the way from a page of rules to the lobby", () => {
     expect(gameOfSlug("chess")).toBeNull();
     // the id of 무거운 13 is not what an address calls it
     expect(gameOfSlug("under-thirteen")).toBeNull();
+  });
+});
+
+describe("the page for an address that has none", () => {
+  it("reads the language off an address that leads with one, a page of invitation's included", () => {
+    expect(langOfAddress("/en/nope/")).toBe("en");
+    expect(langOfAddress("/ko")).toBe("ko");
+    expect(langOfAddress("/i/ko/count-cu")).toBe("ko");
+    expect(langOfAddress("/i/en/")).toBe("en");
+    expect(langOfAddress("/nope")).toBeNull();
+    expect(langOfAddress("/")).toBeNull();
+    expect(langOfAddress("/i/")).toBeNull();
+    expect(langOfAddress("/nope/en/")).toBeNull();
+  });
+
+  it("leads with the address's language, else the browser's first that there are words for, else the one for a reader of none", () => {
+    expect(missingLang("/en/nope/", "ko-KR,ko;q=0.9")).toBe("en");
+    expect(missingLang("/nope", "ko-KR,ko;q=0.9,en-US;q=0.8")).toBe("ko");
+    expect(missingLang("/nope", "fr-FR, en;q=0.5, ko;q=0.4")).toBe("en");
+    expect(missingLang("/nope", "fr-FR,de;q=0.9")).toBe(FALLBACK_LANG);
+    expect(missingLang("/nope", null)).toBe(FALLBACK_LANG);
+    expect(missingLang("/nope", "")).toBe(FALLBACK_LANG);
+  });
+
+  it("says it in every language, the reader's first, each with its way to the games and to the lobby", () => {
+    for (const first of LANGS) {
+      const body = missingPage(first);
+      const sections = all(body, /<section lang="([a-z]+)">/g);
+
+      expect(body).toContain(`<html lang="${first}">`);
+      expect(sections[0]).toBe(first);
+      expect([...sections].sort()).toEqual([...LANGS].sort());
+      expect(body).toContain(`<title>${escapeHtml(SITE_WORDS[first].missing.heading)} | ${SITE_NAME}</title>`);
+      for (const lang of LANGS) {
+        const section = body.slice(body.indexOf(`<section lang="${lang}">`)).split("</section>")[0];
+        const links = all(section, /href="([^"]*)"/g).map(unescape);
+
+        expect(section).toContain(escapeHtml(SITE_WORDS[lang].missing.heading));
+        expect(section).toContain(escapeHtml(SITE_WORDS[lang].missing.lead));
+        expect(links).toEqual([playPath(lang), homePath(lang)]);
+      }
+    }
+  });
+
+  it("is not a page to index, and asks for no file a build names", () => {
+    const body = missingPage("ko");
+
+    expect(body).toContain('<meta name="robots" content="noindex" />');
+    expect(body).not.toMatch(/(?:src|href)="\/assets\//);
+    expect(body).not.toContain("<script");
+    expect(body).not.toContain("url(");
   });
 });

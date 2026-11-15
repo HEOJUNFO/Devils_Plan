@@ -46,6 +46,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-15",
     lines: [
       {
+        ko: "없는 주소: 잘린 링크나 잘못 친 주소로 들어오면 영어 두 단어만 보였습니다. 이제 한국어와 영어 안내, 그리고 로비와 게임 목록으로 가는 링크가 있는 페이지가 보입니다.",
+        en: "A missing address: a link cut short or an address typed wrong used to show two words of English and nothing else. It now shows a page in Korean and English with links to the lobby and to the list of games.",
+      },
+      {
         ko: `${CUBES.ko}: 정답을 맞히면 색종이가 날립니다. ${MARKET.ko}: 1위로 끝나면 색종이가 날립니다. ${HEAVY.ko}: 받침대가 비워질 때 그 자리에서 연기가 피어오릅니다.`,
         en: `${CUBES.en}: a right answer throws confetti. ${MARKET.en}: finishing first throws confetti. ${HEAVY.en}: a stand that is cleared goes up in a puff of smoke.`,
       },

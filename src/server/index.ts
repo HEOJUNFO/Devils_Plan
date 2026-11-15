@@ -8,15 +8,43 @@ import { routePartykitRequest } from "partyserver";
 import { isValidRoomCode, type RoomConfig } from "../shared/lobby";
 import { DIRECTORY_NAME } from "../shared/protocol";
 import roomConfig from "../shared/room-config.json";
+import { missingLang, missingPage } from "../shared/site/missing";
 import { ADDRESS_HEADER, fromOwnPage, withinLimit } from "./address";
 
 export { RoomDirectory } from "./directory";
 export { GameRoom } from "./room";
 
 const rooms: RoomConfig = roomConfig;
+/** Where every party is reached: nothing under it is a page. */
+const PARTIES_PREFIX = "/parties/";
 const notFound = (): Response => new Response("Not Found", { status: 404 });
 const tooMany = (): Response => new Response("Too Many Requests", { status: 429 });
 const notOurs = (): Response => new Response("Forbidden", { status: 403 });
+
+/**
+ * The answer for an address that is neither a file of the site nor a party:
+ * still 404, and for a person's browser a page in their language with the
+ * ways back in (`missingPage`). Anything that does not ask for a page (a
+ * script, a file, a request under `/parties/`) gets the two words it always
+ * got.
+ */
+function missing(request: Request): Response {
+  const url = new URL(request.url);
+  const asksForPage = (request.method === "GET" || request.method === "HEAD") && (request.headers.get("Accept") ?? "").includes("text/html");
+  if (!asksForPage || url.pathname.startsWith(PARTIES_PREFIX)) return notFound();
+  return new Response(missingPage(missingLang(url.pathname, request.headers.get("Accept-Language"))), {
+    status: 404,
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      // the answer differs by who asks and is of no use kept
+      "Cache-Control": "no-store",
+      "X-Robots-Tag": "noindex",
+      // what `public/_headers` gives every file of the site, which this answer is not
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+    },
+  });
+}
 
 /**
  * Whether one more connection is taken from the address `connecting` comes
@@ -56,6 +84,6 @@ export default {
         return new Request(url, connecting);
       },
     });
-    return response ?? notFound();
+    return response ?? missing(request);
   },
 } satisfies ExportedHandler<Env>;

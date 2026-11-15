@@ -70,6 +70,11 @@ const ko = {
     /** What the picture a shared link shows is of. */
     picture: (games: number) => `${SITE_NAME}: 친구와 실시간으로 하는 온라인 두뇌 게임 ${games}종`,
   },
+  /** The page for an address that has none (`missing.ts`): what happened, and that the ways on are below. */
+  missing: {
+    heading: "이 주소에는 페이지가 없습니다",
+    lead: "주소가 바뀌었거나 링크가 중간에 잘렸을 수 있습니다. 아래에서 다시 들어오세요.",
+  },
   home: {
     title: (games: number) => `데블스 플랜 게임 ${games}종 온라인으로 하기 | ${SITE_NAME}`,
     description: (games: number) =>
@@ -154,6 +159,10 @@ const en: typeof ko = {
     footer: "Brain games played live in the browser with other people, with nothing to install",
     notTheShow: "Only the games' rules and names are taken from the show. This is one person's project, not connected to the broadcaster or the producers.",
     picture: (games: number) => `${SITE_NAME}: ${games} online brain games to play live with friends`,
+  },
+  missing: {
+    heading: "There is no page at this address",
+    lead: "The address may have changed, or the link may have been cut short on its way. The way back in is below.",
   },
   home: {
     title: (games: number) => `Play ${games} Games from The Devil's Plan Online | ${SITE_NAME}`,
