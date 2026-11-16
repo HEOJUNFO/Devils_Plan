@@ -3,7 +3,7 @@ import { chanceOf, randomSource, seedFrom } from "../../../src/shared/game/rng";
 import shipped from "../../../src/shared/games/mystery-stock-market/config.json";
 import { emblemOf, pathOf, pathWith, waysOf } from "../../../src/shared/games/mystery-stock-market/logo";
 import { STOCKS, nextPrices, perStock, type PerStock, type RoundFacts, type StockId } from "../../../src/shared/games/mystery-stock-market/prices";
-import { cardOf, sentenceOf } from "../../../src/shared/games/mystery-stock-market/rule-words";
+import { cardOf, sentenceOf, type CardPiece } from "../../../src/shared/games/mystery-stock-market/rule-words";
 import { drawRules, drawRulesWith, isValidRules, rulesNumbers, showRules } from "../../../src/shared/games/mystery-stock-market/rulebook";
 import {
   abandon,
@@ -1221,14 +1221,49 @@ describe("미스터리 거래소: the rules a game is played by", () => {
     }
   });
 
-  it("covers what is not open: at the start most pieces of every rule are shapes, and at round 20 none is", () => {
-    const state = fresh(2, 11);
-    const covered = (now: MarketState): number => viewFor(now, 0, config).stocks.reduce((sum, stock) => sum + stock.card.ko.filter((piece) => !piece.open).length, 0);
-    const pieces = viewFor(state, 0, config).stocks.reduce((sum, stock) => sum + stock.card.ko.length, 0);
+  it("covers of a game's own rules only what the game drew: from the start every rule has words to read and words covered, and at round 20 none is covered", () => {
+    for (let seed = 0; seed < SEEDS; seed++) {
+      const state = fresh(2, seed);
+      const cards = (now: MarketState): CardPiece[][] => viewFor(now, 0, config).stocks.map((stock) => stock.card.ko);
+      const covered = (card: CardPiece[]): number => card.filter((piece) => !piece.open).length;
 
-    expect(covered(state)).toBeGreaterThan(pieces / 2);
-    expect(covered(toRound(state, 19))).toBeGreaterThan(0);
-    expect(covered(toRound(state, 20))).toBe(0);
+      for (const card of cards(state)) {
+        // what a price gains and loses, and the company or the number its rule goes by, at the least
+        expect(covered(card), `seed ${seed}`).toBeGreaterThanOrEqual(3);
+        expect(covered(card), `seed ${seed}`).toBeLessThan(card.length);
+      }
+      expect(cards(toRound(state, 19)).every((card) => covered(card) > 0), `seed ${seed}`).toBe(true);
+      expect(cards(toRound(state, 20)).every((card) => covered(card) === 0), `seed ${seed}`).toBe(true);
+    }
+  });
+
+  it("opens with a piece the next words a drawn rule has covered, at whichever round those open to all: no piece goes on a round that opens nothing of that rule", () => {
+    // a game with a rule that has nothing for round 15: more bought than sold, more held than of another, or a secret
+    const bare = ["net", "outhold", "secret"];
+    const seed = Array.from({ length: 400 }, (_, each) => each).find((each) => Object.values(fresh(2, each).rules ?? {}).some((rule) => bare.includes(rule.kind)));
+    if (seed === undefined) throw new Error("no seed draws such a rule");
+    const start = fresh(2, seed);
+    const stock = STOCKS.find((each) => bare.includes(start.rules?.[each].kind ?? ""));
+    if (stock === undefined) throw new Error("no stock has such a rule");
+    const coveredFor = (state: MarketState, player: number): number => shown(state, player, stock).card.ko.filter((piece) => !piece.open).length;
+
+    const one = act(start, 0, { type: "peek", stock });
+    const two = act(one, 0, { type: "peek", stock });
+    const three = act(two, 0, { type: "peek", stock });
+
+    expect([start, one, two, three].map((state) => shown(state, 0, stock).parts)).toEqual([0, 1, 2, STAGES]);
+    expect([start, one, two, three].map((state) => coveredFor(state, 0))).toEqual([3, 2, 1, 0]);
+    expect(coveredFor(three, 1)).toBe(3);
+    expect(three.accounts[0].pieces).toBe(config.pieces - 3);
+    expect(refused({ ...three, accounts: three.accounts.map((account) => ({ ...account, pieces: 1 })) }, 0, { type: "peek", stock })).toBe("nothing-hidden");
+    // the same from round 10, where everyone reads two stages: one piece opens the rest
+    const ten = toRound(start, config.revealRounds[1]);
+    const rest = act(ten, 1, { type: "peek", stock });
+
+    expect(shown(ten, 1, stock).parts).toBe(2);
+    expect(shown(rest, 1, stock).parts).toBe(STAGES);
+    expect(coveredFor(rest, 1)).toBe(0);
+    expect(coveredFor(rest, 0)).toBe(1);
   });
 
   it("opens the next piece of one rule to the player who gave a piece for it, and to nobody else", () => {

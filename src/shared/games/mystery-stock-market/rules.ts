@@ -31,7 +31,7 @@ import { chanceOf, randomSource, seedFrom } from "../../game/rng";
 import { LANGS, type Lang } from "../../lang";
 import { emblemOf, pathWith, waysOf, type LogoConfig } from "./logo";
 import { STOCKS, isStock, nextPrices, perStock, type PerStock, type PriceConfig, type Rule, type StockId } from "./prices";
-import { cardOf, sentenceOf, type CardPiece } from "./rule-words";
+import { cardOf, nextStageOf, sentenceOf, type CardPiece } from "./rule-words";
 import { isValidDraw, rulesFor, rulesNumbers, showRules, type DrawConfig, type Rulebook } from "./rulebook";
 
 /** The numbers of the game. Loaded from `config.json`. */
@@ -531,8 +531,10 @@ export function applyAction(state: MarketState, player: number, action: MarketAc
   if (account.pieces < 1) return { ok: false, reason: "no-pieces" };
   if (move.type === "peek") {
     const readable = partsFor(account, move.stock, stageOf(state.round, config));
-    if (readable >= config.revealRounds.length) return { ok: false, reason: "nothing-hidden" };
-    account.peeks[move.stock] = readable + 1;
+    // the stage that has the next of the rule's covered words: in a game's own rules not every stage has any
+    const opens = nextStageOf(sentenceOf(LANGS[0], move.stock, rulesOf(state, config)[move.stock], rulebookOf(state)), readable);
+    if (opens === null) return { ok: false, reason: "nothing-hidden" };
+    account.peeks[move.stock] = opens;
   } else {
     account.cash += config.pieceCash;
   }

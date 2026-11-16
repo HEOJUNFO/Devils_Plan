@@ -409,15 +409,66 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
   }
 }
 
+/** The words that name a company. */
+const COMPANY_KEYS: readonly string[] = ["of", "on", "named"];
+
+/**
+ * Of each kind of rule, the words a game draws beside its companies and its
+ * numbers: which way, which count, how many shares.
+ */
+const DRAWN_WORDS: Partial<Record<Rule["kind"], readonly string[]>> = {
+  follows: ["moved"],
+  outbuy: ["volume", "volumeBare", "volumeLast", "ifMore", "ifFewer", "isHigher", "isLower"],
+  band: ["counted", "be", "shares"],
+  volume: ["volume", "shares"],
+  signal: ["counted"],
+};
+
+/**
+ * (gap) The stage a piece is opened at in a game that draws its own rules.
+ *
+ * The show covers most of every sentence, and whoever knows its sentences
+ * (from the show, or from games played here) tells from the squares alone
+ * which kind of rule a company has, where someone new sees squares. So a
+ * drawn game covers only what it drew, and the frame of every sentence is
+ * open to everyone from the first round: knowing the frames is then worth
+ * nothing. What is covered opens in four stages, the same for every kind:
+ * what the price gains, what it loses, then which way or which count and
+ * how many, and last the company (and, of a count of stocks, how many). A
+ * company's own name in its own rule is no draw, and is open. The user
+ * asked for this on 2026-11-16 ("한계도 돌파해줘").
+ */
+function drawnStage(rule: Rule, stock: StockId, piece: RulePiece): number {
+  const { key, args } = piece;
+  if (key === "upNextRound" || (key === "amount" && args[0] === "+")) return 1;
+  if (key === "amount") return 2;
+  if (COMPANY_KEYS.includes(key)) return (rule.kind === "outbuy" || rule.kind === "outhold") && args[0] === stock ? 0 : 4;
+  if (rule.kind === "breadth" && key === "count") return 4;
+  return (DRAWN_WORDS[rule.kind] ?? []).includes(key) ? 3 : 0;
+}
+
 /**
  * The sentence of the rule `stock` has, in `lang`. The show's rules name a
- * company in full, as the show does; (gap) a game's own rules name it as the
- * monitor's table does, which is what leaves an English sentence room on the
- * board.
+ * company in full, as the show does, and open in the show's order; (gap) a
+ * game's own rules name it as the monitor's table does, which is what leaves
+ * an English sentence room on the board, and cover only what the game drew
+ * ({@link drawnStage}).
  */
 export function sentenceOf(lang: Lang, stock: StockId, rule: Rule, rulebook: Rulebook): RulePiece[] {
   const naming: Naming = rulebook === "show" ? "name" : "short";
-  return lang === "ko" ? korean(stock, rule, naming) : english(stock, rule, naming);
+  const pieces = lang === "ko" ? korean(stock, rule, naming) : english(stock, rule, naming);
+  return rulebook === "show" ? pieces : pieces.map((piece) => ({ ...piece, stage: drawnStage(rule, stock, piece) }));
+}
+
+/**
+ * The stage that opens the next of `pieces` to someone who may read
+ * `readable` stages beyond the first: the one after, in the show's
+ * sentences, which open something at every stage; in a drawn game's, the
+ * first that has anything left to open. `null` when all is open.
+ */
+export function nextStageOf(pieces: readonly RulePiece[], readable: number): number | null {
+  const later = pieces.map((piece) => piece.stage).filter((stage) => stage > readable);
+  return later.length === 0 ? null : Math.min(...later);
 }
 
 // ---- How wide words are ------------------------------------------------------------------------------
@@ -493,7 +544,9 @@ const widest = (texts: readonly string[]): string => texts.reduce((most, text) =
  * on the show's board. In Korean the names are all four letters long and
  * need no stand-in. A count that may be what is held or what was traded
  * (`counted`, and the English verb after it) is covered as what is held, in
- * both languages: only a game's own rules have one.
+ * both languages; "is lower" as "is higher", and the way a stock was
+ * followed as the wider of the two ("rose,": what the show's own rule says,
+ * so that one is covered as it is written).
  */
 const COVERS: Record<Lang, Record<string, Wording>> = {
   ko: {
@@ -502,9 +555,12 @@ const COVERS: Record<Lang, Record<string, Wording>> = {
   en: {
     counted: () => textOf("en", "counted", ["held"]),
     be: () => textOf("en", "be", ["held"]),
+    isLower: () => textOf("en", "isHigher", []),
+    moved: () => widest([textOf("en", "moved", ["up"]), textOf("en", "moved", ["down"])]),
     of: (stock, naming) => (naming === "short" ? widest(STOCKS.map((each) => textOf("en", "of", [each, naming]))) : textOf("en", "of", [stock, naming])),
     named: (stock, naming) => (naming === "short" ? widest(STOCKS.map((each) => textOf("en", "named", [each, naming]))) : textOf("en", "named", [stock, naming])),
     volume: () => textOf("en", "volume", ["bought"]),
+    volumeLast: () => textOf("en", "volumeLast", ["bought"]),
   },
 };
 
@@ -514,11 +570,12 @@ const COVERS: Record<Lang, Record<string, Wording>> = {
  * rest as shapes, with nothing in them of what they say.
  */
 export function cardOf(lang: Lang, pieces: readonly RulePiece[], readable: number): CardPiece[] {
+  const next = nextStageOf(pieces, readable);
   return pieces.map((each): CardPiece => {
     const glue = each.glue === true ? ({ glue: true } as const) : {};
     if (each.stage <= readable) return { open: true, key: each.key, args: [...each.args], ...glue };
     const cover = Object.hasOwn(COVERS[lang], each.key) ? COVERS[lang][each.key](...each.args) : textOf(lang, each.key, each.args);
-    return { open: false, next: each.stage === readable + 1, words: cover.split(" ").map(shapeOf), ...glue };
+    return { open: false, next: each.stage === next, words: cover.split(" ").map(shapeOf), ...glue };
   });
 }
 

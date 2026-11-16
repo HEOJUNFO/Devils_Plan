@@ -5,6 +5,7 @@ import {
   CARD,
   STOCK_NAMES,
   cardOf,
+  nextStageOf,
   placeWords,
   sentenceOf,
   textOf,
@@ -308,91 +309,152 @@ describe("미스터리 거래소, the rule board: the sentences of a game's own 
 
   it.each<[string, StockId, Rule, string[][], string[][]]>([
     [
+      "a count of rising stocks",
+      "coyo",
+      { kind: "breadth", count: 5, up: 8, down: 5 },
+      [["주식이", "상승할", "경우", "주식이", "하락할", "경우", "다음", "라운드"], ["다음 라운드 +8%,"], ["-5%"], [], ["5개 이상의", "5개 이상의"]],
+      [["If", "stocks", "rise,", "if", "stocks", "fall,", "next", "round."], ["+8% next round;"], ["-5%"], [], ["5 or more", "5 or more"]],
+    ],
+    [
+      "a stock followed",
+      "open",
+      { kind: "follows", of: "steel", way: "up", up: 12, down: 7 },
+      [["가격이", "그렇지 않으면"], ["+12%,"], ["-7%"], ["올랐으면"], ["방어제철의"]],
+      [["If", "price", "otherwise"], ["+12%;"], ["-7%."], ["rose,"], ["Defense's"]],
+    ],
+    [
+      "a secret",
+      "alt",
+      { kind: "secret", on: "latter", up: 15, down: 800 },
+      [["시크릿이 걸려", "있으면", ", 그렇지", "않으면"], ["+15%"], ["-800원"], [], ["후자전자에"]],
+      [["If", "a secret is on", "if", "not,"], ["+15%;"], ["-800 won."], [], ["Latter,"]],
+    ],
+    [
+      "fewer bought than of another",
+      "coyo",
+      { kind: "outbuy", volume: "bought", than: "latter", less: true, up: 1100, down: 300 },
+      [["코요테크의", "보다", "그렇지 않으면"], ["+1100원,"], ["-300원"], ["매수량이", "매수량", "적을 경우"], ["후자전자의"]],
+      [["If", "CoyoTech's", "than", "otherwise"], ["+1100 won;"], ["-300 won."], ["bought volume", "is lower", "bought volume,"], ["Latter's"]],
+    ],
+    [
+      "a band on what was sold",
+      "finance",
+      { kind: "band", what: "sold", of: "open", from: 12, to: 37, up: 1500, down: 300 },
+      [["이상", "이하이면", "그렇지 않으면"], ["+1500원,"], ["-300원"], ["매도량이", "12주", "37주"], ["열림보안의"]],
+      [["If", "or more", "and", "or fewer,", "otherwise"], ["+1500 won;"], ["-300 won."], ["sold volume", "is", "12 shares", "37 shares"], ["Open's"]],
+    ],
+    [
       "so many shares sold",
       "finance",
       { kind: "volume", volume: "sold", of: "coyo", atLeast: 15, up: 900, down: 600 },
-      [["+900원,"], ["이상이면", "그렇지 않으면"], ["매도량이", "-600원"], ["15주"], ["코요테크의"]],
-      [["+900 won;"], ["If", "is", "or more,", "otherwise"], ["sold volume", "-600 won."], ["15 shares"], ["CoyoTech's"]],
+      [["이상이면", "그렇지 않으면"], ["+900원,"], ["-600원"], ["매도량이", "15주"], ["코요테크의"]],
+      [["If", "is", "or more,", "otherwise"], ["+900 won;"], ["-600 won."], ["sold volume", "15 shares"], ["CoyoTech's"]],
     ],
     [
       "more bought than sold",
       "steel",
       { kind: "net", of: "open", up: 1200, down: 800 },
-      [["많을 경우"], ["+1200원,", "그렇지 않으면"], ["매수량이", "-800원"], ["매도량", "보다"], ["열림보안의"]],
-      [["If", "is higher"], ["+1200 won;", "otherwise"], ["bought volume", "-800 won."], ["than", "its sold volume,"], ["Open's"]],
+      [["매수량이", "매도량", "보다", "많을 경우", "그렇지 않으면"], ["+1200원,"], ["-800원"], [], ["열림보안의"]],
+      [["If", "bought volume", "is higher", "than", "its sold volume,", "otherwise"], ["+1200 won;"], ["-800 won."], [], ["Open's"]],
     ],
     [
       "more held than of another",
       "steel",
       { kind: "outhold", than: "alt", up: 1000, down: 500 },
-      [["보유 총량", "많을 경우"], ["방어제철의", "그렇지 않으면"], ["+1000원,", "-500원"], ["보유 총량이", "보다"], ["알트엔터의"]],
-      [["If", "are higher", "total holdings,"], ["Defense's", "otherwise"], ["+1000 won;", "-500 won."], ["total holdings", "than"], ["Alt Ent's"]],
+      [["방어제철의", "보유 총량이", "보유 총량", "보다", "많을 경우", "그렇지 않으면"], ["+1000원,"], ["-500원"], [], ["알트엔터의"]],
+      [["If", "Defense's", "total holdings", "are higher", "than", "total holdings,", "otherwise"], ["+1000 won;"], ["-500 won."], [], ["Alt Ent's"]],
     ],
     [
       "the emblem as a signal",
       "coyo",
       { kind: "signal", what: "sold", of: "alt", up: 900, down: 200 },
-      [["움직이면"], ["따라", "그렇지 않으면"], ["매도량이", "+900원,", "-200원"], ["미스터리 거래소 로고를"], ["알트엔터의"]],
-      [["If"], ["moved with", "otherwise"], ["sold volume", "+900 won;", "-200 won."], ["the Mystery Stock Market logo,"], ["Alt Ent's"]],
+      [["미스터리 거래소 로고를", "따라", "움직이면", "그렇지 않으면"], ["+900원,"], ["-200원"], ["매도량이"], ["알트엔터의"]],
+      [["If", "moved with", "the Mystery Stock Market logo,", "otherwise"], ["+900 won;"], ["-200 won."], ["sold volume"], ["Alt Ent's"]],
     ],
-  ])("opens a rule about %s in the same order in both languages: from the start, then at rounds 5, 10, 15 and 20", (_what, stock, rule, korean, english) => {
-    expect(openedAt("ko", sentenceOf("ko", stock, rule, "fresh"))).toEqual(korean);
-    expect(openedAt("en", sentenceOf("en", stock, rule, "fresh"))).toEqual(english);
-  });
+  ])(
+    "shows the frame of a rule about %s from the start in both languages, and opens what the game drew at rounds 5, 10, 15 and 20: the gain, the loss, which and how many, the company",
+    (_what, stock, rule, korean, english) => {
+      expect(openedAt("ko", sentenceOf("ko", stock, rule, "fresh"))).toEqual(korean);
+      expect(openedAt("en", sentenceOf("en", stock, rule, "fresh"))).toEqual(english);
+    },
+  );
 
-  it("opens a rule of a kind the show has in the show's order, whichever company and numbers a game drew for it", () => {
-    const drawn: [StockId, Rule][] = [
-      ["coyo", { kind: "breadth", count: 5, up: 8, down: 5 }],
-      ["open", { kind: "follows", of: "steel", way: "up", up: 12, down: 7 }],
-      ["coyo", { kind: "per-share", of: "steel", won: 300 }],
-      ["coyo", { kind: "emblem" }],
-      ["alt", { kind: "secret", on: "latter", up: 15, down: 800 }],
-      ["latter", { kind: "outbuy", volume: "bought", than: "latter", up: 1100, down: 900 }],
-    ];
-    const shown: StockId[] = ["finance", "build", "steel", "alt", "open", "coyo"];
-    const stagesOf = (pieces: readonly RulePiece[]): [string, number][] => pieces.map((piece) => [piece.key, piece.stage]);
-
+  it("shows from the start nothing a game drew: the open words of a kind of rule are the same in every game, whatever company, count, way and numbers it has", () => {
     for (const lang of LANGS) {
-      drawn.forEach(([stock, rule], at) => {
-        expect(stagesOf(sentenceOf(lang, stock, rule, "fresh")), `${lang} ${rule.kind}`).toEqual(stagesOf(showSentence(lang, shown[at])));
-      });
+      const frames = new Map<string, Set<string>>();
+      for (let seed = 0; seed < SEEDS; seed++) {
+        const rules = drawRules(seed, draw);
+        for (const stock of STOCKS) {
+          const rule = rules[stock];
+          // a company's own name stands open in a rule that sets it against another: one frame to a company there
+          const frame = rule.kind === "outbuy" || rule.kind === "outhold" ? `${rule.kind} ${stock}` : rule.kind;
+          const open = openedAt(lang, sentenceOf(lang, stock, rule, "fresh"))[0].join(" ");
+          frames.set(frame, (frames.get(frame) ?? new Set()).add(open));
+        }
+      }
+
+      for (const [frame, open] of frames) expect([...open], `${lang} ${frame}`).toHaveLength(1);
     }
   });
 
-  it("opens a band in the show's order too, with its count written as a count that may be what was traded: in English the verb waits for the count", () => {
-    const band: Rule = { kind: "band", of: "latter", from: 12, to: 37, up: 2000, down: 1500 };
-    const stagesOf = (lang: Lang, rulebook: Rulebook): [string, number][] => sentenceOf(lang, "finance", band, rulebook).map((piece) => [piece.key, piece.stage]);
+  it("leaves the show's own order to the show's own rules", () => {
+    const stagesOf = (lang: Lang, rulebook: Rulebook): number[] => sentenceOf(lang, "latter", SHOW.latter, rulebook).map((piece) => piece.stage);
 
-    expect(stagesOf("ko", "fresh")).toEqual(stagesOf("ko", "show").map(([key, stage]) => [key === "held" ? "counted" : key, stage]));
-    expect(stagesOf("en", "fresh")).toEqual(
-      stagesOf("en", "show").map(([key, stage]) => (key === "held" ? ["counted", stage] : key === "are" ? ["be", STAGES - 1] : [key, stage])),
-    );
-    // "are" in sight at round 5 would tell a band on holdings from one on a volume ("is") ten rounds before the count is opened
-    expect(openedAt("en", sentenceOf("en", "finance", band, "fresh"))[STAGES - 1]).toEqual(["total holdings", "are", "-1500 won."]);
+    for (const lang of LANGS) expect(stagesOf(lang, "fresh"), lang).not.toEqual(stagesOf(lang, "show"));
+    // the show opens what 후자전자 gains from the start, and its company at round 10; a drawn game the gain at round 5 and the company last
+    expect(openedAt("ko", showSentence("ko", "latter"))[0]).toEqual(["+1500원,"]);
+    expect(openedAt("ko", showSentence("ko", "latter"))[2]).toEqual(["후자전자의"]);
   });
 
-  it("has a sentence for every kind of rule in each language, with something to open at every stage and nothing after the last", () => {
-    for (const lang of LANGS) {
-      for (const kind of RULE_KINDS) {
-        const pieces = sentenceOf(lang, "coyo", widestRules("coyo", "latter")[kind], "fresh");
-        const stages = [...new Set(pieces.map((piece) => piece.stage))].sort((a, b) => a - b);
+  it("has a sentence for every kind of rule in each language: it opens the gain at round 5, the loss at round 10 and something at round 20, and nothing after", () => {
+    for (const kind of RULE_KINDS) {
+      const stagesIn = (lang: Lang): number[] => [...new Set(sentenceOf(lang, "coyo", widestRules("coyo", "latter")[kind], "fresh").map((piece) => piece.stage))].sort((a, b) => a - b);
 
-        expect(stages, `${lang} ${kind}`).toEqual(EVERY_STAGE);
+      for (const lang of LANGS) {
+        const pieces = sentenceOf(lang, "coyo", widestRules("coyo", "latter")[kind], "fresh");
+
+        expect(stagesIn(lang).every((stage) => EVERY_STAGE.includes(stage)), `${lang} ${kind}`).toBe(true);
+        // (알트엔터's own rule has no numbers: of a game's own kinds every one has a gain and a loss)
+        if (kind !== "emblem") expect(stagesIn(lang), `${lang} ${kind}`).toEqual(expect.arrayContaining([0, 1, 2, STAGES]));
         expect(pieces.every((piece) => said(lang, piece) !== ""), `${lang} ${kind}`).toBe(true);
+      }
+      // a piece opens the next stage of a rule that has anything: that has to be the same stage in every language
+      expect(stagesIn("en"), kind).toEqual(stagesIn("ko"));
+    }
+  });
+
+  it("opens the same stages in both languages for every rule of many drawn games", () => {
+    for (let seed = 0; seed < SEEDS; seed++) {
+      const rules = drawRules(seed, draw);
+      for (const stock of STOCKS) {
+        const stagesIn = (lang: Lang): number[] => [...new Set(sentenceOf(lang, stock, rules[stock], "fresh").map((piece) => piece.stage))].sort((a, b) => a - b);
+
+        expect(stagesIn("en"), `seed ${seed} ${stock}`).toEqual(stagesIn("ko"));
       }
     }
   });
 
-  it("opens the name of another stock a rule goes by last of all, or last but one; in a band, where the show opens it, at round 10", () => {
+  it("opens the name of another stock a rule goes by last of all", () => {
     for (const lang of LANGS) {
       for (const kind of ["follows", "per-share", "secret", "outbuy", "band", "volume", "net", "outhold", "signal"] as const) {
         const pieces = sentenceOf(lang, "coyo", widestRules("coyo", "latter")[kind], "fresh");
         const naming = pieces.filter((piece) => piece.args.includes("latter"));
 
         expect(naming, `${lang} ${kind}`).toHaveLength(1);
-        if (kind === "band") expect(naming[0].stage, `${lang} ${kind}`).toBe(STAGES - 2);
-        else expect(naming[0].stage, `${lang} ${kind}`).toBeGreaterThanOrEqual(STAGES - 1);
+        expect(naming[0].stage, `${lang} ${kind}`).toBe(STAGES);
       }
+    }
+  });
+
+  it("covers the company a rule is about where that is the company that has the rule, and shows a company's own name only where it is set against another", () => {
+    for (const lang of LANGS) {
+      const own = (rule: Rule): number[] => sentenceOf(lang, "coyo", rule, "fresh").filter((piece) => piece.args.includes("coyo")).map((piece) => piece.stage);
+
+      expect(own({ kind: "band", of: "coyo", from: 10, to: 30, up: 900, down: 200 }), lang).toEqual([STAGES]);
+      expect(own({ kind: "signal", what: "held", of: "coyo", up: 900, down: 200 }), lang).toEqual([STAGES]);
+      expect(own({ kind: "secret", on: "coyo", up: 10, down: 200 }), lang).toEqual([STAGES]);
+      expect(own({ kind: "outbuy", volume: "bought", than: "alt", up: 900, down: 200 }), lang).toEqual([0]);
+      expect(own({ kind: "outhold", than: "alt", up: 900, down: 200 }), lang).toEqual([0]);
     }
   });
 
@@ -453,7 +515,7 @@ describe("미스터리 거래소, the rule board: what a player is sent", () => 
           if (piece.stage <= readable) expect(shown).toEqual({ open: true, key: piece.key, args: piece.args, ...(piece.glue === true ? { glue: true } : {}) });
           else {
             expect(Object.keys(shown).sort()).toEqual(piece.glue === true ? ["glue", "next", "open", "words"] : ["next", "open", "words"]);
-            expect(shown).toMatchObject({ open: false, next: piece.stage === readable + 1 });
+            expect(shown).toMatchObject({ open: false, next: piece.stage === nextStageOf(pieces, readable) });
           }
         });
       }
@@ -533,20 +595,51 @@ describe("미스터리 거래소, the rule board: what a player is sent", () => 
       const band = (what?: "bought" | "sold"): Rule => ({ kind: "band", of: "alt", ...(what === undefined ? {} : { what }), from: 10, to: 30, up: 900, down: 200 });
       const signal = (what: "held" | "bought" | "sold"): Rule => ({ kind: "signal", what, of: "alt", up: 900, down: 200 });
 
-      // until the count is opened: a band's at round 15, a signal's at round 10
+      // until the count is opened, at round 15
       for (const readable of [0, 1, 2]) {
         expect(covered(band("bought"), readable), `${lang} band ${readable}`).toBe(covered(band(), readable));
         expect(covered(band("sold"), readable), `${lang} band ${readable}`).toBe(covered(band(), readable));
-      }
-      for (const readable of [0, 1]) {
         expect(covered(signal("bought"), readable), `${lang} signal ${readable}`).toBe(covered(signal("held"), readable));
         expect(covered(signal("sold"), readable), `${lang} signal ${readable}`).toBe(covered(signal("held"), readable));
       }
       // and what is open before then is the same words whichever count it is
       const open = (rule: Rule, readable: number): string => JSON.stringify(cardOf(lang, sentenceOf(lang, "coyo", rule, "fresh"), readable).filter((shown) => shown.open));
       expect(open(band("sold"), 2), lang).toBe(open(band(), 2));
-      expect(open(signal("sold"), 1), lang).toBe(open(signal("held"), 1));
+      expect(open(signal("sold"), 2), lang).toBe(open(signal("held"), 2));
     }
+  });
+
+  it("covers which way round a rule goes alike: fewer as more, and a stock followed down as one followed up", () => {
+    for (const lang of LANGS) {
+      const card = (rule: Rule, readable: number): string => JSON.stringify(cardOf(lang, sentenceOf(lang, "coyo", rule, "fresh"), readable));
+      const outbuy = (less: boolean): Rule => ({ kind: "outbuy", volume: "bought", than: "alt", ...(less ? { less: true as const } : {}), up: 900, down: 200 });
+      const follows = (way: "up" | "down"): Rule => ({ kind: "follows", of: "alt", way, up: 10, down: 5 });
+
+      for (const readable of [0, 1, 2]) {
+        expect(card(outbuy(true), readable), `${lang} outbuy ${readable}`).toBe(card(outbuy(false), readable));
+        expect(card(follows("down"), readable), `${lang} follows ${readable}`).toBe(card(follows("up"), readable));
+      }
+      expect(card(outbuy(true), 3), lang).not.toBe(card(outbuy(false), 3));
+      expect(card(follows("down"), 3), lang).not.toBe(card(follows("up"), 3));
+    }
+  });
+
+  it("marks as next the pieces of the first stage that has any left to open: a rule with nothing for round 15 marks what round 20 opens", () => {
+    const net = sentenceOf("ko", "steel", { kind: "net", of: "open", up: 1200, down: 800 }, "fresh");
+    const marked = (readable: number): string[] => {
+      const card = cardOf("ko", net, readable);
+      return net.filter((_piece, at) => !card[at].open && card[at].next === true).map((piece) => said("ko", piece));
+    };
+
+    expect(nextStageOf(net, 0)).toBe(1);
+    expect(nextStageOf(net, 2)).toBe(STAGES);
+    expect(nextStageOf(net, STAGES - 1)).toBe(STAGES);
+    expect(nextStageOf(net, STAGES)).toBeNull();
+    expect(marked(0)).toEqual(["+1200원,"]);
+    expect(marked(2)).toEqual(["열림보안의"]);
+    expect(marked(STAGES)).toEqual([]);
+    // the show's sentences open something at every stage: the next is always the one after
+    for (const stock of STOCKS) for (const readable of EVERY_STAGE.slice(0, -1)) expect(nextStageOf(showSentence("ko", stock), readable), stock).toBe(readable + 1);
   });
 
   it("covers a company no narrower than any company's name is once it is open", () => {

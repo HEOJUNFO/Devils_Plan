@@ -49,6 +49,10 @@ export const NEWS: NewsDay[] = [
         ko: `${MARKET.ko}: 판마다 새 규칙으로 하는 판에서, 거래소 로고는 이제 어느 주식의 앞날이 아닙니다. 로고는 처음부터 보이고, 한 회사의 규칙이 "어느 수량을 로고를 따라 움직이면 오른다"가 됩니다. 어느 회사의 어느 수량인지는 가려진 낱말에 있습니다. 방송에서 본 규칙과 닮은 다른 규칙들도 반대로 뒤집혀 있을 수 있습니다 (더 적게 사야 오르는 주식, 보유가 아니라 거래량을 보는 주식). 방송의 규칙으로 하는 판은 그대로입니다.`,
         en: `${MARKET.en}: in a game that draws its own rules, the exchange's logo is no longer one stock's prices to come. The logo is in sight from the start, and one company's rule is now "move this count the way the logo goes and the price rises". Which company's count, and which count, is under the covered words. Other rules that look like the show's may run the other way too (a stock that rises when fewer are bought, one that goes by a traded volume and not by holdings). A game played by the show's own rules is as it was.`,
       },
+      {
+        ko: `${MARKET.ko}: 판마다 새 규칙으로 하는 판에서는 일곱 규칙의 문장 틀이 1라운드부터 모두에게 보입니다. 가려지는 것은 그 판에서 뽑은 것뿐입니다: 5라운드에 오르는 값, 10라운드에 내리는 값, 15라운드에 어느 수량·어느 방향인지, 20라운드에 어느 회사인지가 열립니다. 방송을 봤거나 여러 판 해 봐서 문장을 외운 사람과 처음 온 사람이 같은 것을 보고 시작합니다. 피스는 그 규칙에 가려진 다음 낱말을 엽니다.`,
+        en: `${MARKET.en}: in a game that draws its own rules, the frame of all seven rules is open to everyone from round 1. Only what the game drew is covered: the gain opens at round 5, the loss at round 10, which count and which way at round 15, and which company at round 20. Someone who knows the sentences from the show, or from games played here, and someone new now start from the same board. A piece opens the next covered words of its rule.`,
+      },
     ],
   },
   {
