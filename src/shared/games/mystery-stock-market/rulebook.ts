@@ -6,13 +6,22 @@
  * rules out, and the show's seven are known to whoever has watched it, or
  * has played here once. (gap) So a game draws its own unless its room asks
  * for the show's: seven of the kinds of rule `prices.ts` has, one of them
- * the emblem, each given to a company by chance with stocks and numbers of
+ * the emblem's, each given to a company by chance with stocks and numbers of
  * its own. The user asked for this on 2026-11-11 ("룰이 공개돼서 그대로
  * 진행하면 너무 쉬운 거 아니야?"), with the show's rules kept for a room to
  * choose.
+ *
+ * (gap) What a drawn game has of the show's rules is not what the show has
+ * of them, so that whoever watched the show does not begin ahead of whoever
+ * did not (the user, 2026-11-16: "다른 주식규칙들도 방송본사람 안본사람
+ * 크게영향없게 기믹변형해줘"). The emblem is a signal for a count and not a
+ * stock's price (`signal`); a stock is followed down as often as up; a
+ * secret is on any company; more is bought or fewer; a band is on what is
+ * held or on what is traded. Which way each goes is under the rule's
+ * covered words, as its company and numbers are.
  */
 import { randomInt, randomSource, seedFrom } from "../../game/rng";
-import { STOCKS, isStock, type PerStock, type PriceRules, type Rule, type RuleKind, type StockId, type Volume } from "./prices";
+import { STOCKS, isStock, type Counted, type PerStock, type PriceRules, type Rule, type RuleKind, type StockId, type Volume } from "./prices";
 
 /** The rules a game is played by: drawn afresh for it, or the show's own. The first is what a room starts with. */
 export const RULEBOOKS = ["fresh", "show"] as const;
@@ -94,23 +103,26 @@ export function isValidDraw(draw: DrawConfig | undefined): boolean {
 }
 
 /**
- * The kinds a game's rules are drawn from, beside the emblem, which every
- * game has once. `per-share` (방어제철's) is the show's rulebook's alone: a
- * price that moves by the share is moved by one player as far as they hold
- * shares, by buying another stock and selling it again, whatever the number
- * drawn for it (design/games/mystery-stock-market.md, "판마다 새 규칙").
+ * The kinds a game's rules are drawn from, beside the emblem's signal, which
+ * every game has once. `per-share` (방어제철's) is the show's rulebook's
+ * alone: a price that moves by the share is moved by one player as far as
+ * they hold shares, by buying another stock and selling it again, whatever
+ * the number drawn for it. `emblem` (알트엔터's) is the show's alone too: an
+ * emblem that is one stock's prices to come is read off by whoever knows
+ * the show's rule (design/games/mystery-stock-market.md, "판마다 새 규칙").
  */
 const DRAWN = ["breadth", "follows", "secret", "outbuy", "band", "volume", "net", "outhold"] as const satisfies readonly RuleKind[];
-type DrawnKind = (typeof DRAWN)[number] | "emblem";
+type DrawnKind = (typeof DRAWN)[number] | "signal";
 
 /** What sets the sequence that draws a game's rules apart from the one that draws its path. */
 const RULES_SEQUENCE = 0x2f6b9d51;
 
 /**
  * Seven rules for a game, drawn with `random` (each call a number from 0 up
- * to 1): one stock's chart is the emblem, and each of the other six has a
- * kind of its own, with stocks and numbers drawn for it. Which company has
- * which is chance.
+ * to 1): one stock takes the emblem for a signal, and each of the other six
+ * has a kind of its own, with stocks and numbers drawn for it. Which company
+ * has which is chance, and so is which way round a rule goes where it can
+ * go two.
  */
 export function drawRulesWith(random: () => number, draw: DrawConfig): PerStock<Rule> {
   const pick = <T>(from: readonly T[]): T => from[randomInt(random, from.length)];
@@ -124,21 +136,26 @@ export function drawRulesWith(random: () => number, draw: DrawConfig): PerStock<
     return all;
   };
 
-  const kinds: DrawnKind[] = shuffled<DrawnKind>([...shuffled(DRAWN).slice(0, STOCKS.length - 1), "emblem"]);
+  const kinds: DrawnKind[] = shuffled<DrawnKind>([...shuffled(DRAWN).slice(0, STOCKS.length - 1), "signal"]);
   const rules = {} as PerStock<Rule>;
   STOCKS.forEach((stock, at) => {
     const other = (): StockId => pick(STOCKS.filter((each) => each !== stock));
     const selfOrOther = (): StockId => (randomInt(random, 100) < draw.selfPercent ? stock : other());
     const volume = (): Volume => pick(["bought", "sold"] as const);
     const kind = kinds[at];
-    if (kind === "emblem") rules[stock] = { kind };
+    if (kind === "signal") rules[stock] = { kind, what: pick<Counted>(["held", "bought", "sold"]), of: selfOrOther(), up: within(draw.wonUp), down: within(draw.wonDown) };
     else if (kind === "breadth") rules[stock] = { kind, count: within(draw.count), up: within(draw.percentUp), down: within(draw.percentDown) };
     else if (kind === "follows") rules[stock] = { kind, of: other(), way: pick(["up", "down"] as const), up: within(draw.percentUp), down: within(draw.percentDown) };
     else if (kind === "secret") rules[stock] = { kind, on: pick(STOCKS), up: within(draw.percentUp), down: within(draw.wonDown) };
-    else if (kind === "outbuy") rules[stock] = { kind, volume: volume(), than: other(), up: within(draw.wonUp), down: within(draw.wonDown) };
-    else if (kind === "band") {
+    else if (kind === "outbuy") {
+      // more, as the show has it, or fewer: one as often as the other
+      const less = pick([false, true]) ? ({ less: true } as const) : {};
+      rules[stock] = { kind, volume: volume(), than: other(), ...less, up: within(draw.wonUp), down: within(draw.wonDown) };
+    } else if (kind === "band") {
       const from = within(draw.bandFrom);
-      rules[stock] = { kind, of: selfOrOther(), from, to: from + within(draw.bandWidth), up: within(draw.wonUp), down: within(draw.wonDown) };
+      // on what is held, as the show has it, half the time; on what was bought or sold in the round the rest
+      const what = pick<Counted>(["held", "held", "bought", "sold"]);
+      rules[stock] = { kind, of: selfOrOther(), ...(what === "held" ? {} : { what }), from, to: from + within(draw.bandWidth), up: within(draw.wonUp), down: within(draw.wonDown) };
     } else if (kind === "volume") rules[stock] = { kind, volume: volume(), of: selfOrOther(), atLeast: within(draw.volume), up: within(draw.wonUp), down: within(draw.wonDown) };
     else if (kind === "net") rules[stock] = { kind, of: selfOrOther(), up: within(draw.wonUp), down: within(draw.wonDown) };
     else rules[stock] = { kind, than: other(), up: within(draw.wonUp), down: within(draw.wonDown) };
@@ -181,9 +198,11 @@ function isRule(rule: unknown, stock: StockId): rule is Rule {
     case "secret":
       return won && isStock(one.on);
     case "outbuy":
-      return won && volume && other(one.than);
+      return won && volume && other(one.than) && (one.less === undefined || one.less === true);
     case "band":
-      return won && isStock(one.of) && count(one.from) && count(one.to) && (one.from as number) <= (one.to as number);
+      return won && isStock(one.of) && (one.what === undefined || one.what === "bought" || one.what === "sold") && count(one.from) && count(one.to) && (one.from as number) <= (one.to as number);
+    case "signal":
+      return won && isStock(one.of) && (one.what === "held" || one.what === "bought" || one.what === "sold");
     case "volume":
       return won && volume && isStock(one.of) && count(one.atLeast);
     case "net":

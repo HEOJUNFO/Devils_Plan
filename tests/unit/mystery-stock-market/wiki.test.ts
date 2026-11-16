@@ -44,8 +44,12 @@ function factsOf(at: number, heldBefore: PerStock<number>, filling: Filling, boo
     heldAfter,
     bought,
     sold: perStock((stock) => table[stock].sold ?? 0),
+    boughtBefore: perStock(() => 0),
+    soldBefore: perStock(() => 0),
     hidden: perStock((stock) => table[stock].price === null),
     path: table.alt.price ?? 0,
+    // none of the show's rules takes the emblem for a signal
+    way: "up",
   };
 }
 

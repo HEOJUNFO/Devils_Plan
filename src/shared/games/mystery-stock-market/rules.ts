@@ -29,7 +29,7 @@
  */
 import { chanceOf, randomSource, seedFrom } from "../../game/rng";
 import { LANGS, type Lang } from "../../lang";
-import { emblemOf, pathWith, type LogoConfig } from "./logo";
+import { emblemOf, pathWith, waysOf, type LogoConfig } from "./logo";
 import { STOCKS, isStock, nextPrices, perStock, type PerStock, type PriceConfig, type Rule, type StockId } from "./prices";
 import { cardOf, sentenceOf, type CardPiece } from "./rule-words";
 import { isValidDraw, rulesFor, rulesNumbers, showRules, type DrawConfig, type Rulebook } from "./rulebook";
@@ -558,9 +558,12 @@ function endRound(state: MarketState, now: number, config: MarketConfig): void {
       heldAfter: heldNow,
       bought: state.bought,
       sold: state.sold,
+      boughtBefore: state.lastBought,
+      soldBefore: state.lastSold,
       // a rule about a secret goes by whether its stock is off the monitor that the next round opens with
       hidden: perStock((stock) => hiddenIn(state, stock, round + 1, config)),
       path: state.path[round],
+      way: waysOf(state.path)[round - 1],
     },
     { floorPrice: config.floorPrice, rules: rulesOf(state, config) },
   );

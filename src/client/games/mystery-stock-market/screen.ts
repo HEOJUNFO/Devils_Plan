@@ -794,11 +794,18 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
       pen.txt(pen.fit(WORDS.short[stock.id], rect[2] - 6), rect[0] + 3, rect[1] + 1, on ? C.amber : C.bone);
       drawChart(stock, [rect[0] + 3, rect[1] + 16, rect[2] - 6, rect[3] - 19]);
     });
-    // in the last place, the emblem the game wears, as large as a chart
+    // in the last place, the emblem the game wears, as large as a chart and set out as one: a point to each round, each
+    // as far across as that round's point is in the charts beside it. In a game that draws its rules the emblem says
+    // which way a count has to go in each round, and the round has to be found on it.
     const rect = cellRect(STOCKS.length);
     frame(rect, C.steelDD);
     pen.txt(pen.fit(WORDS.emblem, rect[2] - 6), rect[0] + 3, rect[1] + 1, C.brass);
-    drawEmblem([rect[0] + 4, rect[1] + 18, rect[2] - 8, rect[3] - 23], C.brass);
+    const [x, y, w, h] = [rect[0] + 3, rect[1] + 16, rect[2] - 6, rect[3] - 19];
+    const heights = view.emblem;
+    const top = Math.max(1, ...heights);
+    const at = (n: number): [number, number] => [Math.round(x + (n * (w - 2)) / view.rounds), Math.round(y + h - 2 - (heights[n] * (h - 3)) / top)];
+    for (let n = 1; n < heights.length; n++) pen.line(...at(n - 1), ...at(n), 1, C.brass);
+    heights.forEach((_height, n) => pen.px(...at(n), 2, 2, C.brassH));
   }
 
   /**

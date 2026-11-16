@@ -12,6 +12,14 @@
  * The path is the room's to keep: what is sent is the emblem, the path's
  * shape on a scale of a few heights, with no price in it.
  *
+ * (gap) In a game that draws its own rules no stock's price is the path. An
+ * emblem in sight from the first round would tell whoever knows the show's
+ * rule the whole of one stock's prices, and that is known to everyone who
+ * has watched the show. There the emblem is a signal instead: it tells
+ * which way a count has to be moved in each round (`waysOf`, and the
+ * `signal` rule of `prices.ts`), and which count of which company is what
+ * the rule's covered words say. The user chose this on 2026-11-16.
+ *
  * Design: design/games/mystery-stock-market.md.
  */
 import { randomInt, randomSource, seedFrom } from "../../game/rng";
@@ -91,4 +99,17 @@ export function emblemOf(path: readonly number[], levels: number): number[] {
   const high = Math.max(...path);
   if (high === low) return path.map(() => 0);
   return path.map((price) => Math.round(((price - low) * (levels - 1)) / (high - low)));
+}
+
+/**
+ * The way a path goes in each of its rounds, the first round first: up where
+ * its price is higher after the round than before it, down where it is
+ * lower. A round in which it stays where it is goes the way of the round
+ * before; a path that opens level goes the way it first moves, and one that
+ * never moves goes up.
+ */
+export function waysOf(path: readonly number[]): ("up" | "down")[] {
+  const moves = path.slice(1).map((price, at) => (price > path[at] ? "up" : price < path[at] ? "down" : null));
+  let way: "up" | "down" = moves.find((move) => move !== null) ?? "up";
+  return moves.map((move) => (way = move ?? way));
 }

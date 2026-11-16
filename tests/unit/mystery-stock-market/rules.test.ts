@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { chanceOf, randomSource, seedFrom } from "../../../src/shared/game/rng";
 import shipped from "../../../src/shared/games/mystery-stock-market/config.json";
-import { emblemOf, pathOf, pathWith } from "../../../src/shared/games/mystery-stock-market/logo";
+import { emblemOf, pathOf, pathWith, waysOf } from "../../../src/shared/games/mystery-stock-market/logo";
 import { STOCKS, nextPrices, perStock, type PerStock, type RoundFacts, type StockId } from "../../../src/shared/games/mystery-stock-market/prices";
 import { cardOf, sentenceOf } from "../../../src/shared/games/mystery-stock-market/rule-words";
 import { drawRules, drawRulesWith, isValidRules, rulesNumbers, showRules } from "../../../src/shared/games/mystery-stock-market/rulebook";
@@ -1085,7 +1085,7 @@ describe("미스터리 거래소: the rules a game is played by", () => {
     expect(createGame({ players: [0, 1], seed: 1, now: T0, rulebook: "fresh" }, { ...config, draw: { ...config.draw, selfPercent: 101 } })).toEqual({ ok: false, reason: "bad-config" });
   });
 
-  it("moves every stock by the rule the game drew for it: what was bought and sold, what is held, what a secret hides and the path all count", () => {
+  it("moves every stock by the rule the game drew for it: what was bought and sold in the round and in the one before, what is held, what a secret hides and the way the emblem goes all count", () => {
     for (let seed = 0; seed < SEEDS; seed++) {
       let state = fresh(3, seed);
       const book = { floorPrice: FLOOR, rules: drawRules(seed, config.draw) };
@@ -1100,9 +1100,12 @@ describe("미스터리 거래소: the rules a game is played by", () => {
         heldAfter: counts({ coyo: 2, steel: 2, open: 1 }),
         bought: counts({ coyo: 3, steel: 2, open: 1 }),
         sold: counts({ coyo: 1 }),
+        boughtBefore: counts({}),
+        soldBefore: counts({}),
         // the secret used in this round hides its stock from the next
         hidden: perStock((stock) => stock === "latter"),
         path: state.path[1],
+        way: waysOf(state.path)[0],
       };
       expect(pricesNow(first), `seed ${seed}, round 1`).toEqual(nextPrices(opening, null, firstFacts, book));
 
@@ -1115,29 +1118,59 @@ describe("미스터리 거래소: the rules a game is played by", () => {
         heldAfter: counts({ coyo: 2, finance: 1 }),
         bought: counts({ finance: 1 }),
         sold: counts({ steel: 2, open: 1 }),
+        boughtBefore: counts({ coyo: 3, steel: 2, open: 1 }),
+        soldBefore: counts({ coyo: 1 }),
         hidden: perStock((stock) => stock === "latter"),
         path: state.path[2],
+        way: waysOf(state.path)[1],
       };
       expect(pricesNow(second), `seed ${seed}, round 2`).toEqual(nextPrices(pricesNow(first), opening, secondFacts, book));
     }
   });
 
-  it("moves the stock that has the emblem's rule along the path, whichever company that is", () => {
+  it("moves no stock of a game with rules of its own along the path: its emblem is a signal, and whoever knows the show's rule reads no price off it", () => {
     for (let seed = 0; seed < SEEDS; seed++) {
       const state = fresh(2, seed);
-      const emblem = STOCKS.find((stock) => state.rules?.[stock].kind === "emblem");
-      if (emblem === undefined) throw new Error("a drawn game has no emblem");
-
       const over = toEnd(state);
 
-      expect(over.prices[emblem], `seed ${seed}`).toEqual(state.path);
+      expect(STOCKS.filter((stock) => state.rules?.[stock].kind === "emblem"), `seed ${seed}`).toEqual([]);
+      expect(STOCKS.filter((stock) => state.rules?.[stock].kind === "signal"), `seed ${seed}`).toHaveLength(1);
+      for (const stock of STOCKS) expect(over.prices[stock], `seed ${seed} ${stock}`).not.toEqual(state.path);
     }
   });
 
-  it("gives the emblem's rule to other companies than the show does", () => {
-    const companies = new Set(Array.from({ length: SEEDS }, (_, seed) => STOCKS.find((stock) => fresh(2, seed).rules?.[stock].kind === "emblem")));
+  it("gives the emblem's signal to every company in some game", () => {
+    const companies = new Set(Array.from({ length: SEEDS }, (_, seed) => STOCKS.find((stock) => fresh(2, seed).rules?.[stock].kind === "signal")));
 
     expect(companies.size).toBe(STOCKS.length);
+  });
+
+  it("raises the signalled stock in every round its count is moved the emblem's way, and lowers it in a round the count is moved the other way", () => {
+    // a game whose signal is on what is held of a stock: found among the seeds, so that the test stays with the shipped draw
+    const seed = Array.from({ length: 400 }, (_, each) => each).find((each) => {
+      const rule = Object.values(fresh(2, each).rules ?? {}).find((one) => one.kind === "signal");
+      return rule?.kind === "signal" && rule.what === "held";
+    });
+    if (seed === undefined) throw new Error("no seed draws a signal on what is held");
+    let state = fresh(2, seed);
+    const signalled = STOCKS.find((stock) => state.rules?.[stock].kind === "signal");
+    const rule = signalled === undefined ? undefined : state.rules?.[signalled];
+    if (signalled === undefined || rule?.kind !== "signal") throw new Error("a drawn game has no signal");
+    const ways = waysOf(state.path);
+
+    // round 1 is spent on shares to sell later; then four rounds the emblem's way: a share more where it rises, a share fewer where it falls
+    state = endRound(buy(state, 0, rule.of, 6));
+    for (let round = 2; round <= 5; round++) {
+      const before = priceOf(state, signalled);
+      state = endRound(ways[round - 1] === "up" ? buy(state, 1, rule.of, 1) : sell(state, 0, rule.of, 1));
+
+      expect(priceOf(state, signalled) - before, `round ${round}`).toBe(rule.up);
+    }
+    // and one round against it
+    const before = priceOf(state, signalled);
+    state = endRound(ways[5] === "up" ? sell(state, 0, rule.of, 1) : buy(state, 1, rule.of, 1));
+
+    expect(priceOf(state, signalled) - before).toBe(-rule.down);
   });
 
   it("plays a game stored before games drew rules of their own by the show's", () => {

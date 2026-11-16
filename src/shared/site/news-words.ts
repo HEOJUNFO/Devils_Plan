@@ -43,6 +43,15 @@ const HEAVY = name("under-thirteen");
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
+    date: "2026-11-16",
+    lines: [
+      {
+        ko: `${MARKET.ko}: 판마다 새 규칙으로 하는 판에서, 거래소 로고는 이제 어느 주식의 앞날이 아닙니다. 로고는 처음부터 보이고, 한 회사의 규칙이 "어느 수량을 로고를 따라 움직이면 오른다"가 됩니다. 어느 회사의 어느 수량인지는 가려진 낱말에 있습니다. 방송에서 본 규칙과 닮은 다른 규칙들도 반대로 뒤집혀 있을 수 있습니다 (더 적게 사야 오르는 주식, 보유가 아니라 거래량을 보는 주식). 방송의 규칙으로 하는 판은 그대로입니다.`,
+        en: `${MARKET.en}: in a game that draws its own rules, the exchange's logo is no longer one stock's prices to come. The logo is in sight from the start, and one company's rule is now "move this count the way the logo goes and the price rises". Which company's count, and which count, is under the covered words. Other rules that look like the show's may run the other way too (a stock that rises when fewer are bought, one that goes by a traded volume and not by holdings). A game played by the show's own rules is as it was.`,
+      },
+    ],
+  },
+  {
     date: "2026-11-15",
     lines: [
       {

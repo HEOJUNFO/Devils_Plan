@@ -26,15 +26,25 @@
  * - `band` (후자전자): up so many won while a stock's total holdings are
  *   between two numbers, down when they are fewer or more.
  *
- * (gap) Three more are of the same make, for the games that draw their rules
+ * (gap) Four more are of the same make, for the games that draw their rules
  * afresh (`rulebook.ts`): they go by the same things the monitor shows.
  *
+ * - `signal`: up so many won when a stock's total holdings (or what was
+ *   bought of it, or sold) went in the round the way the exchange's emblem
+ *   goes in that round, down when not. What the show's 알트엔터 is in a game
+ *   that draws its rules: there the emblem is in sight as it is in the show,
+ *   and tells no price. It says which way the players have to move a count.
  * - `volume`: up so many won when so many shares of a stock or more were
  *   bought (or sold) in the round, down when not.
  * - `net`: up so many won when more of a stock was bought in the round than
  *   sold, down when not.
  * - `outhold`: up so many won when more of it is held in all than of another
  *   stock, down when not.
+ *
+ * (gap) Two of the show's kinds can be drawn another way round than the show
+ * has them, so that knowing the show's rule is not knowing the game's:
+ * `outbuy` by fewer in place of more, and `band` on what was bought or sold
+ * in the round in place of what is held.
  *
  * How each of the show's sentences is to be read where it leaves room (which
  * round, which moment, how a part of a won is rounded) was settled against
@@ -50,6 +60,9 @@ export type PerStock<T> = Record<StockId, T>;
 
 /** Which of a round's two counts of trade a rule goes by: what was bought, or what was sold. */
 export type Volume = "bought" | "sold";
+
+/** Which of the monitor's counts of a stock a rule goes by: what is held of it in all, or what was bought or sold of it in the round. */
+export type Counted = "held" | Volume;
 
 /**
  * A rule a stock's price moves by when a round ends. Where a rule has two
@@ -72,22 +85,39 @@ export type Rule =
   | { kind: "emblem" }
   /** While a secret is on `on`, up `up` in a hundred; while none is, down `down` won. */
   | { kind: "secret"; on: StockId; up: number; down: number }
-  /** When more of this stock was bought (or sold) in the round than of `than`, up `up` won; when not, down `down` won. */
-  | { kind: "outbuy"; volume: Volume; than: StockId; up: number; down: number }
-  /** While the total holdings of `of` are from `from` to `to` shares (both counted), up `up` won; otherwise down `down` won. */
-  | { kind: "band"; of: StockId; from: number; to: number; up: number; down: number }
+  /**
+   * When more of this stock was bought (or sold) in the round than of `than`,
+   * up `up` won; when not, down `down` won. With `less` (a drawn game's
+   * alone) it is fewer that it has to be, and as many is still "not".
+   */
+  | { kind: "outbuy"; volume: Volume; than: StockId; less?: true; up: number; down: number }
+  /**
+   * While the total holdings of `of` are from `from` to `to` shares (both
+   * counted), up `up` won; otherwise down `down` won. With `what` (a drawn
+   * game's alone) the band is on what was bought, or sold, of `of` in the
+   * round.
+   */
+  | { kind: "band"; of: StockId; what?: Volume; from: number; to: number; up: number; down: number }
   /** When `atLeast` shares of `of` or more were bought (or sold) in the round, up `up` won; when not, down `down` won. */
   | { kind: "volume"; volume: Volume; of: StockId; atLeast: number; up: number; down: number }
   /** When more of `of` was bought in the round than sold, up `up` won; when not, down `down` won. */
   | { kind: "net"; of: StockId; up: number; down: number }
   /** When more of this stock is held in all than of `than`, up `up` won; when not, down `down` won. */
-  | { kind: "outhold"; than: StockId; up: number; down: number };
+  | { kind: "outhold"; than: StockId; up: number; down: number }
+  /**
+   * When the count `what` of `of` went in the round the way the emblem goes
+   * in it (more than before where the emblem rises, fewer where it falls),
+   * up `up` won; when it went the other way or stayed, down `down` won. What
+   * is held is set against what was held when the round began; what was
+   * bought or sold, against the round before's.
+   */
+  | { kind: "signal"; what: Counted; of: StockId; up: number; down: number };
 
 /** What sort of rule a rule is. */
 export type RuleKind = Rule["kind"];
 
 /** Every kind of rule there is, the show's seven first. */
-export const RULE_KINDS = ["breadth", "follows", "per-share", "emblem", "secret", "outbuy", "band", "volume", "net", "outhold"] as const satisfies readonly RuleKind[];
+export const RULE_KINDS = ["breadth", "follows", "per-share", "emblem", "secret", "outbuy", "band", "volume", "net", "outhold", "signal"] as const satisfies readonly RuleKind[];
 
 /** The numbers of the show's own six rules that are numbers. Part of `config.json`. */
 export interface PriceRules {
@@ -152,10 +182,15 @@ export interface RoundFacts {
   /** How many shares of each stock were bought in the round, and how many sold. */
   bought: PerStock<number>;
   sold: PerStock<number>;
+  /** The same of the round before it; nought of every stock in the first round. */
+  boughtBefore: PerStock<number>;
+  soldBefore: PerStock<number>;
   /** Whether a secret keeps each stock off the monitor at the start of the round that follows. */
   hidden: PerStock<boolean>;
   /** Where the game's own path is after the round: the price of a stock whose chart is the emblem. */
   path: number;
+  /** Which way the emblem goes in the round: what a stock that takes the emblem for a signal goes by. */
+  way: "up" | "down";
 }
 
 /**
@@ -171,6 +206,10 @@ export interface RoundFacts {
 export function nextPrices(prices: PerStock<number>, earlier: PerStock<number> | null, facts: RoundFacts, book: PriceBook): PerStock<number> {
   const floored = (price: number): number => Math.max(book.floorPrice, price);
   const byPercent = (price: number, percent: number): number => floored(Math.floor((price * (100 + percent)) / 100));
+  const within = (count: number, from: number, to: number): boolean => count >= from && count <= to;
+  /** Which way a count of `of` went in the round: what is held against the round's beginning, what was traded against the round before. */
+  const countMove = (what: Counted, of: StockId): Move =>
+    what === "held" ? moveOf(facts.heldBefore[of], facts.heldAfter[of]) : what === "bought" ? moveOf(facts.boughtBefore[of], facts.bought[of]) : moveOf(facts.soldBefore[of], facts.sold[of]);
   const settled = new Map<StockId, number>();
 
   /** The price of `stock` after the round; `waiting` are the stocks whose own price is waiting for it. */
@@ -201,14 +240,18 @@ export function nextPrices(prices: PerStock<number>, earlier: PerStock<number> |
     } else {
       const so =
         rule.kind === "outbuy"
-          ? facts[rule.volume][stock] > facts[rule.volume][rule.than]
+          ? rule.less === true
+            ? facts[rule.volume][stock] < facts[rule.volume][rule.than]
+            : facts[rule.volume][stock] > facts[rule.volume][rule.than]
           : rule.kind === "band"
-            ? facts.heldAfter[rule.of] >= rule.from && facts.heldAfter[rule.of] <= rule.to
+            ? within(rule.what === undefined ? facts.heldAfter[rule.of] : facts[rule.what][rule.of], rule.from, rule.to)
             : rule.kind === "volume"
               ? facts[rule.volume][rule.of] >= rule.atLeast
               : rule.kind === "net"
                 ? facts.bought[rule.of] > facts.sold[rule.of]
-                : facts.heldAfter[stock] > facts.heldAfter[rule.than];
+                : rule.kind === "signal"
+                  ? countMove(rule.what, rule.of) === facts.way
+                  : facts.heldAfter[stock] > facts.heldAfter[rule.than];
       next = floored(now + (so ? rule.up : -rule.down));
     }
     settled.set(stock, next);

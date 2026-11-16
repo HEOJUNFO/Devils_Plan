@@ -23,7 +23,18 @@ const book: PriceBook = { floorPrice: FLOOR, rules: showRules(config.rules) };
 
 /** Nobody holds anything and nothing happens: the facts of a round in which no player does a thing. */
 function quiet(change: Partial<RoundFacts> = {}): RoundFacts {
-  return { heldBefore: perStock(() => 0), heldAfter: perStock(() => 0), bought: perStock(() => 0), sold: perStock(() => 0), hidden: perStock(() => false), path: START, ...change };
+  return {
+    heldBefore: perStock(() => 0),
+    heldAfter: perStock(() => 0),
+    bought: perStock(() => 0),
+    sold: perStock(() => 0),
+    boughtBefore: perStock(() => 0),
+    soldBefore: perStock(() => 0),
+    hidden: perStock(() => false),
+    path: START,
+    way: "up",
+    ...change,
+  };
 }
 
 /** A secret keeps `stock` off the next round's monitor, and no other. */
@@ -315,6 +326,58 @@ describe("미스터리 거래소, the prices: rules a game draws for itself", ()
 
     expect(nextPrices(prices(), null, grew, moved)).toMatchObject({ coyo: START - 900, build: START + 900 });
     expect(nextPrices(prices(), null, quiet({ heldAfter: { ...only("coyo", 5), build: 5 } }), moved)).toMatchObject({ coyo: START, build: START - 600 });
+  });
+
+  it("goes by the emblem as a signal: up when a stock's holdings went the way the emblem goes in the round, down when they went the other way or did not move", () => {
+    const moved = drawn({ coyo: { kind: "signal", what: "held", of: "open", up: 900, down: 200 } });
+    const grew = { heldBefore: only("open", 2), heldAfter: only("open", 5) };
+    const shrank = { heldBefore: only("open", 5), heldAfter: only("open", 2) };
+    const stayed = { heldBefore: only("open", 5), heldAfter: only("open", 5) };
+
+    expect(nextPrices(prices(), null, quiet({ ...grew, way: "up" }), moved).coyo).toBe(START + 900);
+    expect(nextPrices(prices(), null, quiet({ ...shrank, way: "down" }), moved).coyo).toBe(START + 900);
+    expect(nextPrices(prices(), null, quiet({ ...grew, way: "down" }), moved).coyo).toBe(START - 200);
+    expect(nextPrices(prices(), null, quiet({ ...shrank, way: "up" }), moved).coyo).toBe(START - 200);
+    expect(nextPrices(prices(), null, quiet({ ...stayed, way: "up" }), moved).coyo).toBe(START - 200);
+    expect(nextPrices(prices(), null, quiet({ ...stayed, way: "down" }), moved).coyo).toBe(START - 200);
+  });
+
+  it("goes by the emblem as a signal for what was bought or sold: this round's count against the round before's", () => {
+    const bought = drawn({ steel: { kind: "signal", what: "bought", of: "steel", up: 700, down: 100 } });
+    const sold = drawn({ steel: { kind: "signal", what: "sold", of: "alt", up: 700, down: 100 } });
+
+    expect(nextPrices(prices(), null, quiet({ boughtBefore: only("steel", 2), bought: only("steel", 3), way: "up" }), bought).steel).toBe(START + 700);
+    expect(nextPrices(prices(), null, quiet({ boughtBefore: only("steel", 3), bought: only("steel", 2), way: "down" }), bought).steel).toBe(START + 700);
+    expect(nextPrices(prices(), null, quiet({ boughtBefore: only("steel", 3), bought: only("steel", 3), way: "up" }), bought).steel).toBe(START - 100);
+    // what was sold of the stock, or bought of another, is nothing to a signal for what was bought of this one
+    expect(nextPrices(prices(), null, quiet({ sold: only("steel", 9), bought: only("alt", 9), way: "up" }), bought).steel).toBe(START - 100);
+    expect(nextPrices(prices(), null, quiet({ soldBefore: only("alt", 1), sold: only("alt", 4), way: "up" }), sold).steel).toBe(START + 700);
+    expect(nextPrices(prices(), null, quiet({ soldBefore: only("alt", 4), sold: only("alt", 1), way: "up" }), sold).steel).toBe(START - 100);
+  });
+
+  it("does not move a signalled stock by the path: the emblem tells it which way a count has to go, not its price", () => {
+    const moved = drawn({ coyo: { kind: "signal", what: "held", of: "coyo", up: 900, down: 200 } });
+
+    expect(nextPrices(prices(), null, quiet({ path: 31000, way: "up" }), moved).coyo).toBe(START - 200);
+  });
+
+  it("outbuys the other way round where its rule says fewer: up when fewer of it were bought than of the other, down when as many or more", () => {
+    const moved = drawn({ coyo: { kind: "outbuy", volume: "bought", than: "latter", less: true, up: 800, down: 300 } });
+
+    expect(nextPrices(prices(), null, quiet({ bought: { ...only("latter", 3), coyo: 2 } }), moved).coyo).toBe(START + 800);
+    expect(nextPrices(prices(), null, quiet({ bought: { ...only("latter", 3), coyo: 3 } }), moved).coyo).toBe(START - 300);
+    expect(nextPrices(prices(), null, quiet({ bought: { ...only("latter", 3), coyo: 4 } }), moved).coyo).toBe(START - 300);
+    expect(nextPrices(prices(), null, quiet(), moved).coyo).toBe(START - 300);
+  });
+
+  it("keeps a band on what was bought or sold in the round where its rule names that, and not on what is held", () => {
+    const moved = drawn({ latter: { kind: "band", what: "sold", of: "open", from: 5, to: 8, up: 1000, down: 200 } });
+
+    expect(nextPrices(prices(), null, quiet({ sold: only("open", 5) }), moved).latter).toBe(START + 1000);
+    expect(nextPrices(prices(), null, quiet({ sold: only("open", 8) }), moved).latter).toBe(START + 1000);
+    expect(nextPrices(prices(), null, quiet({ sold: only("open", 9) }), moved).latter).toBe(START - 200);
+    expect(nextPrices(prices(), null, quiet({ sold: only("open", 4) }), moved).latter).toBe(START - 200);
+    expect(nextPrices(prices(), null, quiet({ heldAfter: only("open", 6), bought: only("open", 6) }), moved).latter).toBe(START - 200);
   });
 
   it("follows a stock down as well as up: it rises when the other fell, and falls when the other rose or stayed", () => {

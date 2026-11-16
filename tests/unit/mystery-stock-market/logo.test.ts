@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import shipped from "../../../src/shared/games/mystery-stock-market/config.json";
 import { randomSource, seedFrom } from "../../../src/shared/game/rng";
-import { emblemOf, pathOf, pathWith, type LogoConfig } from "../../../src/shared/games/mystery-stock-market/logo";
+import { emblemOf, pathOf, pathWith, waysOf, type LogoConfig } from "../../../src/shared/games/mystery-stock-market/logo";
 
 const logo: LogoConfig = shipped.logo;
 const ROUNDS = shipped.rounds;
@@ -183,5 +183,30 @@ describe("미스터리 거래소, the emblem", () => {
 
   it("is level for a path that never moves", () => {
     expect(emblemOf([500, 500, 500], 16)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("미스터리 거래소, the way the emblem goes in each round", () => {
+  it("is the way the path goes in that round, for every round of a drawn path", () => {
+    for (let seed = 0; seed < 200; seed++) {
+      const path = pathOf(seed, shipped.rounds, shipped.startPrice, shipped.logo);
+      const ways = waysOf(path);
+
+      expect(ways, `seed ${seed}`).toHaveLength(shipped.rounds);
+      ways.forEach((way, at) => {
+        if (path[at + 1] > path[at]) expect(way, `seed ${seed}, round ${at + 1}`).toBe("up");
+        if (path[at + 1] < path[at]) expect(way, `seed ${seed}, round ${at + 1}`).toBe("down");
+      });
+    }
+  });
+
+  it("takes a round in which the path stays where it is to go the way of the round before", () => {
+    expect(waysOf([10, 12, 12, 9, 9, 9, 11])).toEqual(["up", "up", "down", "down", "down", "up"]);
+  });
+
+  it("takes a path that opens level to go the way it first moves, and one that never moves to go up", () => {
+    expect(waysOf([10, 10, 10, 8, 9])).toEqual(["down", "down", "down", "up"]);
+    expect(waysOf([10, 10, 10])).toEqual(["up", "up"]);
+    expect(waysOf([10])).toEqual([]);
   });
 });

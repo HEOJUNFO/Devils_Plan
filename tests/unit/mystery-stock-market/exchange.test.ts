@@ -26,8 +26,12 @@ function replayed(change: (round: number, record: (typeof EXCHANGE)[number]) => 
       heldAfter: { ...perStock(() => 0), steel: record.steelHeld, latter: record.latterWithin ? WITHIN : OUTSIDE },
       bought: { ...perStock(() => 0), coyo: record.coyoBoughtMore ? 1 : 0 },
       sold: perStock(() => 0),
+      boughtBefore: perStock(() => 0),
+      soldBefore: perStock(() => 0),
       hidden: { ...perStock(() => false), latter: record.latterHidden },
       path: record.alt,
+      // none of the show's rules takes the emblem for a signal
+      way: "up" as const,
     };
     prices.push(nextPrices(prices[at], at === 0 ? null : prices[at - 1], facts, book));
     steelHeld = record.steelHeld;

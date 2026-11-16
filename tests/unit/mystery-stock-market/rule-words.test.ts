@@ -66,7 +66,22 @@ function widestRules(stock: StockId, other: StockId): Record<RuleKind, Rule> {
     volume: { kind: "volume", volume: "bought", of: other, atLeast: volume.to, up: wonUp.to, down: wonDown.to },
     net: { kind: "net", of: other, up: wonUp.to, down: wonDown.to },
     outhold: { kind: "outhold", than: other, up: wonUp.to, down: wonDown.to },
+    signal: { kind: "signal", what: "held", of: other, up: wonUp.to, down: wonDown.to },
   };
+}
+
+/** The rules a drawn game has the other way round than the show, and the emblem's signal for each count, with the widest numbers. */
+function turnedRules(other: StockId): Rule[] {
+  const { wonUp, wonDown, bandFrom, bandWidth } = draw;
+  const won = { up: wonUp.to, down: wonDown.to };
+  return [
+    { kind: "outbuy", volume: "bought", than: other, less: true, ...won },
+    { kind: "outbuy", volume: "sold", than: other, less: true, ...won },
+    { kind: "band", what: "bought", of: other, from: bandFrom.to, to: bandFrom.to + bandWidth.to, ...won },
+    { kind: "band", what: "sold", of: other, from: bandFrom.to, to: bandFrom.to + bandWidth.to, ...won },
+    { kind: "signal", what: "bought", of: other, ...won },
+    { kind: "signal", what: "sold", of: other, ...won },
+  ];
 }
 
 describe("미스터리 거래소, the rule board: the show's sentences", () => {
@@ -258,6 +273,34 @@ describe("미스터리 거래소, the rule board: the sentences of a game's own 
       "방어제철의 보유 총량이 알트엔터의 보유 총량보다 많을 경우 +1000원, 그렇지 않으면 -500원",
       "If Defense's total holdings are higher than Alt Ent's total holdings, +1000 won; otherwise -500 won.",
     ],
+    [
+      "fewer bought than of another",
+      "latter",
+      { kind: "outbuy", volume: "bought", than: "steel", less: true, up: 1100, down: 300 },
+      "후자전자의 매수량이 방어제철의 매수량보다 적을 경우 +1100원, 그렇지 않으면 -300원",
+      "If Latter's bought volume is lower than Defense's bought volume, +1100 won; otherwise -300 won.",
+    ],
+    [
+      "a band on what was sold",
+      "finance",
+      { kind: "band", what: "sold", of: "open", from: 12, to: 37, up: 1500, down: 300 },
+      "열림보안의 매도량이 12주 이상 37주 이하이면 +1500원, 그렇지 않으면 -300원",
+      "If Open's sold volume is 12 shares or more and 37 shares or fewer, +1500 won; otherwise -300 won.",
+    ],
+    [
+      "the emblem as a signal for what is held",
+      "coyo",
+      { kind: "signal", what: "held", of: "alt", up: 900, down: 200 },
+      "알트엔터의 보유 총량이 미스터리 거래소 로고를 따라 움직이면 +900원, 그렇지 않으면 -200원",
+      "If Alt Ent's total holdings moved with the Mystery Stock Market logo, +900 won; otherwise -200 won.",
+    ],
+    [
+      "the emblem as a signal for what was bought",
+      "coyo",
+      { kind: "signal", what: "bought", of: "coyo", up: 900, down: 200 },
+      "코요테크의 매수량이 미스터리 거래소 로고를 따라 움직이면 +900원, 그렇지 않으면 -200원",
+      "If CoyoTech's bought volume moved with the Mystery Stock Market logo, +900 won; otherwise -200 won.",
+    ],
   ])("writes a rule about %s, naming companies as the monitor's table does", (_what, stock, rule, korean, english) => {
     expect(read("ko", sentenceOf("ko", stock, rule, "fresh"))).toBe(korean);
     expect(read("en", sentenceOf("en", stock, rule, "fresh"))).toBe(english);
@@ -285,6 +328,13 @@ describe("미스터리 거래소, the rule board: the sentences of a game's own 
       [["보유 총량", "많을 경우"], ["방어제철의", "그렇지 않으면"], ["+1000원,", "-500원"], ["보유 총량이", "보다"], ["알트엔터의"]],
       [["If", "are higher", "total holdings,"], ["Defense's", "otherwise"], ["+1000 won;", "-500 won."], ["total holdings", "than"], ["Alt Ent's"]],
     ],
+    [
+      "the emblem as a signal",
+      "coyo",
+      { kind: "signal", what: "sold", of: "alt", up: 900, down: 200 },
+      [["움직이면"], ["따라", "그렇지 않으면"], ["매도량이", "+900원,", "-200원"], ["미스터리 거래소 로고를"], ["알트엔터의"]],
+      [["If"], ["moved with", "otherwise"], ["sold volume", "+900 won;", "-200 won."], ["the Mystery Stock Market logo,"], ["Alt Ent's"]],
+    ],
   ])("opens a rule about %s in the same order in both languages: from the start, then at rounds 5, 10, 15 and 20", (_what, stock, rule, korean, english) => {
     expect(openedAt("ko", sentenceOf("ko", stock, rule, "fresh"))).toEqual(korean);
     expect(openedAt("en", sentenceOf("en", stock, rule, "fresh"))).toEqual(english);
@@ -298,9 +348,8 @@ describe("미스터리 거래소, the rule board: the sentences of a game's own 
       ["coyo", { kind: "emblem" }],
       ["alt", { kind: "secret", on: "latter", up: 15, down: 800 }],
       ["latter", { kind: "outbuy", volume: "bought", than: "latter", up: 1100, down: 900 }],
-      ["finance", { kind: "band", of: "latter", from: 12, to: 37, up: 2000, down: 1500 }],
     ];
-    const shown: StockId[] = ["finance", "build", "steel", "alt", "open", "coyo", "latter"];
+    const shown: StockId[] = ["finance", "build", "steel", "alt", "open", "coyo"];
     const stagesOf = (pieces: readonly RulePiece[]): [string, number][] => pieces.map((piece) => [piece.key, piece.stage]);
 
     for (const lang of LANGS) {
@@ -308,6 +357,18 @@ describe("미스터리 거래소, the rule board: the sentences of a game's own 
         expect(stagesOf(sentenceOf(lang, stock, rule, "fresh")), `${lang} ${rule.kind}`).toEqual(stagesOf(showSentence(lang, shown[at])));
       });
     }
+  });
+
+  it("opens a band in the show's order too, with its count written as a count that may be what was traded: in English the verb waits for the count", () => {
+    const band: Rule = { kind: "band", of: "latter", from: 12, to: 37, up: 2000, down: 1500 };
+    const stagesOf = (lang: Lang, rulebook: Rulebook): [string, number][] => sentenceOf(lang, "finance", band, rulebook).map((piece) => [piece.key, piece.stage]);
+
+    expect(stagesOf("ko", "fresh")).toEqual(stagesOf("ko", "show").map(([key, stage]) => [key === "held" ? "counted" : key, stage]));
+    expect(stagesOf("en", "fresh")).toEqual(
+      stagesOf("en", "show").map(([key, stage]) => (key === "held" ? ["counted", stage] : key === "are" ? ["be", STAGES - 1] : [key, stage])),
+    );
+    // "are" in sight at round 5 would tell a band on holdings from one on a volume ("is") ten rounds before the count is opened
+    expect(openedAt("en", sentenceOf("en", "finance", band, "fresh"))[STAGES - 1]).toEqual(["total holdings", "are", "-1500 won."]);
   });
 
   it("has a sentence for every kind of rule in each language, with something to open at every stage and nothing after the last", () => {
@@ -324,7 +385,7 @@ describe("미스터리 거래소, the rule board: the sentences of a game's own 
 
   it("opens the name of another stock a rule goes by last of all, or last but one; in a band, where the show opens it, at round 10", () => {
     for (const lang of LANGS) {
-      for (const kind of ["follows", "per-share", "secret", "outbuy", "band", "volume", "net", "outhold"] as const) {
+      for (const kind of ["follows", "per-share", "secret", "outbuy", "band", "volume", "net", "outhold", "signal"] as const) {
         const pieces = sentenceOf(lang, "coyo", widestRules("coyo", "latter")[kind], "fresh");
         const naming = pieces.filter((piece) => piece.args.includes("latter"));
 
@@ -438,7 +499,7 @@ describe("미스터리 거래소, the rule board: what a player is sent", () => 
       const shapes = new Set(
         STOCKS.filter((other) => other !== "coyo").map((other) => {
           const rules = widestRules("coyo", other);
-          return JSON.stringify((["follows", "per-share", "secret", "outbuy", "band", "volume", "net", "outhold"] as const).map((kind) => cardOf(lang, sentenceOf(lang, "coyo", rules[kind], "fresh"), 0)));
+          return JSON.stringify((["follows", "per-share", "secret", "outbuy", "band", "volume", "net", "outhold", "signal"] as const).map((kind) => cardOf(lang, sentenceOf(lang, "coyo", rules[kind], "fresh"), 0)));
         }),
       );
 
@@ -463,6 +524,28 @@ describe("미스터리 거래소, the rule board: what a player is sent", () => 
         ]);
 
       expect(shape("sold"), lang).toBe(shape("bought"));
+    }
+  });
+
+  it("covers a count that may be what is held or what was traded alike: neither a band nor the emblem's signal tells which by its shape", () => {
+    for (const lang of LANGS) {
+      const covered = (rule: Rule, readable: number): string => JSON.stringify(cardOf(lang, sentenceOf(lang, "coyo", rule, "fresh"), readable).filter((shown) => !shown.open));
+      const band = (what?: "bought" | "sold"): Rule => ({ kind: "band", of: "alt", ...(what === undefined ? {} : { what }), from: 10, to: 30, up: 900, down: 200 });
+      const signal = (what: "held" | "bought" | "sold"): Rule => ({ kind: "signal", what, of: "alt", up: 900, down: 200 });
+
+      // until the count is opened: a band's at round 15, a signal's at round 10
+      for (const readable of [0, 1, 2]) {
+        expect(covered(band("bought"), readable), `${lang} band ${readable}`).toBe(covered(band(), readable));
+        expect(covered(band("sold"), readable), `${lang} band ${readable}`).toBe(covered(band(), readable));
+      }
+      for (const readable of [0, 1]) {
+        expect(covered(signal("bought"), readable), `${lang} signal ${readable}`).toBe(covered(signal("held"), readable));
+        expect(covered(signal("sold"), readable), `${lang} signal ${readable}`).toBe(covered(signal("held"), readable));
+      }
+      // and what is open before then is the same words whichever count it is
+      const open = (rule: Rule, readable: number): string => JSON.stringify(cardOf(lang, sentenceOf(lang, "coyo", rule, "fresh"), readable).filter((shown) => shown.open));
+      expect(open(band("sold"), 2), lang).toBe(open(band(), 2));
+      expect(open(signal("sold"), 1), lang).toBe(open(signal("held"), 1));
     }
   });
 
@@ -571,11 +654,11 @@ describe("미스터리 거래소, the rule board: where the words go", () => {
       for (const stock of STOCKS) {
         for (const other of STOCKS.filter((each) => each !== stock)) {
           const rules = widestRules(stock, other);
-          for (const kind of RULE_KINDS) {
-            const taken = roomTaken(lang, sentenceOf(lang, stock, rules[kind], "fresh"));
+          for (const rule of [...RULE_KINDS.map((kind) => rules[kind]), ...turnedRules(other), ...turnedRules(stock).filter((rule) => rule.kind !== "outbuy")]) {
+            const taken = roomTaken(lang, sentenceOf(lang, stock, rule, "fresh"));
 
-            expect(taken.lines, `${lang} ${kind} of ${stock} about ${other}`).toBeLessThanOrEqual(CARD.lines);
-            expect(taken.reach, `${lang} ${kind} of ${stock} about ${other}`).toBeLessThanOrEqual(CARD.width);
+            expect(taken.lines, `${lang} ${JSON.stringify(rule)} of ${stock}`).toBeLessThanOrEqual(CARD.lines);
+            expect(taken.reach, `${lang} ${JSON.stringify(rule)} of ${stock}`).toBeLessThanOrEqual(CARD.width);
           }
         }
       }

@@ -10,7 +10,8 @@
  * and so is the order their words are uncovered in (as a record of the
  * board at each of its five stages has it; the rule-words test holds the
  * record); the English ones are translated here, and (gap) so are both of
- * the three kinds the show does not have.
+ * the four kinds the show does not have, and the words of a rule a game
+ * draws the other way round than the show has it.
  *
  * Why the words are here and not beside the screen, where a screen's words
  * are kept (.claude/rules/languages.md): what a player may not read yet must
@@ -106,6 +107,11 @@ const WORDS: Record<Lang, Record<string, Wording>> = {
     volumeBare: (which) => (which === "bought" ? "매수량" : "매도량"),
     than: () => "보다",
     ifMore: () => "많을 경우",
+    ifFewer: () => "적을 경우",
+    counted: (what) => (what === "held" ? "보유 총량이" : what === "bought" ? "매수량이" : "매도량이"),
+    logoWay: () => "미스터리 거래소 로고를",
+    along: () => "따라",
+    ifMoves: () => "움직이면",
     shares: (n) => `${n}주`,
     orMore: () => "이상",
     orFewerIf: () => "이하이면",
@@ -143,9 +149,14 @@ const WORDS: Record<Lang, Record<string, Wording>> = {
     volumeLast: (which) => `${which === "bought" ? "bought" : "sold"} volume,`,
     itsSold: () => "its sold volume,",
     isHigher: () => "is higher",
+    isLower: () => "is lower",
     areHigher: () => "are higher",
     than: () => "than",
     are: () => "are",
+    counted: (what) => (what === "held" ? "total holdings" : what === "bought" ? "bought volume" : "sold volume"),
+    be: (what) => (what === "held" ? "are" : "is"),
+    movedWith: () => "moved with",
+    logoWay: () => "the Mystery Stock Market logo,",
     shares: (n) => `${n} shares`,
     orMore: () => "or more",
     orMoreLast: () => "or more,",
@@ -165,6 +176,7 @@ const glued = (stage: number, key: string, ...args: RuleArg[]): RulePiece => ({ 
 
 /** A rule's sentence in Korean. Those of the show's seven kinds are the show's, word for word and stage for stage. */
 function korean(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
+  const drawn = naming === "short";
   const up = (stage: number, n: number, unit: string, end = ","): RulePiece => piece(stage, "amount", "+", n, unit, end);
   const down = (stage: number, n: number, unit: string, end = ""): RulePiece => piece(stage, "amount", "-", n, unit, end);
   switch (rule.kind) {
@@ -215,7 +227,7 @@ function korean(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(4, "of", rule.than, naming),
         piece(0, "volumeBare", rule.volume),
         glued(3, "than"),
-        piece(0, "ifMore"),
+        piece(0, rule.less === true ? "ifFewer" : "ifMore"),
         up(2, rule.up, "won"),
         piece(1, "otherwise"),
         down(2, rule.down, "won"),
@@ -223,7 +235,8 @@ function korean(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
     case "band":
       return [
         piece(2, "of", rule.of, naming),
-        piece(3, "held"),
+        // a drawn game's band may be on what was traded: its count is written, and covered, as any count is
+        drawn ? piece(3, "counted", rule.what ?? "held") : piece(3, "held"),
         piece(4, "shares", rule.from),
         piece(1, "orMore"),
         piece(4, "shares", rule.to),
@@ -265,11 +278,23 @@ function korean(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(1, "otherwise"),
         down(2, rule.down, "won"),
       ];
+    case "signal":
+      return [
+        piece(4, "of", rule.of, naming),
+        piece(2, "counted", rule.what),
+        piece(3, "logoWay"),
+        piece(1, "along"),
+        piece(0, "ifMoves"),
+        up(2, rule.up, "won"),
+        piece(1, "otherwise"),
+        down(2, rule.down, "won"),
+      ];
   }
 }
 
 /** A rule's sentence in English: a translation, opened in the order of the Korean it follows. */
 function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
+  const drawn = naming === "short";
   const up = (stage: number, n: number, unit: string): RulePiece => piece(stage, "amount", "+", n, unit, ";");
   const down = (stage: number, n: number, unit: string): RulePiece => piece(stage, "amount", "-", n, unit, ".");
   switch (rule.kind) {
@@ -310,7 +335,7 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(0, "if"),
         piece(1, "of", stock, naming),
         piece(3, "volume", rule.volume),
-        piece(0, "isHigher"),
+        piece(0, rule.less === true ? "isLower" : "isHigher"),
         piece(3, "than"),
         piece(4, "of", rule.than, naming),
         piece(0, "volumeLast", rule.volume),
@@ -322,8 +347,8 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
       return [
         piece(1, "if"),
         piece(2, "of", rule.of, naming),
-        piece(3, "held"),
-        piece(1, "are"),
+        // a drawn game's band may be on what was traded: the count and its verb are opened together, and covered as any count's are
+        ...(drawn ? [piece(3, "counted", rule.what ?? "held"), piece(3, "be", rule.what ?? "held")] : [piece(3, "held"), piece(1, "are")]),
         piece(4, "shares", rule.from),
         piece(1, "orMore"),
         piece(1, "and"),
@@ -366,6 +391,17 @@ function english(stock: StockId, rule: Rule, naming: Naming): RulePiece[] {
         piece(3, "than"),
         piece(4, "of", rule.than, naming),
         piece(0, "heldLast"),
+        up(2, rule.up, "won"),
+        piece(1, "otherwise"),
+        down(2, rule.down, "won"),
+      ];
+    case "signal":
+      return [
+        piece(0, "if"),
+        piece(4, "of", rule.of, naming),
+        piece(2, "counted", rule.what),
+        piece(1, "movedWith"),
+        piece(3, "logoWay"),
         up(2, rule.up, "won"),
         piece(1, "otherwise"),
         down(2, rule.down, "won"),
@@ -455,11 +491,17 @@ const widest = (texts: readonly string[]): string => texts.reduce((most, text) =
  * company is covered alike, by the widest of them, and every volume as
  * "bought volume". The show's own rules are covered as they are written, as
  * on the show's board. In Korean the names are all four letters long and
- * nothing needs a stand-in.
+ * need no stand-in. A count that may be what is held or what was traded
+ * (`counted`, and the English verb after it) is covered as what is held, in
+ * both languages: only a game's own rules have one.
  */
 const COVERS: Record<Lang, Record<string, Wording>> = {
-  ko: {},
+  ko: {
+    counted: () => textOf("ko", "counted", ["held"]),
+  },
   en: {
+    counted: () => textOf("en", "counted", ["held"]),
+    be: () => textOf("en", "be", ["held"]),
     of: (stock, naming) => (naming === "short" ? widest(STOCKS.map((each) => textOf("en", "of", [each, naming]))) : textOf("en", "of", [stock, naming])),
     named: (stock, naming) => (naming === "short" ? widest(STOCKS.map((each) => textOf("en", "named", [each, naming]))) : textOf("en", "named", [stock, naming])),
     volume: () => textOf("en", "volume", ["bought"]),
