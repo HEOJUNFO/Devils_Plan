@@ -9,6 +9,12 @@ browser. The studio framework (agents, skills, hooks, rules) is in `.claude/`.
 - **Language**: TypeScript
 - **Server**: Cloudflare Workers + PartyServer
 - **Version Control**: Git, trunk-based; a push to `main` deploys
+- **Web platform lookup**: before new or restructured browser-platform code
+  in `src/client` (DOM, CSS, forms, chat input, touch, storage), search
+  `/modern-web-guidance` first for the current API and its fallback
+  (GoogleChrome/modern-web-guidance 4dd9683, Apache-2.0). Commands run as
+  `DISABLE_TELEMETRY=1 npx -y modern-web-guidance@latest …`; without the
+  prefix the query goes to Google. `.claude/skills/modern-web-guidance`
 
 ## Project Rules (Devils_Plan)
 
