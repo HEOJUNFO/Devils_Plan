@@ -27,6 +27,8 @@ export type UnderMessage = Extract<ServerMessage, { type: "game"; game: "under-t
 export type MarketMessage = Extract<ServerMessage, { type: "game"; game: "mystery-stock-market" }>;
 export type PiggyMessage = Extract<ServerMessage, { type: "game"; game: "piggy-bank" }>;
 export type GemMessage = Extract<ServerMessage, { type: "game"; game: "gem-black-market" }>;
+export type BingoMessage = Extract<ServerMessage, { type: "game"; game: "auction-bingo" }>;
+export type WallMessage = Extract<ServerMessage, { type: "game"; game: "wall-go-2" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -214,6 +216,22 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "gem-black-market" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 경매 빙고 that satisfies `match`. */
+  async bingoWhere(match: (game: BingoMessage) => boolean = () => true): Promise<BingoMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "auction-bingo" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a match of 벽바둑Ⅱ that satisfies `match`. */
+  async wallWhere(match: (game: WallMessage) => boolean = () => true): Promise<WallMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "wall-go-2" && match(message)) return message;
     }
   }
 

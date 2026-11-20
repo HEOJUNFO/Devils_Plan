@@ -3,6 +3,8 @@
  */
 import { rouletteHost } from "./game/host";
 import type { GameId } from "./games";
+import { bingoHost } from "./games/auction-bingo/host";
+import { wallHost } from "./games/wall-go-2/host";
 import { cubesHost } from "./games/count-cubes/host";
 import { gemHost } from "./games/gem-black-market/host";
 import { rectanglesHost } from "./games/count-rectangles/host";
@@ -28,4 +30,6 @@ export const HOSTS: Record<GameId, GameHost<any>> = {
   "mystery-stock-market": marketHost,
   "piggy-bank": piggyHost,
   "gem-black-market": gemHost,
+  "auction-bingo": bingoHost,
+  "wall-go-2": wallHost,
 };

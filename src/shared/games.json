@@ -250,5 +250,57 @@
     "teamSize": 0,
     "turns": false,
     "variants": []
+  },
+  "auction-bingo": {
+    "title": {
+      "ko": "경매 빙고",
+      "en": "Auction Bingo"
+    },
+    "summary": {
+      "ko": "도형을 골라 코인을 몰래 거세요. 딴 도형으로 빙고판을 채워, 빙고가 많으면 1위.",
+      "en": "Pick a shape, bid coins in secret. The most bingos after 7 rounds wins."
+    },
+    "minPlayers": 3,
+    "maxPlayers": 16,
+    "teamSize": 0,
+    "turns": false,
+    "variants": [
+      {
+        "id": "quick",
+        "title": {
+          "ko": "선택·입찰 45초",
+          "en": "45 s each"
+        }
+      },
+      {
+        "id": "talk",
+        "title": {
+          "ko": "선택 2분 · 입찰 3분",
+          "en": "2 min · 3 min"
+        }
+      },
+      {
+        "id": "show",
+        "title": {
+          "ko": "방송의 15분 · 20분",
+          "en": "Show's 15 · 20 min"
+        }
+      }
+    ]
+  },
+  "wall-go-2": {
+    "title": {
+      "ko": "벽바둑Ⅱ",
+      "en": "Wall Go II"
+    },
+    "summary": {
+      "ko": "말을 움직이고 그 옆에 벽을 세우세요. 벽으로 갈린 내 영역이 가장 넓으면 승리.",
+      "en": "Move a counter, place a wall. Walled apart, the largest territory wins."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 3,
+    "teamSize": 0,
+    "turns": true,
+    "variants": []
   }
 }

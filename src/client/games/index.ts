@@ -11,6 +11,10 @@ import { createTable } from "../game/table";
 import { WORDS as ROULETTE_WORDS } from "../game/words";
 import { createLobbyScene } from "../lobby-scene";
 import type { RulesSheet } from "../sheet";
+import { createBingoScreen } from "./auction-bingo/screen";
+import { WORDS as BINGO_WORDS } from "./auction-bingo/words";
+import { createWallScreen } from "./wall-go-2/screen";
+import { WORDS as WALL_WORDS } from "./wall-go-2/words";
 import { createCubesScreen } from "./count-cubes/screen";
 import { WORDS as CUBES_WORDS } from "./count-cubes/words";
 import { createRectScreen } from "./count-rectangles/screen";
@@ -267,5 +271,31 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: GEM_WORDS.sheet,
+  },
+  "auction-bingo": {
+    screen(canvas, handlers) {
+      const screen = createBingoScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "auction-bingo") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: BINGO_WORDS.sheet,
+  },
+  "wall-go-2": {
+    screen(canvas, handlers) {
+      const screen = createWallScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "wall-go-2") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: WALL_WORDS.sheet,
   },
 };

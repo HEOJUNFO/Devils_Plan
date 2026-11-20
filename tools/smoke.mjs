@@ -17,7 +17,9 @@
 // three make a room of the eighth game and play two turns of it, one closed
 // with no suspicion and one with a wrong answer caught; then four make a room
 // of the ninth game, bid for who is first and play its first round, one of
-// them checking a card for a piece.
+// them checking a card for a piece; then three make a
+// room of 경매 빙고 and play its first round, and two a room of 벽바둑Ⅱ, who
+// place their counters and play a turn.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -50,6 +52,8 @@ const SIXTH_GAME = "under-thirteen";
 const SEVENTH_GAME = "mystery-stock-market";
 const EIGHTH_GAME = "piggy-bank";
 const NINTH_GAME = "gem-black-market";
+const BINGO_GAME = "auction-bingo";
+const WALL_GAME = "wall-go-2";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1321,6 +1325,138 @@ async function ninthGame() {
   for (const p of players) p.close();
 }
 
+/** Makes a room of `game` off the list and brings `count` players into it, the first making it. */
+async function roomOf(game, count, nick) {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < count; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `${nick}${n}`, create: n === 0, game, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[count - 1].until("everyone in the room", (m) => m.type === "lobby" && m.players.length === count);
+  check(`a room is made for ${game}`, lobby.game === game, lobby.game);
+  return players;
+}
+
+/** 경매 빙고, in a room of its own: three players, off the list. Its first round is played: tickets, bids, and what everyone is told of them. */
+async function bingoGame() {
+  const players = await roomOf(BINGO_GAME, 3, "bidder");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("경매 빙고 to start", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "경매 빙고 starts with a card of nine squares, ten coins worth 30 won and three pieces each",
+    games.every((g, n) => g.type === "game" && g.game === BINGO_GAME && g.view.you === n && g.view.phase === "choose" && g.view.round === 1 && g.view.board.length === 9) &&
+      games.every((g) => g.view.purse.coins.length === 10 && g.view.purse.coins.reduce((sum, coin) => sum + coin, 0) === 30 && g.view.purse.pieces === 3),
+  );
+
+  players[1].send({ type: "action", action: { type: "bid", coins: [1] } });
+  const early = await players[1].until("the refusal", (m) => m.type === "refused");
+  check("a bid cannot be made before the tickets are in", early.reason === "not-bidding", early.reason);
+
+  // two tickets on the triangle and one on the star
+  players[0].send({ type: "action", action: { type: "choose", shape: "triangle" } });
+  const one = await players[1].until("the first ticket", (m) => m.type === "game" && m.view.chosen.length === 1);
+  check("a ticket that is in is told to the others as in, and not where it went", one.view.chosen.join() === "0" && one.view.choices === null && !JSON.stringify(one.view).includes("triangle\",\"player"));
+  players[1].send({ type: "action", action: { type: "choose", shape: "triangle" } });
+  players[2].send({ type: "action", action: { type: "choose", shape: "star" } });
+  const bidding = await Promise.all(players.map((p) => p.until("the bids to open", (m) => m.type === "game" && m.view.phase === "bid")));
+  check(
+    "with every ticket in, everyone sees who chose what",
+    bidding.every((g) => g.view.choices.map((each) => `${each.player}${each.shape}`).sort().join() === "0triangle,1triangle,2star"),
+  );
+
+  // 1 won and 2 won on the triangle, 1 won on the star: the triangle goes for 2 won, which is the highest and kept secret
+  players[0].send({ type: "action", action: { type: "bid", coins: [1] } });
+  players[1].send({ type: "action", action: { type: "bid", coins: [2] } });
+  const waiting = await players[2].until("two bids", (m) => m.type === "game" && m.view.bidders.length === 2);
+  check("who has bid is told, and not how much", waiting.view.bidders.slice().sort().join() === "0,1" && waiting.view.bid === null && waiting.view.mine.length === 0);
+  players[2].send({ type: "action", action: { type: "bid", coins: [1] } });
+  const shown = await Promise.all(players.map((p) => p.until("the round's result", (m) => m.type === "game" && m.view.phase === "result")));
+  const lots = shown[0].view.past[0]?.lots ?? [];
+  const lot = (shape) => lots.find((each) => each.shape === shape);
+  check(
+    "the winning bids are told, the highest of them kept secret, and nobody is told who won",
+    shown.every((g) => JSON.stringify(g.view.past) === JSON.stringify(shown[0].view.past) && g.view.final === null) &&
+      lot("triangle").votes === 2 && lot("triangle").secret && lot("triangle").price === null &&
+      lot("star").votes === 1 && !lot("star").secret && lot("star").price === 1 &&
+      lot("circle").votes === 0 && lot("circle").price === null,
+    JSON.stringify(lots),
+  );
+  check(
+    "each player's own bid is in their own log and their coins are gone",
+    shown.every((g, n) => g.view.mine.length === 1 && g.view.mine[0].amount === (n === 1 ? 2 : 1) && g.view.purse.coins.length === 9),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 경매 빙고 either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
+/** 벽바둑Ⅱ, in a room of its own: two players, off the list. They place their square counters and the first plays a turn. */
+async function wallGame() {
+  const players = await roomOf(WALL_GAME, 2, "waller");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("벽바둑Ⅱ to start", (m) => m.type === "game" || m.type === "refused")));
+  const view = games[0].view;
+  const [first, second] = view.order;
+  check(
+    "벽바둑Ⅱ for two starts on 49 squares with each player's two round counters set, and the square ones to place first, second, second, first",
+    games.every((g, n) => g.type === "game" && g.game === WALL_GAME && g.view.you === n && g.view.phase === "place" && g.view.mode === "duel") &&
+      view.size === 7 &&
+      view.counters.length === 4 &&
+      view.counters.every((counter) => counter.kind === "round") &&
+      view.placing.join() === [first, second, second, first].join() &&
+      !view.breaking,
+    `first: player ${first}`,
+  );
+
+  players[second].send({ type: "action", action: { type: "place", kind: "square", x: 0, y: 0 } });
+  const early = await players[second].until("the refusal", (m) => m.type === "refused");
+  check("a counter cannot be placed out of turn", early.reason === "not-your-turn", early.reason);
+
+  const squares = [
+    [first, 0, 0],
+    [second, 6, 6],
+    [second, 6, 0],
+    [first, 0, 6],
+  ];
+  for (const [nth, [player, x, y]] of squares.entries()) {
+    players[player].send({ type: "action", action: { type: "place", kind: "square", x, y } });
+    await players[player].until(`counter ${nth + 1} to be placed`, (m) => m.type === "game" && m.view.counters.length === 5 + nth);
+  }
+  const placed = await Promise.all(players.map((p) => p.until("the first move to be waited for", (m) => m.type === "game" && m.view.phase === "move")));
+  check("with every counter down the first player moves first", placed.every((g) => g.view.turn === first && g.view.counters.length === 8 && g.view.placing.length === 0));
+
+  // the first player's square counter goes two squares along the top edge
+  players[first].send({ type: "action", action: { type: "move", from: { x: 0, y: 0 }, path: ["right", "down"], breaker: false } });
+  const bent = await players[first].until("the refusal", (m) => m.type === "refused");
+  check("a square counter does not turn a corner", bent.reason === "bad-move", bent.reason);
+  players[first].send({ type: "action", action: { type: "move", from: { x: 0, y: 0 }, path: ["right", "right"], breaker: false } });
+  const moved = await Promise.all(players.map((p) => p.until("the move", (m) => m.type === "game" && m.view.phase === "wall")));
+  check(
+    "a move is followed by the same player's wall",
+    moved.every((g) => g.view.turn === first && g.view.counters[g.view.moved].x === 2 && g.view.counters[g.view.moved].y === 0),
+  );
+  players[first].send({ type: "action", action: { type: "wall", side: "up" } });
+  const edge = await players[first].until("the refusal", (m) => m.type === "refused" && m.reason !== "bad-move");
+  check("a wall cannot be placed on the edge of the board", edge.reason === "wall-there", edge.reason);
+  players[first].send({ type: "action", action: { type: "wall", side: "down" } });
+  const walled = await Promise.all(players.map((p) => p.until("the wall", (m) => m.type === "game" && m.view.phase === "move" && m.view.turn === second)));
+  check(
+    "the wall stands under the counter in its player's colour, and the turn passes",
+    walled.every((g) => g.view.walls[(0 * 7 + 2) * 2 + 1] === first + 1 && g.view.walls.filter((each) => each !== 0).length === 1 && g.view.history.at(-1).type === "wall"),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 벽바둑Ⅱ either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1334,6 +1470,8 @@ const PARTS = [
   [SEVENTH_GAME, seventhGame],
   [EIGHTH_GAME, eighthGame],
   [NINTH_GAME, ninthGame],
+  [BINGO_GAME, bingoGame],
+  [WALL_GAME, wallGame],
 ];
 
 async function main() {

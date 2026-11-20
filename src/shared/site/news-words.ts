@@ -41,12 +41,22 @@ const RECT = name("count-rectangles");
 const HEAVY = name("under-thirteen");
 const PIGGY = name("piggy-bank");
 const GEM = name("gem-black-market");
+const BINGO = name("auction-bingo");
+const WALL = name("wall-go-2");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-20",
     lines: [
+      {
+        ko: `새 게임 ${BINGO.ko}: 방송 4일차의 메인 매치입니다. 3명에서 16명이 합니다. 모두 같은 빙고판을 갖고, 라운드마다 도형 하나를 고른 뒤 그 도형에 코인을 몰래 겁니다. 가장 많이 건 사람이 그 도형을 고른 사람 수만큼 얻지만, 누가 낙찰받았는지는 본인도 모르고 가장 높은 낙찰가는 가려집니다. 7라운드 뒤 빙고 수로 순위를 가립니다. 선택과 입찰 시간은 방장이 고릅니다 (45초씩, 2분·3분, 방송의 15분·20분).`,
+        en: `A new game, ${BINGO.en}: the main match of the show's fourth day, for 3 to 16 players. Everyone has the same bingo card; each round you pick a shape and then bid coins on it in secret. The highest bidder wins as many of the shape as players picked it, but nobody is told who won, not even the winner, and the highest winning bid is hidden. After 7 rounds the most bingos wins. The host picks the time to choose and to bid (45 s each, 2 and 3 min, or the show's 15 and 20 min).`,
+      },
+      {
+        ko: `새 게임 ${WALL.ko}: 방송 4일차의 감옥 매치입니다. 2명이나 3명이 합니다. 차례마다 내 말 하나를 움직이고 그 옆에 벽을 세워, 벽으로 갈린 뒤 내 말이 든 영역이 가장 넓으면 이깁니다. 3명이면 방송처럼 3인전(각자 벽 부수기 한 번) 뒤에 1위를 뺀 두 사람이 1:1을 하고, 2명이면 1:1 한 판을 합니다. 1:1에서 원형 말이 처음 서는 자리는 방송에서 확인하지 못해, 모서리에서 한 칸 안쪽의 네 칸으로 정했습니다.`,
+        en: `A new game, ${WALL.en}: the prison match of the show's fourth day, for 2 or 3 players. Each turn you move one of your counters and place a wall beside it; once walls part everyone, the largest territory around your counters wins. Three players play as the show does, a round of three (one wall breaker each) and then a one on one between the two who were not first; two players play one game one on one. Where the round counters start in the one on one could not be found in the show, so they start one square in from each corner.`,
+      },
       {
         ko: `새 게임 ${GEM.ko}: 방송 3일차의 메인 매치입니다. 4명에서 9명이 합니다. 뒷면으로 받은 카드 한 장을 라운드마다 두 번, 다른 사람이나 구매자 칸, 휴지통의 카드와 꼭 바꿔야 합니다. 구매자 칸과 같은 종류의 보석을 쥐고 있으면 승점, 폭탄을 쥐고 있으면 감점이고, 3라운드 뒤 내 승점에 마니또의 승점을 곱합니다. 내 카드는 내 차례에만 볼 수 있습니다. 경매, 폭탄, 피스로 하는 확인까지 방송의 규칙 그대로입니다.`,
         en: `A new game, ${GEM.en}: the main match of the show's third day, for 4 to 9 players. You hold one card face down and twice a round must exchange it with another player's card, a card in the buyers' slots or the trash. A gem of a kind the buyers hold scores, a bomb costs you, and after 3 rounds your points are multiplied by your secret buddy's. You may look at your own card only on your turn. The auction, the bombs and the check for a Piece are the show's own rules.`,

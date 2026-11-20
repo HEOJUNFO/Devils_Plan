@@ -1,0 +1,11 @@
+{
+  "board": ["triangle", "circle", "triangle", "circle", "star", "circle", "star", "circle", "triangle"],
+  "coins": [1, 1, 1, 2, 2, 2, 3, 3, 5, 10],
+  "rounds": 7,
+  "pieces": 3,
+  "pieceWorth": 1,
+  "minPlayers": 3,
+  "chooseSeconds": 45,
+  "bidSeconds": 45,
+  "resultSeconds": 8
+}

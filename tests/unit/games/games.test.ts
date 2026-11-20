@@ -88,8 +88,13 @@ describe("the games a room can be made for", () => {
     expect(GAMES["russian-roulette"].variants.map((each) => each.id)).toEqual(["kept", REVEAL_VARIANT]);
   });
 
-  it("offers a choice of ways in the two games whose hidden part the show gives away, of length in the two games the show gives none, and of what is told at the end of the first", () => {
-    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["russian-roulette", "lay-the-grass", "count-cubes", "memory-poker", "mystery-stock-market"]);
+  it("offers a choice of ways in the two games whose hidden part the show gives away, of length in the two games the show gives none, of what is told at the end of the first, and of the time to talk in 경매 빙고", () => {
+    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["russian-roulette", "lay-the-grass", "count-cubes", "memory-poker", "mystery-stock-market", "auction-bingo"]);
+  });
+
+  it("lets a room of 경매 빙고 give a round's two steps as long as its host says, starting with the shortest", () => {
+    expect(GAMES["auction-bingo"].variants.map((each) => each.id)).toEqual(["quick", "talk", "show"]);
+    expect(GAMES["auction-bingo"].variants.map((each) => each.title.ko)).toEqual(["선택·입찰 45초", "선택 2분 · 입찰 3분", "방송의 15분 · 20분"]);
   });
 
   it("lets a room of 큐브 세기 give its problem as long as its host says, starting with the five minutes it always had", () => {
@@ -104,8 +109,8 @@ describe("the games a room can be made for", () => {
 
   it("names each game in Korean as the show does, and in English as its English release does", () => {
     // CLAUDE.md, Project Rules: a game is shown under the name the show gives it, also where the show made the name up for it
-    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장"]);
-    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장", "경매 빙고", "벽바둑Ⅱ"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market", "Auction Bingo", "Wall Go II"]);
   });
 
   it("lets one player alone start the two counting games, and no other game", () => {

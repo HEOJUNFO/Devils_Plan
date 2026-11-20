@@ -1,0 +1,17 @@
+{
+  "size": 7,
+  "squareReach": 2,
+  "countersOfThree": 1,
+  "countersOfTwo": 2,
+  "duelRounds": [
+    [
+      { "x": 1, "y": 5 },
+      { "x": 5, "y": 1 }
+    ],
+    [
+      { "x": 5, "y": 5 },
+      { "x": 1, "y": 1 }
+    ]
+  ],
+  "betweenSeconds": 12
+}

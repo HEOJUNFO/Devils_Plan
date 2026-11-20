@@ -11,11 +11,13 @@
  * 큐브 세기, 기억 포커 and 미스터리 거래소 are played by everyone at once from
  * beginning to end and have none.
  */
+import type { BingoView } from "./games/auction-bingo/rules";
 import type { RectView } from "./games/count-rectangles/rules";
 import type { GrassView } from "./games/lay-the-grass/rules";
 import type { GemView } from "./games/gem-black-market/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
+import type { WallView } from "./games/wall-go-2/rules";
 
 /**
  * 잔디 깔기: the turn is this player's (to pick a tile, to mark manholes or
@@ -74,4 +76,25 @@ export function gemWaits(view: Pick<GemView, "you" | "phase" | "turn" | "auction
   if (view.you === null) return false;
   if (view.phase === "auction") return view.auction !== null && view.auction.bidders.includes(view.you) && view.auction.mine === null;
   return view.phase === "exchange" && view.turn === view.you;
+}
+
+/**
+ * 경매 빙고: a ticket is to be put in a box and this player's is not, or a
+ * bid is to be made and theirs is not. Past the time the room chooses a
+ * shape, or bids the smallest coin, for them. Someone with no coin and no
+ * piece left is out of the rounds, and is waited on for nothing.
+ */
+export function bingoWaits(view: Pick<BingoView, "you" | "phase" | "out" | "choice" | "bid">): boolean {
+  if (view.you === null || view.out.includes(view.you)) return false;
+  if (view.phase === "choose") return view.choice === null;
+  return view.phase === "bid" && view.bid === null;
+}
+
+/**
+ * 벽바둑Ⅱ: the turn is this player's, to place a counter, to move one, or to
+ * place a wall. Past the room's time for a turn the room places the counter
+ * or the wall for them.
+ */
+export function wallWaits(view: Pick<WallView, "you" | "turn">): boolean {
+  return view.you !== null && view.turn === view.you;
 }

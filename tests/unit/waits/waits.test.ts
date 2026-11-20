@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gemWaits, grassWaits, piggyWaits, rectWaits, underWaits } from "../../../src/shared/waits";
+import { bingoWaits, gemWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -118,5 +118,40 @@ describe("gemWaits", () => {
   it("waits on nobody who is watching, and on nobody once the game is over", () => {
     expect(gemWaits(view({ you: null, turn: ME }))).toBe(false);
     expect(gemWaits(view({ phase: "ended", turn: null }))).toBe(false);
+  });
+});
+
+describe("bingoWaits", () => {
+  const view = (over: Partial<Parameters<typeof bingoWaits>[0]>): Parameters<typeof bingoWaits>[0] => ({ you: ME, phase: "choose", out: [], choice: null, bid: null, ...over });
+
+  it("waits on a player whose ticket is not in, and on one who has not bid", () => {
+    expect(bingoWaits(view({}))).toBe(true);
+    expect(bingoWaits(view({ phase: "bid", choice: "star" }))).toBe(true);
+  });
+
+  it("does not wait on a player who has done what the round is at, nor while a result is shown", () => {
+    expect(bingoWaits(view({ choice: "star" }))).toBe(false);
+    expect(bingoWaits(view({ phase: "bid", choice: "star", bid: { coins: [1], amount: 1 } }))).toBe(false);
+    expect(bingoWaits(view({ phase: "result", choice: "star" }))).toBe(false);
+    expect(bingoWaits(view({ phase: "ended" }))).toBe(false);
+  });
+
+  it("waits on nobody who is watching, and on nobody who is out of coins", () => {
+    expect(bingoWaits(view({ you: null }))).toBe(false);
+    expect(bingoWaits(view({ out: [ME] }))).toBe(false);
+    expect(bingoWaits(view({ out: [OTHER] }))).toBe(true);
+  });
+});
+
+describe("wallWaits", () => {
+  it("waits on whoever's turn it is, to place a counter, to move one, or to place a wall", () => {
+    expect(wallWaits({ you: ME, turn: ME })).toBe(true);
+  });
+
+  it("does not wait on the others, on someone watching, or on anyone between the rounds and at the end, when the turn is nobody's", () => {
+    expect(wallWaits({ you: ME, turn: OTHER })).toBe(false);
+    expect(wallWaits({ you: null, turn: ME })).toBe(false);
+    expect(wallWaits({ you: ME, turn: null })).toBe(false);
+    expect(wallWaits({ you: null, turn: null })).toBe(false);
   });
 });
