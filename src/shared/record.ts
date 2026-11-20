@@ -27,6 +27,7 @@ export const TOP_KIND: Record<GameId, TopKind> = {
   "memory-poker": "first",
   "under-thirteen": "first",
   "mystery-stock-market": "first",
+  "piggy-bank": "first",
 };
 
 /** A game played to its end: which game it was, by a key no other game has, and whether the player was at the top of it. */
@@ -70,7 +71,8 @@ function topOf(message: GameMessage): boolean | null {
       return you === null ? null : ranked[0]?.player === you;
     }
     case "memory-poker":
-    case "under-thirteen": {
+    case "under-thirteen":
+    case "piggy-bank": {
       const { you, standings } = message.view;
       const own = standings.find((each) => each.player === you);
       return you === null || own === undefined ? null : own.place === 1;

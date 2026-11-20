@@ -1,0 +1,7 @@
+{
+  "actAfterSeconds": 3,
+  "spreadSeconds": 1,
+  "suspectOneIn": 3,
+  "putMost": 2,
+  "answerSpread": 4
+}

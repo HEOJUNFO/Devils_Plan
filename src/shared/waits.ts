@@ -13,6 +13,7 @@
  */
 import type { RectView } from "./games/count-rectangles/rules";
 import type { GrassView } from "./games/lay-the-grass/rules";
+import type { PiggyView } from "./games/piggy-bank/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
 
 /**
@@ -46,4 +47,18 @@ export function underWaits(view: Pick<UnderView, "you" | "phase" | "turn" | "ask
  */
 export function rectWaits(view: Pick<RectView, "you" | "choosing">): boolean {
   return view.you !== null && view.choosing !== null && view.choosing.card !== null && view.choosing.mine === null;
+}
+
+/**
+ * 돼지 저금통: it is this player's turn to put coins in and pass a bank, they
+ * are asked how many coins the bank they were passed holds, or they are
+ * naming every bank in a challenge. Past the time the room puts in for them,
+ * their answer is none, or the challenge fails. A suspicion is a race to
+ * the buzzer, which waits on no one.
+ */
+export function piggyWaits(view: Pick<PiggyView, "you" | "phase" | "turn" | "question" | "challenge">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "put") return view.turn === view.you;
+  if (view.phase === "answer") return view.question?.player === view.you;
+  return view.phase === "challenge" && view.challenge?.player === view.you;
 }

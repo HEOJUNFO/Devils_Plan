@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { grassWaits, rectWaits, underWaits } from "../../../src/shared/waits";
+import { grassWaits, piggyWaits, rectWaits, underWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -71,5 +71,28 @@ describe("rectWaits", () => {
 
   it("waits on nobody who is watching", () => {
     expect(rectWaits({ you: null, choosing: { card: "winners", chosen: [], mine: null } })).toBe(false);
+  });
+});
+
+describe("piggyWaits", () => {
+  const question = (player: number) => ({ player, from: OTHER, bank: 1, colour: "black" as const, count: null, answered: false });
+  const view = (over: Partial<Parameters<typeof piggyWaits>[0]>): Parameters<typeof piggyWaits>[0] => ({ you: ME, phase: "put", turn: OTHER, question: null, challenge: null, ...over });
+
+  it("waits on whoever is to put coins in, on whoever is asked about a bank, and on whoever is naming the banks of a challenge", () => {
+    expect(piggyWaits(view({ turn: ME }))).toBe(true);
+    expect(piggyWaits(view({ phase: "answer", question: question(ME) }))).toBe(true);
+    expect(piggyWaits(view({ phase: "challenge", challenge: { player: ME, result: null } }))).toBe(true);
+  });
+
+  it("does not wait on the others, nor on anyone for a suspicion, which is a race", () => {
+    expect(piggyWaits(view({}))).toBe(false);
+    expect(piggyWaits(view({ phase: "answer", turn: ME, question: question(OTHER) }))).toBe(false);
+    expect(piggyWaits(view({ phase: "suspect", turn: OTHER, question: question(OTHER) }))).toBe(false);
+    expect(piggyWaits(view({ phase: "challenge", turn: ME, challenge: { player: OTHER, result: null } }))).toBe(false);
+  });
+
+  it("waits on nobody who is watching, and on nobody once the game is over", () => {
+    expect(piggyWaits(view({ you: null, turn: ME }))).toBe(false);
+    expect(piggyWaits(view({ phase: "ended", turn: ME }))).toBe(false);
   });
 });

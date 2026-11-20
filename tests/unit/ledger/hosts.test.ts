@@ -120,7 +120,7 @@ describe("the pieces 네모 세기 pays", () => {
 });
 
 describe("the games no payout is documented for", () => {
-  it.each(GAME_IDS.filter((game) => !["under-thirteen", "mystery-stock-market", "count-rectangles"].includes(game)))("%s pays no pieces", (game) => {
+  it.each(GAME_IDS.filter((game) => !["under-thirteen", "mystery-stock-market", "count-rectangles", "piggy-bank"].includes(game)))("%s pays no pieces", (game) => {
     expect(HOSTS[game].pieces).toBeUndefined();
   });
 });

@@ -220,5 +220,20 @@
         }
       }
     ]
+  },
+  "piggy-bank": {
+    "title": {
+      "ko": "돼지 저금통",
+      "en": "Piggy Bank"
+    },
+    "summary": {
+      "ko": "저금통마다 든 흑·백 동전을 외우세요. 틀린 답을 의심해 맞히면 승점.",
+      "en": "Keep count of the coins in every piggy bank. Catch a wrong answer to score."
+    },
+    "minPlayers": 3,
+    "maxPlayers": 6,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

@@ -39,12 +39,17 @@ const POKER = name("memory-poker");
 const MARKET = name("mystery-stock-market");
 const RECT = name("count-rectangles");
 const HEAVY = name("under-thirteen");
+const PIGGY = name("piggy-bank");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-20",
     lines: [
+      {
+        ko: `새 게임 ${PIGGY.ko}: 방송 3일차의 감옥 매치입니다. 3명에서 6명이 합니다. 저금통에 동전을 넣고 말한 뒤 건네면 받은 사람이 그 안의 흑 또는 백 동전 수를 답하고, 틀린 것 같으면 의심합니다. 넣은 개수와 답은 그때만 보이고 기록에 남지 않습니다. 리셋과 도전, 5점에서 끝나는 것까지 방송의 규칙 그대로입니다.`,
+        en: `A new game, ${PIGGY.en}: the prison match of the show's third day, for 3 to 6 players. Put coins into a piggy bank, say what went in and pass it on; the receiver says how many black or white coins it now holds, and anyone who thinks that wrong declares a suspicion. What goes in and what is answered are shown then and there and kept in no record. The reset, the challenge and the end at 5 points are the show's own rules.`,
+      },
       {
         ko: `${RECT.ko}: 팀의 대표는 이제 그 팀에서 가장 많이 맞힌 사람입니다 (같으면 먼저 맞힌 사람, 아무도 못 맞혔으면 팀을 먼저 고른 사람). 대기실에서는 대표를 따로 적지 않습니다. 선택 3에서 도전을 고른 사람이 한 명뿐이면 추가 대결 없이 바로 승리합니다. 둘 다 방송에서 그렇게 했다고 뒤늦게 알려진 것입니다.`,
         en: `${RECT.en}: a team's leader is now whoever of it answered right the most (if level, whoever was right first; if nobody was, whoever picked the team first). The waiting room no longer names a leader. In Selection 3, a player who is alone in choosing Challenge wins with no playoff. Both are how the show did it, as has come to be known since.`,

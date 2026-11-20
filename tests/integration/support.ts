@@ -25,6 +25,7 @@ export type CubesMessage = Extract<ServerMessage, { type: "game"; game: "count-c
 export type PokerMessage = Extract<ServerMessage, { type: "game"; game: "memory-poker" }>;
 export type UnderMessage = Extract<ServerMessage, { type: "game"; game: "under-thirteen" }>;
 export type MarketMessage = Extract<ServerMessage, { type: "game"; game: "mystery-stock-market" }>;
+export type PiggyMessage = Extract<ServerMessage, { type: "game"; game: "piggy-bank" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -196,6 +197,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "mystery-stock-market" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 돼지 저금통 that satisfies `match`. */
+  async piggyWhere(match: (game: PiggyMessage) => boolean = () => true): Promise<PiggyMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "piggy-bank" && match(message)) return message;
     }
   }
 

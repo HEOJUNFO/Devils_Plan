@@ -131,10 +131,12 @@ describe("the meetings as they are set", () => {
   const timeIsOne = (time: { hour: number; minute: number }): boolean =>
     Number.isInteger(time.hour) && time.hour >= 0 && time.hour < 24 && Number.isInteger(time.minute) && time.minute >= 0 && time.minute < 60;
 
-  it("name a game there is for each day of the week", () => {
+  it("name a game there is for each day of the week, no game twice", () => {
     expect(meetConfig.games).toHaveLength(7);
     expect(meetConfig.games.every(isGameId)).toBe(true);
-    expect([...meetConfig.games].sort()).toEqual([...GAME_IDS].sort());
+    // (there are more games than days since the eighth: the days keep the seven they had)
+    expect(new Set(meetConfig.games).size).toBe(7);
+    expect(GAME_IDS.length).toBeGreaterThanOrEqual(7);
   });
 
   it("are held at a time of day, every day", () => {

@@ -7,7 +7,7 @@ import { grassHost } from "../../../src/shared/games/lay-the-grass/host";
 import { pokerHost } from "../../../src/shared/games/memory-poker/host";
 import { marketHost } from "../../../src/shared/games/mystery-stock-market/host";
 import { underHost } from "../../../src/shared/games/under-thirteen/host";
-import { GAME_IDS } from "../../../src/shared/games";
+import { GAMES, GAME_IDS } from "../../../src/shared/games";
 import { CHANCE_WORDS, type Candidate, type Presence, type StartRequest } from "../../../src/shared/hosting";
 import { HOSTS } from "../../../src/shared/hosts";
 import { RULES, freshGame, withCredits, withOut } from "../game/fixtures";
@@ -39,7 +39,7 @@ const placesIn = (lines: { token: string | null; place: number }[] | null | unde
 describe("how every game says it ended", () => {
   it.each(GAME_IDS)("%s has places to tell, and none while it is being played", (game) => {
     const host = HOSTS[game];
-    const players = candidates(game === "russian-roulette" ? 4 : 2);
+    const players = candidates(game === "russian-roulette" ? 4 : Math.max(2, GAMES[game].minPlayers));
     const begun = host.start(null, players, request(), presenceOf(players));
     if (!begun.ok) throw new Error(`fixture start refused: ${begun.reason}`);
 

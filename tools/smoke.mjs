@@ -13,7 +13,9 @@
 // make a room of the sixth game and play its first round, one of them passing,
 // and three more a room of it, who each take a spot to stand at and then put
 // in the same card; then two make a room of the seventh game and play its 24
-// rounds to the end, one of them using a secret and spending a piece.
+// rounds to the end, one of them using a secret and spending a piece; then
+// three make a room of the eighth game and play two turns of it, one closed
+// with no suspicion and one with a wrong answer caught.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -44,6 +46,7 @@ const FOURTH_GAME = "count-cubes";
 const FIFTH_GAME = "memory-poker";
 const SIXTH_GAME = "under-thirteen";
 const SEVENTH_GAME = "mystery-stock-market";
+const EIGHTH_GAME = "piggy-bank";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1145,6 +1148,84 @@ async function firstGame() {
   viewer.close();
 }
 
+/** The eighth game, in a room of its own: three players, off the list. Two turns are played, the second answered wrong and caught; the game goes on, which the check does not wait for. */
+async function eighthGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 3; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `saver${n}`, create: n === 0, game: EIGHTH_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[2].until("all three in the room", (m) => m.type === "lobby" && m.players.length === 3);
+  check("a room is made for the eighth game", lobby.game === EIGHTH_GAME, lobby.game);
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the eighth game to start", (m) => m.type === "game" || m.type === "refused")));
+  const view = games[0].view;
+  check(
+    "the eighth game starts with a bank for each player and one more on the first player's top shelf",
+    games.every((g, n) => g.type === "game" && g.game === EIGHTH_GAME && g.view.you === n && g.view.phase === "put") &&
+      view.banks.join() === "1,2,3,4" &&
+      view.shelves.filter((shelf) => shelf.top !== null).map((shelf) => shelf.player).join() === `${view.turn}` &&
+      view.ask === "black",
+    `first: player ${view?.turn}`,
+  );
+  const first = view.turn;
+  const second = view.order.find((player) => player !== first);
+  const third = view.order.find((player) => player !== first && player !== second);
+  const bankOf = (game, player) => game.view.shelves.find((shelf) => shelf.player === player).bottom;
+
+  // a turn nobody doubts: two black and one white go into the first player's bank, and whoever is passed it says three
+  players[second].send({ type: "action", action: { type: "put", black: 1, white: 0, to: first } });
+  const early = await players[second].until("the refusal", (m) => m.type === "refused");
+  check("coins cannot be put in out of turn", early.reason === "not-your-turn", early.reason);
+  const firstBank = bankOf(games[0], first);
+  players[first].send({ type: "action", action: { type: "put", black: 2, white: 1, to: second } });
+  const asked = await Promise.all(players.map((p) => p.until("the question", (m) => m.type === "game" && m.view.phase === "answer")));
+  check(
+    "what was put in is said to everyone, and whoever was passed the bank is asked for its black coins",
+    asked.every((g) => g.view.said.black === 2 && g.view.said.white === 1 && g.view.question.player === second && g.view.question.bank === firstBank && g.view.question.colour === "black"),
+  );
+  players[second].send({ type: "action", action: { type: "answer", count: 3 } });
+  await players[first].until("the answer", (m) => m.type === "game" && m.view.phase === "suspect");
+  players[first].send({ type: "action", action: { type: "pass" } });
+  players[third].send({ type: "action", action: { type: "pass" } });
+  const closed = await Promise.all(players.map((p) => p.until("the question to be closed", (m) => m.type === "game" && m.view.phase === "put" && m.view.questions === 1)));
+  check(
+    "with no suspicion declared the question is closed at once, and whoever answered puts next; nothing says any more what was put in",
+    closed.every((g) => g.view.turn === second && g.view.said === null && g.view.question === null && g.view.ask === "white"),
+  );
+
+  // a wrong answer, caught: the bank is opened, and only then is what it holds sent
+  const secondBank = bankOf(closed[0], second);
+  players[second].send({ type: "action", action: { type: "put", black: 0, white: 4, to: third } });
+  await players[third].until("the second question", (m) => m.type === "game" && m.view.phase === "answer" && m.view.questions === 2);
+  players[third].send({ type: "action", action: { type: "answer", count: 9 } });
+  await players[first].until("the second answer", (m) => m.type === "game" && m.view.phase === "suspect" && m.view.questions === 2);
+  players[first].send({ type: "action", action: { type: "suspect" } });
+  const opened = await Promise.all(players.map((p) => p.until("the bank to be opened", (m) => m.type === "game" && m.view.phase === "opened")));
+  const scores = opened[0].view.shelves.map((shelf) => shelf.score);
+  check(
+    "a suspicion opens the bank: five white coins and not nine, a point to whoever declared it and one off whoever answered",
+    opened.every((g) => g.view.opened.bank === secondBank && g.view.opened.white === 5 && g.view.opened.black === 1 && g.view.opened.right && g.view.opened.loser === third && !g.view.banks.includes(secondBank)) &&
+      scores[first] === 1 &&
+      scores[third] === -1 &&
+      scores[second] === 0,
+    `scores ${scores.join("/")}`,
+  );
+  const sent = players.flatMap((p) => p.messages).filter((m) => m.type === "game");
+  const told = sent.filter((m) => m.view.opened === null && m.view.said === null).every((m) => !/"black":|"white":/.test(JSON.stringify(m)));
+  check("what a bank holds is in no message but that of an opened bank, and what is put in only while its question is open", told, `${sent.length} messages`);
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in the eighth game either", !sentAll.includes("smoke-check-token"));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1156,6 +1237,7 @@ const PARTS = [
   [SIXTH_GAME, sixthGame],
   [SIXTH_GAME, sixthGameSpots],
   [SEVENTH_GAME, seventhGame],
+  [EIGHTH_GAME, eighthGame],
 ];
 
 async function main() {
