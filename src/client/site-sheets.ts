@@ -16,6 +16,7 @@ import { SHEETS as COUNT_RECTANGLES } from "./games/count-rectangles/words";
 import { SHEETS as LAY_THE_GRASS } from "./games/lay-the-grass/words";
 import { SHEETS as MEMORY_POKER } from "./games/memory-poker/words";
 import { SHEETS as MYSTERY_STOCK_MARKET } from "./games/mystery-stock-market/words";
+import { SHEETS as GEM_BLACK_MARKET } from "./games/gem-black-market/words";
 import { SHEETS as PIGGY_BANK } from "./games/piggy-bank/words";
 import { SHEETS as UNDER_THIRTEEN } from "./games/under-thirteen/words";
 import type { RulesSheet } from "./sheet";
@@ -30,4 +31,5 @@ export const SITE_SHEETS: Record<GameId, Record<Lang, RulesSheet>> = {
   "under-thirteen": UNDER_THIRTEEN,
   "mystery-stock-market": MYSTERY_STOCK_MARKET,
   "piggy-bank": PIGGY_BANK,
+  "gem-black-market": GEM_BLACK_MARKET,
 };

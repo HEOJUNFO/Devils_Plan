@@ -26,6 +26,7 @@ export type PokerMessage = Extract<ServerMessage, { type: "game"; game: "memory-
 export type UnderMessage = Extract<ServerMessage, { type: "game"; game: "under-thirteen" }>;
 export type MarketMessage = Extract<ServerMessage, { type: "game"; game: "mystery-stock-market" }>;
 export type PiggyMessage = Extract<ServerMessage, { type: "game"; game: "piggy-bank" }>;
+export type GemMessage = Extract<ServerMessage, { type: "game"; game: "gem-black-market" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -205,6 +206,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "piggy-bank" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 보석 암시장 that satisfies `match`. */
+  async gemWhere(match: (game: GemMessage) => boolean = () => true): Promise<GemMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "gem-black-market" && match(message)) return message;
     }
   }
 

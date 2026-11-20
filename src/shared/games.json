@@ -235,5 +235,20 @@
     "teamSize": 0,
     "turns": false,
     "variants": []
+  },
+  "gem-black-market": {
+    "title": {
+      "ko": "보석 암시장",
+      "en": "Gem Black Market"
+    },
+    "summary": {
+      "ko": "카드를 바꿔 구매자 칸과 같은 보석을 쥐세요. 승점은 마니또의 승점과 곱해집니다.",
+      "en": "Swap cards to hold a gem the buyers want. Your score is multiplied by your secret buddy's."
+    },
+    "minPlayers": 4,
+    "maxPlayers": 9,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

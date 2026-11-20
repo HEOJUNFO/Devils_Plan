@@ -620,6 +620,39 @@ button.choice[aria-pressed="true"] {
   grid-column: 1 / -1;
 }
 
+/*
+ * With a mouse the rows are set as close as the English ones are (below):
+ * fifteen pixels each, sharing an edge with the row above. Five rows are in
+ * sight, which is nine games with one on a row of its own; where there are
+ * more, the top of a sixth row shows under them, which says the list scrolls.
+ * Under a finger the rows keep their size (`:root.touch`, further down).
+ */
+:root[lang="ko"]:not(.touch) #game-choices {
+  row-gap: 0;
+  padding-top: 1px;
+  /* over their neighbours and nothing else: a sheet laid over the panel (the rules) covers them all */
+  isolation: isolate;
+}
+
+:root[lang="ko"]:not(.touch) #game-choices button {
+  height: 15px;
+  margin-top: -1px;
+}
+
+/* The one picked, and the one pointed at, show their whole edge over their neighbours'. */
+:root[lang="ko"]:not(.touch) #game-choices button[aria-pressed="true"],
+:root[lang="ko"]:not(.touch) #game-choices button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+@media (hover: hover) {
+  :root[lang="ko"]:not(.touch) #game-choices button:hover {
+    position: relative;
+    z-index: 1;
+  }
+}
+
 #game-label {
   position: absolute;
   width: 1px;
@@ -690,18 +723,20 @@ button.choice[aria-pressed="true"] {
 }
 
 /*
- * And the games to pick from go one to a row, seven rows deep: each two
- * pixels lower than other buttons and sharing its edge with the next, which
- * is what seven rows have room for (seven of 15, less the six edges shared,
- * are 99 of the 101 pixels the form has). Past that the list scrolls. The
- * room for them comes from the second heading inside the form too, which is
- * said to a screen reader and not shown like the first.
+ * And the games to pick from go one to a row: each two pixels lower than
+ * other buttons and sharing its edge with the next. Seven rows have room in
+ * the 101 pixels the form has (seven of 15, less the six edges shared, are
+ * 99), and there are more games than seven: so six rows are in sight and
+ * half of the seventh, which says the list scrolls, and the eight pixels
+ * left over stay empty under it. The room for them comes from the second
+ * heading inside the form too, which is said to a screen reader and not
+ * shown like the first.
  */
 :root[lang="en"] #game-choices {
   grid-template-columns: 1fr;
   gap: 0;
-  max-height: 101px;
-  margin-bottom: 4px;
+  max-height: 93px;
+  margin-bottom: 12px;
 }
 
 :root[lang="en"] #game-choices button {

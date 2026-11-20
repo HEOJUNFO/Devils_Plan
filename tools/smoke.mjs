@@ -15,7 +15,9 @@
 // in the same card; then two make a room of the seventh game and play its 24
 // rounds to the end, one of them using a secret and spending a piece; then
 // three make a room of the eighth game and play two turns of it, one closed
-// with no suspicion and one with a wrong answer caught.
+// with no suspicion and one with a wrong answer caught; then four make a room
+// of the ninth game, bid for who is first and play its first round, one of
+// them checking a card for a piece.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -47,6 +49,7 @@ const FIFTH_GAME = "memory-poker";
 const SIXTH_GAME = "under-thirteen";
 const SEVENTH_GAME = "mystery-stock-market";
 const EIGHTH_GAME = "piggy-bank";
+const NINTH_GAME = "gem-black-market";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1226,6 +1229,98 @@ async function eighthGame() {
   for (const p of players) p.close();
 }
 
+/** The ninth game, in a room of its own: four players, off the list. The first player is bid for and the first round played to its count; the game goes on, which the check does not wait for. */
+async function ninthGame() {
+  const code = roomCode();
+  const players = [];
+  for (let n = 0; n < 4; n++) {
+    const client = new Client(`${wsBase}/parties/game-room/${code}`);
+    await client.opened;
+    client.send({ type: "join", token: `smoke-check-token-${code}-${n}`, nick: `dealer${n}`, create: n === 0, game: NINTH_GAME, listed: false });
+    await client.until(`player ${n} to be let in`, (m) => m.type === "lobby" || m.type === "error");
+    players.push(client);
+  }
+  const lobby = await players[3].until("all four in the room", (m) => m.type === "lobby" && m.players.length === 4);
+  check("a room is made for the ninth game", lobby.game === NINTH_GAME, lobby.game);
+
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("the ninth game to start", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "the ninth game starts with an auction for who is first, and tells each player whose secret buddy they are and nobody a card",
+    games.every((g, n) => g.type === "game" && g.game === NINTH_GAME && g.view.you === n && g.view.phase === "auction" && g.view.mine === null && g.view.buddyOf !== null && g.view.buddyOf !== n) &&
+      new Set(games.map((g) => g.view.buddyOf)).size === 4 &&
+      games[0].cards.length === 8,
+    `phase ${games[0].view?.phase}`,
+  );
+
+  // player 2 bids two pieces and nobody else any: player 2 is first, and pays
+  players[1].send({ type: "action", action: { type: "exchange", with: { to: "trash" } } });
+  const early = await players[1].until("the refusal", (m) => m.type === "refused");
+  check("no card is exchanged before there are cards", early.reason === "not-your-turn", early.reason);
+  for (const n of [0, 1, 3]) players[n].send({ type: "action", action: { type: "bid", pieces: 0 } });
+  players[2].send({ type: "action", action: { type: "bid", pieces: 2 } });
+  const dealt = await Promise.all(players.map((p) => p.until("the cards to be dealt", (m) => m.type === "game" && m.view.phase === "look")));
+  const order = dealt[0].view.order;
+  check(
+    "whoever bid the most is first and pays their bid; everyone is dealt a card and sees their own alone",
+    dealt.every((g) => g.view.first === 2 && g.view.mine !== null && g.view.sequence.length === 8 && g.view.sequence[0] === 2 && g.view.sequence[7] === 2) &&
+      dealt[0].view.standings.map((each) => `${each.player}:${each.pieces}`).sort().join() === "0:3,1:3,2:1,3:3",
+    `first ${dealt[0].view.first}`,
+  );
+  // someone who is not first pays a piece to check the trash, and is the only one shown it
+  const checker = order.find((player) => player !== 2);
+  players[checker].send({ type: "action", action: { type: "peek", at: { to: "trash" } } });
+  const checked = await Promise.all(players.map((p) => p.until("the card to be checked", (m) => m.type === "game" && m.view.history.some((event) => event.type === "peek"))));
+  check(
+    "a piece checks one card of the table, for whoever paid and nobody else",
+    checked.every((g, n) => g.view.peeked.length === (n === checker ? 1 : 0)) && checked[checker].view.peeked[0].at.to === "trash" && checked[0].view.standings.find((each) => each.player === checker).pieces === 2,
+  );
+  for (const p of players) p.send({ type: "action", action: { type: "ready" } });
+
+  // the round: everyone exchanges twice, a bomb with the next player and any other card with the first buyers' slot
+  const held = new Map(dealt.map((g, n) => [n, g.view.mine]));
+  let seenOthers = true;
+  for (let at = 0; at < 8; at++) {
+    const turn = dealt[0].view.sequence[at];
+    const mine = await players[turn].until(`turn ${at + 1}`, (m) => m.type === "game" && m.view.phase === "exchange" && m.view.turnAt === at);
+    const others = await Promise.all(players.filter((_, n) => n !== turn).map((p) => p.until(`turn ${at + 1} for the others`, (m) => m.type === "game" && m.view.phase === "exchange" && m.view.turnAt === at)));
+    seenOthers &&= mine.view.mine !== null && others.every((g) => g.view.mine === null);
+    const next = order[(order.indexOf(turn) + 1) % order.length];
+    const target = mine.view.bomb ? { to: "player", player: next } : { to: "buyer", slot: 0 };
+    if (at === 0 && !mine.view.bomb) {
+      players[turn].send({ type: "action", action: { type: "exchange", with: { to: "player", player: turn } } });
+      const own = await players[turn].until("the refusal of one's own card", (m) => m.type === "refused");
+      check("a card is not exchanged with itself", own.reason === "bad-target", own.reason);
+    }
+    players[turn].send({ type: "action", action: { type: "exchange", with: target } });
+    const got = await players[turn].until(`the card of turn ${at + 1}`, (m) => m.type === "game" && m.view.phase === "seen" && m.view.turnAt === at);
+    held.set(turn, got.view.mine);
+    players[turn].send({ type: "action", action: { type: "ready" } });
+  }
+  check("on a turn only whoever's turn it is is shown their card", seenOthers);
+  const shown = await Promise.all(players.map((p) => p.until("the round to be counted", (m) => m.type === "game" && m.view.phase === "reveal")));
+  const count = shown[0].view.shown;
+  const worth = (card) => (card.kind === "bomb" ? card.value : card.value * count.buyers.filter((each) => each.kind === card.kind).length);
+  check(
+    "the round is counted: every card is shown, a gem scores its number for each gem of its kind the buyers hold, a bomb costs its number",
+    shown.every((g) => g.view.shown.round === 1 && g.view.shown.lines.length === 4) &&
+      count.buyers.length === 3 &&
+      count.lines.every((line) => line.points === worth(line.card) && line.total === line.points + line.taken) &&
+      shown[2].view.shown.lines.find((line) => line.player === 2).card.kind === held.get(2).kind,
+    count.lines.map((line) => `${line.card.kind[0]}${line.card.value}:${line.points}`).join(" "),
+  );
+  const sent = players.flatMap((p, n) => p.messages.filter((m) => m.type === "game").map((m) => [n, m]));
+  const quiet = sent
+    .filter(([, m]) => m.view.shown === null)
+    .every(([, m]) => (JSON.stringify(m.view).match(/"kind"/g) ?? []).length === (m.view.mine === null ? 0 : 1) + m.view.peeked.length);
+  check("until a round is counted a message names no card but the player's own on their turn and the one they paid to check", quiet, `${sent.length} messages`);
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in the ninth game either, and nobody is told a secret buddy but whose they are", !sentAll.includes("smoke-check-token") && !sentAll.includes('"buddy":'));
+
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1238,6 +1333,7 @@ const PARTS = [
   [SIXTH_GAME, sixthGameSpots],
   [SEVENTH_GAME, seventhGame],
   [EIGHTH_GAME, eighthGame],
+  [NINTH_GAME, ninthGame],
 ];
 
 async function main() {

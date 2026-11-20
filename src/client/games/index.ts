@@ -21,6 +21,8 @@ import { createPokerScreen } from "./memory-poker/screen";
 import { WORDS as POKER_WORDS } from "./memory-poker/words";
 import { createMarketScreen } from "./mystery-stock-market/screen";
 import { WORDS as MARKET_WORDS } from "./mystery-stock-market/words";
+import { createGemScreen } from "./gem-black-market/screen";
+import { WORDS as GEM_WORDS } from "./gem-black-market/words";
 import { createPiggyScreen } from "./piggy-bank/screen";
 import { WORDS as PIGGY_WORDS } from "./piggy-bank/words";
 import { createUnderScreen } from "./under-thirteen/screen";
@@ -252,5 +254,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: PIGGY_WORDS.sheet,
+  },
+  "gem-black-market": {
+    screen(canvas, handlers) {
+      const screen = createGemScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "gem-black-market") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: GEM_WORDS.sheet,
   },
 };

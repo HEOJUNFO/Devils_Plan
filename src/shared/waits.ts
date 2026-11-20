@@ -13,6 +13,7 @@
  */
 import type { RectView } from "./games/count-rectangles/rules";
 import type { GrassView } from "./games/lay-the-grass/rules";
+import type { GemView } from "./games/gem-black-market/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
 
@@ -61,4 +62,16 @@ export function piggyWaits(view: Pick<PiggyView, "you" | "phase" | "turn" | "que
   if (view.phase === "put") return view.turn === view.you;
   if (view.phase === "answer") return view.question?.player === view.you;
   return view.phase === "challenge" && view.challenge?.player === view.you;
+}
+
+/**
+ * 보석 암시장: this player has a bid to make for who is first, or it is their
+ * turn to exchange their card. Past the time they bid nothing, or the room
+ * exchanges for them. Looking at a card or at a round's count waits on no
+ * one: the game goes on when the time is up.
+ */
+export function gemWaits(view: Pick<GemView, "you" | "phase" | "turn" | "auction">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "auction") return view.auction !== null && view.auction.bidders.includes(view.you) && view.auction.mine === null;
+  return view.phase === "exchange" && view.turn === view.you;
 }

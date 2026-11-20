@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { grassWaits, piggyWaits, rectWaits, underWaits } from "../../../src/shared/waits";
+import { gemWaits, grassWaits, piggyWaits, rectWaits, underWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -94,5 +94,29 @@ describe("piggyWaits", () => {
   it("waits on nobody who is watching, and on nobody once the game is over", () => {
     expect(piggyWaits(view({ you: null, turn: ME }))).toBe(false);
     expect(piggyWaits(view({ phase: "ended", turn: ME }))).toBe(false);
+  });
+});
+
+describe("gemWaits", () => {
+  const auction = (mine: number | null, bidders = [ME, OTHER]) => ({ bidders, made: mine === null ? [] : [ME], mine, again: false });
+  const view = (over: Partial<Parameters<typeof gemWaits>[0]>): Parameters<typeof gemWaits>[0] => ({ you: ME, phase: "exchange", turn: OTHER, auction: null, ...over });
+
+  it("waits on whoever has a bid to make, until they have made it, and on whoever's turn it is to exchange", () => {
+    expect(gemWaits(view({ phase: "auction", turn: null, auction: auction(null) }))).toBe(true);
+    expect(gemWaits(view({ phase: "auction", turn: null, auction: auction(0) }))).toBe(false);
+    expect(gemWaits(view({ turn: ME }))).toBe(true);
+  });
+
+  it("does not wait on someone who is not bidding again, on the others' turns, nor for a look at a card or at a round's count", () => {
+    expect(gemWaits(view({ phase: "auction", turn: null, auction: auction(null, [OTHER]) }))).toBe(false);
+    expect(gemWaits(view({}))).toBe(false);
+    expect(gemWaits(view({ phase: "seen", turn: ME }))).toBe(false);
+    expect(gemWaits(view({ phase: "look", turn: null }))).toBe(false);
+    expect(gemWaits(view({ phase: "reveal", turn: null }))).toBe(false);
+  });
+
+  it("waits on nobody who is watching, and on nobody once the game is over", () => {
+    expect(gemWaits(view({ you: null, turn: ME }))).toBe(false);
+    expect(gemWaits(view({ phase: "ended", turn: null }))).toBe(false);
   });
 });

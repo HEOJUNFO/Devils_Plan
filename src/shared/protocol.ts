@@ -12,6 +12,7 @@ import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/hos
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
 import type { PokerHostRefusal, PokerSnapshot } from "./games/memory-poker/host";
 import type { MarketHostRefusal, MarketSnapshot } from "./games/mystery-stock-market/host";
+import type { GemHostRefusal, GemSnapshot } from "./games/gem-black-market/host";
 import type { PiggyHostRefusal, PiggySnapshot } from "./games/piggy-bank/host";
 import type { UnderHostRefusal, UnderSnapshot } from "./games/under-thirteen/host";
 import { parseFault, parseFaultNote, type Fault, type FaultConfig } from "./fault";
@@ -125,6 +126,7 @@ export type ServerMessage =
   | ({ type: "game"; room: string; answer?: true; game: "under-thirteen" } & UnderSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "mystery-stock-market" } & MarketSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "piggy-bank" } & PiggySnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "gem-black-market" } & GemSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**
@@ -198,6 +200,7 @@ export type Refusal =
   | UnderHostRefusal
   | MarketHostRefusal
   | PiggyHostRefusal
+  | GemHostRefusal
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal

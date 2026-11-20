@@ -40,12 +40,17 @@ const MARKET = name("mystery-stock-market");
 const RECT = name("count-rectangles");
 const HEAVY = name("under-thirteen");
 const PIGGY = name("piggy-bank");
+const GEM = name("gem-black-market");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-20",
     lines: [
+      {
+        ko: `새 게임 ${GEM.ko}: 방송 3일차의 메인 매치입니다. 4명에서 9명이 합니다. 뒷면으로 받은 카드 한 장을 라운드마다 두 번, 다른 사람이나 구매자 칸, 휴지통의 카드와 꼭 바꿔야 합니다. 구매자 칸과 같은 종류의 보석을 쥐고 있으면 승점, 폭탄을 쥐고 있으면 감점이고, 3라운드 뒤 내 승점에 마니또의 승점을 곱합니다. 내 카드는 내 차례에만 볼 수 있습니다. 경매, 폭탄, 피스로 하는 확인까지 방송의 규칙 그대로입니다.`,
+        en: `A new game, ${GEM.en}: the main match of the show's third day, for 4 to 9 players. You hold one card face down and twice a round must exchange it with another player's card, a card in the buyers' slots or the trash. A gem of a kind the buyers hold scores, a bomb costs you, and after 3 rounds your points are multiplied by your secret buddy's. You may look at your own card only on your turn. The auction, the bombs and the check for a Piece are the show's own rules.`,
+      },
       {
         ko: `새 게임 ${PIGGY.ko}: 방송 3일차의 감옥 매치입니다. 3명에서 6명이 합니다. 저금통에 동전을 넣고 말한 뒤 건네면 받은 사람이 그 안의 흑 또는 백 동전 수를 답하고, 틀린 것 같으면 의심합니다. 넣은 개수와 답은 그때만 보이고 기록에 남지 않습니다. 리셋과 도전, 5점에서 끝나는 것까지 방송의 규칙 그대로입니다.`,
         en: `A new game, ${PIGGY.en}: the prison match of the show's third day, for 3 to 6 players. Put coins into a piggy bank, say what went in and pass it on; the receiver says how many black or white coins it now holds, and anyone who thinks that wrong declares a suspicion. What goes in and what is answered are shown then and there and kept in no record. The reset, the challenge and the end at 5 points are the show's own rules.`,

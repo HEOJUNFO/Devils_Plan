@@ -4,6 +4,7 @@
 import { rouletteHost } from "./game/host";
 import type { GameId } from "./games";
 import { cubesHost } from "./games/count-cubes/host";
+import { gemHost } from "./games/gem-black-market/host";
 import { rectanglesHost } from "./games/count-rectangles/host";
 import { grassHost } from "./games/lay-the-grass/host";
 import { pokerHost } from "./games/memory-poker/host";
@@ -26,4 +27,5 @@ export const HOSTS: Record<GameId, GameHost<any>> = {
   "under-thirteen": underHost,
   "mystery-stock-market": marketHost,
   "piggy-bank": piggyHost,
+  "gem-black-market": gemHost,
 };
