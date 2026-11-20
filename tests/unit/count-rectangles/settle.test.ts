@@ -279,20 +279,20 @@ describe("teams", () => {
     ]);
   });
 
-  it("give a winning team's leader one point and the others three each with 헌신", () => {
+  it("give a winning team's leader (player 1, who answered for it) one point and the others three each with 헌신", () => {
     const { state, now } = fixture();
 
     const ended = choose(state, [[0, 1], [1, 2], [2, 2], [3, 1], [4, 1], [5, 1], ...rest], now);
 
-    expect([0, 1, 2].map((player) => pointsOf(ended, player))).toEqual([CONFIG.devoteLeader, CONFIG.devoteMember, CONFIG.devoteMember]);
+    expect([0, 1, 2].map((player) => pointsOf(ended, player))).toEqual([CONFIG.devoteMember, CONFIG.devoteLeader, CONFIG.devoteMember]);
   });
 
-  it("give a winning team's leader five points and the others one each with 독식", () => {
+  it("give a winning team's leader (player 1, who answered for it) five points and the others one each with 독식", () => {
     const { state, now } = fixture();
 
     const ended = choose(state, [[0, 1], [1, 1], [2, 2], [3, 1], [4, 1], [5, 1], ...rest], now);
 
-    expect([0, 1, 2].map((player) => pointsOf(ended, player))).toEqual([CONFIG.hogLeader, CONFIG.hogMember, CONFIG.hogMember]);
+    expect([0, 1, 2].map((player) => pointsOf(ended, player))).toEqual([CONFIG.hogMember, CONFIG.hogLeader, CONFIG.hogMember]);
   });
 
   it("take three points from a losing team's leader alone with 희생", () => {
@@ -311,7 +311,34 @@ describe("teams", () => {
     expect([3, 4, 5].map((player) => pointsOf(ended, player))).toEqual([0, -CONFIG.blameMember, -CONFIG.blameMember]);
   });
 
-  it("are led by whoever took the team first, and without that being known by their lowest player", () => {
+  it("are led after the race by whoever of them answered the most right, though another took the team first", () => {
+    const players: RectPlayer[] = [{ id: 0, team: 1, since: 1 }, { id: 1, team: 1, since: 2 }, { id: 2, team: 1, since: 3 }, { id: 3, team: 0 }];
+
+    const { state } = raced(game(players), [2]);
+
+    expect(state.units.map((unit) => unit.leader)).toEqual([2, null]);
+  });
+
+  it("are led by whoever was right first where two of them answered as many", () => {
+    const players: RectPlayer[] = [{ id: 0, team: 1, since: 1 }, { id: 1, team: 1, since: 2 }, { id: 2, team: 1, since: 3 }, { id: 3, team: 0 }];
+    const first = solve(game(players), 2, START + 1000);
+    const next = applyTimeout(first, first.pauseUntil ?? 0, CONFIG);
+
+    const over = solve(next, 1, (first.pauseUntil ?? 0) + 1000);
+
+    expect(over.phase).toBe("choose");
+    expect(over.units[0].leader).toBe(2);
+  });
+
+  it("keep whoever took the team first as their leader where none of them answered right", () => {
+    const players: RectPlayer[] = [{ id: 0, team: 1, since: 5 }, { id: 1, team: 1, since: 2 }, { id: 2, team: 1, since: 9 }, { id: 3, team: 0 }];
+
+    const { state } = raced(game(players), [3]);
+
+    expect(state.units.map((unit) => unit.leader)).toEqual([1, null]);
+  });
+
+  it("are led while the race goes on by whoever took the team first, and without that being known by their lowest player", () => {
     const players: RectPlayer[] = [
       { id: 0, team: 1, since: 5 },
       { id: 1, team: 1, since: 2 },
@@ -495,14 +522,25 @@ describe("the added contest", () => {
     ]);
   });
 
-  it("is played against the problems alone by a player nobody joined", () => {
+  it("is won with no problem played by a player nobody joined, and the game is over", () => {
     const { state, now } = raced(game(alone(2)), [1]);
 
-    const duel = choose(state, [[0, 2], [1, 1]], now);
-    const won = solve(duel, 1, now + 1000);
+    const ended = choose(state, [[0, 2], [1, 1]], now);
 
-    expect(duel.duel).toEqual({ players: [1], round: 1, winner: null });
-    expect(won.scores?.find((line) => line.player === 1)).toEqual({ player: 1, race: CONFIG.winPoints, choice: 0, pieces: CONFIG.duelPieces, total: CONFIG.winPoints });
+    expect(ended.phase).toBe("ended");
+    expect(ended.round).toBe(state.round);
+    expect(ended.duel).toEqual({ players: [1], round: 0, winner: 1 });
+    expect(ended.history.slice(-4).map((event) => event.type)).toEqual(["duel", "duel-over", "score", "ended"]);
+    expect(ended.scores?.find((line) => line.player === 1)).toEqual({ player: 1, race: CONFIG.winPoints, choice: 0, pieces: CONFIG.duelPieces, total: CONFIG.winPoints });
+  });
+
+  it("is won unplayed by a loser of the race too, who is alone in taking 도전", () => {
+    const { state, now } = raced(game(alone(2)), [1]);
+
+    const ended = choose(state, [[0, 1], [1, 2]], now);
+
+    expect(ended.duel).toEqual({ players: [0], round: 0, winner: 0 });
+    expect(ended.scores?.find((line) => line.player === 0)).toEqual({ player: 0, race: -CONFIG.losePoints, choice: 0, pieces: CONFIG.duelPieces, total: -CONFIG.losePoints });
   });
 
   it("ends without a winner when none of its players is there to go on, and the rest of the game stands", () => {

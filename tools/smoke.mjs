@@ -208,20 +208,20 @@ async function secondGame() {
     "the race ends when half have won twice, and the third choice is put to everyone",
     raced.every((g) => g.view.units[1].place === 1 && g.view.units[0].place === 0 && g.view.choosing?.card === "alone"),
   );
-  // the loser takes the added contest, the winner the small loss
+  // both take the added contest (whoever is alone in taking it has won it unplayed)
   players[0].send({ type: "action", action: { type: "choose", option: 1 } });
   const waiting = await players[1].until("the first choice to be in", (m) => m.type === "game" && m.view.choosing?.chosen.length === 1);
   check("a choice is kept from the other player until both have chosen", waiting.view.choices.length === 0 && waiting.view.choosing.mine === null);
-  players[1].send({ type: "action", action: { type: "choose", option: 2 } });
+  players[1].send({ type: "action", action: { type: "choose", option: 1 } });
   const contest = await players[0].until("the added contest", (m) => m.type === "game" && m.view.duel !== null && m.view.phase === "problem");
-  check("the added contest is put to whoever took it", contest.view.duel.players.join() === "0" && contest.view.answer === null);
+  check("the added contest is put to whoever took it", contest.view.duel.players.join() === "0,1" && contest.view.answer === null);
   players[0].send({ type: "action", action: { type: "buzz" } });
   await players[1].until("the buzz of the added contest", (m) => m.type === "game" && m.view.duel !== null && m.view.floor?.player === 0);
   players[0].send({ type: "action", action: { type: "answer", count: countRectangles(contest.view.board) } });
   const ends = await Promise.all(players.map((p) => p.until("the second game to end", (m) => m.type === "game" && m.view.phase === "ended")));
   check(
     "the second game ends with the added contest won, and everyone's points counted",
-    ends.every((g) => g.view.duel?.winner === 0 && g.view.scores?.map((line) => `${line.total}/${line.pieces}`).join() === "-3/3,6/0"),
+    ends.every((g) => g.view.duel?.winner === 0 && g.view.scores?.map((line) => `${line.total}/${line.pieces}`).join() === "-3/3,4/0"),
     ends[0].view.scores?.map((line) => `${line.total}/${line.pieces}`).join(),
   );
   const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");

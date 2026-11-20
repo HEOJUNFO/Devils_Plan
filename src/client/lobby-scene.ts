@@ -222,7 +222,7 @@ export function createLobbyScene(
         const beside = place.at.y - 6;
         if (!player.connected) pen.txt(WORDS.scene.offline, place.at.x + 15, beside, C.dim);
         else if (player.out) pen.txt(WORDS.scene.out, place.at.x + 15, beside, C.crim);
-        else if (player.team > 0) drawTeamTag(place.at.x + 15, beside, player.team, player.leads);
+        else if (player.team > 0) drawTeamTag(place.at.x + 15, beside, player.team);
         continue;
       }
       const name = pen.fit(player.nick, NAME_WIDTH);
@@ -242,7 +242,7 @@ export function createLobbyScene(
         // the team chosen for the next game, each team in its own colour
         const tx = place.slot === me ? x + width + 5 : x;
         const ty = place.slot === me ? y : y + 13;
-        drawTeamTag(tx, ty, player.team, player.leads);
+        drawTeamTag(tx, ty, player.team);
       }
     }
     for (const place of places) {
@@ -254,19 +254,12 @@ export function createLobbyScene(
   }
 
   /**
-   * The team a player has chosen, at `x`, `y`: written in the team's colour,
-   * and for its leader (whoever took the team first) on a plate of that
-   * colour, so that the team can see whose share of its points will differ.
+   * The team a player has chosen, at `x`, `y`: written in the team's colour.
+   * Who leads the team is the game's to say once its race is over (네모 세기:
+   * whoever answered the most right), so nobody is marked for it here.
    */
-  function drawTeamTag(x: number, y: number, team: number, leads: boolean): void {
-    const tag = WORDS.scene.team(team);
-    const colour = TEAM_COLOURS[(team - 1) % TEAM_COLOURS.length];
-    if (!leads) {
-      pen.txt(tag, x, y, colour);
-      return;
-    }
-    pen.px(x - 2, y, pen.width(tag) + 3, 13, colour);
-    pen.txt(tag, x, y, C.ink);
+  function drawTeamTag(x: number, y: number, team: number): void {
+    pen.txt(WORDS.scene.team(team), x, y, TEAM_COLOURS[(team - 1) % TEAM_COLOURS.length]);
   }
 
   /** The mark of the host, who starts the game: its top left at `x`, `y`. */

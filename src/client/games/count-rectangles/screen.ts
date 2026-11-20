@@ -934,7 +934,8 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
           const those = solo.filter((chosen) => chosen.option === option).map((chosen) => pen.fit(nickOf(chosen.player), 40));
           if (those.length > 0) lines.push([pen.fit(WORDS.log.alone(OPTION_NAMES.alone[option - 1], those), PANEL_WIDTH), C.brass]);
         }
-      } else if (event.type === "duel") lines.push([pen.fit(WORDS.log.duel(event.players.map((player) => pen.fit(nickOf(player), 44)).join(WORDS.standing.versus)), PANEL_WIDTH), C.amber]);
+      } else if (event.type === "duel" && event.players.length === 1) lines.push([pen.fit(WORDS.log.duelAlone(pen.fit(nickOf(event.players[0]), 44)), PANEL_WIDTH), C.amber]);
+      else if (event.type === "duel") lines.push([pen.fit(WORDS.log.duel(event.players.map((player) => pen.fit(nickOf(player), 44)).join(WORDS.standing.versus)), PANEL_WIDTH), C.amber]);
       else if (event.type === "duel-over") {
         const won = event.winner === null ? WORDS.log.duelNobody : WORDS.log.duelWon(pen.fit(nickOf(event.winner), 44), latest.rules.duelPieces);
         lines.push([pen.fit(won, PANEL_WIDTH), event.winner === null ? C.boneD : C.teal]);
@@ -950,7 +951,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const x = PANEL_X;
     pen.px(SCENE_W, 0, W - SCENE_W, BAR_Y, C.night);
     pen.px(SCENE_W, 0, 1, BAR_Y, C.steelDD);
-    pen.txt(view.phase === "choose" ? WORDS.choice.name : view.duel !== null ? WORDS.panel.duel(view.duel.round) : WORDS.panel.problem(view.round), x, 3, C.bone);
+    pen.txt(view.phase === "choose" ? WORDS.choice.name : view.duel !== null && view.duel.round > 0 ? WORDS.panel.duel(view.duel.round) : WORDS.panel.problem(view.round), x, 3, C.bone);
     const choose = view.phase === "choose" ? left(latest.clock.choose) : null;
     if (choose !== null) pen.txt(WORDS.panel.seconds(Math.ceil(choose / 1000)), W - 5, 3, choose <= TICK_FROM * 1000 ? C.crim : C.boneD, "right");
     const problem = left(latest.clock.problem);

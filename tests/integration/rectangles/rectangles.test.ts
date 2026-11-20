@@ -72,6 +72,24 @@ async function race(stub: DurableObjectStub, clients: TestClient[], first: Recta
   return answer(clients, winner, count(second), watcher);
 }
 
+/**
+ * The race of more than two sides, carried on after {@link race}: client
+ * `winner` answers the next two problems (the third and the fourth) right.
+ * Resolves with what `watcher` sees after the second of them.
+ */
+async function raceOn(stub: DurableObjectStub, clients: TestClient[], winner: number, watcher = clients[0]): Promise<RectanglesMessage> {
+  let seen: RectanglesMessage | undefined;
+  for (const round of [3, 4]) {
+    await scheduledAlarm(stub);
+    advanceClock(PAUSE_MS + 1);
+    await runDurableObjectAlarm(stub);
+    const problem = await watcher.rectWhere((game) => game.view.round === round);
+    seen = await answer(clients, winner, count(problem), watcher);
+  }
+  if (seen === undefined) throw new Error("fixture: the race was not carried on");
+  return seen;
+}
+
 /** Client `n` chooses `option` of the third choice. */
 function choose(clients: TestClient[], n: number, option: 1 | 2): void {
   clients[n].send({ type: "action", action: { type: "choose", option } });
@@ -531,10 +549,10 @@ describe("GameRoom: the third choice of 네모 세기", () => {
     closeAll(clients);
   });
 
-  it("lets a team decide by what most of it choose, and gives the leader's share to whoever took the team first", async () => {
+  it("lets a team decide by what most of it choose, and gives the leader's share to whoever answered for it, not to whoever took the team first", async () => {
     const stub = env.GameRoom.getByName("NEAAC");
     const clients = await racers("NEAAC", TEAM_SIZE + 1);
-    // player 2 takes the team first, then 0 and 1: player 2 leads it
+    // player 2 takes the team first, then 0 and 1: player 2 leads it until the race is over
     for (const n of [2, 0, 1]) {
       clients[n].send({ type: "team", team: 1 });
       await clients[TEAM_SIZE].lobbyWhere((lobby) => lobby.players[n].team === 1);
@@ -543,7 +561,7 @@ describe("GameRoom: the third choice of 네모 세기", () => {
     const games = await startGame(clients);
     const over = await race(stub, clients, games[0], 0);
 
-    // the leader alone would take the larger share
+    // player 0 answered both problems and leads the team now; one of the others alone would have the leader take the larger share
     choose(clients, 2, 1);
     choose(clients, 0, 2);
     choose(clients, 1, 2);
@@ -552,12 +570,13 @@ describe("GameRoom: the third choice of 네모 세기", () => {
 
     expect(lobby.players.map((player) => player.leads)).toEqual([false, false, true, false]);
     expect(games[0].view.units[0]).toMatchObject({ members: [0, 1, 2], leader: 2 });
+    expect(over.view.units[0]).toMatchObject({ members: [0, 1, 2], leader: 0 });
     expect(over.view.choosing).toMatchObject({ card: "winners" });
     expect(ended.view.decisions).toEqual([{ unit: 0, option: 2 }]);
     expect(ended.view.scores?.map((line) => line.total)).toEqual([
-      shipped.devoteMember,
-      shipped.devoteMember,
       shipped.devoteLeader,
+      shipped.devoteMember,
+      shipped.devoteMember,
       -shipped.losePoints - shipped.safeLoss,
     ]);
     closeAll(clients);
@@ -580,9 +599,9 @@ describe("GameRoom: the third choice of 네모 세기", () => {
       { player: 1, option: 1, forced: false },
       { player: 0, option: shipped.defaultOptions.alone, forced: true },
     ]);
-    // player 1 took 도전 and nobody joined: the added contest is theirs alone
-    expect(after.view.duel).toEqual({ players: [1], round: 1, winner: null });
-    expect(after.view.phase).toBe("problem");
+    // player 1 took 도전 and nobody joined: the added contest is theirs with no problem played
+    expect(after.view.duel).toEqual({ players: [1], round: 0, winner: 1 });
+    expect(after.view.phase).toBe("ended");
     closeAll(clients);
   });
 
@@ -610,11 +629,14 @@ describe("GameRoom: the third choice of 네모 세기", () => {
 
   it("keeps someone out of an added contest they did not take", async () => {
     const stub = env.GameRoom.getByName("NEAAF");
-    const clients = await racers("NEAAF", 2);
+    // three alone: two of them must win before the race is over, and those two take the contest
+    const clients = await racers("NEAAF", 3);
     const games = await startGame(clients);
     await race(stub, clients, games[0], 1);
+    await raceOn(stub, clients, 2);
     choose(clients, 0, 2);
     choose(clients, 1, 1);
+    choose(clients, 2, 1);
     await clients[0].rectWhere((game) => game.view.duel !== null);
 
     clients[0].send({ type: "action", action: { type: "buzz" } });

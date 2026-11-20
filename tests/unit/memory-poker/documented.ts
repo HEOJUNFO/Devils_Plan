@@ -15,6 +15,9 @@
  * where the signs have the three of spades and the text the three of diamonds. This file follows
  * the signs (in round 3 the text's card is also among the shared cards, which one deck cannot give);
  * neither cell changes the hand its round names.
+ *
+ * The document as it stood on 2026-11-19 23:29 KST calls the rounds sets and adds to each a row
+ * "넛": the best hand the board allowed, and the two cells that make it. Those rows are `nut` here.
  */
 import { cardOf, type Card, type HandKind } from "../../../src/shared/games/memory-poker/cards";
 
@@ -57,6 +60,8 @@ export interface DocumentedRound {
   shared: string;
   first: DocumentedPlayer;
   second: DocumentedPlayer;
+  /** The document's "넛": the highest hand any two cells of the board make with the shared cards, and two cells that make it. */
+  nut: DocumentedPlayer;
 }
 
 export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
@@ -66,6 +71,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🃚🂫🂭",
     first: { picks: ["F", "M"], kind: "triple", rank: 12, said: "Q트리플" },
     second: { picks: ["F", "M"], kind: "triple", rank: 12, said: "Q트리플" },
+    nut: { picks: ["F", "M"], kind: "triple", rank: 12, said: "Q 트리플" },
   },
   {
     round: 2,
@@ -73,6 +79,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🂡🃁🂾",
     first: { picks: ["D", "G"], kind: "full-house", rank: 14, said: "A 풀하우스" },
     second: { picks: ["A", "G"], kind: "four", rank: 14, said: "A 포카드" },
+    nut: { picks: ["A", "G"], kind: "four", rank: 14, said: "A 포카드" },
   },
   {
     round: 3,
@@ -80,6 +87,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🃕🃃🂦",
     first: { picks: ["C", "E"], kind: "two-pair", rank: 5, said: "5 투페어" },
     second: { picks: ["F", "K"], kind: "high", rank: 14, said: "A 하이" },
+    nut: { picks: ["H", "J"], kind: "straight", rank: 7, said: "7 스트레이트" },
   },
   {
     round: 4,
@@ -87,6 +95,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🂷🂨🂫",
     first: { picks: ["I", "L"], kind: "triple", rank: 7, said: "7트리플" },
     second: { picks: ["H", "I"], kind: "two-pair", rank: 11, said: "J 투페어" },
+    nut: { picks: ["D", "M"], kind: "triple", rank: 8, said: "8 트리플" },
   },
   {
     round: 5,
@@ -94,6 +103,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🂦🂥🂨",
     first: { picks: ["B", "K"], kind: "pair", rank: 6, said: "6 원페어" },
     second: { picks: ["C", "D"], kind: "two-pair", rank: 8, said: "8 투페어" },
+    nut: { picks: ["A", "O"], kind: "straight-flush", rank: 9, said: "9 스트레이트플러시" },
   },
   {
     round: 6,
@@ -101,6 +111,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🂪🃁🂡",
     first: { picks: ["F", "O"], kind: "two-pair", rank: 14, said: "A 투페어" },
     second: { picks: ["F", "N"], kind: "full-house", rank: 10, said: "10 풀하우스" },
+    nut: { picks: ["F", "N"], kind: "full-house", rank: 10, said: "10 풀하우스" },
   },
   {
     round: 7,
@@ -108,6 +119,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🃅🃓🂤",
     first: { picks: ["L", "O"], kind: "high", rank: 9, said: "9 하이" },
     second: { picks: ["B", "D"], kind: "pair", rank: 13, said: "K 원페어" },
+    nut: { picks: ["G", "I"], kind: "two-pair", rank: 5, said: "5 투페어" },
   },
   {
     round: 8,
@@ -115,6 +127,7 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🂧🃑🃃",
     first: { picks: ["D", "F"], kind: "pair", rank: 14, said: "A 원페어" },
     second: { picks: ["B", "F"], kind: "two-pair", rank: 14, said: "A 투페어" },
+    nut: { picks: ["J", "M"], kind: "triple", rank: 7, said: "7 트리플" },
   },
   {
     round: 9,
@@ -122,5 +135,6 @@ export const DOCUMENTED_ROUNDS: DocumentedRound[] = [
     shared: "🃃🃄🃁",
     first: { picks: ["E", "G"], kind: "straight", rank: 5, said: "5 스트레이트" },
     second: { picks: ["A", "D"], kind: "pair", rank: 4, said: "4 원페어" },
+    nut: { picks: ["G", "L"], kind: "straight-flush", rank: 5, said: "5 스트레이트플러시" },
   },
 ];

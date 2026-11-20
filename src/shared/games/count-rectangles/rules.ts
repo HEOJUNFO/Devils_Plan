@@ -92,7 +92,9 @@ export interface RectConfig {
 /**
  * A player as the game is started with: `id` tells them apart, `team` is 0
  * for alone or the number of a team. `since` orders the players of a team by
- * when they took it: the first is its leader (absent: the lowest id).
+ * when they took it: the first is its leader (absent: the lowest id) until
+ * the race is over, and after it where the team answered nothing right
+ * ({@link Unit.leader}).
  */
 export interface RectPlayer {
   id: number;
@@ -108,7 +110,14 @@ export interface Unit {
   wins: number;
   /** The order in which it became a winner, from 1; 0 while it has not. */
   place: number;
-  /** A team's leader, the document's "대표": whose share of the points differs from the others'. `null` for a player alone. */
+  /**
+   * A team's leader, the document's "대표": whose share of the points differs
+   * from the others'. The document has the team name, once the race is over,
+   * the one of its three who did the most for it; here that is whoever of
+   * them answered the most problems right (of those level, whoever was right
+   * first), and in a team that answered none whoever took the team first, who
+   * is also named here while the race goes on. `null` for a player alone.
+   */
   leader: number | null;
 }
 
@@ -139,12 +148,13 @@ export interface Decision {
 /**
  * The added contest of those who chose 도전: problems of the game itself,
  * put to them alone. Whoever first answers one right has won it and all the
- * others have lost.
+ * others have lost. A player who is the only one to choose 도전 has won it
+ * with no problem played (the document's note on the show's own account).
  */
 export interface Duel {
   /** Who is in it, lowest id first. */
   players: number[];
-  /** Which of its problems this is, from 1. */
+  /** Which of its problems this is, from 1; 0 where it was won with none played. */
   round: number;
   /** Who won it; `null` while it goes on, and for good when nobody did. */
   winner: number | null;
@@ -700,10 +710,32 @@ function endRace(state: RectState, reason: "half" | "problems", now: number, con
     state.history.push({ type: "ended", round: state.round, reason });
     return;
   }
+  for (const unit of state.units) unit.leader = leaderAfter(state, unit);
   state.raced = reason;
   state.phase = "choose";
   state.choosing = { since: now };
   state.history.push({ type: "raced", round: state.round, reason });
+}
+
+/**
+ * Who leads `unit` now that the race is over: of its players whoever answered
+ * the most problems right, of those level whoever was right first, and in a
+ * team with no right answer its leader so far (whoever took the team first).
+ */
+function leaderAfter(state: RectState, unit: Unit): number | null {
+  if (unit.leader === null) return null;
+  const right = state.history.flatMap((event) => (event.type === "right" && unit.members.includes(event.player) ? [event.player] : []));
+  let leader = unit.leader;
+  let most = 0;
+  // in the order of their first right answer, so that of two level the earlier stays
+  for (const player of new Set(right)) {
+    const count = right.filter((each) => each === player).length;
+    if (count > most) {
+      most = count;
+      leader = player;
+    }
+  }
+  return leader;
 }
 
 /** Closes the open problem with `outcome`: the race or the added contest ends, or the answer goes on show. */
@@ -734,7 +766,7 @@ function close(state: RectState, outcome: Outcome, now: number, config: RectConf
  * Everyone has chosen: each team's decision is what most of its players
  * chose (what the room would choose, should they be evenly split), and the
  * players alone who chose 도전 play the added contest. With nobody for it
- * the game is over.
+ * the game is over, and so it is with one alone: they have won it unplayed.
  */
 function resolve(state: RectState, now: number, config: RectConfig): void {
   state.choosing = null;
@@ -751,6 +783,13 @@ function resolve(state: RectState, now: number, config: RectConfig): void {
     .map((unit) => unit.members[0])
     .sort((a, b) => a - b);
   if (daring.length === 0) {
+    finish(state, config);
+    return;
+  }
+  if (daring.length === 1) {
+    // nobody to play: the one who dared has the contest's prize at once
+    state.duel = { players: daring, round: 0, winner: daring[0] };
+    state.history.push({ type: "duel", players: [...daring] }, { type: "duel-over", winner: daring[0] });
     finish(state, config);
     return;
   }

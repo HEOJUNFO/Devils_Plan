@@ -3479,9 +3479,8 @@ function renderRoom(code: string, view: LobbyView): void {
   teamButton.hidden = !teams;
   const mine = view.players.find((p) => p.slot === view.you);
   const myTeam = asked.team ?? mine?.team ?? 0;
-  // a team's leader is whoever took it first: their share of the team's points differs from the others'
-  // (of a team just asked for, the room has yet to say who leads)
-  teamButton.textContent = myTeam === 0 ? WORDS.room.solo : WORDS.room.team(myTeam, asked.team === undefined && mine?.leads === true);
+  // who leads a team (whose share of its points differs) is settled by the game, once its race is over: nobody is named here
+  teamButton.textContent = myTeam === 0 ? WORDS.room.solo : WORDS.room.team(myTeam);
   teamButton.title = WORDS.room.teamHelp(game.teamSize);
 
   const sizes = new Map<number, number>();

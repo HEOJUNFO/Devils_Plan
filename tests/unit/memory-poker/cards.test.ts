@@ -176,6 +176,23 @@ describe("기억 포커: the rounds the document lists", () => {
     }
   });
 
+  it.each(DOCUMENTED_ROUNDS)("round $round: no two cells of the board make a higher hand than the one the document calls the nut", (round) => {
+    const board = cardsOf(round.board.join(""));
+    const shared = cardsOf(round.shared);
+    let best: Hand | null = null;
+    for (let a = 0; a < board.length; a++) {
+      for (let b = a + 1; b < board.length; b++) {
+        const made = handOf([board[a], board[b], ...shared]);
+        if (best === null || compareHands(made, best) > 0) best = made;
+      }
+    }
+
+    const named = documentedHand(round, round.nut);
+
+    expect({ kind: named.kind, rank: named.ranks[0] }, round.nut.said).toEqual({ kind: round.nut.kind, rank: round.nut.rank });
+    expect(best === null ? null : compareHands(best, named), round.nut.said).toBe(0);
+  });
+
   it("has boards of sixteen cards and three shared cards", () => {
     for (const round of DOCUMENTED_ROUNDS) {
       expect(cardsOf(round.board.join(""))).toHaveLength(16);

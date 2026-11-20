@@ -290,8 +290,8 @@ const ko = {
     optionsGuest: "방장이 정합니다. 다음 판은 이렇게 합니다.",
     optionsClose: "닫기",
     solo: "혼자 하기",
-    team: (team: number, leads: boolean) => (leads ? `팀 ${team} 대표` : `팀 ${team}`),
-    teamHelp: (size: number) => `누르면 바뀝니다: 혼자, 또는 ${size}명이 한 팀. 팀을 먼저 고른 사람이 대표입니다`,
+    team: (team: number) => `팀 ${team}`,
+    teamHelp: (size: number) => `누르면 바뀝니다: 혼자, 또는 ${size}명이 한 팀`,
     /** The lines over the room's code: the game, who can come in and how many are here. */
     status: (game: string, listed: boolean, here: number, max: number, knockout: boolean) => [`${game} · ${listed ? "공개" : "비공개"} · ${here}/${max}${knockout ? " · 탈락전" : ""}`],
     /** The same on two lines, for a game whose name leaves no room beside it. */
@@ -812,8 +812,8 @@ const en: typeof ko = {
     optionsGuest: "The host sets these. The next game is played so.",
     optionsClose: "Close",
     solo: "Solo",
-    team: (team, leads) => (leads ? `Team ${team} lead` : `Team ${team}`),
-    teamHelp: (size) => `Press to change: alone, or a team of ${size}. Whoever picks a team first leads it`,
+    team: (team) => `Team ${team}`,
+    teamHelp: (size) => `Press to change: alone, or a team of ${size}`,
     // a game's name in English is as wide as the column: the rest goes on a line of its own
     status: (game, listed, here, max, knockout) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}${knockout ? " · Knockout" : ""}`],
     statusTall: (game, listed, here, max, knockout) => [game, `${listed ? "Public" : "Private"} · ${here}/${max}${knockout ? " · Knockout" : ""}`],

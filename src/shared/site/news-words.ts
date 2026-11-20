@@ -43,6 +43,15 @@ const HEAVY = name("under-thirteen");
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
+    date: "2026-11-20",
+    lines: [
+      {
+        ko: `${RECT.ko}: 팀의 대표는 이제 그 팀에서 가장 많이 맞힌 사람입니다 (같으면 먼저 맞힌 사람, 아무도 못 맞혔으면 팀을 먼저 고른 사람). 대기실에서는 대표를 따로 적지 않습니다. 선택 3에서 도전을 고른 사람이 한 명뿐이면 추가 대결 없이 바로 승리합니다. 둘 다 방송에서 그렇게 했다고 뒤늦게 알려진 것입니다.`,
+        en: `${RECT.en}: a team's leader is now whoever of it answered right the most (if level, whoever was right first; if nobody was, whoever picked the team first). The waiting room no longer names a leader. In Selection 3, a player who is alone in choosing Challenge wins with no playoff. Both are how the show did it, as has come to be known since.`,
+      },
+    ],
+  },
+  {
     date: "2026-11-16",
     lines: [
       {
