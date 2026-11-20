@@ -50,6 +50,16 @@ describe("meetNear", () => {
     expect(meetNear(MONDAY_NINE + 7 * 24 * HOUR - HOUR, CONFIG)?.game).toBe("under-thirteen");
   });
 
+  it("goes round a list that is longer than a week a day at a time, every game in its turn", () => {
+    // eleven games: the game of a day comes round again eleven days later, whatever day of the week that is
+    const eleven: MeetConfig = { ...CONFIG, games: [...GAME_IDS] };
+    const games = Array.from({ length: 22 }, (_, day) => meetNear(MONDAY_NINE + day * 24 * HOUR - HOUR, eleven)?.game);
+
+    expect(new Set(games.slice(0, 11)).size).toBe(11);
+    expect(games.slice(11)).toEqual(games.slice(0, 11));
+    for (let day = 1; day < 11; day++) expect(GAME_IDS.indexOf(games[day]!)).toBe((GAME_IDS.indexOf(games[0]!) + day) % 11);
+  });
+
   it("is nothing when meetings are off, and when there is no game for them", () => {
     expect(meetNear(MONDAY_NINE, { ...CONFIG, on: false })).toBeNull();
     expect(meetNear(MONDAY_NINE, { ...CONFIG, games: [] })).toBeNull();
@@ -131,12 +141,23 @@ describe("the meetings as they are set", () => {
   const timeIsOne = (time: { hour: number; minute: number }): boolean =>
     Number.isInteger(time.hour) && time.hour >= 0 && time.hour < 24 && Number.isInteger(time.minute) && time.minute >= 0 && time.minute < 60;
 
-  it("name a game there is for each day of the week, no game twice", () => {
-    expect(meetConfig.games).toHaveLength(7);
+  it("go round every game there is, each once", () => {
     expect(meetConfig.games.every(isGameId)).toBe(true);
-    // (there are more games than days since the eighth: the days keep the seven they had)
-    expect(new Set(meetConfig.games).size).toBe(7);
-    expect(GAME_IDS.length).toBeGreaterThanOrEqual(7);
+    expect([...meetConfig.games].sort()).toEqual([...GAME_IDS].sort());
+  });
+
+  it("kept the game of every meeting of the week the four later games joined them, and gave those the four days after it", () => {
+    // Set on 2026-11-20, a Friday. Through Friday the 27th each meeting is for the game it was for when
+    // the days of the week had a game each; the games of the show's third and fourth day follow.
+    const at = (date: number, hour: number, minute = 0): number => Date.UTC(2026, 10, date, hour - 9, minute);
+    const game = (date: number, hour: number, minute = 0): string | undefined => meetNear(at(date, hour, minute), meetConfig)?.game;
+
+    expect([game(21, 12, 30), game(21, 21), game(21, 23)]).toEqual(["mystery-stock-market", "russian-roulette", "under-thirteen"]);
+    expect([game(22, 12, 30), game(22, 21), game(22, 23)]).toEqual(["russian-roulette", "under-thirteen", "count-rectangles"]);
+    expect([23, 24, 25, 26, 27].map((date) => game(date, 21))).toEqual(["under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
+    expect([28, 29, 30].map((date) => game(date, 21))).toEqual(["piggy-bank", "gem-black-market", "auction-bingo"]);
+    expect(meetNear(Date.UTC(2026, 11, 1, 12, 0), meetConfig)?.game).toBe("wall-go-2");
+    expect(meetNear(Date.UTC(2026, 11, 2, 12, 0), meetConfig)?.game).toBe("mystery-stock-market");
   });
 
   it("are held at a time of day, every day", () => {

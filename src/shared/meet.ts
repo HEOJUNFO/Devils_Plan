@@ -32,9 +32,13 @@ export interface MeetSpan {
 /**
  * `on`: whether there are meetings at all. They are held every day at
  * `times` where the clock is `utcOffsetMinutes` ahead of UTC (a place with
- * no summer time), each for `lengthMinutes`. `games`: the game of each day
- * of the week, Monday first; a day's second meeting is for the next day's
- * game, its third for the one after, so a day of many has many games.
+ * no summer time), each for `lengthMinutes`. `games`: the games the
+ * meetings go round, a day each: a day's meeting is for the game after the
+ * one of the day before, and the first comes again after the last. A list
+ * of seven is a game for each day of the week, Monday first; a longer one
+ * (every game there is) comes round on another day of the week each time.
+ * A day's second meeting is for the next day's game, its third for the one
+ * after, so a day of many has many games.
  * `spans`: days with times of their own (the week the site opens).
  * `remindMinutes`: how long before a meeting the calendar of someone who
  * put it there reminds them (`calendar.ts`); ten minutes where none is set.
@@ -97,12 +101,13 @@ export function meetNear(now: number, config: MeetConfig): Meet | null {
   const today = Math.floor((now + offset) / DAY_MS);
   for (let day = today - 1; day <= today + DAYS_AHEAD; day++) {
     const { times, lengthMinutes } = timesOf(day, config);
-    const weekday = (((day + EPOCH_WEEKDAY) % 7) + 7) % 7;
+    // where the list is at on this day: counted from a Monday, so that a list of seven has a game for each day of the week
+    const turn = day + EPOCH_WEEKDAY;
     for (const [nth, time] of times.entries()) {
       const start = day * DAY_MS + (time.hour * 60 + time.minute) * MINUTE_MS - offset;
       const end = start + lengthMinutes * MINUTE_MS;
       if (now >= end) continue;
-      const game = config.games[(weekday + nth) % config.games.length];
+      const game = config.games[(((turn + nth) % config.games.length) + config.games.length) % config.games.length];
       return isGameId(game) ? { start, end, game, on: now >= start } : null;
     }
   }

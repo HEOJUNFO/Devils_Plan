@@ -50,6 +50,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-20",
     lines: [
       {
+        ko: `모임의 게임이 요일마다 하나에서 모든 게임이 하루씩 돌아가는 것으로 바뀝니다. 11월 27일까지는 예정대로이고, 28일부터 ${PIGGY.ko}, ${GEM.ko}, ${BINGO.ko}, ${WALL.ko}이 차례로 들어온 뒤 열한 게임이 계속 돕니다.`,
+        en: `The meetings now go round every game, a day each, instead of one game for each day of the week. Through 27 November they are as planned; from the 28th come ${PIGGY.en}, ${GEM.en}, ${BINGO.en} and ${WALL.en}, and then all eleven games keep going round.`,
+      },
+      {
         ko: `새 게임 ${BINGO.ko}: 방송 4일차의 메인 매치입니다. 3명에서 16명이 합니다. 모두 같은 빙고판을 갖고, 라운드마다 도형 하나를 고른 뒤 그 도형에 코인을 몰래 겁니다. 가장 많이 건 사람이 그 도형을 고른 사람 수만큼 얻지만, 누가 낙찰받았는지는 본인도 모르고 가장 높은 낙찰가는 가려집니다. 7라운드 뒤 빙고 수로 순위를 가립니다. 선택과 입찰 시간은 방장이 고릅니다 (45초씩, 2분·3분, 방송의 15분·20분).`,
         en: `A new game, ${BINGO.en}: the main match of the show's fourth day, for 3 to 16 players. Everyone has the same bingo card; each round you pick a shape and then bid coins on it in secret. The highest bidder wins as many of the shape as players picked it, but nobody is told who won, not even the winner, and the highest winning bid is hidden. After 7 rounds the most bingos wins. The host picks the time to choose and to bid (45 s each, 2 and 3 min, or the show's 15 and 20 min).`,
       },
