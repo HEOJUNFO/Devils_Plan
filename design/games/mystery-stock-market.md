@@ -2,7 +2,7 @@
 
 The seventh game built. In the show it is the second main match (2일차 메인 매치), "미스터리 거래소"; the show's English release calls it "Mystery Stock Market" (both English subtitle tracks, and the title cue on screen).
 
-**On the names.** The game is shown under the show's name, as the project's rule on names says (CLAUDE.md, Project Rules). Its seven companies keep the show's names too: they are part of the rules a player reads. In English the two subtitle tracks of the release name five of the seven companies differently; the names of the closed-caption track (the one that follows the dubbed sound, and whose cues carry the text on screen) are used: Seasoned Financial, Airtight Construction, Defense Steel, Alt Entertainment, Open Security, CoyoTech, Latter Electronics. *(Assistant's choice between the two tracks; the other has NotSoGood Capital, Mucho Construction, Banger Steel, Alt Ent, Open Security, CoyoTech, Analog Electronics.)*
+**On the names.** The game is shown under the show's name, as the project's rule on names says (CLAUDE.md, Project Rules). Its seven companies keep the show's names too: they are part of the rules a player reads. In English the two subtitle tracks of the release name five of the seven companies differently; the names of the closed-caption track (the one that follows the dubbed sound, and whose cues carry the text on screen) are used: Seasoned Financial, Airtight Construction, Defense Steel, Alt Entertainment, Open Security, CoyoTech, Latter Electronics. *(Assistant's choice between the two tracks; the other has NotSoGood Capital, Mucho Construction, Banger Steel, Alt Ent, Open Security, CoyoTech, Analog Electronics. Asked on 2026-11-20, the user said "추천하는대로해줘", and the recommendation was to keep these.)*
 
 ## In your words
 - 만약 계속개발하다가 완성이라고판단되면 다른 데블스플랜게임 개발로이어가도돼 너가알아서판단해 *(the standing word this game was started on, after 무거운 13)*
@@ -340,6 +340,6 @@ The seventh game built. In the show it is the second main match (2일차 메인 
 
 2일차 문서(2026-11-19 20:35 KST 수정본)를 11-16 저장본과 줄 단위로 견줬다. 룰 표는 오타 하나("자신 및 순위" → "자산 및 순위")만 고쳐졌고, 주가 표·규칙 카드는 그대로다. 게임은 바꾸지 않았다.
 
-- **영어 회사 이름:** 여담에 한국어·영어·일본어 이름 표가 생겼다. 영어는 NotSoGood Capital, Mucho Construction, Banger Steel, Alt Ent, Open Security, CoyoTech, Analog Electronics: 맨 위 "On the names"에 적은 두 자막 가운데 일반 자막의 이름이다. 이 게임은 더빙을 따라가는 청각 장애인용 자막의 이름(Seasoned Financial …)을 쓴다. 문서의 글도 "해외 더빙 및 자막에서는 … 대부분은 단어 그대로 직역하거나 수식어를 제외"라고 적어 두 벌이 있음을 말한다. 바꾸지 않았다: 영어판에 이름이 두 벌이라는 사실은 그대로이고, 바꾸면 규칙판의 가려진 낱말 폭·짧은 이름·테스트가 함께 바뀐다. *(어느 쪽을 쓸지는 내 선택이었고 지금도 그렇다; 사용자에게 2026-11-20에 알림.)*
+- **영어 회사 이름:** 여담에 한국어·영어·일본어 이름 표가 생겼다. 영어는 NotSoGood Capital, Mucho Construction, Banger Steel, Alt Ent, Open Security, CoyoTech, Analog Electronics: 맨 위 "On the names"에 적은 두 자막 가운데 일반 자막의 이름이다. 이 게임은 더빙을 따라가는 청각 장애인용 자막의 이름(Seasoned Financial …)을 쓴다. 문서의 글도 "해외 더빙 및 자막에서는 … 대부분은 단어 그대로 직역하거나 수식어를 제외"라고 적어 두 벌이 있음을 말한다. 바꾸지 않았다: 영어판에 이름이 두 벌이라는 사실은 그대로이고, 바꾸면 규칙판의 가려진 낱말 폭·짧은 이름·테스트가 함께 바뀐다. *(어느 쪽을 쓸지는 내 선택이었다. 2026-11-20에 사용자에게 물었고, 답은 "추천하는대로해줘": 추천은 그대로 두는 것이라 바꾸지 않았다. 이유: 지금 이름은 더빙과 화면 글자를 따르는 쪽이고 한국어 이름의 말장난(맛소금→Seasoned, 방어→Defense, 후자→Latter)을 그대로 옮긴 쪽이다; 일반 자막의 이름으로 바꿔도 규칙은 달라지지 않는데 규칙판의 가려진 낱말 폭·짧은 이름·테스트가 함께 바뀐다.)*
 - 그 밖에 새로 적힌 것(결과 표의 피스 등락, 피스 변동 내역, 플레이어 평가)은 규칙이 아니다.
 
