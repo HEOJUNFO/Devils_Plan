@@ -11,6 +11,7 @@ import {
   type Fault,
   type FaultConfig,
 } from "../../../src/shared/fault";
+import directoryConfig from "../../../src/shared/directory-config.json";
 
 /** A short sentence and few of everything, so the limits are reached with little. */
 const CONFIG: FaultConfig = {
@@ -89,6 +90,13 @@ describe("faultOf", () => {
     expect(faultOf({ message: "boom", source: "chrome-extension://abcdef/content.js", line: 1, column: 1 }, "lobby", "chrome", CONFIG)).toBeNull();
     expect(faultOf({ message: "boom", stack: "inject@moz-extension://abcdef/content.js:1:1" }, "lobby", "firefox", CONFIG)).toBeNull();
     expect(faultOf({ message: "boom", stack: "inject@webkit-masked-url://hidden/:1:1" }, "lobby", "safari", CONFIG)).toBeNull();
+  });
+
+  it("notes nothing, with the limits the site runs with, of what an app's own browser on Android throws in the script it puts in every page", () => {
+    // as it was read in the inbox on 2026-11-21: the app's script, not the game's, and nothing a player saw
+    const raw = { message: "Uncaught Error: Error invoking postMessage: Java object is gone", stack: "Error: Error invoking postMessage: Java object is gone\n    at navigation_performance_logger_android:1:11722" };
+    expect(faultOf(raw, "lobby", "android", directoryConfig.faults)).toBeNull();
+    expect(faultOf({ message: "Uncaught TypeError: x is not a function" }, "lobby", "android", directoryConfig.faults)).not.toBeNull();
   });
 });
 
