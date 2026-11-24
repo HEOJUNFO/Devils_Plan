@@ -109,9 +109,11 @@ def card(lang: str) -> Image.Image:
         y += 96
     names = [game["title"][lang] for game in GAMES.values()]
     y = 444
-    for line in lines_of(draw, names, face(36), 1032):
-        draw.text((84, y), line, font=face(36), fill=BONE_DIM)
-        y += 48
+    # as large as leaves every name inside the frame: the list grows with the games
+    size = next(size for size in (36, 24) if len(lines_of(draw, names, face(size), 1032)) * size * 4 // 3 <= 150 or size == 24)
+    for line in lines_of(draw, names, face(size), 1032):
+        draw.text((84, y), line, font=face(size), fill=BONE_DIM)
+        y += size * 4 // 3
     address = face(24)
     # beside the name, where the games' names never reach however many lines they take
     draw.text((1116 - draw.textlength(ADDRESS, font=address), 114), ADDRESS, font=address, fill=TEAL)

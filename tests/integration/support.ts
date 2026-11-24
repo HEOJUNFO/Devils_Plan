@@ -31,6 +31,7 @@ export type BingoMessage = Extract<ServerMessage, { type: "game"; game: "auction
 export type WallMessage = Extract<ServerMessage, { type: "game"; game: "wall-go-2" }>;
 export type GradMessage = Extract<ServerMessage, { type: "game"; game: "gradation" }>;
 export type EqMessage = Extract<ServerMessage, { type: "game"; game: "equation-traffic-light" }>;
+export type HitMessage = Extract<ServerMessage, { type: "game"; game: "hit-stay" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -250,6 +251,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "equation-traffic-light" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of HIT, STAY that satisfies `match`. */
+  async hitWhere(match: (game: HitMessage) => boolean = () => true): Promise<HitMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "hit-stay" && match(message)) return message;
     }
   }
 

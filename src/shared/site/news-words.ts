@@ -45,12 +45,17 @@ const BINGO = name("auction-bingo");
 const WALL = name("wall-go-2");
 const GRAD = name("gradation");
 const EQ = name("equation-traffic-light");
+const HIT = name("hit-stay");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-25",
     lines: [
+      {
+        ko: `새 게임 ${HIT.ko}(힛, 스테이): 시즌의 여섯 번째 메인 매치입니다. 2~5명이 카드의 합을 주사위가 정한 한계 숫자에 가깝게 맞추며 칩을 겁니다. 카드를 더 받으면 힛, 멈추면 스테이이고, 칩이 떨어지면 빠집니다.`,
+        en: `A new game, ${HIT.en}: the season's sixth main match. Two to five players bet chips on a card total close to the limit a die sets. Hit for another card or stay; a player with no chips is out, and the last one remaining wins.`,
+      },
       {
         ko: `새 게임 ${EQ.ko}: 결승전의 마지막 게임입니다. 두 사람이 아홉 칸 수식을 몰래 만들고, 턴마다 함께 답안을 내어 칸마다 빨강·노랑·초록 힌트를 받습니다. 상대의 수식을 먼저 맞히면 이깁니다.`,
         en: `A new game, ${EQ.en}: the last game of the final. Two players each create a hidden nine-cell equation, then submit an answer every turn and get a red, yellow or green clue on each cell. Guess your opponent's equation first to win.`,

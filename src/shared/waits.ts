@@ -17,6 +17,7 @@ import type { GrassView } from "./games/lay-the-grass/rules";
 import type { EqView } from "./games/equation-traffic-light/rules";
 import type { GemView } from "./games/gem-black-market/rules";
 import type { GradView } from "./games/gradation/rules";
+import type { HitView } from "./games/hit-stay/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
 import type { WallView } from "./games/wall-go-2/rules";
@@ -123,4 +124,16 @@ export function gradWaits(view: Pick<GradView, "you" | "phase" | "duel" | "ready
 export function eqWaits(view: Pick<EqView, "you" | "phase" | "ready">): boolean {
   if (view.you === null) return false;
   return (view.phase === "create" || view.phase === "guess") && !view.ready.includes(view.you);
+}
+
+/**
+ * HIT, STAY: this player has cards in the round and has not chosen the one
+ * to reveal, or the turn to bet, or to hit or stay, is theirs. Past the time
+ * the room reveals a card for them, folds or stays. Whoever has folded, or
+ * is out of chips, is waited on for nothing.
+ */
+export function hitWaits(view: Pick<HitView, "you" | "phase" | "turn"> & { hands: Pick<HitView["hands"][number], "player" | "chosen">[] }): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "reveal") return view.hands.some((hand) => hand.player === view.you && !hand.chosen);
+  return (view.phase === "bet" || view.phase === "hit") && view.turn === view.you;
 }

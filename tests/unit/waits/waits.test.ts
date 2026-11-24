@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, eqWaits, gemWaits, gradWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, eqWaits, gemWaits, gradWaits, hitWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -200,5 +200,32 @@ describe("eqWaits", () => {
   it("does not wait on someone watching", () => {
     expect(eqWaits(view({ you: null }))).toBe(false);
     expect(eqWaits(view({ you: null, phase: "guess" }))).toBe(false);
+  });
+});
+
+describe("hitWaits", () => {
+  const hands = (chosen: boolean) => [
+    { player: ME, chosen },
+    { player: OTHER, chosen: false },
+  ];
+  const view = (changes: Partial<Parameters<typeof hitWaits>[0]> = {}): Parameters<typeof hitWaits>[0] => ({ you: ME, phase: "reveal", turn: null, hands: hands(false), ...changes });
+
+  it("waits on a player who has not chosen the card to reveal, and on the player whose turn it is to bet, or to hit or stay", () => {
+    expect(hitWaits(view())).toBe(true);
+    expect(hitWaits(view({ phase: "bet", turn: ME }))).toBe(true);
+    expect(hitWaits(view({ phase: "hit", turn: ME }))).toBe(true);
+  });
+
+  it("does not wait on a player who has chosen, on one whose turn it is not, nor while an outcome is on show", () => {
+    expect(hitWaits(view({ hands: hands(true) }))).toBe(false);
+    expect(hitWaits(view({ phase: "bet", turn: OTHER }))).toBe(false);
+    expect(hitWaits(view({ phase: "hit", turn: OTHER }))).toBe(false);
+    for (const phase of ["show", "ended"] as const) expect(hitWaits(view({ phase, turn: null }))).toBe(false);
+  });
+
+  it("does not wait on someone out of the game, nor on someone watching", () => {
+    expect(hitWaits(view({ hands: [{ player: OTHER, chosen: false }] }))).toBe(false);
+    expect(hitWaits(view({ you: null }))).toBe(false);
+    expect(hitWaits(view({ you: null, phase: "bet", turn: ME }))).toBe(false);
   });
 });

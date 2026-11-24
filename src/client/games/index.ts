@@ -17,6 +17,8 @@ import { createGradScreen } from "./gradation/screen";
 import { WORDS as GRAD_WORDS } from "./gradation/words";
 import { createEqScreen } from "./equation-traffic-light/screen";
 import { WORDS as EQ_WORDS } from "./equation-traffic-light/words";
+import { createHitScreen } from "./hit-stay/screen";
+import { WORDS as HIT_WORDS } from "./hit-stay/words";
 import { createWallScreen } from "./wall-go-2/screen";
 import { WORDS as WALL_WORDS } from "./wall-go-2/words";
 import { createCubesScreen } from "./count-cubes/screen";
@@ -327,5 +329,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: EQ_WORDS.sheet,
+  },
+  "hit-stay": {
+    screen(canvas, handlers) {
+      const screen = createHitScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "hit-stay") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: HIT_WORDS.sheet,
   },
 };

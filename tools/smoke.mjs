@@ -21,7 +21,8 @@
 // room of 경매 빙고 and play its first round, and two a room of 벽바둑Ⅱ, who
 // place their counters and play a turn; then two make a room of 그라데이션,
 // distribute their cubes and play its first round, and two a room of
-// 수식 신호등, who create their equations and play it to a win.
+// 수식 신호등, who create their equations and play it to a win, and two a
+// room of HIT, STAY, who play its first round until one of them folds.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -58,6 +59,7 @@ const BINGO_GAME = "auction-bingo";
 const WALL_GAME = "wall-go-2";
 const GRAD_GAME = "gradation";
 const EQ_GAME = "equation-traffic-light";
+const HIT_GAME = "hit-stay";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1565,6 +1567,74 @@ async function eqGame() {
   for (const p of players) p.close();
 }
 
+/** HIT, STAY, in a room of its own: two players, off the list. They reveal a card each, bet, one takes a card, and the other folds in the second round of betting. */
+async function hitGame() {
+  const players = await roomOf(HIT_GAME, 2, "hitter");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("HIT, STAY to start", (m) => m.type === "game" || m.type === "refused")));
+  const view = games[0].view;
+  check(
+    "HIT, STAY for two starts with the basic bet in, a limit of five through 12 and three cards face down each of 35",
+    games.every((g, n) => g.type === "game" && g.game === HIT_GAME && g.view.you === n && g.view.phase === "reveal" && g.view.mine.cards.length === 3 && g.view.mine.revealed === null) &&
+      view.round === 1 &&
+      view.pot === 2 &&
+      view.limit >= 5 &&
+      view.limit <= 12 &&
+      view.left === 29 &&
+      view.chips.every((each) => each.chips === 29) &&
+      games[0].rules.cards === 35,
+    `limit ${view.limit}, first: player ${view.first}`,
+  );
+  check(
+    "of the other's cards a player is sent only that three are face down",
+    games.every((g, n) => g.view.hands.find((hand) => hand.player === 1 - n).hidden === 3 && g.view.hands.find((hand) => hand.player === 1 - n).revealed === null) && !JSON.stringify(games[1]).includes("deck"),
+  );
+  const first = view.first;
+  const second = 1 - first;
+
+  for (const p of players) p.send({ type: "action", action: { type: "reveal", card: 0 } });
+  const betting = await Promise.all(players.map((p) => p.until("the first round of betting", (m) => m.type === "game" && m.view.phase === "bet")));
+  check(
+    "once both have chosen, each sees the card the other revealed, and the first player is to bet",
+    betting.every((g, n) => g.view.hands.find((hand) => hand.player === 1 - n).revealed === games[1 - n].view.mine.cards[0] && g.view.hands.find((hand) => hand.player === 1 - n).hidden === 2 && g.view.turn === first && g.view.most === 29),
+  );
+  players[second].send({ type: "action", action: { type: "bet", to: 1 } });
+  const early = await players[second].until("the refusal", (m) => m.type === "refused");
+  check("a bet out of turn is refused", early.reason === "not-your-turn", early.reason);
+  players[first].send({ type: "action", action: { type: "bet", to: 30 } });
+  const over = await players[first].until("the refusal", (m) => m.type === "refused");
+  check("a bet of more than the player with the fewest chips has is refused", over.reason === "bet-over-most", over.reason);
+  players[first].send({ type: "action", action: { type: "bet", to: 3 } });
+  await Promise.all(players.map((p) => p.until("the bet", (m) => m.type === "game" && m.view.phase === "bet" && m.view.high === 3)));
+  players[second].send({ type: "action", action: { type: "call" } });
+  const hitting = await Promise.all(players.map((p) => p.until("the additional cards", (m) => m.type === "game" && m.view.phase === "hit")));
+  check("with the bet called, additional cards are offered from the first player", hitting.every((g) => g.view.turn === first && g.view.pot === 8));
+
+  players[first].send({ type: "action", action: { type: "stay" } });
+  await Promise.all(players.map((p) => p.until("the stay", (m) => m.type === "game" && m.view.phase === "hit" && m.view.turn === second)));
+  players[second].send({ type: "action", action: { type: "hit" } });
+  const hit = await Promise.all(players.map((p) => p.until("the hit", (m) => m.type === "game" && m.view.hands.some((hand) => hand.extra.length === 1))));
+  check(
+    "an additional card is shown to both, and whoever hit is asked again",
+    hit.every((g) => g.view.hands.find((hand) => hand.player === second).extra.length === 1 && g.view.left === 28 && g.view.turn === second) && hit[0].view.hands.find((hand) => hand.player === second).extra[0] === hit[1].view.hands.find((hand) => hand.player === second).extra[0],
+  );
+  players[second].send({ type: "action", action: { type: "stay" } });
+  const again = await Promise.all(players.map((p) => p.until("the second round of betting", (m) => m.type === "game" && m.view.phase === "bet" && m.view.betting === 2)));
+  check("once both have stayed, the second round of betting begins with the first player", again.every((g) => g.view.turn === first && g.view.high === 0 && g.view.most === 26));
+
+  players[first].send({ type: "action", action: { type: "fold" } });
+  const taken = await Promise.all(players.map((p) => p.until("the pot taken", (m) => m.type === "game" && m.view.phase === "show")));
+  check(
+    "when the other folds, the last player in takes the pot and no hand is shown",
+    taken.every((g) => g.view.outcome.how === "fold" && g.view.outcome.pot === 8 && g.view.outcome.hands.length === 0 && g.view.chips.find((each) => each.player === second).chips === 34 && g.view.chips.find((each) => each.player === first).chips === 26) &&
+      taken[first].view.hands.find((hand) => hand.player === second).hidden === 2,
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in HIT, STAY either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1582,6 +1652,7 @@ const PARTS = [
   [WALL_GAME, wallGame],
   [GRAD_GAME, gradGame],
   [EQ_GAME, eqGame],
+  [HIT_GAME, hitGame],
 ];
 
 async function main() {

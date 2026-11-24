@@ -1,0 +1,21 @@
+{
+  "deck": [
+    [7, 1],
+    [6, 2],
+    [5, 3],
+    [4, 4],
+    [3, 5],
+    [2, 6],
+    [1, 7],
+    [-1, 7]
+  ],
+  "dealt": 3,
+  "startChips": 30,
+  "basicBet": 1,
+  "basicBetEvery": 10,
+  "limitLowest": 5,
+  "limitHighest": 12,
+  "revealSeconds": 30,
+  "showSeconds": 7,
+  "takeSeconds": 3
+}

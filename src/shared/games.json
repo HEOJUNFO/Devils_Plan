@@ -332,5 +332,20 @@
     "teamSize": 0,
     "turns": false,
     "variants": []
+  },
+  "hit-stay": {
+    "title": {
+      "ko": "HIT, STAY",
+      "en": "Hit, Stay"
+    },
+    "summary": {
+      "ko": "카드의 합을 한계 숫자에 가깝게 맞추고 칩을 겁니다. 더 받으면 힛, 멈추면 스테이.",
+      "en": "Bet chips on a card total close to the limit. Hit for another card, or stay."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 5,
+    "teamSize": 0,
+    "turns": true,
+    "variants": []
   }
 }
