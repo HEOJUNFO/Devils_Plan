@@ -302,5 +302,20 @@
     "teamSize": 0,
     "turns": true,
     "variants": []
+  },
+  "gradation": {
+    "title": {
+      "ko": "그라데이션",
+      "en": "Gradation"
+    },
+    "summary": {
+      "ko": "숫자 큐브를 통 일곱 개에 숨겨 담고 한 통씩 겨룹니다. 상대는 통의 색만 봅니다.",
+      "en": "Hide number cubes in seven cups and duel cup by cup. Only a cup's shade shows."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 3,
+    "teamSize": 0,
+    "turns": true,
+    "variants": []
   }
 }

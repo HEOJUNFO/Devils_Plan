@@ -19,7 +19,8 @@
 // of the ninth game, bid for who is first and play its first round, one of
 // them checking a card for a piece; then three make a
 // room of 경매 빙고 and play its first round, and two a room of 벽바둑Ⅱ, who
-// place their counters and play a turn.
+// place their counters and play a turn; then two make a room of 그라데이션,
+// distribute their cubes and play its first round.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -54,6 +55,7 @@ const EIGHTH_GAME = "piggy-bank";
 const NINTH_GAME = "gem-black-market";
 const BINGO_GAME = "auction-bingo";
 const WALL_GAME = "wall-go-2";
+const GRAD_GAME = "gradation";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1458,6 +1460,60 @@ async function wallGame() {
 }
 
 /** The parts of the check, each by the game it plays, in the order they run. */
+/** 그라데이션, in a room of its own: two players, off the list. They distribute their cubes and play the first round. */
+async function gradGame() {
+  const players = await roomOf(GRAD_GAME, 2, "grader");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("그라데이션 to start", (m) => m.type === "game" || m.type === "refused")));
+  const view = games[0].view;
+  const [first, second] = view.duel;
+  check(
+    "그라데이션 for two starts with seven empty cups each and five minutes to distribute the cubes, nobody waiting",
+    games.every((g, n) => g.type === "game" && g.game === GRAD_GAME && g.view.you === n && g.view.phase === "arrange" && g.view.mine.values === null && g.view.mine.used.length === 7) &&
+      view.rounds === 7 &&
+      view.waiting.length === 0 &&
+      games[0].clock.turn > 290_000 &&
+      games[0].rules.maxSum === 30,
+    `first: player ${first}`,
+  );
+
+  players[first].send({ type: "action", action: { type: "arrange", values: [0, 0, 2, 6, 7, 7, 9] } });
+  const over = await players[first].until("the refusal", (m) => m.type === "refused");
+  check("cubes that add up to more than 30 are refused", over.reason === "over-sum", over.reason);
+  players[first].send({ type: "action", action: { type: "arrange", values: [0, 1, 0, 6, 7, 7, 9] } });
+  const unordered = await players[first].until("the second refusal", (m) => m.type === "refused" && m.reason !== "over-sum");
+  check("a number lower than the one to its left is refused", unordered.reason === "not-ascending", unordered.reason);
+
+  const cups = [0, 0, 1, 6, 7, 7, 9];
+  players[first].send({ type: "action", action: { type: "arrange", values: cups } });
+  const one = await Promise.all(players.map((p) => p.until("the first to be done", (m) => m.type === "game" && m.view.ready.length === 1)));
+  check(
+    "a player's cubes are sent to that player alone",
+    one[first].view.mine.values.join() === cups.join() && one[second].view.mine.values === null && !JSON.stringify(one[second]).includes(JSON.stringify(cups)),
+  );
+  players[second].send({ type: "action", action: { type: "arrange", values: [0, 1, 2, 2, 8, 8, 9] } });
+  const begun = await Promise.all(players.map((p) => p.until("the first round", (m) => m.type === "game" && m.view.phase === "submit")));
+  check("with both done the first round begins with the first player", begun.every((g) => g.view.round === 1 && g.view.turn === first && g.view.first === first));
+
+  players[second].send({ type: "action", action: { type: "submit", cup: 0 } });
+  const early = await players[second].until("the refusal", (m) => m.type === "refused");
+  check("a cup cannot be submitted out of turn", early.reason === "not-your-turn", early.reason);
+  players[first].send({ type: "action", action: { type: "submit", cup: 5 } });
+  const shown = await Promise.all(players.map((p) => p.until("the first cup", (m) => m.type === "game" && m.view.table.length === 1)));
+  check(
+    "of the first player's cup the opponent is sent the shade and nothing more",
+    shown.every((g) => g.view.table[0].player === first && g.view.table[0].shade === 1 && Object.keys(g.view.table[0]).length === 2 && g.view.lines.length === 0 && g.view.turn === second),
+  );
+  players[second].send({ type: "action", action: { type: "submit", cup: 6 } });
+  const revealed = await Promise.all(players.map((p) => p.until("the numbers", (m) => m.type === "game" && m.view.phase === "reveal")));
+  check(
+    "both numbers are shown once both cups are in, and the higher scores a point",
+    revealed.every((g) => g.view.lines.length === 1 && g.view.lines[0].winner === second && g.view.lines[0].plays.map((play) => play.value).join() === "7,9" && g.view.score.find((each) => each.player === second).points === 1),
+  );
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 const PARTS = [
   [GAME, firstGame],
   [SECOND_GAME, secondGame],
@@ -1472,6 +1528,7 @@ const PARTS = [
   [NINTH_GAME, ninthGame],
   [BINGO_GAME, bingoGame],
   [WALL_GAME, wallGame],
+  [GRAD_GAME, gradGame],
 ];
 
 async function main() {

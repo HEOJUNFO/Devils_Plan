@@ -15,6 +15,7 @@ import type { BingoView } from "./games/auction-bingo/rules";
 import type { RectView } from "./games/count-rectangles/rules";
 import type { GrassView } from "./games/lay-the-grass/rules";
 import type { GemView } from "./games/gem-black-market/rules";
+import type { GradView } from "./games/gradation/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
 import type { WallView } from "./games/wall-go-2/rules";
@@ -98,4 +99,16 @@ export function bingoWaits(view: Pick<BingoView, "you" | "phase" | "out" | "choi
  */
 export function wallWaits(view: Pick<WallView, "you" | "turn">): boolean {
   return view.you !== null && view.turn === view.you;
+}
+
+/**
+ * 그라데이션: this player is one of the match's two, and their cubes are not
+ * distributed yet, or the cup waited for is theirs. Past the time the room
+ * distributes cubes, or submits a cup, for them. Whoever waits for the
+ * match's winner is waited on for nothing.
+ */
+export function gradWaits(view: Pick<GradView, "you" | "phase" | "duel" | "ready" | "turn">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "arrange") return view.duel.includes(view.you) && !view.ready.includes(view.you);
+  return view.phase === "submit" && view.turn === view.you;
 }

@@ -43,12 +43,17 @@ const PIGGY = name("piggy-bank");
 const GEM = name("gem-black-market");
 const BINGO = name("auction-bingo");
 const WALL = name("wall-go-2");
+const GRAD = name("gradation");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-25",
     lines: [
+      {
+        ko: `새 게임 ${GRAD.ko}: 시즌의 여섯 번째 감옥 매치입니다. 2~3명이 숫자 큐브를 통 일곱 개에 숨겨 담고, 색만 보이는 통을 한 개씩 내어 큰 수로 겨룹니다.`,
+        en: `A new game, ${GRAD.en}: the season's sixth prison match. Two or three players hide number cubes in seven cups and submit them one at a time, showing only a cup's shade; the higher number wins the round.`,
+      },
       {
         ko: "연승을 셉니다. 한 방에서 두 판 이상 잇달아 1위를 하면 채팅과 방 전적에 몇 연승인지 나오고, 내 기록에는 게임마다 지금의 연승과 가장 길었던 연승이 남습니다.",
         en: "Streaks are counted. Two or more games in a row at the top of a room show in its chat and its tally, and your own record keeps, for each game, the streak you are on and the longest you have had.",

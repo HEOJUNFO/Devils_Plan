@@ -29,6 +29,7 @@ export type PiggyMessage = Extract<ServerMessage, { type: "game"; game: "piggy-b
 export type GemMessage = Extract<ServerMessage, { type: "game"; game: "gem-black-market" }>;
 export type BingoMessage = Extract<ServerMessage, { type: "game"; game: "auction-bingo" }>;
 export type WallMessage = Extract<ServerMessage, { type: "game"; game: "wall-go-2" }>;
+export type GradMessage = Extract<ServerMessage, { type: "game"; game: "gradation" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -232,6 +233,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "wall-go-2" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 그라데이션 that satisfies `match`. */
+  async gradWhere(match: (game: GradMessage) => boolean = () => true): Promise<GradMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "gradation" && match(message)) return message;
     }
   }
 

@@ -1,0 +1,11 @@
+{
+  "cups": 7,
+  "highest": 9,
+  "copies": 2,
+  "maxSum": 30,
+  "winsInARow": 2,
+  "arrangeSeconds": 300,
+  "stopWhenDecided": true,
+  "revealSeconds": 5,
+  "betweenSeconds": 10
+}

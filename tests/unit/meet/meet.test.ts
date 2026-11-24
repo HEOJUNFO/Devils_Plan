@@ -52,7 +52,7 @@ describe("meetNear", () => {
 
   it("goes round a list that is longer than a week a day at a time, every game in its turn", () => {
     // eleven games: the game of a day comes round again eleven days later, whatever day of the week that is
-    const eleven: MeetConfig = { ...CONFIG, games: [...GAME_IDS] };
+    const eleven: MeetConfig = { ...CONFIG, games: GAME_IDS.slice(0, 11) };
     const games = Array.from({ length: 22 }, (_, day) => meetNear(MONDAY_NINE + day * 24 * HOUR - HOUR, eleven)?.game);
 
     expect(new Set(games.slice(0, 11)).size).toBe(11);
@@ -146,18 +146,16 @@ describe("the meetings as they are set", () => {
     expect([...meetConfig.games].sort()).toEqual([...GAME_IDS].sort());
   });
 
-  it("kept the game of every meeting of the week the four later games joined them, and gave those the four days after it", () => {
-    // Set on 2026-11-20, a Friday. Through Friday the 27th each meeting is for the game it was for when
-    // the days of the week had a game each; the games of the show's third and fourth day follow.
-    const at = (date: number, hour: number, minute = 0): number => Date.UTC(2026, 10, date, hour - 9, minute);
-    const game = (date: number, hour: number, minute = 0): string | undefined => meetNear(at(date, hour, minute), meetConfig)?.game;
+  it("kept the game of every meeting through 1 December when the later games joined them, and gave those the days after it", () => {
+    // Set on 2026-11-25, a Wednesday. Through Tuesday 1 December each day's meeting is for the game it was
+    // for before; the games of the show's sixth day and of its final follow, and then the list goes round.
+    const game = (month: number, date: number): string | undefined => meetNear(Date.UTC(2026, month - 1, date, 12, 0), meetConfig)?.game;
 
-    expect([game(21, 12, 30), game(21, 21), game(21, 23)]).toEqual(["mystery-stock-market", "russian-roulette", "under-thirteen"]);
-    expect([game(22, 12, 30), game(22, 21), game(22, 23)]).toEqual(["russian-roulette", "under-thirteen", "count-rectangles"]);
-    expect([23, 24, 25, 26, 27].map((date) => game(date, 21))).toEqual(["under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
-    expect([28, 29, 30].map((date) => game(date, 21))).toEqual(["piggy-bank", "gem-black-market", "auction-bingo"]);
-    expect(meetNear(Date.UTC(2026, 11, 1, 12, 0), meetConfig)?.game).toBe("wall-go-2");
-    expect(meetNear(Date.UTC(2026, 11, 2, 12, 0), meetConfig)?.game).toBe("mystery-stock-market");
+    expect([24, 25, 26, 27].map((date) => game(11, date))).toEqual(["count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
+    expect([28, 29, 30].map((date) => game(11, date))).toEqual(["piggy-bank", "gem-black-market", "auction-bingo"]);
+    expect([1, 2].map((date) => game(12, date))).toEqual(["wall-go-2", "gradation"]);
+    expect([3, 4, 5].map((date) => game(12, date))).toEqual(["mystery-stock-market", "russian-roulette", "under-thirteen"]);
+    expect(game(12, 6)).toBe("count-rectangles");
   });
 
   it("are held at a time of day, every day", () => {

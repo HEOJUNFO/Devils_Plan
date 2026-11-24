@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, gemWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, gemWaits, gradWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -157,5 +157,27 @@ describe("wallWaits", () => {
     expect(wallWaits({ you: null, turn: ME })).toBe(false);
     expect(wallWaits({ you: ME, turn: null })).toBe(false);
     expect(wallWaits({ you: null, turn: null })).toBe(false);
+  });
+});
+
+describe("gradWaits", () => {
+  const view = (changes: Partial<Parameters<typeof gradWaits>[0]> = {}): Parameters<typeof gradWaits>[0] => ({ you: ME, phase: "arrange", duel: [ME, OTHER], ready: [], turn: null, ...changes });
+
+  it("waits on a player of the match whose cubes are not distributed, and on whoever is to submit a cup", () => {
+    expect(gradWaits(view())).toBe(true);
+    expect(gradWaits(view({ ready: [OTHER] }))).toBe(true);
+    expect(gradWaits(view({ phase: "submit", turn: ME }))).toBe(true);
+  });
+
+  it("does not wait on a player who is done, whose opponent is to submit, or while numbers and results are shown", () => {
+    expect(gradWaits(view({ ready: [ME] }))).toBe(false);
+    expect(gradWaits(view({ phase: "submit", turn: OTHER }))).toBe(false);
+    for (const phase of ["reveal", "between", "ended"] as const) expect(gradWaits(view({ phase, turn: null }))).toBe(false);
+  });
+
+  it("waits on nobody who waits for the match's winner, and on nobody who is watching", () => {
+    expect(gradWaits(view({ duel: [OTHER, 7] }))).toBe(false);
+    expect(gradWaits(view({ you: null }))).toBe(false);
+    expect(gradWaits(view({ you: null, phase: "submit", turn: ME }))).toBe(false);
   });
 });
