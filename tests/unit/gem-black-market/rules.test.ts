@@ -97,6 +97,21 @@ const SHOW_EXCHANGES: [player: number, target: Target][] = [
   [8, toBuyer(0)], [9, toPlayer(1)], [1, toPlayer(9)], [2, toBuyer(1)], [3, toPlayer(1)], [4, toPlayer(3)], [5, toBuyer(2)], [6, toPlayer(3)], [7, toBuyer(1)],
   [7, toPlayer(5)], [6, toPlayer(4)], [5, TRASH], [4, toPlayer(2)], [3, toPlayer(4)], [2, toPlayer(4)], [1, TRASH], [9, TRASH], [8, toBuyer(2)],
 ];
+/** The second round of the same match, from the document's table as it stood on 2026-11-24: player 2 was first. */
+const SHOW_HANDS_2 = [C(1), C(1), S(2), G(5), C(2), G(4), B(-6), D(5), B(-4)];
+const SHOW_BUYERS_2 = [C(2), D(6), S(3)];
+const SHOW_TRASH_2 = S(3);
+const SHOW_EXCHANGES_2: [player: number, target: Target][] = [
+  [2, toPlayer(9)], [3, toPlayer(5)], [4, toPlayer(8)], [5, TRASH], [6, toPlayer(1)], [7, toPlayer(2)], [8, toPlayer(7)], [9, toBuyer(0)], [1, toPlayer(8)],
+  [1, toPlayer(2)], [9, toPlayer(1)], [8, TRASH], [7, toPlayer(4)], [6, toPlayer(9)], [5, toPlayer(6)], [4, toPlayer(5)], [3, toBuyer(2)], [2, toPlayer(4)],
+];
+/** Its third round: player 2 was first again, and one of the buyers' cards was a bomb. */
+const SHOW_HANDS_3 = [B(-6), D(5), C(2), S(3), D(6), C(1), C(1), C(2), S(2)];
+const SHOW_BUYERS_3 = [S(3), B(-4), G(5)];
+const SHOW_EXCHANGES_3: [player: number, target: Target][] = [
+  [2, toPlayer(3)], [3, toPlayer(5)], [4, toPlayer(7)], [5, toPlayer(2)], [6, toPlayer(8)], [7, toBuyer(2)], [8, toBuyer(1)], [9, toPlayer(5)], [1, toPlayer(6)],
+  [1, toPlayer(6)], [9, toPlayer(1)], [8, toPlayer(6)], [7, toPlayer(6)], [6, toPlayer(9)], [5, toPlayer(6)], [4, toPlayer(9)], [3, toBuyer(2)], [2, toPlayer(5)],
+];
 /** The ring of secret buddies: each player along it is the buddy of the one after, and the last of the first. */
 const SHOW_RING = [1, 8, 3, 6, 2, 5, 4, 9, 7];
 /** Everyone's points after the third round, by player, and the final points the show gave. */
@@ -123,6 +138,37 @@ describe("the show's match", () => {
     // points with a diamond: a piece; and the -6 names the next first player
     expect(state.shown?.lines.map((line) => line.pieces)).toEqual([0, 0, 0, 1, 0, 0, 0, 0, 0]);
     expect(state.shown?.next).toBe(2);
+  });
+
+  it("plays its second round as the table has it: the cards everyone ends with, and the points the round added", () => {
+    // player 2 held the -6 at the end of the first round and is first
+    let state = allReady(game(9, 2, SHOW_HANDS_2, SHOW_BUYERS_2, SHOW_TRASH_2));
+    expect(state.sequence).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 1, 1, 9, 8, 7, 6, 5, 4, 3, 2]);
+
+    for (const [player, target] of SHOW_EXCHANGES_2) {
+      expect(turnOf(state)).toBe(player);
+      state = swap(state, target);
+    }
+
+    expect(state.buyers).toEqual([C(1), D(6), C(2)]);
+    expect(state.trash).toEqual(G(4));
+    expect(state.players.map((player) => hand(state, player))).toEqual([C(2), B(-6), S(3), B(-4), G(5), S(3), D(5), S(2), C(1)]);
+    // the document's points after two rounds less those after one: 16 -6 3 11 5 -1 13 3 11 less 9 -6 3 12 2 -4 5 0 3
+    expect(points(state)).toEqual([7, 0, 0, -1, 3, 3, 8, 3, 8]);
+    expect(state.shown?.next).toBe(2);
+  });
+
+  it("plays its third round as the table has it, a bomb among the buyers' cards and all: the points the round added", () => {
+    // player 2 held the -6 again; the card the trash began with is not in the document, and nobody touched it
+    let state = allReady(game(9, 2, SHOW_HANDS_3, SHOW_BUYERS_3, S(3)));
+
+    for (const [player, target] of SHOW_EXCHANGES_3) {
+      expect(turnOf(state)).toBe(player);
+      state = swap(state, target);
+    }
+
+    // the document's points after three rounds less those after two: 21 -12 6 11 13 10 9 5 15 less 16 -6 3 11 5 -1 13 3 11
+    expect(points(state)).toEqual([5, -6, 3, 0, 8, 11, -4, 2, 4]);
   });
 
   it("ends as its last table has it: everyone's points times their secret buddy's", () => {
@@ -508,6 +554,26 @@ describe("the end", () => {
     expect(rewards([2, 5, 1, 0])).toEqual([[0, 0], [10, 2], [5, 1], [0, 0]]);
     expect(rewards([1, 1, 9, -1])).toEqual([[-1, 0], [1, 1], [9, 1], [-9, 0]]);
     expect(rewards([-3, -4, 1, 11])).toEqual([[-33, 0], [12, 2], [-4, 0], [11, 2]]);
+  });
+
+  it("puts of players level on final points whoever has more points of their own higher, and of those level in that too whoever exchanged earlier the second time round", () => {
+    // player 2 is first: the turns are 2 3 4 1 and back again 1 4 3 2. Everyone's final points are 2 x 3 = 6.
+    const state = game(4, 2);
+    const level = { ...state, tallies: state.tallies.map((tally, at) => ({ ...tally, points: [2, 3, 2, 3][at] })) };
+
+    const finals = finalsOf(level, config);
+
+    expect(state.sequence).toEqual([2, 3, 4, 1, 1, 4, 3, 2]);
+    expect(finals.map((line) => line.final)).toEqual([6, 6, 6, 6]);
+    // 4 and 2 have three points of their own, 1 and 3 two; 4 exchanges before 2 on the way back, and 1 before 3
+    expect(finals.map((line) => [line.player, line.place])).toEqual([[4, 1], [2, 2], [1, 3], [3, 4]]);
+  });
+
+  it("leaves players level in everything a place to share where no order of turns tells them apart", () => {
+    const state = game(4, 2);
+    const level = { ...state, sequence: [], tallies: state.tallies.map((tally) => ({ ...tally, points: 2 })) };
+
+    expect(finalsOf(level, config).map((line) => line.place)).toEqual([1, 1, 1, 1]);
   });
 
   it("pays a player the pieces they have more than they started with on top of the reward, and takes nothing for those they spent", () => {

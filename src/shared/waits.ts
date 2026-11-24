@@ -44,12 +44,13 @@ export function underWaits(view: Pick<UnderView, "you" | "phase" | "turn" | "ask
 }
 
 /**
- * 네모 세기: the third either-or choice is up and this player has not made
- * theirs. Past the time the room chooses for them. The rest of the game is
+ * 네모 세기: the third either-or choice is up, it is this player's to make
+ * (a losing team's is its leader's alone) and they have not made theirs.
+ * Past the time the room chooses for them. The rest of the game is
  * a race to the buzzer, which waits on no one; whoever pressed it is looking.
  */
 export function rectWaits(view: Pick<RectView, "you" | "choosing">): boolean {
-  return view.you !== null && view.choosing !== null && view.choosing.card !== null && view.choosing.mine === null;
+  return view.you !== null && view.choosing !== null && view.choosing.yours && view.choosing.mine === null;
 }
 
 /**

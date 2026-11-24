@@ -60,17 +60,21 @@ describe("rectWaits", () => {
   const you = { player: ME, unit: 0 };
 
   it("waits on a player who has the third choice to make, until they have made it", () => {
-    expect(rectWaits({ you, choosing: { card: "winners", chosen: [], mine: null } })).toBe(true);
-    expect(rectWaits({ you, choosing: { card: "winners", chosen: [ME], mine: 1 } })).toBe(false);
+    expect(rectWaits({ you, choosing: { card: "winners", yours: true, chosen: [], of: 3, mine: null } })).toBe(true);
+    expect(rectWaits({ you, choosing: { card: "winners", yours: true, chosen: [ME], of: 3, mine: 1 } })).toBe(false);
+  });
+
+  it("does not wait on a player of a losing team whose leader makes its choice", () => {
+    expect(rectWaits({ you, choosing: { card: "losers", yours: false, chosen: [], of: 4, mine: null } })).toBe(false);
   });
 
   it("does not wait while no choice is up, nor on one whose card is not theirs to see", () => {
     expect(rectWaits({ you, choosing: null })).toBe(false);
-    expect(rectWaits({ you, choosing: { card: null, chosen: [], mine: null } })).toBe(false);
+    expect(rectWaits({ you, choosing: { card: null, yours: false, chosen: [], of: 3, mine: null } })).toBe(false);
   });
 
   it("waits on nobody who is watching", () => {
-    expect(rectWaits({ you: null, choosing: { card: "winners", chosen: [], mine: null } })).toBe(false);
+    expect(rectWaits({ you: null, choosing: { card: "winners", yours: false, chosen: [], of: 3, mine: null } })).toBe(false);
   });
 });
 

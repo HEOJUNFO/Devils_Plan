@@ -7,7 +7,7 @@
  * this screen shows what it sends and asks for a buzz or an answer.
  */
 import { LIT_SECONDS, litSeconds } from "../../../shared/games/count-rectangles/reveal";
-import { GAP, type Card, type Option, type Rect, type RectEvent, type ScoreLine } from "../../../shared/games/count-rectangles/rules";
+import { GAP, chooses, type Card, type Option, type Rect, type RectEvent, type ScoreLine } from "../../../shared/games/count-rectangles/rules";
 import { rectWaits } from "../../../shared/waits";
 import { afterBuzz, typeAnswer } from "../../../shared/games/count-rectangles/typing";
 import { hits, type Press, type Reach } from "../../../shared/frame";
@@ -298,7 +298,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   /** Whether the third choice is this player's to make now. */
   function choosing(): boolean {
     const up = latest?.view.choosing ?? null;
-    return up !== null && up.card !== null && up.mine === null && !latest!.frozen;
+    return up !== null && up.yours && up.mine === null && !latest!.frozen;
   }
   /** The points of `player`, once the game has counted them. */
   function scoreOf(player: number): ScoreLine | null {
@@ -830,8 +830,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     pen.txt(WORDS.choice.name, 12, 26, C.amber);
     // what follows the choice's name on its line
     const after = 12 + pen.width(WORDS.choice.name) + 8;
-    const total = view.units.reduce((sum, unit) => sum + unit.members.length, 0);
-    const count = WORDS.choice.picked(up.chosen.length, total);
+    const count = WORDS.choice.picked(up.chosen.length, up.of);
     if (up.card === null || me === null) {
       // someone watching has no card: only how the choosing stands
       pen.txt(WORDS.choice.everyone, after, 26, C.boneD);
@@ -843,17 +842,19 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
       const rect = OPTION_RECTS[option - 1];
       const [x, y, w, h] = rect;
       const taken = up.mine === option;
-      const lit = taken || (up.mine === null && pointed === option);
+      const lit = taken || (up.yours && up.mine === null && pointed === option);
       const live = choosing() && !pending;
       pen.px(x, y, w, h, lit ? C.amberD : C.steelDD);
       pen.px(x + 1, y + 1, w - 2, h - 2, lit ? "#3a2a12" : live && inRect(mouse, rect) ? C.btnH : C.btn);
       pen.txt(`${option}`, x + 7, y + 18, C.dim);
       // the option's name, as large as its language leaves room for, level with the middle of the card
       const size = WORDS.choice.optionSize;
-      pen.txt(OPTION_NAMES[up.card][option - 1], x + 20, y + Math.round((h - size - 2) / 2), lit ? C.amber : up.mine === null ? C.bone : C.dim, "left", size);
+      // the cards of a choice that is someone else's to make (a losing team's leader's) are written dim
+      const open = up.yours && up.mine === null;
+      pen.txt(OPTION_NAMES[up.card][option - 1], x + 20, y + Math.round((h - size - 2) / 2), lit ? C.amber : open ? C.bone : C.dim, "left", size);
       const lines = cardLines(up.card, option);
       const top = y + Math.round((h - lines.length * 15) / 2) + 1;
-      lines.forEach((line, at) => pen.txt(line, x + 100, top + at * 15, lit || up.mine === null ? C.bone : C.dim));
+      lines.forEach((line, at) => pen.txt(line, x + 100, top + at * 15, lit || open ? C.bone : C.dim));
     }
     // a team's leader, whose share differs from the others': named under the cards
     const leader = view.units[me.unit].leader;
@@ -979,8 +980,10 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
         const words = points.map((line) => signed(line!.total)).join(" ");
         pen.txt(words, team ? x + PANEL_WIDTH - 1 : ux + 81, uy, unit.place > 0 ? C.amber : C.boneD, "right");
       } else if (view.phase === "choose" && view.choosing !== null) {
-        // the choice: a mark for each player who has chosen
-        unit.members.forEach((player, at) => pen.px(px + at * 8, uy + 4, 6, 5, view.choosing!.chosen.includes(player) ? C.brass : C.steelDD));
+        // the choice: a mark for each player it is put to (of a losing team its leader alone), lit once they have chosen
+        unit.members
+          .filter((player) => chooses(view, player))
+          .forEach((player, at) => pen.px(px + at * 8, uy + 4, 6, 5, view.choosing!.chosen.includes(player) ? C.brass : C.steelDD));
       } else if (unit.place > 0) pen.txt(WORDS.panel.place(unit.place), px, uy, C.amber);
       else for (let i = 0; i < latest!.rules.winsNeeded; i++) pen.px(px + i * 8, uy + 4, 6, 5, i < unit.wins ? C.brass : C.steelDD);
     });
@@ -1069,10 +1072,12 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
           ? WORDS.choice.watching
           : up.mine !== null
             ? WORDS.choice.done
-            : pointed !== null
+            : !up.yours
+              ? WORDS.choice.leaderPicks
+              : pointed !== null
               ? WORDS.choice.confirm
               : WORDS.choice.how;
-      pen.txt(how, 6, 241, up !== null && up.card !== null && up.mine === null ? C.bone : C.boneD);
+      pen.txt(how, 6, 241, up !== null && up.yours && up.mine === null ? C.bone : C.boneD);
       pen.txt(WORDS.choice.rules, 6, 254, C.boneD);
       return;
     }

@@ -151,7 +151,12 @@ export interface FinalLine {
   buddy: number;
   buddyPoints: number;
   final: number;
-  /** 1 for the highest; players level share a place. */
+  /**
+   * 1 for the highest. Of players level on final points whoever has more
+   * points of their own is higher, and of those level in that too whoever
+   * exchanged earlier the second time round in the last round (the document's
+   * rule 12); players nothing tells apart share a place.
+   */
   place: number;
   /** The show's reward in pieces for the final points. */
   reward: number;
@@ -477,8 +482,15 @@ function show(state: GemState, now: number, config: GemConfig): void {
   wait(state, "reveal", now + config.revealSeconds * 1000);
 }
 
-/** The final count: each player's points times their secret buddy's. */
-export function finalsOf(state: Pick<GemState, "players" | "tallies" | "buddyOf">, config: GemConfig): FinalLine[] {
+/**
+ * The final count: each player's points times their secret buddy's, and the
+ * places by it. Level final points are parted as the document's rule 12 has
+ * it: "마니또 점수 반영 전 개인 승점이 더 높은 쪽이 상위 순위", and then "3라운드
+ * 두 번째 카드 교환 순서가 앞선 쪽": whoever's second turn of the last round
+ * came earlier, the one further from that round's first player. `sequence` is
+ * the last round's turns; without it such players share a place.
+ */
+export function finalsOf(state: Pick<GemState, "players" | "tallies" | "buddyOf"> & Partial<Pick<GemState, "sequence">>, config: GemConfig): FinalLine[] {
   const points = (player: number): number => state.tallies.find((each) => each.player === player)?.points ?? 0;
   const lines = state.players.map((player) => {
     // their buddy is whoever is the buddy *of* them
@@ -486,10 +498,17 @@ export function finalsOf(state: Pick<GemState, "players" | "tallies" | "buddyOf"
     const final = points(player) * points(buddy);
     return { player, own: points(player), buddy, buddyPoints: points(buddy), final };
   });
+  // the turns of the way back: the second half of the round's turns
+  const turns = state.sequence ?? [];
+  const back = turns.slice(turns.length / 2);
+  const second = (player: number): number => (back.includes(player) ? back.indexOf(player) : Infinity);
+  /** Whether `a` is placed above `b`. */
+  const above = (a: (typeof lines)[number], b: (typeof lines)[number]): boolean =>
+    a.final !== b.final ? a.final > b.final : a.own !== b.own ? a.own > b.own : second(a.player) < second(b.player);
   return lines
     .map((line) => ({
       ...line,
-      place: 1 + lines.filter((other) => other.final > line.final).length,
+      place: 1 + lines.filter((other) => above(other, line)).length,
       reward: line.final >= config.rewardMoreFrom ? 2 : line.final >= config.rewardFrom ? 1 : 0,
     }))
     .sort((a, b) => a.place - b.place || a.player - b.player);
@@ -651,15 +670,16 @@ export interface GemStanding {
   /** Their points as last made public, and at the end their final points. */
   points: number;
   pieces: number;
-  /** 1 for the most; players level share a place. */
+  /** 1 for the most; players level share a place while the game is played, and at its end have the place of the final count ({@link FinalLine.place}). */
   place: number;
 }
 
 /** Where everyone stands: by the points last made public while the game is played, by the final points once it is over. */
 export function standingsOf(state: GemState): GemStanding[] {
-  const points = (player: number): number => state.finals?.find((each) => each.player === player)?.final ?? state.told.find((each) => each.player === player)?.points ?? 0;
+  const final = (player: number): FinalLine | undefined => state.finals?.find((each) => each.player === player);
+  const points = (player: number): number => final(player)?.final ?? state.told.find((each) => each.player === player)?.points ?? 0;
   return state.players
-    .map((player) => ({ player, points: points(player), pieces: tallyOf(state, player).pieces, place: 1 + state.players.filter((other) => points(other) > points(player)).length }))
+    .map((player) => ({ player, points: points(player), pieces: tallyOf(state, player).pieces, place: final(player)?.place ?? 1 + state.players.filter((other) => points(other) > points(player)).length }))
     .sort((a, b) => a.place - b.place || a.player - b.player);
 }
 

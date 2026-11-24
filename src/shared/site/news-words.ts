@@ -53,6 +53,14 @@ export const NEWS: NewsDay[] = [
         ko: "연승을 셉니다. 한 방에서 두 판 이상 잇달아 1위를 하면 채팅과 방 전적에 몇 연승인지 나오고, 내 기록에는 게임마다 지금의 연승과 가장 길었던 연승이 남습니다.",
         en: "Streaks are counted. Two or more games in a row at the top of a room show in its chat and its tally, and your own record keeps, for each game, the streak you are on and the longest you have had.",
       },
+      {
+        ko: `${RECT.ko}: 패배한 팀의 희생·질책은 이제 팀의 대표 혼자 정합니다 (승리한 팀의 독식·헌신은 전처럼 다수결).`,
+        en: `${RECT.en}: a losing team's Sacrifice or Punish is now its leader's alone to pick (a winning team still decides Monopolize or Sacrifice by majority).`,
+      },
+      {
+        ko: `${GEM.ko}: 최종 승점이 같으면 곱하기 전의 내 승점이 높은 사람이, 그것도 같으면 마지막 라운드에서 돌아오는 차례가 빠른 사람이 위 순위가 됩니다.`,
+        en: `${GEM.en}: players level on final points are now ranked by their own points before the multiplying, and then by who exchanged earlier on the way back in the last round.`,
+      },
     ],
   },
   {

@@ -86,7 +86,7 @@ describe("the third choice in a room", () => {
     const sent = seenBy(session, players, 0, now + 3000);
 
     expect(sent.view.phase).toBe("choose");
-    expect(sent.view.choosing).toEqual({ card: "alone", chosen: [], mine: null });
+    expect(sent.view.choosing).toEqual({ card: "alone", yours: true, chosen: [], of: 2, mine: null });
     expect(sent.clock).toEqual({ answer: null, problem: null, next: null, choose: CHOOSE_MS - 3000, stand: null });
     expect(host.running(session)).toBe(true);
     expect(host.deadline(session)).toBe(now + CHOOSE_MS);
@@ -98,8 +98,8 @@ describe("the third choice in a room", () => {
 
     const after = act(session, players, 0, { type: "choose", option: 1 }, now + 1000);
 
-    expect(seenBy(after, players, 0, now + 1000).view.choosing).toEqual({ card: "alone", chosen: [0], mine: 1 });
-    expect(seenBy(after, players, 1, now + 1000).view.choosing).toEqual({ card: "alone", chosen: [0], mine: null });
+    expect(seenBy(after, players, 0, now + 1000).view.choosing).toEqual({ card: "alone", yours: true, chosen: [0], of: 2, mine: 1 });
+    expect(seenBy(after, players, 1, now + 1000).view.choosing).toEqual({ card: "alone", yours: true, chosen: [0], of: 2, mine: null });
     expect(seenBy(after, players, 1, now + 1000).view.choices).toEqual([]);
   });
 

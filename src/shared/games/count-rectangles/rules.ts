@@ -14,9 +14,10 @@
  *
  * With the mini-game goes the third either-or choice of the main match it is
  * part of ({@link Card}), made once the race is over: it is how the document
- * shares out the race's points. A winning team and a losing team each decide
- * by majority how theirs fall between its leader and the other two; a player
- * alone takes a small loss or plays an added contest for more.
+ * shares out the race's points. A winning team decides by majority, and a
+ * losing team by its leader ({@link chooses}), how theirs fall between its
+ * leader and the other two; a player alone takes a small loss or plays an
+ * added contest for more.
  *
  * A "unit" is what the document calls a team: three players who teamed up, or
  * one player alone. Nothing here reads the clock or `Math.random`: the caller
@@ -139,7 +140,11 @@ export interface Chosen {
   forced: boolean;
 }
 
-/** What a team decided: the option most of its players chose. */
+/**
+ * What a team decided. A team that won decides by majority: the option most
+ * of its players chose. A team that did not has its leader decide: the
+ * document's card for it reads "선택 결과는 각 팀의 대표가 결정함".
+ */
 export interface Decision {
   unit: number;
   option: Option;
@@ -298,6 +303,8 @@ export type RectRefusal =
   | "not-choosing"
   /** A choice once made stands. */
   | "already-chosen"
+  /** A losing team's choice is its leader's: the other two have none to make. */
+  | "not-yours-to-choose"
   /** The added contest is between those who chose it. */
   | "not-in-duel"
   | "bad-action"
@@ -334,10 +341,12 @@ export interface RectView {
   solutions: Rect[] | null;
   /**
    * The third choice while it is being made: the viewer's card (`null` for
-   * someone watching), who has chosen so far, and what the viewer chose.
-   * What the others chose is not sent until everyone has.
+   * someone watching), whether the choice on it is the viewer's to make (it
+   * is not for someone watching, nor for a losing team's players other than
+   * its leader), who has chosen so far of how many that choose, and what the
+   * viewer chose. What the others chose is not sent until everyone has.
    */
-  choosing: { card: Card | null; chosen: number[]; mine: Option | null } | null;
+  choosing: { card: Card | null; yours: boolean; chosen: number[]; of: number; mine: Option | null } | null;
   /** What everyone chose and each team decided, once everyone has chosen. */
   choices: Chosen[];
   decisions: Decision[];
@@ -609,13 +618,30 @@ export function optionOf(state: Pick<RectState, "choices">, player: number): Opt
   return state.choices.find((chosen) => chosen.player === player)?.option ?? null;
 }
 
+/**
+ * Whether the third choice is `player`'s to make: a player alone chooses for
+ * themselves, every player of a team that won has a vote in its majority, and
+ * of a team that did not win only its leader chooses (the document: "패배 3인
+ * 팀 대상으로 진행. 선택 결과는 각 팀의 대표가 결정함").
+ */
+export function chooses(state: Pick<RectState, "units">, player: number): boolean {
+  const unit = state.units.find((each) => each.members.includes(player));
+  if (unit === undefined) return false;
+  return unit.members.length === 1 || unit.place > 0 || unit.leader === player;
+}
+
+/** Everyone the third choice is put to ({@link chooses}), lowest id first. */
+export function choosers(state: Pick<RectState, "units">): number[] {
+  return state.units
+    .flatMap((unit) => unit.members)
+    .filter((player) => chooses(state, player))
+    .sort((a, b) => a - b);
+}
+
 /** The players whose choice the game is waiting for, lowest id first. */
 export function awaited(state: RectState): number[] {
   if (state.phase !== "choose") return [];
-  return state.units
-    .flatMap((unit) => unit.members)
-    .filter((player) => optionOf(state, player) === null)
-    .sort((a, b) => a - b);
+  return choosers(state).filter((player) => optionOf(state, player) === null);
 }
 
 /** What the room chooses for `player` when their time is up. */
@@ -772,6 +798,11 @@ function resolve(state: RectState, now: number, config: RectConfig): void {
   state.choosing = null;
   state.decisions = state.units.flatMap((unit, index) => {
     if (unit.members.length === 1) return [];
+    if (unit.place === 0) {
+      // a team that did not win: what its leader chose
+      const led = unit.leader === null ? null : optionOf(state, unit.leader);
+      return [{ unit: index, option: led ?? defaultFor(state, unit.members[0], config) }];
+    }
     const first = unit.members.filter((player) => optionOf(state, player) === 1).length;
     const second = unit.members.length - first;
     const option: Option = first > second ? 1 : second > first ? 2 : defaultFor(state, unit.members[0], config);
@@ -902,6 +933,7 @@ export function applyAction(state: RectState, player: number, action: RectAction
   if (action.type === "choose") {
     if (state.phase !== "choose") return { ok: false, reason: "not-choosing" };
     if (action.option !== 1 && action.option !== 2) return { ok: false, reason: "bad-action" };
+    if (!chooses(state, player)) return { ok: false, reason: "not-yours-to-choose" };
     if (optionOf(state, player) !== null) return { ok: false, reason: "already-chosen" };
     const next = clone(state);
     chose(next, player, action.option, false, now, config);
@@ -1078,7 +1110,9 @@ export function viewFor(state: RectState, player: number | null): RectView {
         ? null
         : {
             card: player === null ? null : cardOf(state, player),
+            yours: player !== null && chooses(state, player),
             chosen: state.choices.map((chosen) => chosen.player),
+            of: choosers(state).length,
             mine: player === null ? null : optionOf(state, player),
           },
     // what is still being chosen is nobody's to see but the chooser's

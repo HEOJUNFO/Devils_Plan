@@ -237,7 +237,7 @@ describe("GameRoom: a room of 네모 세기", () => {
     expect(over.view.phase).toBe("choose");
     expect(over.view.units[1]).toMatchObject({ wins: shipped.winsNeeded, place: 1 });
     expect(over.view.history.at(-1)).toEqual({ type: "raced", round: 2, reason: "half" });
-    expect(over.view.choosing).toEqual({ card: "alone", chosen: [], mine: null });
+    expect(over.view.choosing).toEqual({ card: "alone", yours: true, chosen: [], of: 2, mine: null });
     expect(over.clock).toMatchObject({ answer: null, problem: null, next: null, stand: null });
     expect(over.clock.choose).toBeGreaterThan(0);
     expect(over.clock.choose).toBeLessThanOrEqual(CHOOSE_MS);
@@ -517,8 +517,8 @@ describe("GameRoom: the third choice of 네모 세기", () => {
     choose(clients, 1, 2);
     const ended = await Promise.all(clients.map((client) => client.rectWhere((game) => game.view.phase === "ended")));
 
-    expect(mine.view.choosing).toEqual({ card: "alone", chosen: [0], mine: 2 });
-    expect(theirs.view.choosing).toEqual({ card: "alone", chosen: [0], mine: null });
+    expect(mine.view.choosing).toEqual({ card: "alone", yours: true, chosen: [0], of: 2, mine: 2 });
+    expect(theirs.view.choosing).toEqual({ card: "alone", yours: true, chosen: [0], of: 2, mine: null });
     expect(theirs.view.choices).toEqual([]);
     for (const game of ended) {
       expect(game.view.choices).toEqual([

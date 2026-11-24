@@ -31,7 +31,7 @@ const ko = {
       "끝나면 선택 3으로 승점을 나눕니다. 모두 동시에 고르고, 한 번 고르면 바꿀 수 없습니다.",
       [
         "승리 팀 (팀의 다수결): 독식은 대표 5점·두 팀원 1점씩, 헌신은 대표 1점·두 팀원 3점씩.",
-        "패배 팀 (팀의 다수결): 희생은 대표만 3점 차감, 질책은 두 팀원만 2점씩 차감.",
+        "패배 팀 (팀의 대표가 결정): 희생은 대표만 3점 차감, 질책은 두 팀원만 2점씩 차감.",
         "개인: 승리 7점, 패배 3점 차감. 안전은 1점 더 차감, 도전은 추가 대결 (도전한 사람끼리 먼저 맞히면 승리: 피스 3개, 지면 3점 차감). 도전한 사람이 한 명뿐이면 대결 없이 승리합니다.",
       ],
     ],
@@ -41,6 +41,7 @@ const ko = {
   refused: {
     "not-choosing": "지금은 선택하는 때가 아닙니다",
     "already-chosen": "이미 골랐습니다. 선택은 바꿀 수 없습니다",
+    "not-yours-to-choose": "패배 팀의 선택은 팀의 대표가 정합니다",
     "not-in-duel": "추가 대결은 도전을 고른 사람끼리 합니다",
     "not-open": "지금은 버저를 누를 수 없습니다",
     "shut-out": "이 문제는 이미 틀렸습니다",
@@ -83,7 +84,7 @@ const ko = {
     /** Whom each card is for, as its heading says: 206 pixels after the choice's name. */
     cardFor: {
       winners: "승리 팀 · 팀의 다수결로 정합니다",
-      losers: "패배 팀 · 팀의 다수결로 정합니다",
+      losers: "패배 팀 · 팀의 대표가 정합니다",
       alone: "개인 플레이어",
     },
     /** What an option does, in lines of 184 pixels, with the numbers of the rules. */
@@ -98,7 +99,9 @@ const ko = {
     /** Before how many have picked: who leads the viewer's team. */
     leader: (who: string | null) => (who === null ? "우리 팀 대표: 나 · " : `우리 팀 대표: ${who} · `),
     /** Under the line that says where the game stands, 468 pixels. */
-    watching: "승리 팀은 독식·헌신, 패배 팀은 희생·질책을 다수결로, 개인은 도전·안전을 고릅니다.",
+    watching: "승리 팀은 다수결로, 패배 팀은 대표가, 개인은 각자 둘 중 하나를 고릅니다.",
+    /** To a losing team's player who does not lead it: the choice is the leader's. */
+    leaderPicks: "패배 팀은 대표가 고릅니다. 모두 고르면 한꺼번에 공개됩니다.",
     done: "골랐습니다. 모두 고르면 한꺼번에 공개됩니다.",
     confirm: byInput("한 번 더 누르거나 Enter로 확정합니다. 한 번 고르면 바꿀 수 없습니다.", "한 번 더 누르면 확정합니다. 한 번 고르면 바꿀 수 없습니다."),
     how: byInput("1 또는 2, 또는 카드를 눌러 고릅니다. 한 번 고르면 바꿀 수 없습니다.", "카드를 눌러 고릅니다. 한 번 고르면 바꿀 수 없습니다."),
@@ -230,9 +233,9 @@ const ko = {
     { text: `${rules.teamSize}명이 팀을 맺었으면 팀 전체가 그렇습니다. 문제마다 제한 시간은 ${Math.round(rules.problemSeconds / 60)}분입니다.`, tone: "dim" },
     { text: `${rules.winsNeeded}번 맞히면 승리하고 이후 문제에서 빠집니다.` },
     { text: "전체 팀(혼자도 한 팀)의 절반이 승리하면 끝납니다." },
-    { text: `끝나면 선택 3. 승리 팀은 승점 ${rules.winPoints}점을 독식(대표 ${rules.hogLeader}, 팀원 ${rules.hogMember}씩)이나` },
+    { text: `끝나면 선택 3. 승리 팀은 다수결로 승점 ${rules.winPoints}점을 독식(대표 ${rules.hogLeader}, 팀원 ${rules.hogMember}씩)이나` },
     { text: `헌신(대표 ${rules.devoteLeader}, 팀원 ${rules.devoteMember}씩)으로 나누고, 패배 팀은 희생(대표만 -${rules.sacrificeLeader})이나` },
-    { text: `질책(두 팀원 -${rules.blameMember}씩)으로 나눕니다. 팀의 다수결, 대표는 가장 많이 맞힌 팀원.` },
+    { text: `질책(두 팀원 -${rules.blameMember}씩)을 대표가 고릅니다. 대표는 가장 많이 맞힌 팀원.` },
     { text: `개인: 승리 +${rules.winPoints}, 패배 -${rules.losePoints}. 안전 -${rules.safeLoss}. 도전: 대결(혼자면 승리), 피스 ${rules.duelPieces}개, 지면 -${rules.duelLoss}.` },
     { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
@@ -259,7 +262,7 @@ const en: typeof ko = {
       "At the end, Selection 3 shares out the points. Everyone picks at once, and a pick cannot be changed.",
       [
         "Winning team (by its majority): Monopolize gives the leader 5 and the two others 1 each; Sacrifice gives the leader 1 and the two others 3 each.",
-        "Losing team (by its majority): Sacrifice takes 3 from the leader alone; Punish takes 2 from each of the two others.",
+        "Losing team (its leader decides): Sacrifice takes 3 from the leader alone; Punish takes 2 from each of the two others.",
         "Alone: 7 for a win, 3 off for a loss. Safety takes 1 more off; Challenge is a playoff (those who chose it race to answer first: the winner gets 3 Pieces, the losers lose 3 points). Whoever is alone in choosing it wins with no playoff.",
       ],
     ],
@@ -268,6 +271,7 @@ const en: typeof ko = {
   refused: {
     "not-choosing": "This is not the time to pick",
     "already-chosen": "You have picked. A pick cannot be changed",
+    "not-yours-to-choose": "A losing team's pick is its leader's to make",
     "not-in-duel": "The playoff is among those who chose Challenge",
     "not-open": "The buzzer cannot be pressed now",
     "shut-out": "You already got this problem wrong",
@@ -305,7 +309,7 @@ const en: typeof ko = {
     optionSize: 12,
     cardFor: {
       winners: "Winning team · by its majority",
-      losers: "Losing team · by its majority",
+      losers: "Losing team · leader decides",
       alone: "Players alone",
     },
     hog: (leader, member) => [`Leader gets ${leader} points,`, `the two others ${member} each`],
@@ -318,6 +322,7 @@ const en: typeof ko = {
     everyone: "Everyone is picking",
     leader: (who) => (who === null ? "Our leader: you · " : `Our leader: ${who} · `),
     watching: "Winning teams, losing teams and players alone each pick one of two.",
+    leaderPicks: "A losing team's leader picks for it. All picks are shown at once.",
     done: "Picked. All picks are shown at once when everyone has picked.",
     confirm: byInput("Press it again, or Enter, to confirm. A pick cannot be changed.", "Tap it again to confirm. A pick cannot be changed."),
     how: byInput("Press 1 or 2, or a card, to pick. A pick cannot be changed.", "Tap a card to pick. A pick cannot be changed."),
@@ -414,9 +419,9 @@ const en: typeof ko = {
     { text: `nor can your team (of ${rules.teamSize}). A problem lasts ${Math.round(rules.problemSeconds / 60)} minutes at most.`, tone: "dim" },
     { text: `${rules.winsNeeded} right answers win, and a winner sits out the problems after.` },
     { text: "It ends when half the teams (a player alone is a team) have won." },
-    { text: `Then Selection 3. Winners share ${rules.winPoints}: Monopolize (leader ${rules.hogLeader}, others ${rules.hogMember})` },
+    { text: `Then Selection 3. Winners vote: Monopolize (leader ${rules.hogLeader}, others ${rules.hogMember})` },
     { text: `or Sacrifice (leader ${rules.devoteLeader}, others ${rules.devoteMember}). Losers: Sacrifice (leader -${rules.sacrificeLeader}) or` },
-    { text: `Punish (others -${rules.blameMember} each), by majority. Alone: win +${rules.winPoints}, lose -${rules.losePoints};` },
+    { text: `Punish (others -${rules.blameMember} each): the leader picks. Alone: win +${rules.winPoints}, lose -${rules.losePoints};` },
     { text: `Safety -${rules.safeLoss}; Challenge: a playoff (alone: a win), ${rules.duelPieces} Pieces, losers -${rules.duelLoss}.` },
     { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],

@@ -70,8 +70,8 @@ function miss(state: RectState, player: number, now: number, config: RectConfig 
  * that is to win) answers two problems right. Returns the game with the
  * third choice up, and a moment shortly after it came up.
  */
-function raced(state: RectState, winners: number[], config: RectConfig = CONFIG): { state: RectState; now: number } {
-  let now = START + 1000;
+function raced(state: RectState, winners: number[], config: RectConfig = CONFIG, from = START + 1000): { state: RectState; now: number } {
+  let now = from;
   let current = state;
   for (const player of winners) {
     for (let right = 0; right < config.winsNeeded; right++) {
@@ -217,9 +217,9 @@ describe("choosing", () => {
     const other = viewFor(after, 1);
     const watching = viewFor(after, null);
 
-    expect(own.choosing).toEqual({ card: "alone", chosen: [0], mine: 1 });
-    expect(other.choosing).toEqual({ card: "alone", chosen: [0], mine: null });
-    expect(watching.choosing).toEqual({ card: null, chosen: [0], mine: null });
+    expect(own.choosing).toEqual({ card: "alone", yours: true, chosen: [0], of: 3, mine: 1 });
+    expect(other.choosing).toEqual({ card: "alone", yours: true, chosen: [0], of: 3, mine: null });
+    expect(watching.choosing).toEqual({ card: null, yours: false, chosen: [0], of: 3, mine: null });
     expect(JSON.stringify(other)).not.toContain('"option"');
     expect(other.choices).toEqual([]);
   });
@@ -268,21 +268,49 @@ describe("teams", () => {
   const fixture = () => raced(game(teamed(2, 2)), [1, 6]);
   const rest: [number, Option][] = [[6, 2], [7, 2]];
 
-  it("decide by what most of their players chose", () => {
+  it("decide by what most of their players chose where they won, and by what their leader chose where they did not", () => {
     const { state, now } = fixture();
 
-    const ended = choose(state, [[0, 1], [1, 2], [2, 2], [3, 2], [4, 1], [5, 1], ...rest], now);
+    const ended = choose(state, [[0, 1], [1, 2], [2, 2], [3, 2], ...rest], now);
 
     expect(ended.decisions).toEqual([
       { unit: 0, option: 2 },
-      { unit: 1, option: 1 },
+      { unit: 1, option: 2 },
     ]);
+  });
+
+  it("wait in a losing team for its leader alone (player 3, who took it first): the other two have no choice to make", () => {
+    const { state, now } = fixture();
+
+    expect(awaited(state)).toEqual([0, 1, 2, 3, 6, 7]);
+    expect(applyAction(state, 4, { type: "choose", option: 1 }, now, CONFIG)).toEqual({ ok: false, reason: "not-yours-to-choose" });
+    expect(applyAction(state, 5, { type: "choose", option: 2 }, now, CONFIG)).toEqual({ ok: false, reason: "not-yours-to-choose" });
+  });
+
+  it("tell a losing team's other two that the choice is not theirs, and everyone how many are choosing", () => {
+    const { state } = fixture();
+
+    expect(viewFor(state, 3).choosing).toEqual({ card: "losers", yours: true, chosen: [], of: 6, mine: null });
+    expect(viewFor(state, 4).choosing).toEqual({ card: "losers", yours: false, chosen: [], of: 6, mine: null });
+    expect(viewFor(state, 0).choosing).toEqual({ card: "winners", yours: true, chosen: [], of: 6, mine: null });
+  });
+
+  it("leave a losing team's choice to whoever of it answered right, though another took the team first", () => {
+    // player 5 answers one problem right for the team that goes on to lose: its leader
+    const first = solve(game(teamed(2, 2)), 5, START + 1000);
+    const opened = applyTimeout(first, first.pauseUntil!, CONFIG);
+    const { state, now } = raced(opened, [1, 6], CONFIG, first.pauseUntil! + 1000);
+
+    const ended = choose(state, [[0, 2], [1, 2], [2, 2], [5, 2], ...rest], now);
+
+    expect(awaited(state)).toEqual([0, 1, 2, 5, 6, 7]);
+    expect([3, 4, 5].map((player) => pointsOf(ended, player))).toEqual([-CONFIG.blameMember, -CONFIG.blameMember, 0]);
   });
 
   it("give a winning team's leader (player 1, who answered for it) one point and the others three each with 헌신", () => {
     const { state, now } = fixture();
 
-    const ended = choose(state, [[0, 1], [1, 2], [2, 2], [3, 1], [4, 1], [5, 1], ...rest], now);
+    const ended = choose(state, [[0, 1], [1, 2], [2, 2], [3, 1], ...rest], now);
 
     expect([0, 1, 2].map((player) => pointsOf(ended, player))).toEqual([CONFIG.devoteMember, CONFIG.devoteLeader, CONFIG.devoteMember]);
   });
@@ -290,23 +318,23 @@ describe("teams", () => {
   it("give a winning team's leader (player 1, who answered for it) five points and the others one each with 독식", () => {
     const { state, now } = fixture();
 
-    const ended = choose(state, [[0, 1], [1, 1], [2, 2], [3, 1], [4, 1], [5, 1], ...rest], now);
+    const ended = choose(state, [[0, 1], [1, 1], [2, 2], [3, 1], ...rest], now);
 
     expect([0, 1, 2].map((player) => pointsOf(ended, player))).toEqual([CONFIG.hogMember, CONFIG.hogLeader, CONFIG.hogMember]);
   });
 
-  it("take three points from a losing team's leader alone with 희생", () => {
+  it("take three points from a losing team's leader alone where the leader (player 3) took 희생", () => {
     const { state, now } = fixture();
 
-    const ended = choose(state, [[0, 2], [1, 2], [2, 2], [3, 2], [4, 1], [5, 1], ...rest], now);
+    const ended = choose(state, [[0, 2], [1, 2], [2, 2], [3, 1], ...rest], now);
 
     expect([3, 4, 5].map((player) => pointsOf(ended, player))).toEqual([-CONFIG.sacrificeLeader, 0, 0]);
   });
 
-  it("take two points from each of a losing team's other two with 질책", () => {
+  it("take two points from each of a losing team's other two where the leader (player 3) took 질책", () => {
     const { state, now } = fixture();
 
-    const ended = choose(state, [[0, 2], [1, 2], [2, 2], [3, 2], [4, 2], [5, 1], ...rest], now);
+    const ended = choose(state, [[0, 2], [1, 2], [2, 2], [3, 2], ...rest], now);
 
     expect([3, 4, 5].map((player) => pointsOf(ended, player))).toEqual([0, -CONFIG.blameMember, -CONFIG.blameMember]);
   });
@@ -367,6 +395,7 @@ describe("the clock of the choice", () => {
 
     expect(ended.phase).toBe("ended");
     expect(ended.choices.every((chosen) => chosen.forced)).toBe(true);
+    expect(ended.choices.map((chosen) => chosen.player).sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 6, 7]);
     expect([0, 3, 6].map((player) => optionOf(ended, player))).toEqual([
       CONFIG.defaultOptions.winners,
       CONFIG.defaultOptions.losers,
@@ -570,10 +599,10 @@ describe("the points of the sixteen in the document", () => {
     // the race; players 13, 14, 15 and the other two teams do not.
     const { state, now } = raced(game(teamed(3, 7)), [0, 9, 10, 11, 12]);
     const votes: [number, Option][] = [
-      // the winning team takes 헌신, the two losing teams 희생
+      // the winning team takes 헌신, and the leaders of the two losing teams 희생
       [0, 2], [1, 2], [2, 2],
-      [3, 1], [4, 1], [5, 1],
-      [6, 1], [7, 1], [8, 1],
+      [3, 1],
+      [6, 1],
       // two of the winners alone take 도전, everyone else alone 안전
       [9, 1], [10, 1], [11, 2], [12, 2], [13, 2], [14, 2], [15, 2],
     ];
