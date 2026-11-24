@@ -44,12 +44,17 @@ const GEM = name("gem-black-market");
 const BINGO = name("auction-bingo");
 const WALL = name("wall-go-2");
 const GRAD = name("gradation");
+const EQ = name("equation-traffic-light");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-25",
     lines: [
+      {
+        ko: `새 게임 ${EQ.ko}: 결승전의 마지막 게임입니다. 두 사람이 아홉 칸 수식을 몰래 만들고, 턴마다 함께 답안을 내어 칸마다 빨강·노랑·초록 힌트를 받습니다. 상대의 수식을 먼저 맞히면 이깁니다.`,
+        en: `A new game, ${EQ.en}: the last game of the final. Two players each create a hidden nine-cell equation, then submit an answer every turn and get a red, yellow or green clue on each cell. Guess your opponent's equation first to win.`,
+      },
       {
         ko: `새 게임 ${GRAD.ko}: 시즌의 여섯 번째 감옥 매치입니다. 2~3명이 숫자 큐브를 통 일곱 개에 숨겨 담고, 색만 보이는 통을 한 개씩 내어 큰 수로 겨룹니다.`,
         en: `A new game, ${GRAD.en}: the season's sixth prison match. Two or three players hide number cubes in seven cups and submit them one at a time, showing only a cup's shade; the higher number wins the round.`,

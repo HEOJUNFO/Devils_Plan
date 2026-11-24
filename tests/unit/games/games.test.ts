@@ -109,8 +109,8 @@ describe("the games a room can be made for", () => {
 
   it("names each game in Korean as the show does, and in English as its English release does", () => {
     // CLAUDE.md, Project Rules: a game is shown under the name the show gives it, also where the show made the name up for it
-    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장", "경매 빙고", "벽바둑Ⅱ", "그라데이션"]);
-    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market", "Auction Bingo", "Wall Go II", "Gradation"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장", "경매 빙고", "벽바둑Ⅱ", "그라데이션", "수식 신호등"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market", "Auction Bingo", "Wall Go II", "Gradation", "Equation Traffic Light"]);
   });
 
   it("lets one player alone start the two counting games, and no other game", () => {

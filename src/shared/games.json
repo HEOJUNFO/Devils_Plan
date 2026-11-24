@@ -317,5 +317,20 @@
     "teamSize": 0,
     "turns": true,
     "variants": []
+  },
+  "equation-traffic-light": {
+    "title": {
+      "ko": "수식 신호등",
+      "en": "Equation Traffic Light"
+    },
+    "summary": {
+      "ko": "아홉 칸 수식을 몰래 만들고, 빨강·노랑·초록 힌트로 상대의 수식을 먼저 맞힙니다.",
+      "en": "Create a hidden nine-cell equation, then guess your opponent's from color clues."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 2,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

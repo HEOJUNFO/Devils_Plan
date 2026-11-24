@@ -14,6 +14,7 @@
 import type { BingoView } from "./games/auction-bingo/rules";
 import type { RectView } from "./games/count-rectangles/rules";
 import type { GrassView } from "./games/lay-the-grass/rules";
+import type { EqView } from "./games/equation-traffic-light/rules";
 import type { GemView } from "./games/gem-black-market/rules";
 import type { GradView } from "./games/gradation/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
@@ -111,4 +112,15 @@ export function gradWaits(view: Pick<GradView, "you" | "phase" | "duel" | "ready
   if (view.you === null) return false;
   if (view.phase === "arrange") return view.duel.includes(view.you) && !view.ready.includes(view.you);
   return view.phase === "submit" && view.turn === view.you;
+}
+
+/**
+ * 수식 신호등: this player is one of the two, and has not yet created an
+ * equation, or not yet answered in the turn being played. Past the time the
+ * room sets an equation for them, or shows the turn's clues without their
+ * answer.
+ */
+export function eqWaits(view: Pick<EqView, "you" | "phase" | "ready">): boolean {
+  if (view.you === null) return false;
+  return (view.phase === "create" || view.phase === "guess") && !view.ready.includes(view.you);
 }

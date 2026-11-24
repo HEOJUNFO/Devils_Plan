@@ -20,7 +20,8 @@
 // them checking a card for a piece; then three make a
 // room of 경매 빙고 and play its first round, and two a room of 벽바둑Ⅱ, who
 // place their counters and play a turn; then two make a room of 그라데이션,
-// distribute their cubes and play its first round.
+// distribute their cubes and play its first round, and two a room of
+// 수식 신호등, who create their equations and play it to a win.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -56,6 +57,7 @@ const NINTH_GAME = "gem-black-market";
 const BINGO_GAME = "auction-bingo";
 const WALL_GAME = "wall-go-2";
 const GRAD_GAME = "gradation";
+const EQ_GAME = "equation-traffic-light";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1459,7 +1461,6 @@ async function wallGame() {
   for (const p of players) p.close();
 }
 
-/** The parts of the check, each by the game it plays, in the order they run. */
 /** 그라데이션, in a room of its own: two players, off the list. They distribute their cubes and play the first round. */
 async function gradGame() {
   const players = await roomOf(GRAD_GAME, 2, "grader");
@@ -1514,6 +1515,57 @@ async function gradGame() {
   for (const p of players) p.close();
 }
 
+/** 수식 신호등, in a room of its own: two players, off the list. They create their equations and play two turns, the second of which one of them wins. */
+async function eqGame() {
+  const players = await roomOf(EQ_GAME, 2, "equator");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("수식 신호등 to start", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "수식 신호등 starts with five minutes to create a nine-cell equation, nobody's in",
+    games.every((g, n) => g.type === "game" && g.game === EQ_GAME && g.view.you === n && g.view.phase === "create" && g.view.mine.equation === null && g.view.ready.length === 0) &&
+      games[0].clock.turn > 290_000 &&
+      games[0].rules.cells === 9,
+  );
+
+  const [mine, theirs] = ["91×9^0=91", "2^5+15=47"];
+  players[0].send({ type: "action", action: { type: "create", equation: "2^5+15=48" } });
+  const untrue = await players[0].until("the refusal", (m) => m.type === "refused");
+  check("an equation that is not true is refused", untrue.reason === "not-true", untrue.reason);
+  players[0].send({ type: "action", action: { type: "create", equation: "12+-3=009" } });
+  const together = await players[0].until("the second refusal", (m) => m.type === "refused" && m.reason !== "not-true");
+  check("two symbols next to each other are refused", together.reason === "symbols-together", together.reason);
+
+  players[0].send({ type: "action", action: { type: "create", equation: mine } });
+  const one = await Promise.all(players.map((p) => p.until("the first equation", (m) => m.type === "game" && m.view.ready.length === 1)));
+  check("an equation is sent to its creator alone", one[0].view.mine.equation === mine && one[1].view.mine.equation === null && !JSON.stringify(one[1]).includes(mine));
+  players[1].send({ type: "action", action: { type: "create", equation: theirs } });
+  const begun = await Promise.all(players.map((p) => p.until("the first turn", (m) => m.type === "game" && m.view.phase === "guess")));
+  check("with both equations in, the first turn begins with five minutes for an answer", begun.every((g) => g.view.turn === 1 && g.clock.turn > 290_000 && g.view.rows.length === 0));
+
+  players[0].send({ type: "action", action: { type: "answer", cells: "0×+-÷12^3" } });
+  const waiting = await Promise.all(players.map((p) => p.until("the first answer", (m) => m.type === "game" && m.view.phase === "guess" && m.view.ready.length === 1)));
+  check("an answer is kept from the opponent until both are in", waiting[1].view.rows.length === 0 && !JSON.stringify(waiting[1]).includes("0×+-÷12^3") && waiting[0].view.mine.answer === "0×+-÷12^3");
+  players[1].send({ type: "action", action: { type: "answer", cells: "34=5×6+78" } });
+  const shown = await Promise.all(players.map((p) => p.until("the clues", (m) => m.type === "game" && m.view.rows.length === 1)));
+  check(
+    "both answers are shown with their colour clues, an answer need not be an equation, and the second turn begins",
+    shown.every((g) => g.view.turn === 2 && g.view.rows[0].answers.map((each) => `${each.cells} ${each.clues}`).join() === "0×+-÷12^3 rryrryyyr,34=5×6+78 rryryrrrr") && !JSON.stringify(shown[0]).includes(theirs),
+  );
+
+  players[0].send({ type: "action", action: { type: "answer", cells: theirs } });
+  players[1].send({ type: "action", action: { type: "answer", cells: "91×9^1=91" } });
+  const ended = await Promise.all(players.map((p) => p.until("the end", (m) => m.type === "game" && m.view.phase === "ended")));
+  check(
+    "whoever answers with the opponent's equation wins, and both equations are then shown",
+    ended.every((g) => g.view.winner === 0 && g.view.ended === "played" && g.view.secrets.map((each) => each.equation).join() === `${mine},${theirs}` && g.view.places[0].player === 0),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 수식 신호등 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
+/** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
   [SECOND_GAME, secondGame],
@@ -1529,6 +1581,7 @@ const PARTS = [
   [BINGO_GAME, bingoGame],
   [WALL_GAME, wallGame],
   [GRAD_GAME, gradGame],
+  [EQ_GAME, eqGame],
 ];
 
 async function main() {

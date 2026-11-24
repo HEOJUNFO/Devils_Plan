@@ -15,6 +15,8 @@ import { createBingoScreen } from "./auction-bingo/screen";
 import { WORDS as BINGO_WORDS } from "./auction-bingo/words";
 import { createGradScreen } from "./gradation/screen";
 import { WORDS as GRAD_WORDS } from "./gradation/words";
+import { createEqScreen } from "./equation-traffic-light/screen";
+import { WORDS as EQ_WORDS } from "./equation-traffic-light/words";
 import { createWallScreen } from "./wall-go-2/screen";
 import { WORDS as WALL_WORDS } from "./wall-go-2/words";
 import { createCubesScreen } from "./count-cubes/screen";
@@ -312,5 +314,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: GRAD_WORDS.sheet,
+  },
+  "equation-traffic-light": {
+    screen(canvas, handlers) {
+      const screen = createEqScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "equation-traffic-light") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: EQ_WORDS.sheet,
   },
 };

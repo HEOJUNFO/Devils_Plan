@@ -14,6 +14,7 @@ import { SHEETS as RUSSIAN_ROULETTE } from "./game/words";
 import { SHEETS as AUCTION_BINGO } from "./games/auction-bingo/words";
 import { SHEETS as WALL_GO_2 } from "./games/wall-go-2/words";
 import { SHEETS as GRADATION } from "./games/gradation/words";
+import { SHEETS as EQUATION_TRAFFIC_LIGHT } from "./games/equation-traffic-light/words";
 import { SHEETS as COUNT_CUBES } from "./games/count-cubes/words";
 import { SHEETS as COUNT_RECTANGLES } from "./games/count-rectangles/words";
 import { SHEETS as LAY_THE_GRASS } from "./games/lay-the-grass/words";
@@ -38,4 +39,5 @@ export const SITE_SHEETS: Record<GameId, Record<Lang, RulesSheet>> = {
   "auction-bingo": AUCTION_BINGO,
   "wall-go-2": WALL_GO_2,
   gradation: GRADATION,
+  "equation-traffic-light": EQUATION_TRAFFIC_LIGHT,
 };

@@ -1663,15 +1663,16 @@ describe("setGame", () => {
 
   it("keeps who is host, who is on the list and who was sent out", () => {
     const config = testConfig({ maxPlayers: GAMES[BIG_GAME].maxPlayers });
-    const handed = handHost(roomOf(BIG_GAME, 3, config, true), 2);
-    const kicked = handed === null ? null : kickPlayer(handed, 1, config);
+    // (the two who stay hold the first two places: the smallest game is for two)
+    const handed = handHost(roomOf(BIG_GAME, 3, config, true), 1);
+    const kicked = handed === null ? null : kickPlayer(handed, 2, config);
     if (kicked === null) throw new Error("fixture refused");
 
     const changed = setGame(kicked, SMALL_GAME, config);
     if (changed === null) throw new Error("change refused");
 
-    expect(viewLobby(changed, new Set([0, 2]), 0, config)).toMatchObject({ host: 2, listed: true });
-    expect(joinLobby(changed, { token: tokenFor(1), nick: "p1" }, config)).toEqual({ ok: false, reason: "kicked" });
+    expect(viewLobby(changed, new Set([0, 1]), 0, config)).toMatchObject({ host: 1, listed: true });
+    expect(joinLobby(changed, { token: tokenFor(2), nick: "p2" }, config)).toEqual({ ok: false, reason: "kicked" });
   });
 
   it("does not modify the state it was given", () => {

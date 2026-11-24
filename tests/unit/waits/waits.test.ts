@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, gemWaits, gradWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, eqWaits, gemWaits, gradWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -179,5 +179,26 @@ describe("gradWaits", () => {
     expect(gradWaits(view({ duel: [OTHER, 7] }))).toBe(false);
     expect(gradWaits(view({ you: null }))).toBe(false);
     expect(gradWaits(view({ you: null, phase: "submit", turn: ME }))).toBe(false);
+  });
+});
+
+describe("eqWaits", () => {
+  const view = (changes: Partial<Parameters<typeof eqWaits>[0]> = {}): Parameters<typeof eqWaits>[0] => ({ you: ME, phase: "create", ready: [], ...changes });
+
+  it("waits on a player who has no equation in yet, or no answer in the turn being played", () => {
+    expect(eqWaits(view())).toBe(true);
+    expect(eqWaits(view({ ready: [OTHER] }))).toBe(true);
+    expect(eqWaits(view({ phase: "guess" }))).toBe(true);
+  });
+
+  it("does not wait on a player whose equation or answer is in, nor once the game is over", () => {
+    expect(eqWaits(view({ ready: [ME] }))).toBe(false);
+    expect(eqWaits(view({ phase: "guess", ready: [ME, OTHER] }))).toBe(false);
+    expect(eqWaits(view({ phase: "ended" }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(eqWaits(view({ you: null }))).toBe(false);
+    expect(eqWaits(view({ you: null, phase: "guess" }))).toBe(false);
   });
 });

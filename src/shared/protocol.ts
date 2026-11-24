@@ -10,6 +10,7 @@ import type { RoomCounts, RoomListing, Watching } from "./directory";
 import type { BingoHostRefusal, BingoSnapshot } from "./games/auction-bingo/host";
 import type { WallHostRefusal, WallSnapshot } from "./games/wall-go-2/host";
 import type { GradHostRefusal, GradSnapshot } from "./games/gradation/host";
+import type { EqHostRefusal, EqSnapshot } from "./games/equation-traffic-light/host";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
@@ -133,6 +134,7 @@ export type ServerMessage =
   | ({ type: "game"; room: string; answer?: true; game: "auction-bingo" } & BingoSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "wall-go-2" } & WallSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "gradation" } & GradSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "equation-traffic-light" } & EqSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**
@@ -210,6 +212,7 @@ export type Refusal =
   | BingoHostRefusal
   | WallHostRefusal
   | GradHostRefusal
+  | EqHostRefusal
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal
