@@ -27,6 +27,8 @@ export interface HelpNumbers {
   maxSum: number;
   /** How many matches in a row win the game of three. */
   winsInARow: number;
+  /** The most matches a game has. */
+  maxMatches: number;
   /** Seconds to distribute the cubes, and seconds the room gives a cup (0 for no limit). */
   arrangeSeconds: number;
   turnSeconds: number;
@@ -45,7 +47,7 @@ const ko = {
     brief: {
       goal: "숫자 큐브를 통 일곱 개에 숨겨 담고, 한 통씩 내어 큰 수로 이깁니다.",
       play: "상대는 내가 낸 통의 색만 봅니다. 양 끝이 검고 가운데가 흰 통입니다.",
-      end: "일곱 라운드 뒤 승점이 높으면 대결 승리. 셋이면 2연승해야 끝납니다.",
+      end: "일곱 라운드 뒤 승점이 높으면 대결 승리. 셋이면 2연승하면 끝납니다.",
     },
     parts: [
       "각자 큐브 통 7개와 숫자 큐브 20개(0~9가 2개씩)를 받습니다. 통은 양 끝이 검정이고 가운데로 갈수록 밝아집니다: 검정, 짙은 회색, 옅은 회색, 흰색, 옅은 회색, 짙은 회색, 검정. 게임은 1:1 대결로 합니다.",
@@ -58,6 +60,7 @@ const ko = {
         "통을 내는 시간은 방장이 대기실에서 정합니다. 지나면 방이 남은 통 가운데 하나를 무작위로 냅니다.",
       ],
       "세 사람이면 방송대로 합니다. 추첨으로 1번과 2번이 첫 대결을 하고 1번이 선입니다. 대결을 이긴 사람이 남아, 기다리던 사람과 다음 대결을 합니다. 이긴 사람이 그 대결 1라운드의 선이고, 대결마다 큐브를 새로 담습니다. 2연승한 사람이 1위이고 나머지 두 사람은 공동 2위입니다. 두 사람이면 대결 한 번으로 정합니다.",
+      "대결은 재대결을 포함해 6번까지 합니다. 여섯 번째 대결이 끝나도 승부가 나지 않으면 대결을 많이 이긴 순서로 순위를 정하고, 이긴 수가 같으면 순위도 같습니다. 방송에는 없는 한도입니다.",
     ],
   } as RulesSheet,
   notSent: "연결이 끊겨 보내지 못했습니다. 다시 해 주세요",
@@ -89,6 +92,7 @@ const ko = {
   /** How a game ended, as the bar and the log say it. */
   ended: {
     played: "승부가 나서 끝",
+    limit: "대결 한도까지 해서 끝",
     left: "겨룰 사람이 없어 끝",
     abandoned: "이어갈 사람이 없어 끝",
   } as Record<GradEnd, string>,
@@ -113,8 +117,9 @@ const ko = {
     revealWin: (who: string, high: number, low: number) => `${high} 대 ${low} · ${who} 1점`,
     revealTie: (value: number) => `${value} 대 ${value} · 무승부`,
     matchWon: (who: string, a: number, b: number) => `${who} 대결 승리 (${a}:${b})`,
-    matchTied: (points: number) => `${points}:${points} 동점 · 재대결`,
+    matchTied: (points: number, last: boolean) => (last ? `${points}:${points} 동점` : `${points}:${points} 동점 · 재대결`),
     waitNext: "이 대결의 승자와 다음 대결을 합니다",
+    waitLast: "마지막 대결입니다 · 끝나면 대결 승수로 순위",
     watching: "두 사람의 통 안은 보이지 않습니다",
     matches: "지난 대결",
     match: (match: number, a: string, b: string, x: number, y: number) => `${match}. ${a} ${x}:${y} ${b}`,
@@ -166,18 +171,19 @@ const ko = {
   },
   /** The log, a line of the column, 168 pixels; `who` is cut to fit. */
   log: {
-    match: (match: number, rematch: boolean) => (rematch ? `대결 ${match} 시작 (재대결)` : `대결 ${match} 시작`),
+    match: (match: number, rematch: boolean, last: boolean) => (last ? `대결 ${match} 시작 (마지막)` : rematch ? `대결 ${match} 시작 (재대결)` : `대결 ${match} 시작`),
     arranged: (who: string, forced: boolean) => (forced ? `${who}: 시간 초과` : `${who}: 다 담음`),
     submitted: (who: string, shade: string) => `${who}: ${shade} 통`,
     revealed: (round: number, who: string | null) => (who === null ? `${round}R 무승부` : `${round}R ${who} 1점`),
     won: (who: string, row: number) => (row > 1 ? `${who} 대결 승리 · ${row}연승` : `${who} 대결 승리`),
-    tied: "동점 · 재대결",
+    tied: (last: boolean): string => (last ? "동점" : "동점 · 재대결"),
   },
   /** The results: the verdict in large letters 86 pixels wide at most, the lines beside it 280. */
   result: {
     verdict: (seated: boolean, place: number): string => (seated ? `${place}위` : "종료"),
     place: (place: number, who: string) => `${place}위 ${who}`,
     how: (matches: number) => `대결 ${matches}번으로 끝`,
+    limit: (matches: number) => `대결 ${matches}번을 모두 해 대결 승수로 순위`,
     hostNext: "같은 사람들과 한 판 더 하거나 대기실로",
     waitHost: "방장을 기다리는 중 · 「한 판 더」로 알리기",
     waitHostOut: "방장이 새 판을 시작하기를 기다리는 중",
@@ -194,9 +200,9 @@ const ko = {
     { text: "라운드를 이긴 사람이 다음 라운드의 선. 비기면 그대로.", tone: "dim" },
     { text: `${n.cups}라운드 뒤 승점이 높으면 대결 승리. 뒤집을 수 없으면 거기서 끝.` },
     { text: "승점이 같으면 큐브를 새로 담아 재대결합니다.", tone: "dim" },
-    { text: "" },
     { text: "세 명: 이긴 사람이 남아, 기다리던 사람과 선 플레이어로 대결합니다." },
     { text: `${n.winsInARow}연승하면 1위. 두 명이면 대결 한 번으로 정합니다.`, tone: "dim" },
+    { text: `대결은 ${n.maxMatches}번까지. 그래도 정해지지 않으면 대결을 많이 이긴 순서로 순위.` },
     { text: n.turnSeconds > 0 ? `통을 내는 시간 ${koTime(n.turnSeconds)}. 지나면 남은 통 하나가 무작위로 나갑니다.` : "통을 내는 시간 제한 없음 (방장이 대기실에서 정합니다).", tone: "dim" },
     { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
   ],
@@ -208,7 +214,7 @@ const en: typeof ko = {
     brief: {
       goal: "Hide number cubes in seven cups, then win rounds with the higher one.",
       play: "Your opponent sees only the shade of a cup: black ends, white middle.",
-      end: "More points after seven rounds wins a match. Of three, win two in a row.",
+      end: "More points after seven rounds wins a match. Of three, two in a row wins.",
     },
     parts: [
       "Each player has 7 cube cups and 20 number cubes, two of each number from 0 to 9. The cups are black at both ends and lighter toward the middle: black, dark gray, light gray, white, light gray, dark gray, black. The game is a series of one-on-one matches.",
@@ -221,6 +227,7 @@ const en: typeof ko = {
         "The host sets the time for a cup in the waiting room. After that the room submits one of your cups left at random.",
       ],
       "With three players it goes as in the show. By draw, numbers one and two play the first match, number one as the first player. The winner of a match stays and plays whoever waited. The winner is the first player of that match's first round, and cubes are distributed anew for every match. Two consecutive wins make first place, and the other two share second. With two players one match decides.",
+      "A game has 6 matches at most, rematches included. If the sixth leaves it undecided, players are placed by the matches they won, and equal wins share a place. The show has no such limit.",
     ],
   } as RulesSheet,
   notSent: "Not sent: the connection is down. Try again",
@@ -250,6 +257,7 @@ const en: typeof ko = {
   refusedOther: "That cannot be done now",
   ended: {
     played: "The game is decided",
+    limit: "Match limit reached",
     left: "Too few players left",
     abandoned: "Everyone left",
   } as Record<GradEnd, string>,
@@ -270,8 +278,9 @@ const en: typeof ko = {
     revealWin: (who, high, low) => `${high} to ${low} · ${who} scores`,
     revealTie: (value) => `${value} to ${value} · a tie`,
     matchWon: (who, a, b) => `${who} wins the match (${a}:${b})`,
-    matchTied: (points) => `${points}:${points}, level · rematch`,
+    matchTied: (points, last) => (last ? `${points}:${points}, level` : `${points}:${points}, level · rematch`),
     waitNext: "You play the winner of this match next",
+    waitLast: "The last match · then placed by matches won",
     watching: "Nobody sees inside the two players' cups",
     matches: "Matches so far",
     match: (match, a, b, x, y) => `${match}. ${a} ${x}:${y} ${b}`,
@@ -317,17 +326,18 @@ const en: typeof ko = {
     lobby: keyed("Esc", "to room"),
   },
   log: {
-    match: (match, rematch) => (rematch ? `Match ${match} (rematch)` : `Match ${match}`),
+    match: (match, rematch, last) => (last ? `Match ${match} (the last)` : rematch ? `Match ${match} (rematch)` : `Match ${match}`),
     arranged: (who, forced) => (forced ? `${who}: time out` : `${who}: done`),
     submitted: (who, shade) => `${who}: ${shade} cup`,
     revealed: (round, who) => (who === null ? `R${round}: a tie` : `R${round}: ${who} scores`),
     won: (who, row) => (row > 1 ? `${who}: ${row} in a row` : `${who} wins the match`),
-    tied: "Level · rematch",
+    tied: (last) => (last ? "Level" : "Level · rematch"),
   },
   result: {
     verdict: (seated, place) => (seated ? englishOrdinal(place) : "Over"),
     place: (place, who) => `${englishOrdinal(place)} ${who}`,
     how: (matches) => (matches === 1 ? "Decided in 1 match" : `Decided in ${matches} matches`),
+    limit: (matches) => `All ${matches} matches played: placed by wins`,
     hostNext: "Play again, or go back to the room",
     waitHost: "Waiting for the host · \"Again\" to ask",
     waitHostOut: "Waiting for the host to start a new game",
@@ -344,9 +354,9 @@ const en: typeof ko = {
     { text: "A round's winner is the next first player. A tie changes nothing.", tone: "dim" },
     { text: `More points after ${n.cups} rounds wins the match. It ends once decided.` },
     { text: "Level on points: new cubes, and a rematch.", tone: "dim" },
-    { text: "" },
     { text: "Of three, the winner stays as first player against whoever waited." },
     { text: `${n.winsInARow} wins in a row is first place. Two players: one match decides.`, tone: "dim" },
+    { text: `${n.maxMatches} matches at most. Undecided by then: placed by matches won.` },
     { text: n.turnSeconds > 0 ? `${enTime(n.turnSeconds)} for a cup. After that one of your cups goes at random.` : "No time limit for a cup (the host sets one in the waiting room).", tone: "dim" },
     { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },
   ],

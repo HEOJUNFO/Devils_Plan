@@ -89,7 +89,7 @@ describe("what a room of 그라데이션 sends", () => {
 
   it("has the numbers of the rules the screen checks cubes with", () => {
     const { session, presence } = started(2);
-    expect(seen(session, null, presence, T0).rules).toEqual({ cups: 7, highest: 9, copies: 2, maxSum: 30, winsInARow: 2, arrangeSeconds: 300 });
+    expect(seen(session, null, presence, T0).rules).toEqual({ cups: 7, highest: 9, copies: 2, maxSum: 30, winsInARow: 2, maxMatches: 6, arrangeSeconds: 300 });
   });
 
   it("refuses someone watching, what is no action, and what the rules refuse", () => {

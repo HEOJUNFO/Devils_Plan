@@ -19,7 +19,7 @@
  */
 import { randomInt, randomSource, seedFrom } from "../../game/rng";
 
-/** The numbers of the game. The first five are the show's; the rest are filled in for a room (the brief says which). */
+/** The numbers of the game. The first five are the show's; the rest are filled in for a room (the brief says which). `maxMatches` is the user's: the show sets no limit. */
 export interface GradConfig {
   /** How many cube cups a player has, and so how many rounds a match has at most. */
   cups: number;
@@ -31,6 +31,12 @@ export interface GradConfig {
   maxSum: number;
   /** How many matches in a row win the game of three. */
   winsInARow: number;
+  /**
+   * The most matches a game has, a match played again counted. Where the last
+   * of them leaves the game unwon, it ends with its players placed by the
+   * matches they won. Not in the show, by whose rules a game may never end.
+   */
+  maxMatches: number;
   /** Seconds to distribute the cubes. */
   arrangeSeconds: number;
   /** Whether a match is over as soon as one player cannot be caught (the show's first and third were, after six rounds). */
@@ -59,6 +65,8 @@ export function isValidConfig(config: GradConfig): boolean {
   if (config.copies * (config.highest + 1) < config.cups) return false;
   if (!isWhole(config.maxSum) || config.maxSum < sumOf(lowest(config))) return false;
   if (!isWhole(config.winsInARow) || config.winsInARow < 1) return false;
+  // the places of a game that ran to its limit are counted from the matches a state keeps
+  if (!isWhole(config.maxMatches) || config.maxMatches < 1 || config.maxMatches > MATCHES_KEPT) return false;
   return config.arrangeSeconds > 0 && config.revealSeconds > 0 && config.betweenSeconds > 0;
 }
 
@@ -117,8 +125,8 @@ export function randomArrangement(random: () => number, config: GradConfig): num
 /** Where a game stands: cubes are being distributed, a cup is waited for, a round's numbers are on show, a match's result is, or the game is over. */
 export type GradPhase = "arrange" | "submit" | "reveal" | "between" | "ended";
 
-/** Why a game is over: played to its end, too few of its players left, or nobody left to go on with it. */
-export type GradEnd = "played" | "left" | "abandoned";
+/** Why a game is over: won, as many matches played as a game has with nobody having won it, too few of its players left, or nobody left to go on with it. */
+export type GradEnd = "played" | "limit" | "left" | "abandoned";
 
 /** A cup that was submitted and shown: whose, how light, and the number in it. */
 export interface Play {
@@ -155,7 +163,7 @@ export type GradEvent =
 
 /** How many of the latest events a state keeps: enough for a page that was away a few rounds to play them out. */
 export const HISTORY_KEPT = 24;
-/** How many of the latest matches a state keeps the result of. */
+/** How many of the latest matches a state keeps the result of: every match of a game, which has no more ({@link isValidConfig}). */
 export const MATCHES_KEPT = 12;
 /** How many of the room's unguessable numbers a state keeps, for what the room does for a player later in the game. */
 const SPARE_KEPT = 96;
@@ -463,7 +471,7 @@ function finish(state: GradState, reason: GradEnd, now?: number): void {
   tell(state, { type: "ended", reason }, now);
 }
 
-/** The match is over: its winner plays on, or the same two play again, or the game is won. `state` is changed. */
+/** The match is over: its winner plays on, or the same two play again, or the game is won, or it was the last match a game has. `state` is changed. */
 function closeMatch(state: GradState, now: number, config: GradConfig): void {
   const score = scoreOf(state);
   const winner = score[0] === score[1] ? null : state.duel[score[0] > score[1] ? 0 : 1];
@@ -475,11 +483,13 @@ function closeMatch(state: GradState, now: number, config: GradConfig): void {
     const lead = state.lines.at(-1)?.winner ?? state.first;
     state.next = [lead, state.duel.find((each) => each !== lead) as number];
     tell(state, { type: "tied", match: state.match }, now);
+    if (state.match >= config.maxMatches) return finish(state, "limit", now);
   } else {
     state.row = { player: winner, wins: state.row?.player === winner ? state.row.wins + 1 : 1 };
     tell(state, { type: "won", match: state.match, winner, row: state.row.wins }, now);
     const waiting = state.players.filter((each) => !state.duel.includes(each));
     if (waiting.length === 0 || state.row.wins >= config.winsInARow) return finish(state, "played", now);
+    if (state.match >= config.maxMatches) return finish(state, "limit", now);
     state.next = [winner, waiting[0]];
   }
   state.phase = "between";
@@ -609,11 +619,22 @@ export function shiftClock(state: GradState, by: number): GradState {
   return { ...state, at: state.at + by, until: state.until === null ? null : state.until + by };
 }
 
-/** How a game played to its end came out: whoever won it first, everyone else second. `null` while it is played, and for a game cut short. */
-export function placesOf(state: Pick<GradState, "phase" | "ended" | "players" | "row">): { player: number; place: number }[] | null {
-  if (state.phase !== "ended" || state.ended !== "played" || state.row === null) return null;
+/**
+ * How a game played to its end came out. Won: whoever won it first, everyone
+ * else second. Run to its limit of matches: by the matches each won, equal
+ * wins sharing a place and the places after it passed over. `null` while it
+ * is played, and for a game cut short.
+ */
+export function placesOf(state: Pick<GradState, "phase" | "ended" | "players" | "row" | "matches">): { player: number; place: number }[] | null {
+  if (state.phase !== "ended") return null;
+  const byPlace = (places: { player: number; place: number }[]) => places.sort((a, b) => a.place - b.place || a.player - b.player);
+  if (state.ended === "limit") {
+    const wins = (player: number): number => state.matches.filter((line) => line.winner === player).length;
+    return byPlace(state.players.map((player) => ({ player, place: 1 + state.players.filter((other) => wins(other) > wins(player)).length })));
+  }
+  if (state.ended !== "played" || state.row === null) return null;
   const winner = state.row.player;
-  return state.players.map((player) => ({ player, place: player === winner ? 1 : 2 })).sort((a, b) => a.place - b.place || a.player - b.player);
+  return byPlace(state.players.map((player) => ({ player, place: player === winner ? 1 : 2 })));
 }
 
 /**

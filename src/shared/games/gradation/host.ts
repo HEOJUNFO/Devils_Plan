@@ -113,7 +113,7 @@ export interface GradTablePlayer {
 export interface GradSnapshot {
   startedAt: number;
   /** The numbers of the rules the screen checks a player's cubes with before they are sent, and its sheet is written with. */
-  rules: Pick<GradConfig, "cups" | "highest" | "copies" | "maxSum" | "winsInARow" | "arrangeSeconds">;
+  rules: Pick<GradConfig, "cups" | "highest" | "copies" | "maxSum" | "winsInARow" | "maxMatches" | "arrangeSeconds">;
   view: GradView;
   players: GradTablePlayer[];
   /**
@@ -265,7 +265,7 @@ export const gradHost: GameHost<GradSession, GradHostRefusal> = {
     const at = session.frozenAt ?? now;
     return {
       startedAt: session.startedAt,
-      rules: { cups: config.cups, highest: config.highest, copies: config.copies, maxSum: config.maxSum, winsInARow: config.winsInARow, arrangeSeconds: config.arrangeSeconds },
+      rules: { cups: config.cups, highest: config.highest, copies: config.copies, maxSum: config.maxSum, winsInARow: config.winsInARow, maxMatches: config.maxMatches, arrangeSeconds: config.arrangeSeconds },
       view: viewFor(state, seat?.id ?? null, config),
       players: session.players.map((player) => ({
         id: player.id,
@@ -284,7 +284,7 @@ export const gradHost: GameHost<GradSession, GradHostRefusal> = {
 
   running: (session) => session.state.phase !== "ended",
 
-  /** The places of a game played out: whoever won it first, everyone else second. */
+  /** The places of a game played out: whoever won it first, everyone else second; of one that ran to its limit of matches, by the matches won. */
   places(session) {
     const places = placesOf(session.state);
     if (places === null) return null;

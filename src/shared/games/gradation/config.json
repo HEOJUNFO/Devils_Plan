@@ -4,6 +4,7 @@
   "copies": 2,
   "maxSum": 30,
   "winsInARow": 2,
+  "maxMatches": 6,
   "arrangeSeconds": 300,
   "stopWhenDecided": true,
   "revealSeconds": 5,

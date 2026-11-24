@@ -558,7 +558,7 @@ export function createGradScreen(canvas: HTMLCanvasElement, handlers: GradHandle
     const view = latest.view;
     const waits = view.you !== null && view.waiting.includes(view.you);
     // (once the game is over there is nothing to wait for, and nothing left unseen that matters)
-    if (view.phase !== "ended") pen.txt(pen.fit(waits ? WORDS.scene.waitNext : WORDS.scene.watching, SCENE_W - 20), CUPS_X, CUPS_Y - 14, waits ? C.amber : C.boneD);
+    if (view.phase !== "ended") pen.txt(pen.fit(!waits ? WORDS.scene.watching : view.match >= latest.rules.maxMatches ? WORDS.scene.waitLast : WORDS.scene.waitNext, SCENE_W - 20), CUPS_X, CUPS_Y - 14, waits ? C.amber : C.boneD);
     if (view.phase !== "arrange") view.duel.forEach((player, row) => drawLeft(player, CUPS_Y + 2 + row * 16));
     const shown = view.matches.slice(-3);
     if (shown.length === 0) return;
@@ -594,7 +594,7 @@ export function createGradScreen(canvas: HTMLCanvasElement, handlers: GradHandle
     }
     const last = view.matches.at(-1);
     if (last === undefined) return null;
-    if (last.winner === null) return [WORDS.scene.matchTied(last.score[0] ?? 0), C.amber];
+    if (last.winner === null) return [WORDS.scene.matchTied(last.score[0] ?? 0, last.match >= latest.rules.maxMatches), C.amber];
     const at = last.players.indexOf(last.winner);
     return [WORDS.scene.matchWon(short(last.winner), last.score[at] ?? 0, last.score[1 - at] ?? 0), last.winner === me() ? C.teal : C.amber];
   }
@@ -677,12 +677,12 @@ export function createGradScreen(canvas: HTMLCanvasElement, handlers: GradHandle
     const lines: [string, string][] = [];
     for (const event of view.history) {
       const who = "player" in event ? pen.fit(nickOf(event.player), LOG_NAME) : "";
-      if (event.type === "match") lines.push([WORDS.log.match(event.match, event.rematch), C.amber]);
+      if (event.type === "match") lines.push([WORDS.log.match(event.match, event.rematch, event.match >= latest.rules.maxMatches), C.amber]);
       else if (event.type === "arranged") lines.push([WORDS.log.arranged(who, event.forced), C.boneD]);
       else if (event.type === "submitted") lines.push([WORDS.log.submitted(who, WORDS.shade[event.shade] ?? ""), C.boneD]);
       else if (event.type === "revealed") lines.push([WORDS.log.revealed(event.round, event.winner === null ? null : pen.fit(nickOf(event.winner), LOG_NAME)), C.bone]);
       else if (event.type === "won") lines.push([WORDS.log.won(pen.fit(nickOf(event.winner), LOG_NAME), event.row), C.brass]);
-      else if (event.type === "tied") lines.push([WORDS.log.tied, C.brass]);
+      else if (event.type === "tied") lines.push([WORDS.log.tied(event.match >= latest.rules.maxMatches), C.brass]);
       else lines.push([WORDS.ended[event.reason], C.amber]);
     }
     const from = Math.max(0, lines.length - layout.logRows);
@@ -717,7 +717,7 @@ export function createGradScreen(canvas: HTMLCanvasElement, handlers: GradHandle
       named = longer;
     }
     pen.txt(named, 96, 226, C.bone);
-    const how = view.ended === null ? "" : view.ended === "played" ? WORDS.result.how(view.match) : WORDS.ended[view.ended];
+    const how = view.ended === null ? "" : view.ended === "played" ? WORDS.result.how(view.match) : view.ended === "limit" ? WORDS.result.limit(view.match) : WORDS.ended[view.ended];
     pen.txt(pen.fit(how, RESULT_WIDTH), 96, 240, C.boneD);
     if (noteT > 0) pen.txt(pen.fit(note, RESULT_WIDTH), 96, 254, C.amber);
     else pen.txt(starting ? WORDS.standing.sending : host ? WORDS.result.hostNext : handlers.out() ? WORDS.result.waitHostOut : WORDS.result.waitHost, 96, 254, C.boneD);

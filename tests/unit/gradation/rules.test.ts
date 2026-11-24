@@ -92,6 +92,37 @@ function playedShow(state: GradState, match: ShowMatch): GradState {
   return next;
 }
 
+/** Cups that win every round against {@link LOW} cup for cup, until the match is decided after four. */
+const HIGH = [1, 1, 2, 4, 5, 6, 9];
+const LOW = [0, 0, 1, 3, 4, 5, 9];
+
+/** The match being arranged, played to its result: won by `winner` of its two, or level (`null`). */
+function matchPlayed(state: GradState, winner: number | null): GradState {
+  let next = arranged(
+    state,
+    state.duel.map((player) => (player === winner ? HIGH : LOW)),
+  );
+  for (let cup = 0; next.phase === "submit" || next.phase === "reveal"; ) {
+    if (next.phase === "reveal") next = applyTimeout(next, deadline(next) as number, config);
+    else {
+      const second = next.duel.find((each) => each !== next.turn) as number;
+      for (const player of [next.turn as number, second]) next = did(next, player, { type: "submit", cup });
+      cup += 1;
+    }
+  }
+  return next;
+}
+
+/** A game of `count` players after matches won by `winners` in turn (`null`: level), each but the last followed by the next match's beginning. */
+function afterMatches(count: number, winners: readonly (number | null)[]): GradState {
+  let state = game(count);
+  for (const [index, winner] of winners.entries()) {
+    if (index > 0) state = applyTimeout(state, deadline(state) as number, config);
+    state = matchPlayed(state, winner);
+  }
+  return state;
+}
+
 describe("the numbers of 그라데이션", () => {
   it("are the show's: seven cups, two cubes of each number from 0 to 9, a total of 30 at most, five minutes, two wins in a row", () => {
     expect(isValidConfig(config)).toBe(true);
@@ -109,6 +140,14 @@ describe("the numbers of 그라데이션", () => {
     expect(isValidConfig({ ...config, maxSum: 8 })).toBe(false);
     expect(isValidConfig({ ...config, arrangeSeconds: 0 })).toBe(false);
     expect(isValidConfig({ ...config, winsInARow: 0 })).toBe(false);
+  });
+
+  it("have a game of six matches at most, which is not the show's, and refuse a limit that is none or more than the matches kept", () => {
+    expect(config.maxMatches).toBe(6);
+    expect(isValidConfig({ ...config, maxMatches: 0 })).toBe(false);
+    expect(isValidConfig({ ...config, maxMatches: 1.5 })).toBe(false);
+    expect(isValidConfig({ ...config, maxMatches: 12 })).toBe(true);
+    expect(isValidConfig({ ...config, maxMatches: 13 })).toBe(false);
   });
 });
 
@@ -457,6 +496,68 @@ describe("a match of 그라데이션", () => {
     expect(state.row).toEqual({ player: 2, wins: 1 });
     expect(state.matches.map((line) => line.winner)).toEqual([1, 2]);
     expect(placesOf(state)).toBeNull();
+  });
+});
+
+describe("a game of 그라데이션 nobody wins in six matches", () => {
+  it("goes on after the fifth match, and ends with the sixth: three who won in turn, two matches each, are all first", () => {
+    const five = afterMatches(3, [0, 2, 1, 0, 2]);
+    expect([five.phase, five.match, five.next]).toEqual(["between", 5, [2, 1]]);
+    expect(placesOf(five)).toBeNull();
+
+    const six = afterMatches(3, [0, 2, 1, 0, 2, 1]);
+
+    expect([six.phase, six.ended, six.match, six.next, six.until]).toEqual(["ended", "limit", 6, null, null]);
+    expect(six.history.slice(-2)).toEqual([
+      { type: "won", match: 6, winner: 1, row: 1 },
+      { type: "ended", reason: "limit" },
+    ]);
+    expect(placesOf(six)).toEqual([
+      { player: 0, place: 1 },
+      { player: 1, place: 1 },
+      { player: 2, place: 1 },
+    ]);
+    expect(viewFor(six, 0, config)).toMatchObject({ phase: "ended", ended: "limit", places: placesOf(six) });
+  });
+
+  it("places its players by the matches they won, a match played again counted as one of the six: equal wins share a place, and the next place is passed over", () => {
+    const state = afterMatches(3, [0, 2, null, 1, 0, 2]);
+
+    expect(state.matches.map((line) => line.winner)).toEqual([0, 2, null, 1, 0, 2]);
+    expect(state.ended).toBe("limit");
+    expect(placesOf(state)).toEqual([
+      { player: 0, place: 1 },
+      { player: 2, place: 1 },
+      { player: 1, place: 3 },
+    ]);
+  });
+
+  it("is still won by two in a row where the second of them is the sixth match", () => {
+    const state = afterMatches(3, [0, 2, 1, 0, 2, 2]);
+
+    expect([state.phase, state.ended, state.row]).toEqual(["ended", "played", { player: 2, wins: 2 }]);
+    expect(placesOf(state)).toEqual([
+      { player: 2, place: 1 },
+      { player: 0, place: 2 },
+      { player: 1, place: 2 },
+    ]);
+  });
+
+  it("of two, level six times over, ends with both first", () => {
+    const five = afterMatches(2, [null, null, null, null, null]);
+    expect(five.phase).toBe("between");
+
+    const six = afterMatches(2, [null, null, null, null, null, null]);
+
+    expect([six.phase, six.ended, six.row]).toEqual(["ended", "limit", null]);
+    expect(six.history.slice(-2)).toEqual([
+      { type: "tied", match: 6 },
+      { type: "ended", reason: "limit" },
+    ]);
+    expect(placesOf(six)).toEqual([
+      { player: 0, place: 1 },
+      { player: 1, place: 1 },
+    ]);
   });
 });
 

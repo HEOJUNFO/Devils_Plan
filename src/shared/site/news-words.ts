@@ -61,8 +61,8 @@ export const NEWS: NewsDay[] = [
         en: `A new game, ${EQ.en}: the last game of the final. Two players each create a hidden nine-cell equation, then submit an answer every turn and get a red, yellow or green clue on each cell. Guess your opponent's equation first to win.`,
       },
       {
-        ko: `새 게임 ${GRAD.ko}: 시즌의 여섯 번째 감옥 매치입니다. 2~3명이 숫자 큐브를 통 일곱 개에 숨겨 담고, 색만 보이는 통을 한 개씩 내어 큰 수로 겨룹니다.`,
-        en: `A new game, ${GRAD.en}: the season's sixth prison match. Two or three players hide number cubes in seven cups and submit them one at a time, showing only a cup's shade; the higher number wins the round.`,
+        ko: `새 게임 ${GRAD.ko}: 시즌의 여섯 번째 감옥 매치입니다. 2~3명이 숫자 큐브를 통 일곱 개에 숨겨 담고, 색만 보이는 통을 한 개씩 내어 큰 수로 겨룹니다. 대결은 6번까지이고, 그때까지 2연승이 없으면 대결을 많이 이긴 순서로 순위를 정합니다.`,
+        en: `A new game, ${GRAD.en}: the season's sixth prison match. Two or three players hide number cubes in seven cups and submit them one at a time, showing only a cup's shade; the higher number wins the round. A game has six matches at most: with no two wins in a row by then, players are placed by matches won.`,
       },
       {
         ko: "연승을 셉니다. 한 방에서 두 판 이상 잇달아 1위를 하면 채팅과 방 전적에 몇 연승인지 나오고, 내 기록에는 게임마다 지금의 연승과 가장 길었던 연승이 남습니다.",
