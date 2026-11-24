@@ -47,6 +47,15 @@ const WALL = name("wall-go-2");
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
+    date: "2026-11-24",
+    lines: [
+      {
+        ko: "한 사람이 채팅을 줄줄이 보내 방의 대화를 덮지 못합니다. 한 사람이 1분에 보낼 수 있는 말은 20줄까지입니다.",
+        en: "One player can no longer bury a room's chat under their own lines: each player can send up to 20 lines a minute.",
+      },
+    ],
+  },
+  {
     date: "2026-11-20",
     lines: [
       {

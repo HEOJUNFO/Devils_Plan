@@ -15,6 +15,12 @@ export interface ChatConfig {
   burst: number;
   /** Seconds a window lasts. */
   windowSeconds: number;
+  /**
+   * Lines one player may send within a longer window, besides: a player who
+   * keeps to the allowance above window after window fills a room's chat
+   * with their own lines all the same, and this is what stops them.
+   */
+  sustained: { burst: number; windowSeconds: number };
 }
 
 /**
@@ -33,8 +39,11 @@ export function isQuickWord(value: unknown): value is QuickWord {
   return typeof value === "string" && (QUICK_WORDS as readonly string[]).includes(value);
 }
 
-/** How much one player has said lately: `count` lines in the window that began at `since`. */
-export type ChatPace = Pace;
+/** How much one player has said lately, counted twice over: in the short window and in the long one (`sustained`). */
+export interface ChatPace {
+  short: Pace;
+  long: Pace;
+}
 
 /**
  * Cleans a chat line: one line of text with no control characters, cut to the
@@ -47,8 +56,12 @@ export function normalizeChat(raw: string, config: ChatConfig): string | null {
 
 /**
  * Whether a player whose pace so far is `pace` may say a line at `now`, and
- * their pace afterwards. A line that is refused does not count against them.
+ * their pace afterwards: a line is said when both windows have room for it.
+ * A line that is refused counts against them in neither.
  */
 export function paceChat(previous: ChatPace | undefined, now: number, config: ChatConfig): { ok: boolean; pace: ChatPace } {
-  return pace(previous, now, config.burst, config.windowSeconds);
+  const short = pace(previous?.short, now, config.burst, config.windowSeconds);
+  const long = pace(previous?.long, now, config.sustained.burst, config.sustained.windowSeconds);
+  if (previous !== undefined && !(short.ok && long.ok)) return { ok: false, pace: previous };
+  return { ok: true, pace: { short: short.pace, long: long.pace } };
 }
