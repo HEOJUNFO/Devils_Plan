@@ -49,8 +49,12 @@ const ko = {
     open: "내 기록",
     title: "내 기록",
     hint: "이 브라우저에만 남습니다. 둘 이상이 끝까지 한 판만 세고, 혼자 한 판은 세지 않습니다.",
-    /** One game's line: how many were played, and how many at the top, by what that game calls its top. */
-    row: (played: number, top: number, kind: string) => `${played}판 · ${kind} ${top}번`,
+    /**
+     * One game's line: how many were played, and how many at the top, by what that game calls its top; then the
+     * streak the player is on (`run`) and the longest they have had (`best`), each 0 where there is none to tell of.
+     */
+    row: (played: number, top: number, kind: string, run: number, best: number) =>
+      `${played}판 · ${kind} ${top}번${run > 0 ? ` · ${run}연승 중${best > run ? ` (최고 ${best})` : ""}` : best > 0 ? ` · 최고 ${best}연승` : ""}`,
     kinds: { alive: "생존", won: "승리", first: "1위" },
     /** The sheet's heading: how many of the games have their mark, a game played to its end with others. */
     stamps: (done: number, all: number) => `내 기록 · 도장 ${done}/${all}`,
@@ -65,8 +69,9 @@ const ko = {
     open: "방 전적",
     title: "이 방의 전적",
     hint: "이 방에서 둘 이상이 끝까지 한 판만 셉니다. 방을 나가면 그 사람의 줄은 사라집니다.",
-    /** One player's line: the games counted for them, how many they were at the top of, and their pieces where they have any. */
-    row: (games: number, wins: number, pieces: number) => `${games}판 · 1위 ${wins}번${pieces > 0 ? ` · 피스 ${pieces}개` : ""}`,
+    /** One player's line: the games counted for them, how many they were at the top of, the streak they are on (0 for none), and their pieces where they have any. */
+    row: (games: number, wins: number, streak: number, pieces: number) =>
+      `${games}판 · 1위 ${wins}번${streak > 0 ? ` · ${streak}연승` : ""}${pieces > 0 ? ` · 피스 ${pieces}개` : ""}`,
     /** After the name on the reader's own line. */
     me: " (나)",
     close: "닫기",
@@ -340,6 +345,8 @@ const ko = {
     wonPieces: (nick: string, won: number, all: number) => `${nick} 피스 +${won} (이 방에서 ${all}개)`,
     /** In the chat when a game played to its end in the room marked who did best in it: their names, and what the mark beside a name is. */
     tops: (names: string) => `지난 판 1위: ${names} (이름 옆 왕관)`,
+    /** In the chat when a game played to its end in the room made someone's streak longer: the games in a row they were at the top of. */
+    streak: (nick: string, run: number) => `${nick} ${run}연승 중`,
     emptySeat: (seat: number) => `${seat}번 빈 자리`,
     came: (nick: string) => `${nick} 님이 들어왔습니다`,
     went: (nick: string) => `${nick} 님이 나갔습니다`,
@@ -648,7 +655,8 @@ const en: typeof ko = {
     open: "My record",
     title: "My record",
     hint: "Kept in this browser only. A game counts when two or more played it to the end.",
-    row: (played, top, kind) => `${played} played · ${kind} ×${top}`,
+    row: (played, top, kind, run, best) =>
+      `${played} played · ${kind} ×${top}${run > 0 ? ` · ${run} in a row${best > run ? ` (best ${best})` : ""}` : best > 0 ? ` · best ${best} in a row` : ""}`,
     kinds: { alive: "Alive", won: "Won", first: "1st" },
     stamps: (done, all) => `My record · ${done}/${all} stamped`,
     notYet: "not played yet",
@@ -660,7 +668,8 @@ const en: typeof ko = {
     open: "Room tally",
     title: "This room so far",
     hint: "Games two or more played to the end in this room. A player who leaves takes their line along.",
-    row: (games, wins, pieces) => `${games} played · 1st ×${wins}${pieces > 0 ? ` · ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}`,
+    row: (games, wins, streak, pieces) =>
+      `${games} played · 1st ×${wins}${streak > 0 ? ` · ${streak} in a row` : ""}${pieces > 0 ? ` · ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}`,
     me: " (you)",
     close: "Close",
     share: "Share picture",
@@ -846,6 +855,7 @@ const en: typeof ko = {
     knockoutWatching: "You are out, watching until someone wins.",
     wonPieces: (nick, won, all) => `${nick}: +${won} ${won === 1 ? "Piece" : "Pieces"} (${all} in this room)`,
     tops: (names) => `Top of the last game: ${names} (the crown by a name)`,
+    streak: (nick, run) => `${nick}: ${run} in a row at the top`,
     emptySeat: (seat) => `Seat ${seat}, empty`,
     came: (nick) => `${nick} came in`,
     went: (nick) => `${nick} left`,

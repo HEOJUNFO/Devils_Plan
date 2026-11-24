@@ -151,13 +151,34 @@ describe("counted", () => {
     const once = counted(noRecord(), finish("A.1", "count-cubes", true), CONFIG);
     const twice = counted(once, finish("A.2", "count-cubes", false), CONFIG);
 
-    expect(twice.games).toEqual({ "count-cubes": { played: 2, top: 1 } });
+    expect(twice.games).toEqual({ "count-cubes": { played: 2, top: 1, run: 0, best: 1 } });
   });
 
   it("keeps each game's count apart", () => {
     const record = counted(counted(noRecord(), finish("A.1", "count-cubes"), CONFIG), finish("A.2", "memory-poker", true), CONFIG);
 
-    expect(record.games).toEqual({ "count-cubes": { played: 1, top: 0 }, "memory-poker": { played: 1, top: 1 } });
+    expect(record.games).toEqual({ "count-cubes": { played: 1, top: 0, run: 0, best: 0 }, "memory-poker": { played: 1, top: 1, run: 1, best: 1 } });
+  });
+
+  it("counts the games at the top one after another, starts over after one that was not, and keeps the longest", () => {
+    const tops = [true, true, true, false, true, true];
+    const runs = tops.map((_, at) => tops.slice(0, at + 1).reduce((record, top, n) => counted(record, finish(`A.${n}`, "count-cubes", top), { ...CONFIG, seenMost: 9 }), noRecord()).games["count-cubes"]);
+
+    expect(runs.map((tally) => [tally?.run, tally?.best])).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+      [0, 3],
+      [1, 3],
+      [2, 3],
+    ]);
+  });
+
+  it("keeps each game's streak apart: a game of another kind neither ends one nor adds to it", () => {
+    const one = counted(noRecord(), finish("A.1", "count-cubes", true), CONFIG);
+    const other = counted(one, finish("A.2", "memory-poker", false), CONFIG);
+
+    expect(counted(other, finish("A.3", "count-cubes", true), CONFIG).games["count-cubes"]).toEqual({ played: 2, top: 2, run: 2, best: 2 });
   });
 
   it("counts a game once however often its end is heard of, and gives the record back as it was", () => {
@@ -201,7 +222,27 @@ describe("recordFrom", () => {
       seen: ["A.1", 7, "A.2"],
     });
 
-    expect(recordFrom(stored)).toEqual({ games: { "lay-the-grass": { played: 4, top: 1 } }, seen: ["A.1", "A.2"] });
+    expect(recordFrom(stored)).toEqual({ games: { "lay-the-grass": { played: 4, top: 1, run: 0, best: 0 } }, seen: ["A.1", "A.2"] });
+  });
+
+  it("reads a record kept before streaks were counted as one without any, and goes on counting from there", () => {
+    const old = recordFrom(JSON.stringify({ games: { "count-cubes": { played: 3, top: 3 } }, seen: [] }));
+
+    expect(old.games["count-cubes"]).toEqual({ played: 3, top: 3, run: 0, best: 0 });
+    expect(counted(old, finish("A.1", "count-cubes", true), CONFIG).games["count-cubes"]).toEqual({ played: 4, top: 4, run: 1, best: 1 });
+  });
+
+  it("keeps the counts and drops a streak that cannot be: longer than the games at the top, or than its longest", () => {
+    const stored = JSON.stringify({
+      games: { "count-cubes": { played: 5, top: 2, run: 3, best: 3 }, "memory-poker": { played: 5, top: 4, run: 3, best: 2 }, "lay-the-grass": { played: 5, top: 4, run: 1, best: 3 } },
+      seen: [],
+    });
+
+    expect(recordFrom(stored).games).toEqual({
+      "count-cubes": { played: 5, top: 2, run: 0, best: 0 },
+      "memory-poker": { played: 5, top: 4, run: 0, best: 0 },
+      "lay-the-grass": { played: 5, top: 4, run: 1, best: 3 },
+    });
   });
 });
 
@@ -224,7 +265,10 @@ describe("playedAny", () => {
 });
 
 describe("the board of every game", () => {
-  const record: MyRecord = { games: { "russian-roulette": { played: 2, top: 0 }, "memory-poker": { played: 3, top: 1 }, "count-cubes": { played: 0, top: 0 } }, seen: [] };
+  const record: MyRecord = {
+    games: { "russian-roulette": { played: 2, top: 0, run: 0, best: 0 }, "memory-poker": { played: 3, top: 1, run: 0, best: 1 }, "count-cubes": { played: 0, top: 0, run: 0, best: 0 } },
+    seen: [],
+  };
 
   it("marks a game played to its end with others, and marks it otherwise once the player came out of one at the top", () => {
     expect(stampOf(record, "russian-roulette")).toBe("played");

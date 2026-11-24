@@ -220,6 +220,12 @@ export interface LobbyPlayer {
    */
   games?: number;
   wins?: number;
+  /**
+   * How many of the games the player played last in this room, one after
+   * another, they were at the top of; absent for none. A game they played
+   * and were not at the top of ends it; a game they did not play leaves it.
+   */
+  streak?: number;
 }
 
 /** Everything a room remembers about its lobby. */
@@ -282,6 +288,8 @@ export interface PublicPlayer {
   /** The games they have played to their end in this room, and how many of them they were at the top of. */
   games: number;
   wins: number;
+  /** How many of the games they played last in this room, one after another, they were at the top of. */
+  streak: number;
 }
 
 /** The lobby as one particular player is allowed to see it. */
@@ -683,8 +691,10 @@ export function withOuts(state: LobbyState, tokens: readonly string[]): Knocked 
  * Puts what a game played to its end leaves in the room (`resultOf` of
  * `tops.ts`) on its players: those who did best are marked as the top of the
  * room's last game, and nobody else is; everyone who played has one game
- * more, and those who did best one win more. `null` is a game that says
- * nothing, and leaves the state as it was. A token that is no longer in the
+ * more, and those who did best one win more and a streak one game longer;
+ * the streak of someone who played and did not do best is over. `null` is a
+ * game that says nothing, and leaves the state as it was, as a game does for
+ * someone in the room who did not play it. A token that is no longer in the
  * room marks and counts nobody. The input state is not modified.
  */
 export function withResult(state: LobbyState, result: { played: ReadonlySet<string>; tops: ReadonlySet<string> } | null): LobbyState {
@@ -695,7 +705,9 @@ export function withResult(state: LobbyState, result: { played: ReadonlySet<stri
       const { top: _top, ...rest } = p;
       const marked: LobbyPlayer = result.tops.has(p.token) ? { ...rest, top: true as const } : rest;
       if (!result.played.has(p.token)) return marked;
-      return { ...marked, games: (p.games ?? 0) + 1, ...(result.tops.has(p.token) ? { wins: (p.wins ?? 0) + 1 } : {}) };
+      const { streak: _streak, ...counted } = marked;
+      if (!result.tops.has(p.token)) return { ...counted, games: (p.games ?? 0) + 1 };
+      return { ...counted, games: (p.games ?? 0) + 1, wins: (p.wins ?? 0) + 1, streak: (p.streak ?? 0) + 1 };
     }),
   };
 }
@@ -981,6 +993,7 @@ export function viewLobby(
       top: p.top === true,
       games: p.games ?? 0,
       wins: p.wins ?? 0,
+      streak: p.streak ?? 0,
     })),
     ...(readers > 0 ? { reading: readers } : {}),
     ...(wishCount(wishes) > 0 ? { wishes } : {}),

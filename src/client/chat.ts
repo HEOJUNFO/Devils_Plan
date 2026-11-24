@@ -36,6 +36,8 @@ export type ChatNote =
   | { kind: "out" | "champion"; nick: string }
   /** A game played to its end in the room marked who did best in it: their names, as one string. */
   | { kind: "top"; nick: string }
+  /** A game played to its end in the room made someone's streak longer: how many in a row they have been at the top of. */
+  | { kind: "streak"; nick: string; run: number }
   /** 탈락전: the host turned it on or off, or it starts over because too few were left in. */
   | { kind: "knockout-on" | "knockout-off" | "knockout-again" }
   /** This player covered what someone says on their own screen, or uncovered it; or pointed them out to whoever runs the site. */
@@ -75,11 +77,12 @@ function isLine(value: unknown): value is Line {
   if (typeof line.text === "string") return true;
   if (line.quick !== undefined) return isQuickWord(line.quick) && typeof line.who === "string";
   if (typeof line.note !== "object" || line.note === null) return false;
-  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown; won?: unknown; all?: unknown; at?: unknown; count?: unknown };
+  const note = line.note as { kind?: unknown; nick?: unknown; game?: unknown; won?: unknown; all?: unknown; at?: unknown; count?: unknown; run?: unknown };
   if (note.kind === "when" || note.kind === "when-made") return typeof note.at === "number";
   if (note.kind === "wishes") return typeof note.count === "number";
   if (note.kind === "game") return typeof note.game === "string";
   if (note.kind === "pieces") return typeof note.nick === "string" && typeof note.won === "number" && typeof note.all === "number";
+  if (note.kind === "streak") return typeof note.nick === "string" && typeof note.run === "number";
   return typeof note.kind === "string" && (PLAIN_NOTES.includes(note.kind) || (NAMED_NOTES.includes(note.kind) && typeof note.nick === "string"));
 }
 

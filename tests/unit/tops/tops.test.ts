@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createLobby, joinLobby, viewLobby, withResult, type LobbyState } from "../../../src/shared/lobby";
 import roomConfig from "../../../src/shared/room-config.json";
-import { resultOf, type GameResult, type TopsConfig } from "../../../src/shared/tops";
+import { resultOf, streakOf, type GameResult, type TopsConfig } from "../../../src/shared/tops";
 
-const CONFIG: TopsConfig = { on: true, peopleAtLeast: 2 };
+const CONFIG: TopsConfig = { on: true, peopleAtLeast: 2, streakFrom: 2 };
 const token = (n: number): string => `player-token-${String(n).padStart(4, "0")}`;
 
 /** A lobby of players 0..count-1. */
@@ -32,6 +32,11 @@ function topSlots(state: LobbyState): number[] {
 /** Each player's games counted in the room and how many of them they were at the top of, by slot, as everyone sees them. */
 function tallies(state: LobbyState): [number, number][] {
   return viewLobby(state, new Set(), 0, roomConfig).players.map((p) => [p.games, p.wins]);
+}
+
+/** Each player's streak in the room, by slot, as everyone sees it. */
+function streaks(state: LobbyState): number[] {
+  return viewLobby(state, new Set(), 0, roomConfig).players.map((p) => p.streak);
 }
 
 describe("resultOf", () => {
@@ -214,5 +219,46 @@ describe("withResult: the room's tally", () => {
       [0, 0],
       [0, 0],
     ]);
+  });
+});
+
+describe("withResult: the streak", () => {
+  it("is one game longer for whoever is at the top again, and nobody has one before a game is played", () => {
+    const none = lobbyOf(3);
+    const first = withResult(none, game([0, 1, 2], [1]));
+    const second = withResult(first, game([0, 1, 2], [1, 2]));
+
+    expect(streaks(none)).toEqual([0, 0, 0]);
+    expect(streaks(first)).toEqual([0, 1, 0]);
+    expect(streaks(second)).toEqual([0, 2, 1]);
+  });
+
+  it("is over for someone who played and was not at the top, and after a game everyone ended level in", () => {
+    const twice = withResult(withResult(lobbyOf(2), game([0, 1], [1])), game([0, 1], [1]));
+
+    expect(streaks(withResult(twice, game([0, 1], [0])))).toEqual([1, 0]);
+    expect(streaks(withResult(twice, game([0, 1], [])))).toEqual([0, 0]);
+  });
+
+  it("is left as it was for someone who did not play the game, and after a game that says nothing", () => {
+    const twice = withResult(withResult(lobbyOf(3), game([0, 1, 2], [1])), game([0, 1, 2], [1]));
+
+    expect(streaks(withResult(twice, game([0, 2], [0])))).toEqual([1, 2, 0]);
+    expect(streaks(withResult(twice, null))).toEqual([0, 2, 0]);
+  });
+
+  it("goes on for a player who comes back with the same token", () => {
+    const twice = withResult(withResult(lobbyOf(2), game([0, 1], [1])), game([0, 1], [1]));
+
+    const back = joinLobby(twice, { token: token(1), nick: "again" }, roomConfig);
+
+    expect(back.ok && streaks(back.state)).toEqual([0, 2]);
+  });
+});
+
+describe("streakOf", () => {
+  it("is the games in a row from the fewest that make a streak on, and none for fewer", () => {
+    expect([0, 1, 2, 3].map((run) => streakOf(run, CONFIG))).toEqual([0, 0, 2, 3]);
+    expect(streakOf(2, { streakFrom: 3 })).toBe(0);
   });
 });

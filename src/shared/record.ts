@@ -115,10 +115,17 @@ export function finishOf(message: GameMessage, config: RecordConfig): Finish | n
   return top === null ? null : { key: `${message.room}.${message.startedAt}`, game: message.game, top };
 }
 
-/** How many games of one kind were played to the end, and in how many of them the player was at the top. */
+/**
+ * How many games of one kind were played to the end, and in how many of them
+ * the player was at the top. `run`: how many of the last, one after another,
+ * they were at the top of, which a game not at the top ends. `best`: the
+ * longest `run` has been.
+ */
 export interface Tally {
   played: number;
   top: number;
+  run: number;
+  best: number;
 }
 
 /**
@@ -153,9 +160,11 @@ export function noRecord(): MyRecord {
  */
 export function counted(record: MyRecord, finish: Finish, config: RecordConfig): MyRecord {
   if (record.seen.includes(finish.key)) return record;
-  const before = record.games[finish.game] ?? { played: 0, top: 0 };
+  const before = record.games[finish.game] ?? { played: 0, top: 0, run: 0, best: 0 };
+  const run = finish.top ? before.run + 1 : 0;
+  const tally: Tally = { played: before.played + 1, top: before.top + (finish.top ? 1 : 0), run, best: Math.max(before.best, run) };
   return {
-    games: { ...record.games, [finish.game]: { played: before.played + 1, top: before.top + (finish.top ? 1 : 0) } },
+    games: { ...record.games, [finish.game]: tally },
     seen: [...record.seen, finish.key].slice(-config.seenMost),
   };
 }
@@ -203,7 +212,9 @@ const isCount = (value: unknown): value is number => typeof value === "number" &
 /**
  * The record kept as `stored`: an empty one for nothing kept and for what
  * cannot be read. A game there no longer is and a count that cannot be one
- * are left out: the browser's store is the player's to write in.
+ * are left out: the browser's store is the player's to write in. A record
+ * kept before streaks were counted has none, and so has one whose streak
+ * cannot be: longer than the games at the top, or longer than its longest.
  */
 export function recordFrom(stored: string | null): MyRecord {
   const record = noRecord();
@@ -217,8 +228,10 @@ export function recordFrom(stored: string | null): MyRecord {
   const { games, seen } = kept as { games?: unknown; seen?: unknown };
   if (typeof games === "object" && games !== null) {
     for (const [game, tally] of Object.entries(games)) {
-      const { played, top } = (tally ?? {}) as { played?: unknown; top?: unknown };
-      if (isGameId(game) && isCount(played) && played > 0 && isCount(top) && top <= played) record.games[game] = { played, top };
+      const { played, top, run, best } = (tally ?? {}) as { played?: unknown; top?: unknown; run?: unknown; best?: unknown };
+      if (!isGameId(game) || !isCount(played) || played <= 0 || !isCount(top) || top > played) continue;
+      const streaks = isCount(run) && isCount(best) && run <= best && best <= top;
+      record.games[game] = { played, top, run: streaks ? run : 0, best: streaks ? best : 0 };
     }
   }
   if (Array.isArray(seen)) record.seen = seen.filter((key): key is string => typeof key === "string");

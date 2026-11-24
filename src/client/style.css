@@ -1242,16 +1242,19 @@ button.choice[aria-pressed="true"] {
   list-style: none;
 }
 
+/* A line whose counts tell of a streak too can be longer than the sheet is wide: the counts then go under the name, still at the right, and the name is not broken. */
 #record-list li,
 #tally-list li {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 8px;
+  gap: 0 8px;
   border-bottom: 1px solid var(--edge);
 }
 
 #record-list li span:last-child,
 #tally-list li span:last-child {
+  margin-left: auto;
   color: var(--amber);
   white-space: nowrap;
 }

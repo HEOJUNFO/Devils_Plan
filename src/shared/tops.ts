@@ -4,7 +4,9 @@
  * Of the last such game: who did best. Those players are marked in the
  * waiting room until the next game played to its end says otherwise. Of all
  * of them: for each player, how many they played and how many they were at
- * the top of, which the room shows as its tally. A game's host says where
+ * the top of, which the room shows as its tally, and how many of the last
+ * they played they were at the top of one after another: a streak. A game's
+ * host says where
  * each of its players ended ({@link GameHost.places}); the room turns that
  * into marks and counts with `withResult` of `lobby.ts`. Both are the
  * room's: they go with the player who leaves it and with the room when it is
@@ -19,6 +21,17 @@ export interface TopsConfig {
   on: boolean;
   /** The fewest people a game is played by for its top to be marked. */
   peopleAtLeast: number;
+  /** The fewest games at the top one after another that are shown as a streak. */
+  streakFrom: number;
+}
+
+/**
+ * The streak `run` games at the top one after another are shown as: `run`
+ * itself from `streakFrom` on, and 0, no streak, for fewer. One game at the
+ * top is a game won, not yet a streak.
+ */
+export function streakOf(run: number, config: Pick<TopsConfig, "streakFrom">): number {
+  return run >= config.streakFrom ? run : 0;
 }
 
 /** What a game played to its end leaves in the room it was played in. */

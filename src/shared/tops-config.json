@@ -1,4 +1,5 @@
 {
   "on": true,
-  "peopleAtLeast": 2
+  "peopleAtLeast": 2,
+  "streakFrom": 2
 }

@@ -23,6 +23,8 @@ import type { StoredWord } from "../shared/feedback";
 import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
 import { qrCode } from "../shared/qr";
 import { playedAny, stampOf, stampsIn, TOP_KIND } from "../shared/record";
+import { streakOf } from "../shared/tops";
+import topsConfig from "../shared/tops-config.json";
 import {
   gameHolds,
   generateRoomCode,
@@ -824,6 +826,7 @@ const chat = createChat(
       if (note.kind === "out") return WORDS.room.knockedOut(note.nick);
       if (note.kind === "champion") return WORDS.room.champion(note.nick);
       if (note.kind === "top") return WORDS.room.tops(note.nick);
+      if (note.kind === "streak") return WORDS.room.streak(note.nick, note.run);
       if (note.kind === "knockout-on") return WORDS.room.knockoutTurnedOn;
       if (note.kind === "knockout-off") return WORDS.room.knockoutTurnedOff;
       if (note.kind === "knockout-again") return WORDS.room.knockoutAgain;
@@ -2016,7 +2019,10 @@ function showRecord(open: boolean): void {
       mark.setAttribute("aria-hidden", "true");
       name.append(mark, GAMES[game].title[lang]);
       const count = document.createElement("span");
-      count.textContent = tally === undefined || stamp === "none" ? WORDS.record.notYet : WORDS.record.row(tally.played, tally.top, WORDS.record.kinds[TOP_KIND[game]]);
+      count.textContent =
+        tally === undefined || stamp === "none"
+          ? WORDS.record.notYet
+          : WORDS.record.row(tally.played, tally.top, WORDS.record.kinds[TOP_KIND[game]], streakOf(tally.run, topsConfig), streakOf(tally.best, topsConfig));
       row.append(name, count);
       return row;
     }),
@@ -2044,6 +2050,11 @@ function tallied(view: LobbyView): LobbyView["players"] {
   return [...view.players].sort((a, b) => (b.wins ?? 0) - (a.wins ?? 0) || (b.games ?? 0) - (a.games ?? 0) || a.slot - b.slot);
 }
 
+/** A player's counts on their line of the room's tally. A room from before streaks sends none. */
+function tallyRow(player: LobbyView["players"][number]): string {
+  return WORDS.tally.row(player.games ?? 0, player.wins ?? 0, streakOf(player.streak ?? 0, topsConfig), player.pieces ?? 0);
+}
+
 /** Writes the lines of the room's tally: a player to a line. */
 function fillTally(): void {
   const view = currentView;
@@ -2055,7 +2066,7 @@ function fillTally(): void {
       const name = document.createElement("span");
       name.textContent = `${player.nick}${player.slot === view.you ? WORDS.tally.me : ""}`;
       const count = document.createElement("span");
-      count.textContent = WORDS.tally.row(player.games ?? 0, player.wins ?? 0, player.pieces ?? 0);
+      count.textContent = tallyRow(player);
       row.append(name, count);
       return row;
     }),
@@ -2080,7 +2091,7 @@ function showTally(open: boolean): void {
 tallyOpen.addEventListener("click", () => showTally(true));
 
 /** The picture of a room's tally: how far its heading and its first line are from the top, how far apart the lines are, and its margins. */
-const TALLY_PICTURE = { headY: 8, firstY: 30, pitch: 15, side: 12, foot: 8, nameWidth: 220 };
+const TALLY_PICTURE = { headY: 8, firstY: 30, pitch: 15, side: 12, foot: 8, nameWidth: 220, gap: 8 };
 
 /**
  * The room's tally as a picture, the frame's width and as tall as its lines:
@@ -2103,8 +2114,11 @@ function tallyPicture(view: LobbyView): Blob | null {
   pen.px(look.side, look.firstY - 6, canvas.width - 2 * look.side, 1, C.steelDD);
   rows.forEach((player, at) => {
     const y = look.firstY + at * look.pitch;
-    pen.txt(pen.fit(player.nick, look.nameWidth), look.side, y, (player.wins ?? 0) > 0 && at === 0 ? C.amber : C.bone);
-    pen.txt(WORDS.tally.row(player.games ?? 0, player.wins ?? 0, player.pieces ?? 0), canvas.width - look.side, y, C.boneD, "right");
+    // the name has the room its counts leave it: a line with a streak and pieces on it is a long one
+    const counts = tallyRow(player);
+    const room = Math.min(look.nameWidth, canvas.width - 2 * look.side - look.gap - pen.width(counts));
+    pen.txt(pen.fit(player.nick, room), look.side, y, (player.wins ?? 0) > 0 && at === 0 ? C.amber : C.bone);
+    pen.txt(counts, canvas.width - look.side, y, C.boneD, "right");
   });
   return pictureOf([{ canvas, width: canvas.width, height: canvas.height, smooth: false }], {
     width: canvas.width,
@@ -2732,6 +2746,13 @@ function noteComings(before: LobbyView, after: LobbyView): void {
   const tops = after.players.filter((p) => p.top === true);
   const topBefore = new Set(before.players.filter((p) => p.top === true).map((p) => p.slot));
   if (tops.some((p) => !topBefore.has(p.slot) && was.has(p.slot))) chat.note({ kind: "top", nick: tops.map((p) => p.nick).join(", ") });
+  // whose streak a game just over made longer: said of each, from the length that is a streak on
+  // (the mark above is not said again for someone who keeps it; a room from before streaks tells of none)
+  const ran = new Map(before.players.map((p) => [p.slot, p.streak ?? 0]));
+  for (const p of after.players) {
+    const run = streakOf(p.streak ?? 0, topsConfig);
+    if (run > (ran.get(p.slot) ?? run)) chat.note({ kind: "streak", nick: p.nick, run });
+  }
   // The room has another host with both of them here before and after: it was passed on, by the host or by the
   // room for a host who did not answer. Not said when a host's connection drops and comes back: the room goes
   // to the next player and returns by itself, and a line for each way would fill the chat of a room on a bad line.
