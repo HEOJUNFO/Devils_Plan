@@ -98,6 +98,13 @@ describe("faultOf", () => {
     expect(faultOf(raw, "lobby", "android", directoryConfig.faults)).toBeNull();
     expect(faultOf({ message: "Uncaught TypeError: x is not a function" }, "lobby", "android", directoryConfig.faults)).not.toBeNull();
   });
+
+  it("notes nothing, with the limits the site runs with, of a script put into the page that sets a wallet the page has none of", () => {
+    // as it was kept on 2026-11-22 (twice, lobby, ios, build d204a73): the game names no `window.ethereum` anywhere
+    const raw = { message: "TypeError: undefined is not an object (evaluating 'window.ethereum.selectedAddress = undefined')", stack: "global code@https://play.example/ko/:1:16" };
+    expect(faultOf(raw, "lobby", "ios", directoryConfig.faults)).toBeNull();
+    expect(faultOf({ message: "TypeError: undefined is not an object (evaluating 'view.players')" }, "lobby", "ios", directoryConfig.faults)).not.toBeNull();
+  });
 });
 
 describe("browserOf", () => {
