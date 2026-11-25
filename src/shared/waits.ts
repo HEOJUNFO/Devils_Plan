@@ -18,6 +18,7 @@ import type { EqView } from "./games/equation-traffic-light/rules";
 import type { GemView } from "./games/gem-black-market/rules";
 import type { GradView } from "./games/gradation/rules";
 import type { FlagsView } from "./games/flags-around-the-world/rules";
+import type { HiddenView } from "./games/hidden-word/rules";
 import type { HitView } from "./games/hit-stay/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
@@ -147,4 +148,17 @@ export function hitWaits(view: Pick<HitView, "you" | "phase" | "turn"> & { hands
 export function flagsWaits(view: Pick<FlagsView, "you" | "phase" | "playing" | "ready">): boolean {
   if (view.you === null) return false;
   return view.phase === "choose" && view.playing.includes(view.you) && !view.ready.includes(view.you);
+}
+
+/**
+ * 히든 워드: this player has yet to choose the round's hidden word, is the
+ * word setter while clues are given, or has yet to write an answer. Nobody
+ * is waited on while answers are on show. Past each clock the room goes on
+ * without them.
+ */
+export function hiddenWaits(view: Pick<HiddenView, "you" | "phase" | "setter" | "ready">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "choose") return !view.ready.includes(view.you);
+  if (view.phase === "clue") return view.setter === view.you;
+  return view.phase === "answer" && view.setter !== view.you && !view.ready.includes(view.you);
 }

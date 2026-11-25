@@ -119,8 +119,15 @@ describe("the pieces 네모 세기 pays", () => {
   });
 });
 
+describe("the pieces 히든 워드 pays", () => {
+  it("is asked of its host: the wiki's four to first place (tests/unit/hidden-word/host.test.ts has the sums)", () => {
+    expect(HOSTS["hidden-word"].pieces).toBeTypeOf("function");
+    expect(HOSTS["hidden-word"].pieces?.(started(HOSTS["hidden-word"], 3))).toBeNull();
+  });
+});
+
 describe("the games no payout is documented for", () => {
-  it.each(GAME_IDS.filter((game) => !["under-thirteen", "mystery-stock-market", "count-rectangles", "piggy-bank", "gem-black-market"].includes(game)))("%s pays no pieces", (game) => {
+  it.each(GAME_IDS.filter((game) => !["under-thirteen", "mystery-stock-market", "count-rectangles", "piggy-bank", "gem-black-market", "hidden-word"].includes(game)))("%s pays no pieces", (game) => {
     expect(HOSTS[game].pieces).toBeUndefined();
   });
 });

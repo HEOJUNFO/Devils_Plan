@@ -1014,6 +1014,56 @@ button.choice[aria-pressed="true"] {
   color: var(--dim);
 }
 
+/*
+ * 히든 워드: the box a clue or an answer is typed in, over the left of the
+ * game's scene and above its bar (games/hidden-word/screen.ts puts it after
+ * the canvas and takes it away). What it is for is said in the line over it.
+ */
+#word-form {
+  position: absolute;
+  left: 14px;
+  top: 188px;
+  width: 276px;
+}
+
+#word-form[hidden] {
+  display: none;
+}
+
+#word-form label {
+  display: block;
+  height: 13px;
+  margin: 0 0 1px;
+  overflow: hidden;
+  color: var(--bone-dim);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#word-form div {
+  display: flex;
+  gap: 2px;
+}
+
+#word-form input {
+  flex: 1;
+  min-width: 0;
+}
+
+#word-form button {
+  flex: none;
+  color: var(--bone);
+}
+
+/* Under a finger the box and its button are taller: the whole is moved up so that it still ends over the bar. */
+:root.touch #word-form {
+  top: 181px;
+}
+
+:root.touch #word-form button {
+  height: 24px;
+}
+
 /* The tabs over the game's right-hand column. */
 #tabs {
   position: absolute;
@@ -1936,6 +1986,7 @@ button.choice[aria-pressed="true"] {
 }
 
 /* A game's rules sheet covers the whole frame: what the page itself lays over the game gives way to it. */
+#frame.covered #word-form,
 #frame.covered #leave-game,
 #frame.covered #menu-open,
 #frame.covered #tabs,

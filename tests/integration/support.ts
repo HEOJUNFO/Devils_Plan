@@ -33,6 +33,7 @@ export type GradMessage = Extract<ServerMessage, { type: "game"; game: "gradatio
 export type EqMessage = Extract<ServerMessage, { type: "game"; game: "equation-traffic-light" }>;
 export type HitMessage = Extract<ServerMessage, { type: "game"; game: "hit-stay" }>;
 export type FlagsMessage = Extract<ServerMessage, { type: "game"; game: "flags-around-the-world" }>;
+export type HiddenMessage = Extract<ServerMessage, { type: "game"; game: "hidden-word" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -268,6 +269,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "flags-around-the-world" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 히든 워드 that satisfies `match`. */
+  async hiddenWhere(match: (game: HiddenMessage) => boolean = () => true): Promise<HiddenMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "hidden-word" && match(message)) return message;
     }
   }
 

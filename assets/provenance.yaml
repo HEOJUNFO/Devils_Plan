@@ -62,3 +62,23 @@
   licence: {id: MIT}
   date: 2026-11-25
   ships: false
+- path: tools/hidden-word/glosses-ko.tsv
+  origin: ai
+  tool: "written by Claude subagents from the model's own knowledge, in twelve slices: 11,384 Korean nouns, each with a short gloss and the words that come to mind with it. No dictionary, corpus or word list was copied in. 20 are marked #DROP and left out of the game"
+  model: "claude-fable-5-2"
+  date: 2026-11-25
+  ships: false
+- path: tools/hidden-word/envelope-ko.txt
+  origin: ai
+  tool: "chosen by Claude from tools/hidden-word/glosses-ko.tsv: the 486 familiar nouns an envelope of 히든 워드 is dealt from"
+  model: "claude-fable-5-2"
+  date: 2026-11-25
+  ships: false
+- path: src/shared/games/hidden-word/lexicon-ko.json
+  origin: code
+  tool: "tools/hidden-word-lexicon.py (sentence-transformers, numpy), run on the development machine: each word of tools/hidden-word/glosses-ko.tsv is embedded once with its gloss by the model KURE-v1, the vectors are drawn toward the words each gloss names, cut to 128 dimensions of one byte each, and kept with the cosines at fixed ranks from which the game reads a percentage. Nothing of the model itself is in the file, and the game asks no model while it is played"
+  model: "nlpai-lab/KURE-v1 (made the vectors); claude-fable-5-2 (wrote the script and the glosses)"
+  source: {vendor: "NLP & AI Lab, Korea University", product: "KURE-v1 (embedding model, used once, not shipped)", url: "https://huggingface.co/nlpai-lab/KURE-v1"}
+  licence: {id: MIT}
+  date: 2026-11-25
+  ships: true

@@ -1,0 +1,18 @@
+{
+  "rounds": 2,
+  "multipliers": [1, 2],
+  "envelope": 5,
+  "apart": 60,
+  "chooseSeconds": 180,
+  "checks": 20,
+  "clues": 10,
+  "clueSeconds": 900,
+  "threshold": 95,
+  "stages": 3,
+  "answerSeconds": 300,
+  "pieces": 3,
+  "revealSeconds": 12,
+  "wordLength": 10,
+  "minPlayers": 3,
+  "maxPlayers": 6
+}

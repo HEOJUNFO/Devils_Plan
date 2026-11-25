@@ -21,6 +21,8 @@ import { createHitScreen } from "./hit-stay/screen";
 import { WORDS as HIT_WORDS } from "./hit-stay/words";
 import { createFlagsScreen } from "./flags-around-the-world/screen";
 import { WORDS as FLAGS_WORDS } from "./flags-around-the-world/words";
+import { createHiddenScreen } from "./hidden-word/screen";
+import { WORDS as HIDDEN_WORDS } from "./hidden-word/words";
 import { createWallScreen } from "./wall-go-2/screen";
 import { WORDS as WALL_WORDS } from "./wall-go-2/words";
 import { createCubesScreen } from "./count-cubes/screen";
@@ -357,5 +359,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: FLAGS_WORDS.sheet,
+  },
+  "hidden-word": {
+    screen(canvas, handlers) {
+      const screen = createHiddenScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "hidden-word") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: HIDDEN_WORDS.sheet,
   },
 };

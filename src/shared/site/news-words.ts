@@ -47,12 +47,17 @@ const GRAD = name("gradation");
 const EQ = name("equation-traffic-light");
 const HIT = name("hit-stay");
 const FLAGS = name("flags-around-the-world");
+const HIDDEN = name("hidden-word");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-25",
     lines: [
+      {
+        ko: `새 게임 ${HIDDEN.ko}: 시즌의 다섯 번째 메인 매치입니다. 3~6명이 함께 합니다. 각자 명사 다섯 개가 든 봉투에서 하나를 히든 워드로 숨기고, 출제자가 낸 힌트마다 히든 워드와의 유사도가 모두에게 보입니다. 95% 이상인 힌트가 나오면 나머지가 히든 워드를 적어 함께 엽니다. 맞히면 1점, 아무도 못 맞히면 출제자가 점수를 얻고 3차까지 힌트를 더 냅니다. 2라운드는 점수가 2배입니다. 유사도는 방송의 값이 아니라 이 사이트가 한국어 낱말 1만 1천여 개에 미리 매겨 둔 값이고, 힌트는 그 목록의 낱말로 냅니다.`,
+        en: `A new game, ${HIDDEN.en}: the season's fifth main match, for 3 to 6 players. Everyone hides one of the five nouns in their envelope as their hidden word; each clue the word setter gives is shown to all with its similarity score. A clue of at least 95% ends the clues and the others write the hidden word, revealed together. A correct answer is a point; with none, the setter scores and gives clues again, up to three stages. Round 2 counts double. The scores are not the show's: this site worked them out in advance for some 11,000 Korean words, and a clue has to be one of them. The words are Korean, as in the show.`,
+      },
       {
         ko: `새 게임 ${FLAGS.ko}: 5일차의 유배지 매치입니다. 2~16명이 함께 합니다. 국기 10개가 1초씩, 같은 순서로 세 번 지나가고, 5초 뒤 나오는 25개 가운데 방금 본 5개를 1분 안에 찾습니다. 맞힌 하나에 1점이고 3라운드의 점수 합으로 겨룹니다. 1위가 여럿이면 그 사람들끼리 연장 라운드를 합니다. 국기는 유엔 회원국 193개국의 것입니다.`,
         en: `A new game, ${FLAGS.en}: the exile match of the season's fifth day, for 2 to 16 players. Ten national flags are shown for a second each, three times in the same order; five seconds later 25 flags appear, and you have a minute to find the five you saw. One point for each correct flag, over three rounds; players tied for first play tiebreaker rounds. The flags are those of the 193 UN member states.`,

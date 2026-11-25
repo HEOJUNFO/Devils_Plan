@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, hitWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, hiddenWaits, hitWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -246,5 +246,31 @@ describe("flagsWaits", () => {
   it("does not wait on a player a tiebreaker round is not for, nor on someone watching", () => {
     expect(flagsWaits(view({ playing: [OTHER] }))).toBe(false);
     expect(flagsWaits(view({ you: null }))).toBe(false);
+  });
+});
+
+describe("hiddenWaits", () => {
+  const view = (changes: Partial<Parameters<typeof hiddenWaits>[0]> = {}): Parameters<typeof hiddenWaits>[0] => ({ you: ME, phase: "choose", setter: null, ready: [], ...changes });
+
+  it("waits on a player who has yet to choose their hidden word", () => {
+    expect(hiddenWaits(view())).toBe(true);
+    expect(hiddenWaits(view({ ready: [OTHER] }))).toBe(true);
+    expect(hiddenWaits(view({ ready: [ME] }))).toBe(false);
+  });
+
+  it("waits on the word setter while clues are given, and on nobody else", () => {
+    expect(hiddenWaits(view({ phase: "clue", setter: ME }))).toBe(true);
+    expect(hiddenWaits(view({ phase: "clue", setter: OTHER }))).toBe(false);
+  });
+
+  it("waits on everyone but the setter who has yet to write an answer", () => {
+    expect(hiddenWaits(view({ phase: "answer", setter: OTHER }))).toBe(true);
+    expect(hiddenWaits(view({ phase: "answer", setter: OTHER, ready: [ME] }))).toBe(false);
+    expect(hiddenWaits(view({ phase: "answer", setter: ME }))).toBe(false);
+  });
+
+  it("does not wait while the answers are on show, once the game is over, or on someone watching", () => {
+    for (const phase of ["reveal", "ended"] as const) expect(hiddenWaits(view({ phase, setter: OTHER }))).toBe(false);
+    expect(hiddenWaits(view({ you: null }))).toBe(false);
   });
 });

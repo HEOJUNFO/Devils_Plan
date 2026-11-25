@@ -23,7 +23,8 @@
 // distribute their cubes and play its first round, and two a room of
 // 수식 신호등, who create their equations and play it to a win, and two a
 // room of HIT, STAY, who play its first round until one of them folds, and
-// two a room of 만국기, who are sent its first ten flags.
+// two a room of 만국기, who are sent its first ten flags, and three a room of
+// 히든 워드, who hide a word each and see the first setter's clue scored.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -62,6 +63,7 @@ const GRAD_GAME = "gradation";
 const EQ_GAME = "equation-traffic-light";
 const HIT_GAME = "hit-stay";
 const FLAGS_GAME = "flags-around-the-world";
+const HIDDEN_GAME = "hidden-word";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1667,6 +1669,51 @@ async function flagsGame() {
   for (const p of players) p.close();
 }
 
+/** 히든 워드, in a room of its own: three players, off the list. Each is dealt an envelope and hides a word; the first setter's clue is scored by the room, and the others are not sent the hidden word. */
+async function hiddenGame() {
+  const players = await roomOf(HIDDEN_GAME, 3, "hider");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("히든 워드 to start", (m) => m.type === "game" || m.type === "refused")));
+  const dealt = games.flatMap((g) => g.view?.hand?.words ?? []);
+  check(
+    "히든 워드 for three starts with an envelope of five words each, no word twice, and two rounds to play",
+    games.every((g, n) => g.type === "game" && g.game === HIDDEN_GAME && g.view.you === n && g.view.phase === "choose" && g.view.hand.words.length === 5 && g.view.hand.chosen === null) &&
+      new Set(dealt).size === 15 &&
+      games[0].rules.rounds === 2 &&
+      games[0].rules.threshold === 95,
+    `envelope ${games[0].view?.hand?.words.join(" ")}`,
+  );
+  const [reference, word] = games[0].view.hand.words;
+  players[0].send({ type: "action", action: { type: "check", reference, word } });
+  const checked = await players[0].until("the pair scored", (m) => m.type === "refused" || (m.type === "game" && m.view.hand.checks.length === 1));
+  const pair = checked.view?.hand.checks[0];
+  check("a pair of the envelope is scored by the room, in percent", checked.type === "game" && pair.score >= 0 && pair.score < 100 && checked.view.hand.checksLeft === games[0].rules.checks - 1, `${reference} → ${word}: ${pair?.score}%`);
+  games.forEach((g, n) => players[n].send({ type: "action", action: { type: "choose", word: g.view.hand.words[0] } }));
+  const turn = await Promise.all(players.map((p) => p.until("the first setter's turn", (m) => m.type === "refused" || (m.type === "game" && m.view.phase === "clue"))));
+  const setter = turn[0].view?.setter;
+  const hidden = games[setter]?.view.hand.words[0];
+  check(
+    "once all three have hidden a word the order is drawn and its first setter gives clues",
+    turn.every((g) => g.type === "game" && g.view.order.length === 3 && g.view.order[0] === setter && g.view.stage === 1) && turn[setter].view.hand.chosen === hidden,
+    `setter ${setter}`,
+  );
+  // a clue from the setter's own envelope: in the list, and far from the hidden word (an envelope's words are dealt apart)
+  const clue = games[setter].view.hand.words[1];
+  players[setter].send({ type: "action", action: { type: "clue", word: clue } });
+  const clued = await Promise.all(players.map((p) => p.until("the clue scored", (m) => m.type === "refused" || (m.type === "game" && m.view.clues.length === 1))));
+  check(
+    "the setter's clue is shown to everyone with the score the room gave it",
+    clued.every((g) => g.type === "game" && g.view.clues[0].word === clue && g.view.clues[0].score === clued[0].view.clues[0].score && g.view.clues[0].room === false),
+    `${clue}: ${clued[0].view?.clues[0].score}%`,
+  );
+  const others = players.filter((_, n) => n !== setter);
+  check("the hidden word is in nothing the other two were sent", others.every((p) => !p.messages.some((m) => JSON.stringify(m).includes(`"${hidden}"`))));
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 히든 워드 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1686,6 +1733,7 @@ const PARTS = [
   [EQ_GAME, eqGame],
   [HIT_GAME, hitGame],
   [FLAGS_GAME, flagsGame],
+  [HIDDEN_GAME, hiddenGame],
 ];
 
 async function main() {
