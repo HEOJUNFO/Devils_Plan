@@ -58,40 +58,35 @@ body {
 }
 
 /*
- * The frame is wider than it is tall. On a narrow screen held upright it
- * would be drawn at well under its own size, too small to read or to press,
- * so the page asks to be turned instead.
+ * The frame is wider than it is tall. On a phone held upright it is drawn as
+ * wide as the screen, which is smaller than it is held sideways but whole and
+ * played as it is; the room left under it says that turning the phone makes
+ * it larger (main.ts says where the frame ends: --frame-bottom).
  */
 #turn-device {
   display: none;
 }
 
 @media (orientation: portrait) and (max-width: 640px) {
-  #turn-device {
+  .touch #turn-device {
     position: fixed;
-    inset: 0;
-    z-index: 1;
+    left: 0;
+    right: 0;
+    top: calc(var(--frame-bottom, 50%) + 16px);
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 12px;
     align-items: center;
-    justify-content: center;
     margin: 0;
-    padding: 24px;
-    background: #0d1020;
-    color: #efe6cc;
-    font: 20px/1.4 "Galmuri11", "Galmuri11 All", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    /* clear of a rounded corner or a notch at the sides */
+    padding: 0 max(16px, env(safe-area-inset-right, 0px)) 0 max(16px, env(safe-area-inset-left, 0px));
+    color: #7d7a8c;
+    font: 14px/1.4 "Galmuri11", "Galmuri11 All", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
     text-align: center;
   }
 
-  /* What the link that was opened is to, over the words that ask for the turn: a line, or two where it says a time. */
-  #turn-invited {
-    color: #ffb43c;
-    white-space: pre-line;
-  }
-
-  #turn-invited[hidden] {
-    display: none;
+  #turn-words {
+    margin: 0;
   }
 
   /* Where the browser can turn the page itself (main.ts shows the button there): large enough for a thumb. */

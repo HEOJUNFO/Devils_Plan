@@ -56,7 +56,7 @@ import {
   type DirectoryRequest,
   type RejectReason,
 } from "../shared/protocol";
-import { liftFor, placeFrame } from "../shared/frame";
+import { FRAME_H, liftFor, placeFrame } from "../shared/frame";
 import { NEWS_MARK, unreadNews } from "../shared/site/news-mark";
 import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, newsPath, slugOf } from "../shared/site/paths";
 import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
@@ -253,7 +253,6 @@ const menuSound = el<HTMLButtonElement>("menu-sound");
 const menuFull = el<HTMLButtonElement>("menu-full");
 const menuClose = el<HTMLButtonElement>("menu-close");
 const turnFull = el<HTMLButtonElement>("turn-full");
-const turnInvited = el<HTMLElement>("turn-invited");
 const rulesSheet = el<HTMLElement>("rules-sheet");
 const langButton = el<HTMLButtonElement>("lang");
 const quickButton = el<HTMLButtonElement>("quick");
@@ -528,6 +527,8 @@ function fitFrame(): void {
   frame.style.setProperty("--scale", String(placed.scale));
   frame.style.setProperty("--left", `${placed.left}px`);
   frame.style.setProperty("--top", `${placed.top}px`);
+  // where the frame ends: a phone held upright has room under it, and what is said there starts from here (style.css)
+  document.documentElement.style.setProperty("--frame-bottom", `${placed.top + FRAME_H * placed.scale}px`);
 }
 addEventListener("resize", fitFrame);
 fitFrame();
@@ -3346,8 +3347,6 @@ function renderRoom(code: string, view: LobbyView): void {
     chat.open(code);
     // once for a room: a page loaded again has the line among those it kept
     if (!chat.noted("first-time")) tipRules(view.game);
-    // the invitation is taken up: the notice a phone held upright shows says no more of it
-    turnInvited.hidden = true;
     // another room waits on its host anew
     hostWaited = false;
     hostCalledAt = null;
@@ -4195,25 +4194,6 @@ function syncEntry(): void {
           : WORDS.entry.invited(codeHidden ? null : code, when)
       : WORDS.entry.sub;
   syncCalendar();
-  syncTurn();
-}
-
-/**
- * Says on the notice a phone held upright shows, over the words that ask for
- * the turn, what the link that brought the reader is to: the game where the
- * link said, else the room's code, and under it when its people meet where
- * it says that. The notice covers the whole page, so without this someone
- * who tapped a friend's link sees no sign that it led anywhere. Said while
- * the invitation is not yet taken up: in a room there is nothing to add.
- */
-function syncTurn(): void {
-  const code = codeInput.value.trim().toUpperCase();
-  const invited = currentCode === "" && invitedCode !== "" && code === invitedCode;
-  turnInvited.hidden = !invited;
-  if (!invited) return;
-  const said = WORDS.site.turnInvited(invitedGame === null ? null : GAMES[invitedGame].title[lang], codeHidden ? null : code);
-  const stands = appointment !== null && appointment.code === code && appointmentStands(appointment.at, Date.now(), appointmentConfig) !== null;
-  turnInvited.textContent = stands && appointment !== null ? `${said}\n${WORDS.site.turnWhen(whenOf(appointment.at))}` : said;
 }
 
 function joinFromInput(): void {
@@ -4652,7 +4632,7 @@ menuFull.addEventListener("click", () => {
   else fillScreen();
   openMenu(false);
 });
-// Upright, where the browser can fill the screen and turn the page: one press does what turning the phone would.
+// Upright, where the browser can fill the screen and turn the page: one press makes the frame as large as turning the phone would.
 turnFull.hidden = !(TOUCH && document.fullscreenEnabled);
 turnFull.addEventListener("click", fillScreen);
 

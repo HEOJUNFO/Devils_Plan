@@ -71,6 +71,20 @@ describe("placeFrame", () => {
     expect(placed.left).toBeCloseTo(72.667, 2);
     expect(placed.top).toBeCloseTo(0, 9);
   });
+
+  it("draws the frame as wide as a phone held upright, whole, with the room left over above and under it", () => {
+    /** The same phone of 844 by 390 held upright in its browser, the bars taken off. */
+    const upright: Screen = { width: 390, height: 664, density: 3, coarse: true };
+    const placed = placeFrame(upright);
+
+    expect(placed.scale).toBeCloseTo(390 / FRAME_W, 9);
+    expect(placed.left).toBe(0);
+    expect(FRAME_W * placed.scale).toBeCloseTo(upright.width, 9);
+    // 270 * 0.8125 = 219.4 of the 664: the frame ends above the bottom, and what is said under it has room
+    expect(placed.top).toBeGreaterThan(0);
+    expect(placed.top + FRAME_H * placed.scale).toBeLessThan(upright.height - 100);
+    expect(placed.top * upright.density).toBeCloseTo(Math.round(placed.top * upright.density), 9);
+  });
 });
 
 describe("liftFor", () => {

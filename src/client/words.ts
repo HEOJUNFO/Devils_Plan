@@ -18,11 +18,8 @@ const ko = {
     // the tab's title in the lobby and what a search result says of the page: written with the pages a search engine reads
     tab: SITE_WORDS.ko.app.title,
     description: SITE_WORDS.ko.app.description(GAME_IDS.length),
-    turnDevice: "화면을 가로로 돌려 주세요",
-    /** Over it, for someone a link to a room brought who has not gone in yet: what the link was to. `game` is `null` where the link did not say. */
-    turnInvited: (game: string | null, code: string | null) => (game !== null ? `${game} 방에 초대받았습니다` : code === null ? "방에 초대받았습니다" : `방 ${code}에 초대받았습니다`),
-    /** Under that, where the link says when its people meet (`src/shared/appointment.ts`). */
-    turnWhen: (when: string) => `약속 ${when}`,
+    /** Under the frame on a phone held upright, where it is drawn as wide as the screen. */
+    turnDevice: "가로로 돌리면 화면이 더 커집니다",
     /** On the button that turns the page itself, where the browser can. */
     turnFull: "가로 전체 화면으로 보기",
     /** In the lobby's bar: which build the page is, to name when something is reported. */
@@ -639,9 +636,7 @@ const en: typeof ko = {
     title: "Game Lobby",
     tab: SITE_WORDS.en.app.title,
     description: SITE_WORDS.en.app.description(GAME_IDS.length),
-    turnDevice: "Turn your screen sideways",
-    turnInvited: (game, code) => (game !== null ? `You are invited to play ${game}` : code === null ? "You are invited to a room" : `You are invited to room ${code}`),
-    turnWhen: (when) => `Meet ${when}`,
+    turnDevice: "Turn your phone sideways for a larger screen",
     turnFull: "Go full screen, sideways",
     version: (build) => `Version ${build}`,
     news: "What changed lately",

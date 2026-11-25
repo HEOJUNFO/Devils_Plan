@@ -104,7 +104,7 @@ const ko = {
     howMany: "몇 명이 하나요?",
     howManyAnswer: (each: string) => `게임마다 다릅니다: ${each}.`,
     alone: (names: string) => `혼자서도 시작할 수 있는 게임: ${names}.`,
-    phone: ["휴대폰에서도 되나요?", "네. 휴대폰에서는 화면을 가로로 돌려 손가락으로 하고, 컴퓨터에서는 마우스와 키보드로 합니다."],
+    phone: ["휴대폰에서도 되나요?", "네. 휴대폰에서는 손가락으로, 컴퓨터에서는 마우스와 키보드로 합니다. 휴대폰은 세로로 들어도 되고, 가로로 돌리면 화면이 더 커집니다."],
   },
   game: {
     title: (name: string) => `${name} 규칙: 데블스 플랜 게임 온라인으로 하기`,
@@ -189,7 +189,7 @@ const en: typeof ko = {
     howMany: "How many players does it take?",
     howManyAnswer: (each: string) => `It depends on the game: ${each}.`,
     alone: (names: string) => `Games one player can start alone: ${names}.`,
-    phone: ["Does it work on a phone?", "Yes. On a phone, turn the screen sideways and play with a finger; on a computer, with a mouse and a keyboard."],
+    phone: ["Does it work on a phone?", "Yes. On a phone you play with a finger; on a computer, with a mouse and a keyboard. A phone can be held upright, and turned sideways the screen is larger."],
   },
   game: {
     title: (name: string) => `${name} Rules: The Devil's Plan Game, Online`,

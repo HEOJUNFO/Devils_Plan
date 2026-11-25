@@ -52,6 +52,15 @@ const HIDDEN = name("hidden-word");
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
+    date: "2026-11-26",
+    lines: [
+      {
+        ko: "휴대폰을 세로로 들어도 할 수 있습니다. 「화면을 가로로 돌려 주세요」 안내가 화면을 덮지 않고, 화면 폭에 맞춘 게임이 그대로 나옵니다. 가로로 돌리면 더 크게 보입니다.",
+        en: "A phone held upright now plays too. The notice that asked you to turn the screen no longer covers it: the game is shown as wide as the screen, and larger when the phone is turned sideways.",
+      },
+    ],
+  },
+  {
     date: "2026-11-25",
     lines: [
       {
