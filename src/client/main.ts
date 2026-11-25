@@ -20,7 +20,7 @@ import { minutesPlayed, newlyOpen, quickNext, quickPicks, roomsShown, type RoomL
 import { louder, pressing, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
 import type { StoredWord } from "../shared/feedback";
-import { DEFAULT_GAME, GAMES, GAME_IDS, isGameId, type GameId } from "../shared/games";
+import { GAMES, GAME_IDS, NEWEST_GAME_IDS, isGameId, type GameId } from "../shared/games";
 import { qrCode } from "../shared/qr";
 import { playedAny, stampOf, stampsIn, TOP_KIND } from "../shared/record";
 import { streakOf } from "../shared/tops";
@@ -702,7 +702,7 @@ let inboxShown = false;
 
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
-let chosenGame: GameId = isGameId(storedGame) ? storedGame : DEFAULT_GAME;
+let chosenGame: GameId = isGameId(storedGame) ? storedGame : NEWEST_GAME_IDS[0]!;
 /** Whether this player's rooms go on the list, as they last chose it themselves: what the browser keeps. */
 let listedOwn = localStorage.getItem(storageKey("listed")) !== "0";
 /**
@@ -1339,7 +1339,7 @@ let lobbyBarShown = false;
  * The games to pick from over the list, every game first, each with how many
  * rooms it has. Made once; `renderRooms` keeps the counts and which is picked.
  */
-const gamePicks = [null, ...GAME_IDS].map((game) => {
+const gamePicks = [null, ...NEWEST_GAME_IDS].map((game) => {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "choice game-pick";
@@ -2008,7 +2008,7 @@ function showRecord(open: boolean): void {
   const record = myRecord();
   el("record-title").textContent = WORDS.record.stamps(stampsIn(record, GAME_IDS), GAME_IDS.length);
   recordList.replaceChildren(
-    ...GAME_IDS.map((game) => {
+    ...NEWEST_GAME_IDS.map((game) => {
       const tally = record.games[game];
       const stamp = stampOf(record, game);
       const row = document.createElement("li");
@@ -2589,7 +2589,7 @@ function showLobby(message = ""): void {
 
 /** Draws the choices for a new room as they now stand. */
 function renderNewRoom(): void {
-  const choices = GAME_IDS.map((id) => {
+  const choices = NEWEST_GAME_IDS.map((id) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "choice";
@@ -2605,7 +2605,7 @@ function renderNewRoom(): void {
   // a name too long for half a row has a row of its own (the form is on show when this is drawn, so it can be measured)
   for (const button of choices) button.classList.toggle("whole", button.scrollWidth > button.clientWidth);
   // with more games than the list has rows it scrolls: the game chosen is in sight when the form is drawn
-  choices[GAME_IDS.indexOf(chosenGame)]?.scrollIntoView({ block: "nearest" });
+  choices[NEWEST_GAME_IDS.indexOf(chosenGame)]?.scrollIntoView({ block: "nearest" });
   const game = GAMES[chosenGame];
   listedYes.setAttribute("aria-pressed", String(chosenListed));
   listedNo.setAttribute("aria-pressed", String(!chosenListed));
@@ -3148,7 +3148,7 @@ function showSwap(shown: boolean): void {
   const mine = hosting ? null : myWish(view);
   // the keys stay on the game they were on when the sheet is drawn again under them
   const keysAt = [...swapChoices.children].indexOf(document.activeElement as Element);
-  const choices = GAME_IDS.map((id) => {
+  const choices = NEWEST_GAME_IDS.map((id) => {
     const button = document.createElement("button");
     const count = wishes[id] ?? 0;
     const title = GAMES[id].title[lang];
@@ -3185,7 +3185,7 @@ function showSwap(shown: boolean): void {
   swapKnockout.classList.toggle("primary", knockout);
   const opening = swapSheet.hidden;
   swapSheet.hidden = false;
-  if (opening) (choices.find((button, at) => !button.disabled && (hosting ? GAME_IDS[at] === view.game : mine === null || GAME_IDS[at] === mine)) ?? el<HTMLButtonElement>("swap-close")).focus({ preventScroll: true });
+  if (opening) (choices.find((button, at) => !button.disabled && (hosting ? NEWEST_GAME_IDS[at] === view.game : mine === null || NEWEST_GAME_IDS[at] === mine)) ?? el<HTMLButtonElement>("swap-close")).focus({ preventScroll: true });
 }
 
 /**

@@ -65,6 +65,10 @@ export const NEWS: NewsDay[] = [
         en: `A new game, ${GRAD.en}: the season's sixth prison match. Two or three players hide number cubes in seven cups and submit them one at a time, showing only a cup's shade; the higher number wins the round. A game has six matches at most: with no two wins in a row by then, players are placed by matches won.`,
       },
       {
+        ko: "게임 목록은 이제 새로 나온 게임이 맨 위입니다. 로비의 게임별 보기, 새 방, 게임 바꾸기, 내 기록이 모두 같은 순서입니다.",
+        en: "Lists of games now have the newest game at the top: the lobby's rooms by game, a new room, Change the game and My record are all in that order.",
+      },
+      {
         ko: "연승을 셉니다. 한 방에서 두 판 이상 잇달아 1위를 하면 채팅과 방 전적에 몇 연승인지 나오고, 내 기록에는 게임마다 지금의 연승과 가장 길었던 연승이 남습니다.",
         en: "Streaks are counted. Two or more games in a row at the top of a room show in its chat and its tally, and your own record keeps, for each game, the streak you are on and the longest you have had.",
       },

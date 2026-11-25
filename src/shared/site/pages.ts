@@ -22,7 +22,7 @@
 import chatConfig from "../chat-config.json";
 import directoryConfig from "../directory-config.json";
 import numbersConfig from "../numbers-config.json";
-import { GAMES, GAME_IDS, type GameId } from "../games";
+import { GAMES, GAME_IDS, NEWEST_GAME_IDS, type GameId } from "../games";
 import { FALLBACK_LANG, LANGS, type Lang } from "../lang";
 import roomConfig from "../room-config.json";
 import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, invitePath, invitePicture, newsPath, slugOf } from "./paths";
@@ -267,7 +267,7 @@ function homePage(lang: Lang, built: Built): string {
 <p class="lead">${escapeHtml(home.lead(count))}</p>
 <p class="act"><a class="button" href="${playPath(lang)}">${escapeHtml(words.frame.play)}</a></p>
 <h2>${escapeHtml(home.games)}</h2>
-${gameList(lang, GAME_IDS)}
+${gameList(lang, NEWEST_GAME_IDS)}
 <h2>${escapeHtml(home.how)}</h2>
 <ol>
 ${home.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("\n")}
@@ -277,7 +277,7 @@ ${questions.map(([asked, answer]) => `<h3>${escapeHtml(asked ?? "")}</h3>\n<p>${
   const list = {
     "@type": "ItemList",
     name: home.games,
-    itemListElement: GAME_IDS.map((game, at) => ({ "@type": "ListItem", position: at + 1, name: GAMES[game].title[lang], url: ORIGIN + gamePath(lang, game) })),
+    itemListElement: NEWEST_GAME_IDS.map((game, at) => ({ "@type": "ListItem", position: at + 1, name: GAMES[game].title[lang], url: ORIGIN + gamePath(lang, game) })),
   };
   // the questions again, as an answer engine reads them: each with the answer the page shows under it
   const asked = {
@@ -320,7 +320,7 @@ ${rules.join("\n")}
 <p>${escapeHtml(words.game.startHow)}</p>
 <p class="act"><a class="button" href="${escapeHtml(playPath(lang, game))}">${escapeHtml(words.game.play(name))}</a></p>
 <h2>${escapeHtml(words.game.others)}</h2>
-${gameList(lang, GAME_IDS.filter((other) => other !== game))}`;
+${gameList(lang, NEWEST_GAME_IDS.filter((other) => other !== game))}`;
   const data = [
     {
       "@type": "VideoGame",

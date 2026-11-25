@@ -2,8 +2,10 @@
  * The games a room can be made for. A room is made for one game and keeps it;
  * the lobby lists rooms of every game.
  *
- * Adding a game: an entry in `games.json`, its rules under `src/shared`, its
- * hosting in the room (`src/server/room.ts`) and its screen in the client.
+ * Adding a game: an entry at the end of `games.json`, its rules under
+ * `src/shared`, its hosting in the room (`src/server/room.ts`) and its screen
+ * in the client. Being last in the file puts it first in every list of games
+ * a player is shown (`NEWEST_GAME_IDS`).
  */
 import games from "./games.json";
 import type { Lang } from "./lang";
@@ -39,8 +41,21 @@ export type GameId = keyof typeof games;
 /** Every game, by id. */
 export const GAMES: Record<GameId, GameInfo> = games;
 
-/** The ids of every game, in the order the lobby offers them. */
+/**
+ * The ids of every game, in the order they were added: the order of
+ * `games.json`. A game keeps its place in it for good, so this is the order
+ * to count on where a game's place is part of a number (the code of a
+ * meeting's room, `src/shared/meet.ts`). A list a player reads is in
+ * `NEWEST_GAME_IDS`.
+ */
 export const GAME_IDS = Object.keys(games) as GameId[];
+
+/**
+ * The ids of every game, in the order a list of games is shown to a player:
+ * the newest first, so that a game just added is at the top of the lobby's
+ * games, of the choices for a new room and of the site's list.
+ */
+export const NEWEST_GAME_IDS: readonly GameId[] = [...GAME_IDS].reverse();
 
 /** The game of a room stored before rooms had one, and the first the lobby offers. */
 export const DEFAULT_GAME: GameId = "russian-roulette";
