@@ -1,13 +1,12 @@
 import { env } from "cloudflare:workers";
 import { runDurableObjectAlarm } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import lexiconJson from "../../../src/shared/games/hidden-word/lexicon-ko.json";
-import { makeLexicon } from "../../../src/shared/games/hidden-word/lexicon";
+import { LEXICON_KO } from "../../../src/shared/games/hidden-word/lexicon-ko";
 import { advanceClock, closeAll, join, scheduledAlarm, type HiddenMessage, type TestClient } from "../support";
 
 const GAME = "hidden-word" as const;
 /** The game's own list of words: the test asks it what the room should have scored. */
-const LIST = makeLexicon(lexiconJson);
+const LIST = LEXICON_KO;
 
 /** Connects to `room`, a room of 히든 워드, and joins as player `player`. */
 function open(room: string, player: number, create = false): Promise<TestClient> {

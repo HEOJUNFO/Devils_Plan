@@ -237,7 +237,7 @@
 - **연상 쪽으로 당기기.** 방송의 유사도는 뜻만이 아니라 함께 쓰이는 낱말, 관계까지 친다. 그래서 각 벡터에 뜻풀이가 든 연상 낱말들의 평균을 더했다 (자기 벡터 + 1.0 × 평균; 자기를 연상으로 든 낱말은 가장 가까운 8개까지만: 그러지 않으면 "바다"가 모든 물고기의 평균이 된다).
 - **줄이기.** 평균을 빼고 주성분 128개만 남겨 1바이트씩 (가까운 이웃 24개의 87%가 남는다; 96차원 82%, 160차원 90%).
 - **퍼센트.** 코사인을 그대로 쓰면 좁은 띠에 몰린다. 낱말마다 "몇 번째로 가까운 낱말의 코사인이 얼마인지"를 13곳에서 적어 두고 (가장 가까운 1번째 99.5%, 4번째 98.5%, 12번째 97%, **30번째 95%**, 70번째 91%, 목록의 0.8% 85%, 2.5% 75%, 7% 60%, 20% 40%, 50% 20%, 75% 10%, 90% 4%, 끝 0%), 그 사이는 곧게 잇고 0.5 단위로 맞춘다. 그래서 **어느 히든 워드든 95% 이상인 힌트가 서른 개쯤** 있고, 값은 히든 워드 쪽에서 본 것이라 대칭이 아니다.
-- **표.** `src/shared/games/hidden-word/lexicon-ko.json` 2.75 MB (gzip 약 2 MB): 낱말, 낱말마다 벡터 128바이트 + 눈금 26바이트 + 가장 가까운 여덟 낱말의 자리 16바이트. 만드는 도구는 `tools/hidden-word-lexicon.py` (`--report`는 아래의 견주기를 찍는다). 읽는 쪽은 `lexicon.ts`: 낱말은 처음 쓰일 때 풀고, 가장 가까운 낱말은 적어 둔 여덟에서 먼저 찾는다 (다 빠졌을 때만 목록 전체를 훑는다).
+- **표.** `src/shared/games/hidden-word/lexicon-ko.txt` (내용은 JSON; 텍스트 모듈로 들이는 까닭은 아래 "배포 시간") 2.75 MB (gzip 약 2 MB): 낱말, 낱말마다 벡터 128바이트 + 눈금 26바이트 + 가장 가까운 여덟 낱말의 자리 16바이트. 만드는 도구는 `tools/hidden-word-lexicon.py` (`--report`는 아래의 견주기를 찍는다). 읽는 쪽은 `lexicon.ts`: 낱말은 처음 쓰일 때 풀고, 가장 가까운 낱말은 적어 둔 여덟에서 먼저 찾는다 (다 빠졌을 때만 목록 전체를 훑는다).
 - **방송의 쌍과 견주기** (맞추려는 것이 아니라 버릇을 보는 것): 방송에서 95% 이상이던 25쌍 가운데 14쌍이 여기서도 95% 이상, 17쌍이 90% 이상. 95% 미만이던 19쌍 가운데 13쌍이 여기서도 95% 미만. 무관한 쌍은 한 자릿수에서 50%대. 우비–우산 99, 손님–고객 99, 목욕탕–목욕 99, 우비–소설 7, 나무–꾸중 8.
 - **영어 낱말 방은 만들지 않았다.** 목록은 한국어 하나다. 영어 화면도 한국어 낱말로 하고, 규칙 시트와 입력 칸이 그렇게 말한다.
 - 판 중에 바깥에 묻는 것이 없다: 개인정보 안내는 바뀌지 않는다.
@@ -256,10 +256,14 @@
 
 ### 화면
 - 낱말을 치는 칸은 캔버스가 아니라 **페이지의 입력 상자**다 (`<form id="word-form">`, 화면이 만들어 캔버스 뒤에 두고 없앨 때 치운다). 캔버스에는 폰의 자판도 한글 조합도 없어서다. 값은 `submit`에서 읽으므로 조합을 끝내는 Enter가 두 번 내지 않는다 (modern-web-guidance의 `ime-safe-enter-submit`). 칸 하나가 세 가지로 쓰인다: 재 보기, 힌트, 답.
-- 낱말 목록과 표는 서버에만 있다 (`host.ts`만 `lexicon-ko.json`을 들인다): 화면의 묶음에는 없다.
+- 낱말 목록과 표는 서버에만 있다 (`host.ts`만 `lexicon-ko.ts`를 거쳐 `lexicon-ko.txt`를 들인다): 화면의 묶음에는 없다.
 
 ### 파일
-`src/shared/games/hidden-word/` (`rules.ts`, `lexicon.ts`, `host.ts`, 설정 셋, `lexicon-ko.json`), `src/client/games/hidden-word/` (`screen.ts`, `words.ts`), `tests/unit/hidden-word/` (`documented.ts`에 위키의 수와 방송의 두 라운드, 테스트 72개), `tests/integration/hidden-word/`, `tools/hidden-word-lexicon.py`, `tools/hidden-word/`.
+`src/shared/games/hidden-word/` (`rules.ts`, `lexicon.ts`, `host.ts`, 설정 셋, `lexicon-ko.ts`, `lexicon-ko.txt`), `src/client/games/hidden-word/` (`screen.ts`, `words.ts`), `tests/unit/hidden-word/` (`documented.ts`에 위키의 수와 방송의 두 라운드, 테스트 72개), `tests/integration/hidden-word/`, `tools/hidden-word-lexicon.py`, `tools/hidden-word/`.
+
+### 배포 시간 (2026-11-25, 푸시한 뒤)
+- 첫 푸시 `72529c2`는 CI 63초(통과), 배포까지 **4분 44초**로 3분 규칙을 넘겼다. GitHub의 테스트 단계가 20초 → 39초였고 늘어난 것은 "transform"이었다: 2.75 MB의 `.json` 모듈이 테스트 파일이 여는 런타임마다 번들러의 변환을 거쳤다 (로컬에서 런타임 하나에 0.7초쯤).
+- 고침: 표를 **텍스트 모듈**로 둔다 (`lexicon-ko.txt`, 내용은 같은 JSON; `lexicon-ko.ts`가 한 번 `JSON.parse`). 텍스트 모듈은 변환 없이 Worker 옆의 파일로 실린다 (`dist/play/assets/lexicon-ko-*.txt`, `index.js`는 3.68 MB → 0.86 MB). 로컬에서 표를 들이는 런타임 하나의 추가 비용이 0.7초 → 0.05초쯤. 테스트는 하나도 빼지 않았다.
 
 ### Known limits (만든 뒤)
 - **방송의 유사도가 아니다**, 그리고 규칙 시트가 그렇게 말한다.

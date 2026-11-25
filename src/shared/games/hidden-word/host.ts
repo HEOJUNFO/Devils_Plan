@@ -8,7 +8,7 @@
  * not taken for them.
  *
  * This is the one place the game's list of words is loaded
- * (`lexicon-ko.json`): a room scores a clue, a browser never can. A screen
+ * (`lexicon-ko.ts`, which reads `lexicon-ko.txt`): a room scores a clue, a browser never can. A screen
  * takes from this file its types and nothing else.
  */
 import type { Candidate, GameHost, HostResult, Presence, StartRequest } from "../../hosting";
@@ -17,8 +17,8 @@ import { stand } from "../../standing";
 import botJson from "./bot-config.json";
 import configJson from "./config.json";
 import hostJson from "./host-config.json";
-import lexiconJson from "./lexicon-ko.json";
-import { makeLexicon, type Lexicon } from "./lexicon";
+import { LEXICON_KO } from "./lexicon-ko";
+import type { Lexicon } from "./lexicon";
 import {
   abandon,
   applyAction,
@@ -358,4 +358,4 @@ export function makeHiddenHost(lexicon: Lexicon): GameHost<HiddenSession, Hidden
 }
 
 /** 히든 워드, for a room to host, with the game's own list of words. */
-export const hiddenHost: GameHost<HiddenSession, HiddenHostRefusal> = makeHiddenHost(makeLexicon(lexiconJson));
+export const hiddenHost: GameHost<HiddenSession, HiddenHostRefusal> = makeHiddenHost(LEXICON_KO);

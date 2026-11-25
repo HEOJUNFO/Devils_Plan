@@ -74,7 +74,7 @@
   model: "claude-fable-5-2"
   date: 2026-11-25
   ships: false
-- path: src/shared/games/hidden-word/lexicon-ko.json
+- path: src/shared/games/hidden-word/lexicon-ko.txt
   origin: code
   tool: "tools/hidden-word-lexicon.py (sentence-transformers, numpy), run on the development machine: each word of tools/hidden-word/glosses-ko.tsv is embedded once with its gloss by the model KURE-v1, the vectors are drawn toward the words each gloss names, cut to 128 dimensions of one byte each, and kept with the cosines at fixed ranks from which the game reads a percentage. Nothing of the model itself is in the file, and the game asks no model while it is played"
   model: "nlpai-lab/KURE-v1 (made the vectors); claude-fable-5-2 (wrote the script and the glosses)"

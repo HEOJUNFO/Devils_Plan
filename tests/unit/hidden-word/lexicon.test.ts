@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import configJson from "../../../src/shared/games/hidden-word/config.json";
-import lexiconJson from "../../../src/shared/games/hidden-word/lexicon-ko.json";
+import { LEXICON_KO_DATA } from "../../../src/shared/games/hidden-word/lexicon-ko";
 import { makeLexicon, type LexiconData } from "../../../src/shared/games/hidden-word/lexicon";
 
 /** A word of a list as its file keeps it: the vector, the anchors and the places of its nearest words. */
@@ -76,8 +76,8 @@ describe("a list of words", () => {
   });
 });
 
-describe("the game's own list (lexicon-ko.json)", () => {
-  const data: LexiconData = lexiconJson;
+describe("the game's own list (lexicon-ko.txt)", () => {
+  const data: LexiconData = LEXICON_KO_DATA;
   const list = makeLexicon(data);
 
   it("has thousands of words of Hangul, each once, each with its bytes", () => {

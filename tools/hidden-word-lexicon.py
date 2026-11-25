@@ -1,4 +1,5 @@
-"""Builds the list of words of 히든 워드 and their vectors: src/shared/games/hidden-word/lexicon-ko.json.
+"""Builds the list of words of 히든 워드 and their vectors: src/shared/games/hidden-word/lexicon-ko.txt
+(JSON, kept as a text file: src/shared/games/hidden-word/lexicon-ko.ts says why).
 
 Design: design/games/hidden-word.md. Run once, outside the game, whenever the
 words or their glosses change; the game itself asks nothing of anyone while
@@ -48,7 +49,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCE = os.path.join(HERE, "hidden-word")
-OUT = os.path.join(HERE, "..", "src", "shared", "games", "hidden-word", "lexicon-ko.json")
+OUT = os.path.join(HERE, "..", "src", "shared", "games", "hidden-word", "lexicon-ko.txt")
 
 MODEL = "nlpai-lab/KURE-v1"
 VERSION = 1

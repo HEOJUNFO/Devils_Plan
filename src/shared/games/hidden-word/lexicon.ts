@@ -33,7 +33,7 @@ export interface Lexicon {
   readonly envelope: readonly string[];
 }
 
-/** The list as its file has it (`lexicon-ko.json`). */
+/** The list as its file has it (`lexicon-ko.txt`, read by `lexicon-ko.ts`). */
 export interface LexiconData {
   version: number;
   /** How many numbers a word's vector has. */
