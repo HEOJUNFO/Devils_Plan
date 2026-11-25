@@ -96,8 +96,8 @@ describe("GameRoom: a room of 만국기", () => {
         [1, 5],
       ]);
       expect(game.view.totals).toEqual([
-        { player: 0, total: 3 },
-        { player: 1, total: 5 },
+        { player: 0, rounds: [3], total: 3 },
+        { player: 1, rounds: [5], total: 5 },
       ]);
     }
     closeAll(clients);
@@ -128,8 +128,8 @@ describe("GameRoom: a room of 만국기", () => {
       expect(game.view.shown).toHaveLength(10);
       expect(game.view.shown?.some((flag) => first.includes(flag))).toBe(false);
       expect(game.view.totals).toEqual([
-        { player: 0, total: 2 },
-        { player: 1, total: 0 },
+        { player: 0, rounds: [2], total: 2 },
+        { player: 1, rounds: [0], total: 0 },
       ]);
     }
     closeAll(clients);
