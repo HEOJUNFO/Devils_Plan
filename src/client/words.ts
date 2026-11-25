@@ -29,6 +29,8 @@ const ko = {
     version: (build: string) => `버전 ${build}`,
     /** What the build's number leads to, said when a mouse rests on it and to a screen reader. */
     news: "최근에 바뀐 것",
+    /** Beside the build's number while the page it leads to has lines this player has not read. */
+    fresh: "NEW",
     /** On the button that opens the sheet for a word about the game. */
     feedback: "의견 보내기",
   },
@@ -643,6 +645,7 @@ const en: typeof ko = {
     turnFull: "Go full screen, sideways",
     version: (build) => `Version ${build}`,
     news: "What changed lately",
+    fresh: "NEW",
     feedback: "Send feedback",
   },
   feedback: {

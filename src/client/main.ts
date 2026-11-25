@@ -57,6 +57,7 @@ import {
   type RejectReason,
 } from "../shared/protocol";
 import { liftFor, placeFrame } from "../shared/frame";
+import { NEWS_MARK, unreadNews } from "../shared/site/news-mark";
 import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, newsPath, slugOf } from "../shared/site/paths";
 import { doubted, givenUp, heard, look, opened, sent, type Liveness } from "../shared/liveness";
 import { keepRoom, keptCode, keptRoom, leaveSeat, parseSeatWord, seatAnswer, seatLeft, seatTaken, type SeatWord } from "../shared/resume";
@@ -454,6 +455,40 @@ function writeWords(): void {
   }
 }
 writeWords();
+
+/**
+ * Says by the build's number that the page it leads to has lines this player
+ * has not read, until they go there (`src/shared/site/news-mark.ts`).
+ *
+ * The mark is inside the link, so it is pressed with it and read out with it.
+ * Going to the page is reading it: the browser keeps the mark of the news as
+ * it is now, and the next line added brings the mark back.
+ */
+function markNews(): void {
+  const link = el("version");
+  const read = kept("news-read");
+  if (unreadNews(NEWS_MARK, read, kept("nick") !== null)) {
+    const fresh = document.createElement("span");
+    fresh.className = "fresh";
+    // the space is for a screen reader, which would run the two words together; it takes no room at the head of its box
+    fresh.textContent = ` ${WORDS.site.fresh}`;
+    link.append(fresh);
+  } else if (read === null && NEWS_MARK !== "") {
+    // someone new: none of it is news to them, and what comes after today will be
+    keep("news-read", NEWS_MARK);
+  }
+  const readNow = (): void => {
+    if (NEWS_MARK !== "") keep("news-read", NEWS_MARK);
+    link.querySelector(".fresh")?.remove();
+  };
+  link.addEventListener("click", readNow);
+  // the middle button opens the page in another tab, and is no click
+  link.addEventListener("auxclick", (event) => {
+    if (event.button === 1) readNow();
+  });
+}
+
+markNews();
 
 drawLobbyArt(el<HTMLCanvasElement>("lobby-art"));
 

@@ -2,6 +2,8 @@ import { execSync } from "node:child_process";
 import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 import { SITE_SHEETS } from "./src/client/site-sheets";
+import { newsMark } from "./src/shared/site/news-mark";
+import { NEWS } from "./src/shared/site/news-words";
 import { appHead, appNoScript, inviteFiles, siteFiles } from "./src/shared/site/pages";
 import { siteStyle } from "./src/shared/site/style";
 
@@ -74,6 +76,7 @@ function buildOf(): string {
 // Objects) in the real Workers runtime, reading wrangler.jsonc.
 export default defineConfig(({ command }) => ({
   plugins: [sitePages(), cloudflare()],
-  // the page and the Worker are built from the one commit, and each is told which
-  define: { __BUILD__: JSON.stringify(command === "build" ? buildOf() : "dev") },
+  // the page and the Worker are built from the one commit, and each is told which; the page is told the mark of the
+  // news it was built with as well, whose lines it does not carry (`src/shared/site/news-mark.ts`)
+  define: { __BUILD__: JSON.stringify(command === "build" ? buildOf() : "dev"), __NEWS__: JSON.stringify(newsMark(NEWS)) },
 }));

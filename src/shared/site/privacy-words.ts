@@ -58,7 +58,7 @@ const ko = {
     browser: {
       heading: "이 브라우저에 두는 것",
       lines: [
-        "닉네임, 고른 언어, 소리 크기, 마지막에 고른 게임과 그 방이 공개였는지, 방 코드를 가릴지, 어떤 안내를 이미 봤는지를 이 브라우저의 저장소에 둡니다.",
+        "닉네임, 고른 언어, 소리 크기, 마지막에 고른 게임과 그 방이 공개였는지, 방 코드를 가릴지, 어떤 안내를 이미 봤는지, 바뀐 것을 어디까지 읽었는지를 이 브라우저의 저장소에 둡니다.",
         "게임별로 몇 판을 끝까지 했고 몇 번 1등을 했는지도 이 브라우저에만 둡니다. 서버로 보내지 않습니다.",
         "이 브라우저를 알아보는 임의의 값을 하나 만들어 둡니다. 연결이 끊겼다 돌아왔을 때 같은 자리에 앉히는 데 쓰고, 들어가는 방에 보냅니다.",
         "로비에서 모임에 가겠다고 누르면, 어느 모임인지와 그 말을 거둘 때 쓰는 임의의 값 하나를 더 이 브라우저에 둡니다.",
@@ -145,7 +145,7 @@ const en: typeof ko = {
     browser: {
       heading: "What is kept in this browser",
       lines: [
-        "Your nickname, language, volume, the game you last picked and whether that room was public, whether room codes are hidden and which notices you have already seen are kept in this browser's storage.",
+        "Your nickname, language, volume, the game you last picked and whether that room was public, whether room codes are hidden, which notices you have already seen and how far you have read what changed are kept in this browser's storage.",
         "How many games of each kind you have played to the end, and in how many you came first, are kept in this browser only. They are not sent to the server.",
         "A random value that tells this browser apart is made and kept. It puts you back in your seat when a connection drops and returns, and it is sent to the rooms you enter.",
         "If you say in the lobby that you will come to a meet-up, which meet-up it is and a second random value, used to take that word back, are kept in this browser.",

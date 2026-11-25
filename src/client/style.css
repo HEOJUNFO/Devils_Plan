@@ -1245,6 +1245,15 @@ button.choice[aria-pressed="true"] {
   }
 }
 
+/* By the build's number while what it leads to has lines the player has not read: a small plate, which the link's line does not run under. */
+#version .fresh {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 2px;
+  background: var(--amber);
+  color: var(--ink);
+}
+
 /* A word about the game: a sheet over the lobby, as the rules are, with a box to write in. The player's own record is a sheet like it, and so is a room's tally. */
 #record-sheet,
 #tally-sheet,

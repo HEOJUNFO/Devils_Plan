@@ -6,6 +6,7 @@ import directoryConfig from "../../../src/shared/directory-config.json";
 import numbersConfig from "../../../src/shared/numbers-config.json";
 import roomConfig from "../../../src/shared/room-config.json";
 import { appHead, appNoScript, escapeHtml, gamePath, homePath, inviteFiles, playPath, privacyPath, renderTag, siteAddresses, siteFiles, type Sheets, type SiteFile } from "../../../src/shared/site/pages";
+import { NEWS_MARK, newsMark, unreadNews } from "../../../src/shared/site/news-mark";
 import { NEWS, NEWS_WORDS } from "../../../src/shared/site/news-words";
 import { INVITED_GAME_KEY, LOBBY_GAME_PARAM, gameOfSlug, invitePath, invitePicture, newsPath, slugOf } from "../../../src/shared/site/paths";
 import { langOfAddress, missingLang, missingPage } from "../../../src/shared/site/missing";
@@ -236,6 +237,37 @@ describe("the page of what changed lately", () => {
 
   it("leads back to the lobby in the page's language", () => {
     for (const lang of LANGS) expect(news(lang)).toContain(`<p class="act"><a class="button" href="${playPath(lang)}">`);
+  });
+
+  it("has a mark that a line under the newest day changes, and a new day, and no day long past", () => {
+    const days = [
+      { date: "2026-11-25", lines: ["a", "b"] },
+      { date: "2026-11-11", lines: ["c"] },
+    ];
+
+    expect(newsMark(days)).toBe("2026-11-25#2");
+    expect(newsMark([{ date: "2026-11-25", lines: ["z", "a", "b"] }, days[1]!])).not.toBe(newsMark(days));
+    expect(newsMark([{ date: "2026-11-26", lines: ["z"] }, ...days])).not.toBe(newsMark(days));
+    expect(newsMark(days.slice(0, 1))).toBe(newsMark(days));
+    expect(newsMark([])).toBe("");
+    expect(newsMark(NEWS)).toBe(`${NEWS[0]!.date}#${NEWS[0]!.lines.length}`);
+  });
+
+  it("is unread by a player whose browser keeps another mark, and read once it keeps this one", () => {
+    expect(unreadNews("2026-11-25#2", "2026-11-25#1", true)).toBe(true);
+    expect(unreadNews("2026-11-25#2", "2026-11-14#3", false)).toBe(true);
+    expect(unreadNews("2026-11-25#2", "2026-11-25#2", true)).toBe(false);
+  });
+
+  it("is unread by someone who played before a mark was kept, and no news to someone new", () => {
+    expect(unreadNews("2026-11-25#2", null, true)).toBe(true);
+    expect(unreadNews("2026-11-25#2", null, false)).toBe(false);
+  });
+
+  it("is never unread where the build gave no mark, as in a test", () => {
+    expect(NEWS_MARK).toBe("");
+    expect(unreadNews("", null, true)).toBe(false);
+    expect(unreadNews("", "2026-11-25#2", true)).toBe(false);
   });
 });
 

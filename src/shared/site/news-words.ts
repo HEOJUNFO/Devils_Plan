@@ -59,6 +59,10 @@ export const NEWS: NewsDay[] = [
         en: "Streaks now show on the lobby's list of rooms too. A public room where someone is on a streak says how many in a row on its line, with that player's nickname where the streak is not the host's own; of several, the longest.",
       },
       {
+        ko: "로비 아래의 버전 옆에 NEW가 붙으면 이 페이지에 아직 읽지 않은 줄이 있다는 뜻입니다. 버전을 눌러 이 페이지로 오면 사라지고, 새 줄이 생기면 다시 붙습니다.",
+        en: "When NEW appears beside the version at the bottom of the lobby, this page has lines you have not read. It goes away once you follow the version here, and comes back with the next new line.",
+      },
+      {
         ko: `새 게임 ${HIDDEN.ko}: 시즌의 다섯 번째 메인 매치입니다. 3~6명이 함께 합니다. 각자 명사 다섯 개가 든 봉투에서 하나를 히든 워드로 숨기고, 출제자가 낸 힌트마다 히든 워드와의 유사도가 모두에게 보입니다. 95% 이상인 힌트가 나오면 나머지가 히든 워드를 적어 함께 엽니다. 맞히면 1점, 아무도 못 맞히면 출제자가 점수를 얻고 3차까지 힌트를 더 냅니다. 2라운드는 점수가 2배입니다. 유사도는 방송의 값이 아니라 이 사이트가 한국어 낱말 1만 1천여 개에 미리 매겨 둔 값이고, 힌트는 그 목록의 낱말로 냅니다.`,
         en: `A new game, ${HIDDEN.en}: the season's fifth main match, for 3 to 6 players. Everyone hides one of the five nouns in their envelope as their hidden word; each clue the word setter gives is shown to all with its similarity score. A clue of at least 95% ends the clues and the others write the hidden word, revealed together. A correct answer is a point; with none, the setter scores and gives clues again, up to three stages. Round 2 counts double. The scores are not the show's: this site worked them out in advance for some 11,000 Korean words, and a clue has to be one of them. The words are Korean, as in the show.`,
       },
