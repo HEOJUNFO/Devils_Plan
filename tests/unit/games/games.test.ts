@@ -109,22 +109,22 @@ describe("the games a room can be made for", () => {
 
   it("names each game in Korean as the show does, and in English as its English release does", () => {
     // CLAUDE.md, Project Rules: a game is shown under the name the show gives it, also where the show made the name up for it
-    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장", "경매 빙고", "벽바둑Ⅱ", "그라데이션", "수식 신호등", "HIT, STAY"]);
-    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market", "Auction Bingo", "Wall Go II", "Gradation", "Equation Traffic Light", "Hit, Stay"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장", "경매 빙고", "벽바둑Ⅱ", "그라데이션", "수식 신호등", "HIT, STAY", "만국기"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market", "Auction Bingo", "Wall Go II", "Gradation", "Equation Traffic Light", "Hit, Stay", "Flags Around the World"]);
   });
 
   it("shows a list of games with the newest at the top: the game added last is first, and every game is in it once", () => {
     // the user's words: "게임목록새로만든게위로가게해줘"
     expect(NEWEST_GAME_IDS).toEqual([...GAME_IDS].reverse());
-    expect(NEWEST_GAME_IDS[0]).toBe("hit-stay");
+    expect(NEWEST_GAME_IDS[0]).toBe("flags-around-the-world");
     expect(NEWEST_GAME_IDS.at(-1)).toBe(DEFAULT_GAME);
-    expect(NEWEST_GAME_IDS.map((id) => GAMES[id].title.ko).slice(0, 4)).toEqual(["HIT, STAY", "수식 신호등", "그라데이션", "벽바둑Ⅱ"]);
+    expect(NEWEST_GAME_IDS.map((id) => GAMES[id].title.ko).slice(0, 4)).toEqual(["만국기", "HIT, STAY", "수식 신호등", "그라데이션"]);
   });
 
   it("keeps the order the games were added in where a game's place is counted on", () => {
     // a meeting's room code is made from a game's place in this order (`src/shared/meet.ts`): a new game goes at its end
     expect(GAME_IDS[0]).toBe(DEFAULT_GAME);
-    expect(GAME_IDS.at(-1)).toBe("hit-stay");
+    expect(GAME_IDS.at(-1)).toBe("flags-around-the-world");
   });
 
   it("lets one player alone start the two counting games, and no other game", () => {

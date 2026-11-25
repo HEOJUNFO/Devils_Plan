@@ -19,6 +19,8 @@ import { createEqScreen } from "./equation-traffic-light/screen";
 import { WORDS as EQ_WORDS } from "./equation-traffic-light/words";
 import { createHitScreen } from "./hit-stay/screen";
 import { WORDS as HIT_WORDS } from "./hit-stay/words";
+import { createFlagsScreen } from "./flags-around-the-world/screen";
+import { WORDS as FLAGS_WORDS } from "./flags-around-the-world/words";
 import { createWallScreen } from "./wall-go-2/screen";
 import { WORDS as WALL_WORDS } from "./wall-go-2/words";
 import { createCubesScreen } from "./count-cubes/screen";
@@ -342,5 +344,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: HIT_WORDS.sheet,
+  },
+  "flags-around-the-world": {
+    screen(canvas, handlers) {
+      const screen = createFlagsScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "flags-around-the-world") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: FLAGS_WORDS.sheet,
   },
 };

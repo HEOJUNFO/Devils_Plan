@@ -347,5 +347,20 @@
     "teamSize": 0,
     "turns": true,
     "variants": []
+  },
+  "flags-around-the-world": {
+    "title": {
+      "ko": "만국기",
+      "en": "Flags Around the World"
+    },
+    "summary": {
+      "ko": "잠깐 지나간 국기 10개 중 5개를 25개 속에서 찾으세요. 맞힌 만큼 점수, 3라운드.",
+      "en": "Ten flags flash by. Find five of them among 25, over three rounds."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 16,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

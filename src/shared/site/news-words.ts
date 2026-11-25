@@ -46,12 +46,17 @@ const WALL = name("wall-go-2");
 const GRAD = name("gradation");
 const EQ = name("equation-traffic-light");
 const HIT = name("hit-stay");
+const FLAGS = name("flags-around-the-world");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-25",
     lines: [
+      {
+        ko: `새 게임 ${FLAGS.ko}: 5일차의 유배지 매치입니다. 2~16명이 함께 합니다. 국기 10개가 1초씩, 같은 순서로 세 번 지나가고, 5초 뒤 나오는 25개 가운데 방금 본 5개를 1분 안에 찾습니다. 맞힌 하나에 1점이고 3라운드의 점수 합으로 겨룹니다. 1위가 여럿이면 그 사람들끼리 연장 라운드를 합니다. 국기는 유엔 회원국 193개국의 것입니다.`,
+        en: `A new game, ${FLAGS.en}: the exile match of the season's fifth day, for 2 to 16 players. Ten national flags are shown for a second each, three times in the same order; five seconds later 25 flags appear, and you have a minute to find the five you saw. One point for each correct flag, over three rounds; players tied for first play tiebreaker rounds. The flags are those of the 193 UN member states.`,
+      },
       {
         ko: `${EQ.ko}: 수식에 등호를 둘 이상 쓸 수 있습니다 (2+2=4=2^2). 등호로 나뉜 값이 모두 같아야 성립합니다.`,
         en: `${EQ.en}: an equation may now have more than one equals symbol (2+2=4=2^2), as long as every side comes to the same value.`,

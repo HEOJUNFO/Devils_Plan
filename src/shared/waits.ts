@@ -17,6 +17,7 @@ import type { GrassView } from "./games/lay-the-grass/rules";
 import type { EqView } from "./games/equation-traffic-light/rules";
 import type { GemView } from "./games/gem-black-market/rules";
 import type { GradView } from "./games/gradation/rules";
+import type { FlagsView } from "./games/flags-around-the-world/rules";
 import type { HitView } from "./games/hit-stay/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
@@ -136,4 +137,14 @@ export function hitWaits(view: Pick<HitView, "you" | "phase" | "turn"> & { hands
   if (view.you === null) return false;
   if (view.phase === "reveal") return view.hands.some((hand) => hand.player === view.you && !hand.chosen);
   return (view.phase === "bet" || view.phase === "hit") && view.turn === view.you;
+}
+
+/**
+ * 만국기: the flags are laid out, the round is this player's to choose in,
+ * and they have not submitted. Nobody is waited on while a round's flags go
+ * by. Past the minute the room scores the round without them.
+ */
+export function flagsWaits(view: Pick<FlagsView, "you" | "phase" | "playing" | "ready">): boolean {
+  if (view.you === null) return false;
+  return view.phase === "choose" && view.playing.includes(view.you) && !view.ready.includes(view.you);
 }

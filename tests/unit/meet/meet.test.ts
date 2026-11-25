@@ -154,8 +154,8 @@ describe("the meetings as they are set", () => {
     expect([24, 25, 26, 27].map((date) => game(11, date))).toEqual(["count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
     expect([28, 29, 30].map((date) => game(11, date))).toEqual(["piggy-bank", "gem-black-market", "auction-bingo"]);
     expect([1, 2, 3, 4].map((date) => game(12, date))).toEqual(["wall-go-2", "gradation", "equation-traffic-light", "hit-stay"]);
-    expect([5, 6, 7].map((date) => game(12, date))).toEqual(["mystery-stock-market", "russian-roulette", "under-thirteen"]);
-    expect(game(12, 8)).toBe("count-rectangles");
+    expect([5, 6, 7, 8].map((date) => game(12, date))).toEqual(["flags-around-the-world", "mystery-stock-market", "russian-roulette", "under-thirteen"]);
+    expect(game(12, 9)).toBe("count-rectangles");
   });
 
   it("are held at a time of day, every day", () => {

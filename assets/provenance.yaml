@@ -47,3 +47,18 @@
   model: "claude-fable-5-2 (wrote the script)"
   date: 2026-11-12
   ships: true
+- path: public/flags-v1.png
+  origin: licensed
+  tool: "tools/flag-sprite.mjs (sharp): the 4x3 SVG flags of the 193 UN member states, each drawn at 44 by 33 pixels with 12 colours at most and no dithering, laid on one sheet 16 to a row in the order of src/shared/games/flags-around-the-world/flags.json. The package is fetched for the run (npm pack flag-icons) and is not a dependency"
+  model: "claude-fable-5-2 (wrote the script)"
+  source: {vendor: "Panayiotis Lipiridis", product: "flag-icons 7.6.0 (npm), flags/4x3", url: "https://github.com/lipis/flag-icons"}
+  licence: {id: MIT}
+  date: 2026-11-25
+  ships: true
+- path: assets/flags/flag-icons-LICENSE.txt
+  origin: licensed
+  tool: "copied from the npm package, unchanged; the licence text of the flags, which must travel with them"
+  source: {vendor: "Panayiotis Lipiridis", product: "flag-icons 7.6.0 licence (MIT)", url: "https://github.com/lipis/flag-icons/blob/main/LICENSE"}
+  licence: {id: MIT}
+  date: 2026-11-25
+  ships: false

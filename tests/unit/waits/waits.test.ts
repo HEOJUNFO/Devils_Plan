@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, eqWaits, gemWaits, gradWaits, hitWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, hitWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -227,5 +227,24 @@ describe("hitWaits", () => {
     expect(hitWaits(view({ hands: [{ player: OTHER, chosen: false }] }))).toBe(false);
     expect(hitWaits(view({ you: null }))).toBe(false);
     expect(hitWaits(view({ you: null, phase: "bet", turn: ME }))).toBe(false);
+  });
+});
+
+describe("flagsWaits", () => {
+  const view = (changes: Partial<Parameters<typeof flagsWaits>[0]> = {}): Parameters<typeof flagsWaits>[0] => ({ you: ME, phase: "choose", playing: [ME, OTHER], ready: [], ...changes });
+
+  it("waits on a player who has the flags laid out before them and has not submitted", () => {
+    expect(flagsWaits(view())).toBe(true);
+    expect(flagsWaits(view({ ready: [OTHER] }))).toBe(true);
+  });
+
+  it("does not wait on a player who has submitted, nor while flags go by, nor once the round is scored", () => {
+    expect(flagsWaits(view({ ready: [ME] }))).toBe(false);
+    for (const phase of ["show", "wait", "reveal", "ended"] as const) expect(flagsWaits(view({ phase }))).toBe(false);
+  });
+
+  it("does not wait on a player a tiebreaker round is not for, nor on someone watching", () => {
+    expect(flagsWaits(view({ playing: [OTHER] }))).toBe(false);
+    expect(flagsWaits(view({ you: null }))).toBe(false);
   });
 });

@@ -1,0 +1,15 @@
+{
+  "shown": 10,
+  "showSeconds": 1,
+  "passes": 3,
+  "readySeconds": 3,
+  "gapSeconds": 5,
+  "choices": 25,
+  "answers": 5,
+  "chooseSeconds": 60,
+  "rounds": 3,
+  "revealSeconds": 10,
+  "tiebreaks": 3,
+  "minPlayers": 2,
+  "maxPlayers": 16
+}

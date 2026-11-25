@@ -22,7 +22,8 @@
 // place their counters and play a turn; then two make a room of 그라데이션,
 // distribute their cubes and play its first round, and two a room of
 // 수식 신호등, who create their equations and play it to a win, and two a
-// room of HIT, STAY, who play its first round until one of them folds.
+// room of HIT, STAY, who play its first round until one of them folds, and
+// two a room of 만국기, who are sent its first ten flags.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -60,6 +61,7 @@ const WALL_GAME = "wall-go-2";
 const GRAD_GAME = "gradation";
 const EQ_GAME = "equation-traffic-light";
 const HIT_GAME = "hit-stay";
+const FLAGS_GAME = "flags-around-the-world";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1635,6 +1637,36 @@ async function hitGame() {
   for (const p of players) p.close();
 }
 
+/** 만국기, in a room of its own: two players, off the list. Its first round begins: the ten flags are sent to go by, and none can be chosen yet. (The 25 are laid out 38 seconds on: the check does not wait for them.) */
+async function flagsGame() {
+  const players = await roomOf(FLAGS_GAME, 2, "flagger");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("만국기 to start", (m) => m.type === "game" || m.type === "refused")));
+  const view = games[0].view;
+  check(
+    "만국기 for two starts with ten different flags to go by, a second each, three times over, and three rounds to play",
+    games.every((g, n) => g.type === "game" && g.game === FLAGS_GAME && g.view.you === n && g.view.phase === "show" && g.view.round === 1 && g.view.shown.length === 10) &&
+      new Set(view.shown).size === 10 &&
+      games[1].view.shown.join() === view.shown.join() &&
+      games[0].rules.showSeconds === 1 &&
+      games[0].rules.passes === 3 &&
+      games[0].rules.rounds === 3,
+    `flags ${view.shown.join(" ")}`,
+  );
+  check(
+    "while the flags go by, neither the 25 nor which five of them count is sent",
+    games.every((g) => g.view.choices === null && g.view.answers === null && g.view.results === null) && games[0].rules.choices === 25 && games[0].rules.answers === 5,
+  );
+  check("the round's clock is the three seconds before the first flag and the 30 of the flags", games.every((g) => g.clock.turn > 30_000 && g.clock.turn <= 33_000), `${games[0].clock.turn} ms`);
+  players[1].send({ type: "action", action: { type: "pick", flags: [] } });
+  const early = await players[1].until("the refusal", (m) => m.type === "refused");
+  check("flags chosen before any are laid out are refused", early.reason === "not-choosing", early.reason);
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 만국기 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1653,6 +1685,7 @@ const PARTS = [
   [GRAD_GAME, gradGame],
   [EQ_GAME, eqGame],
   [HIT_GAME, hitGame],
+  [FLAGS_GAME, flagsGame],
 ];
 
 async function main() {

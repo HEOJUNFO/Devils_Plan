@@ -32,6 +32,7 @@ export type WallMessage = Extract<ServerMessage, { type: "game"; game: "wall-go-
 export type GradMessage = Extract<ServerMessage, { type: "game"; game: "gradation" }>;
 export type EqMessage = Extract<ServerMessage, { type: "game"; game: "equation-traffic-light" }>;
 export type HitMessage = Extract<ServerMessage, { type: "game"; game: "hit-stay" }>;
+export type FlagsMessage = Extract<ServerMessage, { type: "game"; game: "flags-around-the-world" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -259,6 +260,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "hit-stay" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 만국기 that satisfies `match`. */
+  async flagsWhere(match: (game: FlagsMessage) => boolean = () => true): Promise<FlagsMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "flags-around-the-world" && match(message)) return message;
     }
   }
 

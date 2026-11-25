@@ -34,6 +34,7 @@ export const TOP_KIND: Record<GameId, TopKind> = {
   gradation: "first",
   "equation-traffic-light": "won",
   "hit-stay": "first",
+  "flags-around-the-world": "first",
 };
 
 /** A game played to its end: which game it was, by a key no other game has, and whether the player was at the top of it. */
@@ -110,6 +111,11 @@ function topOf(message: GameMessage): boolean | null {
       return you === null || own === undefined ? null : own.place === 1;
     }
     case "hit-stay": {
+      const { you, places } = message.view;
+      const own = places?.find((each) => each.player === you);
+      return you === null || own === undefined ? null : own.place === 1;
+    }
+    case "flags-around-the-world": {
       const { you, places } = message.view;
       const own = places?.find((each) => each.player === you);
       return you === null || own === undefined ? null : own.place === 1;
