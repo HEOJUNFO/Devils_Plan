@@ -29,3 +29,14 @@ export const SHOW_FIRST_ANSWERS = [
   { secret: "2^5+15=47", answer: "0×+-÷12^3", clues: "rryrryyyr" },
   { secret: "91×9^0=91", answer: "34=5×6+78", clues: "rryryrrrr" },
 ];
+
+/**
+ * The wiki's two examples of an answer that has a number more often than the
+ * equation does (its rule table of 2026-11-25; the colours are read from the
+ * page): the ones left over toward the back are red, but one in its position
+ * is green before any of the others is yellow.
+ */
+export const WIKI_CLUE_EXAMPLES = [
+  { secret: "2+2+39=43", answer: "3+2×22=47", clues: "yggryrggr" },
+  { secret: "13×21=273", answer: "2+239=241", clues: "yrryrggry" },
+];

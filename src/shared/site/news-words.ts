@@ -53,6 +53,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-25",
     lines: [
       {
+        ko: `${EQ.ko}: 수식에 등호를 둘 이상 쓸 수 있습니다 (2+2=4=2^2). 등호로 나뉜 값이 모두 같아야 성립합니다.`,
+        en: `${EQ.en}: an equation may now have more than one equals symbol (2+2=4=2^2), as long as every side comes to the same value.`,
+      },
+      {
         ko: `새 게임 ${HIT.ko}(힛, 스테이): 시즌의 여섯 번째 메인 매치입니다. 2~5명이 카드의 합을 주사위가 정한 한계 숫자에 가깝게 맞추며 칩을 겁니다. 카드를 더 받으면 힛, 멈추면 스테이이고, 칩이 떨어지면 빠집니다.`,
         en: `A new game, ${HIT.en}: the season's sixth main match. Two to five players bet chips on a card total close to the limit a die sets. Hit for another card or stay; a player with no chips is out, and the last one remaining wins.`,
       },

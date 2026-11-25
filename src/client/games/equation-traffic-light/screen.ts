@@ -501,14 +501,12 @@ export function createEqScreen(canvas: HTMLCanvasElement, handlers: EqHandlers):
     }
     // while an equation is written: the value of each side, and whether it is one the rules allow
     if (view.phase !== "create" || !active || written.length === 0) return;
-    const [first, second] = draft.split("=");
-    const value = (side: string | undefined): string => {
-      const worked = side === undefined || side === "" ? null : valueOf(side, latest!.rules.maxDigits);
+    const value = (side: string): string => {
+      const worked = side === "" ? null : valueOf(side, latest!.rules.maxDigits);
       return worked === null ? "?" : shown(worked);
     };
     const room = SCENE_W - CHECK_X - 4;
-    if (draft.includes("=")) pen.txt(pen.fit(`${value(first)} = ${value(second)}`, room), CHECK_X, ENTRY_Y - 1, C.boneD);
-    else pen.txt(pen.fit(value(first), room), CHECK_X, ENTRY_Y - 1, C.boneD);
+    pen.txt(pen.fit(draft.split("=").map(value).join(" = "), room), CHECK_X, ENTRY_Y - 1, C.boneD);
     const check = checked();
     if (WORDS.check[check] !== "") pen.txt(pen.fit(WORDS.check[check], room), CHECK_X, ENTRY_Y + 11, check === "ok" ? C.teal : C.crim);
   }

@@ -22,7 +22,7 @@ import {
   type EqConfig,
   type EqState,
 } from "../../../src/shared/games/equation-traffic-light/rules";
-import { CELLS, CREATE_SECONDS, GUESS_SECONDS, SHOW_EQUATIONS, SHOW_FIRST_ANSWERS, SYMBOLS } from "./documented";
+import { CELLS, CREATE_SECONDS, GUESS_SECONDS, SHOW_EQUATIONS, SHOW_FIRST_ANSWERS, SYMBOLS, WIKI_CLUE_EXAMPLES } from "./documented";
 
 const config: EqConfig = configJson;
 const T0 = 1_000_000;
@@ -105,9 +105,14 @@ describe("an equation of 수식 신호등", () => {
     expect(check("=12+50-62")).toBe("symbol-at-edge");
   });
 
-  it("has exactly one equals symbol, with an expression allowed on either side", () => {
-    expect(check("12+34+567")).toBe("one-equals");
-    expect(check("1+1=2=1+1")).toBe("one-equals");
+  it("has one equals symbol or more, every side of one value, with an expression allowed on any side", () => {
+    expect(check("12+34+567")).toBe("no-equals");
+    expect(check("1+1=2=1+1")).toBeNull();
+    expect(check("2+2=4=2^2")).toBeNull();
+    expect(check("1=1=1=1=1")).toBeNull();
+    expect(check("1+1=2=1+2")).toBe("not-true");
+    expect(check("3=1+2=2+2")).toBe("not-true");
+    expect(check("6÷0=6=6÷1")).toBe("no-value");
     expect(check("47=2^5+15")).toBeNull();
     expect(check("2×6=3×4+0")).toBeNull();
   });
@@ -179,6 +184,13 @@ describe("the colour clues of 수식 신호등", () => {
     for (const { secret, answer, clues } of SHOW_FIRST_ANSWERS) {
       expect(checkAnswer(answer, config)).toBeNull();
       expect(checkEquation(answer, config)).not.toBeNull();
+      expect(cluesOf(secret, answer)).toBe(clues);
+    }
+  });
+
+  it("are those of the wiki's two examples of a number the answer has too often", () => {
+    for (const { secret, answer, clues } of WIKI_CLUE_EXAMPLES) {
+      expect(checkEquation(secret, config)).toBeNull();
       expect(cluesOf(secret, answer)).toBe(clues);
     }
   });

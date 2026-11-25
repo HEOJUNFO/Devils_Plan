@@ -6,12 +6,13 @@
  * minutes each creates a nine-cell equation, kept from the other: the
  * numbers 0 to 9 and the symbols for addition, subtraction, multiplication,
  * division, equals and exponent, no two symbols next to each other, no
- * leading zero, and true. Then, turn after turn, both have five minutes to
- * answer with nine cells of the same numbers and symbols (an answer need not
- * be an equation). Once both answers are in they are shown with a colour
- * clue on every cell: green for the right position, yellow for a number or
- * symbol that is in the equation at another position, red for one that is
- * not, or of which the equation has no more. No answer in time, no clues.
+ * leading zero, one equals symbol or more, and true. Then, turn after turn,
+ * both have five minutes to answer with nine cells of the same numbers and
+ * symbols (an answer need not be an equation). Once both answers are in they
+ * are shown with a colour clue on every cell: green for the right position,
+ * yellow for a number or symbol that is in the equation at another position,
+ * red for one that is not, or of which the equation has no more. No answer
+ * in time, no clues.
  * Whoever answers with the opponent's equation wins; if both do on the same
  * turn, they play again.
  *
@@ -150,13 +151,13 @@ export type EquationRefusal =
   | "symbol-at-edge"
   /** Two symbols are next to each other. */
   | "symbols-together"
-  /** It has no equals symbol, or more than one. */
-  | "one-equals"
+  /** It has no equals symbol. */
+  | "no-equals"
   /** A number of more than one digit begins with 0. */
   | "leading-zero"
   /** A side has no value: a division by zero, 0 to the power of 0, or a number too large to work out. */
   | "no-value"
-  /** The two sides are not equal. */
+  /** Its sides are not all equal. */
   | "not-true";
 
 /** Whether `cells` is nine cells of the numbers and symbols: `null`, or why not. All that is asked of an answer. */
@@ -173,11 +174,13 @@ export function checkEquation(equation: string, config: Pick<EqConfig, "cells" |
   const cells = [...equation];
   if (!isDigit(cells[0]) || !isDigit(cells[cells.length - 1])) return "symbol-at-edge";
   if (cells.some((cell, at) => at > 0 && !isDigit(cell) && !isDigit(cells[at - 1]))) return "symbols-together";
-  if (cells.filter((cell) => cell === "=").length !== 1) return "one-equals";
+  if (!cells.includes("=")) return "no-equals";
   if (cells.some((cell, at) => cell === "0" && (at === 0 || !isDigit(cells[at - 1])) && isDigit(cells[at + 1] ?? ""))) return "leading-zero";
-  const [left, right] = equation.split("=").map((side) => valueOf(side, config.maxDigits));
-  if (left === null || right === null) return "no-value";
-  return left.n === right.n && left.d === right.d ? null : "not-true";
+  // one equals symbol or more: with more than one, every side has to come to the same value
+  const sides = equation.split("=").map((side) => valueOf(side, config.maxDigits));
+  const first = sides[0];
+  if (first === null || sides.includes(null)) return "no-value";
+  return sides.every((side) => side !== null && side.n === first.n && side.d === first.d) ? null : "not-true";
 }
 
 /**
