@@ -22,6 +22,7 @@ import {
   type MessageLimit,
   type RoomConfig,
 } from "./lobby";
+import { streakOf, type TopsConfig } from "./tops";
 
 /** Tunable values of the list. Loaded from `directory-config.json`. */
 export interface DirectoryConfig {
@@ -125,6 +126,12 @@ export function newlyOpen(before: ListSent | null, now: ListSent): RoomListing[]
 /** How many rooms of each game there are to join. A game with none is left out. */
 export type RoomCounts = Partial<Record<GameId, number>>;
 
+/** A streak someone in a room is on, as the room's row tells of it: whose, and how many games in a row at the top. */
+export interface RoomStreak {
+  nick: string;
+  run: number;
+}
+
 /** A room as the list shows it. Nothing here is secret. */
 export interface RoomListing {
   code: string;
@@ -144,6 +151,29 @@ export interface RoomListing {
    * own is told how long it has been going. Absent between games.
    */
   since?: number;
+  /**
+   * The longest streak anyone connected is on in the room (`streakIn`):
+   * someone looking for a game sees where there is a run to end. Absent
+   * where nobody is on one.
+   */
+  streak?: RoomStreak;
+}
+
+/**
+ * The streak a room's row tells of: the longest that anyone connected is on
+ * (`LobbyPlayer.streak`), where it is long enough to be shown as a streak
+ * (`streakOf` of `tops.ts`); of two as long, that of whoever is earlier in
+ * the room. `null` where nobody is on one. Whoever is away is passed over:
+ * the row counts those who are there, and theirs is the run to play against.
+ */
+export function streakIn(lobby: LobbyState, connectedSlots: ReadonlySet<number>, tops: Pick<TopsConfig, "streakFrom">): RoomStreak | null {
+  let longest: RoomStreak | null = null;
+  for (const player of lobby.players) {
+    if (!connectedSlots.has(player.slot)) continue;
+    const run = streakOf(player.streak ?? 0, tops);
+    if (run > (longest?.run ?? 0)) longest = { nick: player.nick, run };
+  }
+  return longest;
 }
 
 /** How many whole minutes the game in `listing` has been going at `now`; `null` where none is, or the room did not say when it began. */
@@ -169,7 +199,9 @@ export interface RoomReport {
 /**
  * How a room should be listed, or `null` when it should not be: it is reached
  * by its code alone, or nobody is connected. The host is the room's own:
- * of the players connected, the one who came in first.
+ * of the players connected, the one who came in first. With `tops`, the
+ * numbers streaks are shown by, the listing tells of the longest streak in
+ * the room (`streakIn`); without, of none.
  */
 export function listingOf(
   code: string,
@@ -178,12 +210,14 @@ export function listingOf(
   playing: boolean,
   config: RoomConfig,
   began: number | null = null,
+  tops: Pick<TopsConfig, "streakFrom"> | null = null,
 ): RoomListing | null {
   if (lobby.listed !== true) return null;
   const connected = lobby.players.filter((p) => connectedSlots.has(p.slot));
   const host = hostOf(lobby, connectedSlots);
   if (host === undefined) return null;
   const game = gameOf(lobby);
+  const streak = tops === null ? null : streakIn(lobby, connectedSlots, tops);
   return {
     code,
     game,
@@ -192,6 +226,7 @@ export function listingOf(
     maxPlayers: capacityOf(game, config),
     playing,
     ...(playing && began !== null ? { since: began } : {}),
+    ...(streak !== null ? { streak } : {}),
   };
 }
 
@@ -200,6 +235,8 @@ export function listingOf(
  * shows these values to everyone, so nothing is taken on trust: a room code
  * must be well-formed, the name is cleaned like any nickname, and the counts
  * must be whole numbers that make sense together and with the room's game.
+ * A streak that is not a name and a whole number of games is left out, and
+ * the room is listed without one.
  */
 export function parseReport(raw: unknown, config: RoomConfig): RoomReport | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -223,8 +260,17 @@ export function parseReport(raw: unknown, config: RoomConfig): RoomReport | null
   const since = listing.playing && typeof listing.since === "number" && Number.isInteger(listing.since) && listing.since > 0 ? { since: listing.since } : {};
   return {
     code: data.code,
-    listing: { code: data.code, game: listing.game, host, players, maxPlayers, playing: listing.playing, ...since },
+    listing: { code: data.code, game: listing.game, host, players, maxPlayers, playing: listing.playing, ...since, ...streakTold(listing.streak, config) },
   };
+}
+
+/** The streak of a room's report as it is kept: a cleaned name and a whole number of games, one at least; nothing for anything else. */
+function streakTold(raw: unknown, config: RoomConfig): { streak?: RoomStreak } {
+  if (typeof raw !== "object" || raw === null) return {};
+  const { nick, run } = raw as Record<string, unknown>;
+  if (typeof nick !== "string" || typeof run !== "number" || !Number.isSafeInteger(run) || run < 1) return {};
+  const name = normalizeNick(nick, config);
+  return name === null ? {} : { streak: { nick: name, run } };
 }
 
 /**

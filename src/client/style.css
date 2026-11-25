@@ -382,6 +382,42 @@ ul {
   text-align: right;
 }
 
+/*
+ * A room someone is on a streak in: whose room it is, the streak and how full the room is are one line across the
+ * row, not two cells of it, so the streak takes its room from the name and never from the game under it. A long
+ * name is cut, how long the streak is never.
+ */
+.room-head {
+  display: flex;
+  grid-column: 1 / -1;
+  min-width: 0;
+  column-gap: 8px;
+  white-space: nowrap;
+}
+
+.room-head .room-host {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.room-head .room-count {
+  flex: none;
+}
+
+.room-streak {
+  display: flex;
+  flex: none;
+  column-gap: 4px;
+  color: var(--bone);
+}
+
+.room-streak-nick {
+  overflow: hidden;
+  max-width: 72px;
+  color: var(--bone-dim);
+  text-overflow: ellipsis;
+}
+
 .room-game {
   color: var(--bone-dim);
 }
@@ -393,6 +429,8 @@ ul {
 
 .room-state.busy,
 .room-row:disabled .room-count,
+.room-row:disabled .room-streak,
+.room-row:disabled .room-streak-nick,
 .room-row:disabled .room-state {
   color: var(--dim);
 }

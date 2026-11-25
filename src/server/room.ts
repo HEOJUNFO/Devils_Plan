@@ -1337,15 +1337,16 @@ export class GameRoom extends Server<Env> {
 
   /**
    * Tells the directory how this room stands, if that has changed since it
-   * was last told: its host, how many are connected, whether a game is on, or
-   * that it is not to be listed at all. Reports go one after another and each
+   * was last told: its host, how many are connected, whether a game is on,
+   * the longest streak anyone in it is on, or that it is not to be listed at
+   * all. Reports go one after another and each
    * sends the latest standing, so a slow one never overwrites a newer one.
    * Nothing that goes wrong here stops the room: the list is a convenience.
    */
   private report(): Promise<void> {
     const lobby = this.lobby;
     this.wanted =
-      lobby === null ? null : listingOf(this.name, lobby, this.connectedSlots(), this.playing(), config, this.tally().began);
+      lobby === null ? null : listingOf(this.name, lobby, this.connectedSlots(), this.playing(), config, this.tally().began, topsConfig);
     this.telling = this.telling.then(() => this.tellDirectory()).catch(() => undefined);
     return this.telling;
   }

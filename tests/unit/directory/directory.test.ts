@@ -232,6 +232,44 @@ describe("how long a listed room's game has been going", () => {
   });
 });
 
+describe("the streak a listed room tells of", () => {
+  const tops = { streakFrom: 2 };
+  /** A listed room of `runs.length` players, each on the streak `runs` has for their seat. */
+  const streaked = (runs: readonly number[], config: RoomConfig): LobbyState => {
+    const room = listedRoom(runs.length, config);
+    return { ...room, players: room.players.map((p) => (runs[p.slot] > 0 ? { ...p, streak: runs[p.slot] } : p)) };
+  };
+
+  it("is the longest that anyone connected is on, with whose it is", () => {
+    const config = roomConfig();
+
+    expect(listingOf("ABCD", streaked([0, 3, 2], config), new Set([0, 1, 2]), false, config, null, tops)).toMatchObject({ streak: { nick: "p1", run: 3 } });
+    // whoever is on the longest is away: the row tells of the one there to be played against
+    expect(listingOf("ABCD", streaked([0, 3, 2], config), new Set([0, 2]), false, config, null, tops)).toMatchObject({ streak: { nick: "p2", run: 2 } });
+    // of two as long, whoever is earlier in the room
+    expect(listingOf("ABCD", streaked([2, 0, 2], config), new Set([0, 1, 2]), true, config, null, tops)).toMatchObject({ streak: { nick: "p0", run: 2 } });
+  });
+
+  it("is left out where nobody is on one long enough to be called a streak, and by a room that was not told how long that is", () => {
+    const config = roomConfig();
+
+    expect(listingOf("ABCD", streaked([1, 0, 1], config), new Set([0, 1, 2]), false, config, null, tops)).not.toHaveProperty("streak");
+    expect(listingOf("ABCD", listedRoom(3, config), new Set([0, 1, 2]), false, config, null, tops)).not.toHaveProperty("streak");
+    expect(listingOf("ABCD", streaked([0, 3, 2], config), new Set([0, 1, 2]), false, config)).not.toHaveProperty("streak");
+  });
+
+  it("is kept from a room's report where it is a name and a whole number of games, the name cleaned as the host's is, and left out otherwise", () => {
+    const config = roomConfig();
+    const told = (streak: unknown) => parseReport({ code: "ABCD", listing: { ...listing("ABCD", { players: 3 }), streak } }, config)?.listing;
+
+    expect(told({ nick: "bea", run: 3 })).toEqual(listing("ABCD", { players: 3, streak: { nick: "bea", run: 3 } }));
+    expect(told({ nick: "  bea ", run: 3, more: true })).toEqual(listing("ABCD", { players: 3, streak: { nick: "bea", run: 3 } }));
+    for (const streak of [null, "bea", 3, { nick: "bea" }, { nick: "", run: 3 }, { nick: 7, run: 3 }, { nick: "bea", run: 0 }, { nick: "bea", run: 2.5 }, { nick: "bea", run: "3" }]) {
+      expect(told(streak), JSON.stringify(streak)).toEqual(listing("ABCD", { players: 3 }));
+    }
+  });
+});
+
 describe("listingOf", () => {
   it("lists a room on the list with its game, its host and how many are connected", () => {
     const config = roomConfig();

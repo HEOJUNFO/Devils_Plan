@@ -1810,9 +1810,22 @@ function renderRooms(): void {
       span.textContent = text;
       return span;
     };
+    const host = part("room-host", WORDS.rooms.of(listing.host));
+    const count = part("room-count", `${listing.players}/${listing.maxPlayers}`);
+    // A room someone is on a streak in says how long, after whose room it is and before how full it is, and whose
+    // where it is not the host's own (names are distinct in a room). The three are then one line across the row:
+    // the streak has the room the name leaves, whatever the line under it is as wide as. A list from before
+    // streaks tells of none.
+    const top: HTMLSpanElement[] = [host, count];
+    if (listing.streak !== undefined) {
+      const streak = part("room-streak", WORDS.rooms.streak(listing.streak.run));
+      if (listing.streak.nick !== listing.host) streak.prepend(part("room-streak-nick", listing.streak.nick), " ");
+      const head = part("room-head", "");
+      head.append(host, " ", streak, " ", count);
+      top.splice(0, 2, head);
+    }
     button.append(
-      part("room-host", WORDS.rooms.of(listing.host)),
-      part("room-count", `${listing.players}/${listing.maxPlayers}`),
+      ...top,
       part("room-game", GAMES[game].title[lang]),
       part(!going && (listing.playing || full) ? "room-state busy" : "room-state", going ? WORDS.rooms.entering : standing(listing, game)),
     );

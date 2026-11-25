@@ -182,6 +182,11 @@ const ko = {
     /** With no room on the list: one line, as everything over the rooms is. What a public room is, is said where one is made. */
     none: "열린 방이 없습니다. 방을 만들어 보세요.",
     of: (host: string) => `${host}의 방`,
+    /**
+     * On a row, before how full the room is, where someone in it is on a streak: the games in a row they were at
+     * the top of. The host's own stands alone after "…의 방"; anyone else's has their name before it.
+     */
+    streak: (run: number) => `${run}연승`,
     full: "가득 참",
     playing: "게임 중 · 들어가면 관전",
     /** The same of a game that has been going `minutes` whole minutes, one at least: whoever reads it is choosing between waiting here and a room of their own. */
@@ -744,6 +749,7 @@ const en: typeof ko = {
     loading: "Loading the rooms.",
     none: "No open rooms. Make one.",
     of: (host) => `${host}'s room`,
+    streak: (run) => `${run} in a row`,
     full: "Full",
     playing: "Playing · join to watch",
     // beside the widest name of a game: "join to" does not fit with the minutes
