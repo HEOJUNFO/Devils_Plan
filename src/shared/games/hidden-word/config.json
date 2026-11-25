@@ -13,6 +13,6 @@
   "pieces": 3,
   "revealSeconds": 12,
   "wordLength": 10,
-  "minPlayers": 3,
+  "minPlayers": 2,
   "maxPlayers": 6
 }

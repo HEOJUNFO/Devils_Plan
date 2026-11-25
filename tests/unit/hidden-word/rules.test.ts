@@ -117,9 +117,10 @@ describe("the numbers of 히든 워드", () => {
 });
 
 describe("starting a game", () => {
-  it("takes three to six players", () => {
+  it("takes two to six players", () => {
     const start = (players: number[]) => createGame({ players, seed: 1, now: T0 }, config, showLexicon());
-    expect(start([0, 1])).toEqual({ ok: false, reason: "too-few" });
+    expect(start([0])).toEqual({ ok: false, reason: "too-few" });
+    expect(start([0, 1]).ok).toBe(true);
     expect(start([0, 1, 2, 3, 4, 5, 6])).toEqual({ ok: false, reason: "too-many" });
     expect(start([0, 1, 1])).toEqual({ ok: false, reason: "bad-players" });
     expect(start([0, 1, 2, 3, 4, 5]).ok).toBe(true);
@@ -464,6 +465,53 @@ function showTurn(state: HiddenState, turn: ShowTurn, words: Lexicon, rules: Hid
   });
   return next;
 }
+
+describe("a game of two players", () => {
+  it("has one guesser for each hidden word: right, they score and the turn is over; wrong, the setter scores and gives clues again", () => {
+    let state = chosen(game([0, 1]));
+    expect(state.order).toEqual([0, 1]);
+    expect(state.setter).toBe(0);
+    // 1 is wrong in the first stage of 0's word, and right in the second
+    state = answered(did(state, 0, { type: "clue", word: "뿌리" }), []);
+    expect(state.result).toMatchObject({ setter: 0, stage: 1, setterPoints: 1, over: false, word: null });
+    expect(state.result?.answers).toEqual([{ player: 1, words: ["오답"], right: false }]);
+    state = late(state);
+    expect(state).toMatchObject({ phase: "clue", setter: 0, stage: 2 });
+    state = answered(did(state, 0, { type: "clue", word: "숲" }), [1]);
+    expect(state.result).toMatchObject({ setter: 0, stage: 2, setterPoints: 0, over: true, word: "나무" });
+    expect(totalsOf(state).map((each) => each.total)).toEqual([1, 1]);
+    // the other sets their word next
+    state = late(state);
+    expect(state).toMatchObject({ phase: "clue", setter: 1, stage: 1 });
+    expect(awaited(state)).toEqual([1]);
+  });
+
+  it("is played through both rounds, four turns in all, and ends when one of the two leaves", () => {
+    const words = scripted(WORDS.flat(), Object.fromEntries(WORDS.flat().map((word) => [`${word} 숲`, 96])), ["오답"]);
+    let state = game([0, 1], { lexicon: words });
+    for (let turn = 0; turn < 4; turn++) {
+      if (state.phase === "choose") state = chosen(state, words);
+      const setter = state.setter as number;
+      state = late(answered(did(state, setter, { type: "clue", word: "숲" }, words), [1 - setter], words), words);
+    }
+    expect(state.phase).toBe("ended");
+    expect(state.ended).toBe("played");
+    expect(state.past.map((turn) => [turn.round, turn.setter])).toEqual([
+      [1, 0],
+      [1, 1],
+      [2, 0],
+      [2, 1],
+    ]);
+    // each was right once a round: 1 point, then 2
+    expect(totalsOf(state).map((each) => each.total)).toEqual([3, 3]);
+    expect(placesOf(state)).toEqual([
+      { player: 0, place: 1 },
+      { player: 1, place: 1 },
+    ]);
+    const cut = closeIfLeft(chosen(game([0, 1])), (player) => player === 0, T0 + 5000, config);
+    expect(cut.ended).toBe("left");
+  });
+});
 
 describe("the show's game", () => {
   it("comes out as the wiki's table of results has it", () => {

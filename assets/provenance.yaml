@@ -70,7 +70,7 @@
   ships: false
 - path: tools/hidden-word/envelope-ko.txt
   origin: ai
-  tool: "chosen by Claude from tools/hidden-word/glosses-ko.tsv: the 486 familiar nouns an envelope of 히든 워드 is dealt from"
+  tool: "chosen by Claude from tools/hidden-word/glosses-ko.tsv: the 417 familiar nouns of two syllables or more an envelope of 히든 워드 is dealt from (486 at first; the 69 of one syllable were taken out on the user's word)"
   model: "claude-fable-5-2"
   date: 2026-11-25
   ships: false

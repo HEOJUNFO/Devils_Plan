@@ -49,7 +49,7 @@ const ko = {
       end: "맞히면 1점, 아무도 못 맞히면 출제자가 점수를 얻습니다. 2라운드(2배)까지의 승점 합이 가장 높으면 승리.",
     },
     parts: [
-      "3명부터 6명까지 함께 합니다. 시작하면 각자 명사 5개가 든 봉투를 받고, 라운드마다 그중 하나를 히든 워드로 정합니다. 2라운드이고, 라운드마다 모두가 한 번씩 출제자가 됩니다. 출제 순서는 라운드마다 추첨합니다.",
+      "2명부터 6명까지 함께 합니다. 시작하면 각자 명사 5개가 든 봉투를 받고, 라운드마다 그중 하나를 히든 워드로 정합니다. 2라운드이고, 라운드마다 모두가 한 번씩 출제자가 됩니다. 출제 순서는 라운드마다 추첨합니다.",
       [
         "출제자는 자기 히든 워드와 관련된 힌트 낱말을 하나씩 냅니다. 힌트는 한글 명사이고, 게임의 낱말 목록에 있는 낱말이어야 합니다.",
         "힌트를 낼 때마다 히든 워드와 그 힌트의 유사도(%)가 모두에게 공개됩니다.",
@@ -89,7 +89,7 @@ const ko = {
     "not-seated": "관전 중에는 참여할 수 없습니다",
     "no-game": "진행 중인 판이 없습니다",
     "not-host": "방장만 새 판을 시작할 수 있습니다",
-    "too-few": "세 명 이상이어야 합니다",
+    "too-few": "두 명 이상이어야 합니다",
     "too-many": "여섯 명까지 할 수 있습니다",
     "too-few-words": "봉투에 넣을 낱말이 모자랍니다",
     "already-playing": "이미 판이 진행 중입니다",
@@ -256,7 +256,7 @@ const en: typeof ko = {
       end: "A correct answer is a point; with none, the setter scores. The highest total after two rounds (the second counts double) wins.",
     },
     parts: [
-      "For 3 to 6 players. At the start everyone gets an envelope of five nouns and, each round, chooses one of them as their hidden word. There are two rounds, and in each everyone is the word setter once, in an order drawn anew for the round. The words are Korean, as in the show.",
+      "For 2 to 6 players. At the start everyone gets an envelope of five nouns and, each round, chooses one of them as their hidden word. There are two rounds, and in each everyone is the word setter once, in an order drawn anew for the round. The words are Korean, as in the show.",
       [
         "The word setter gives clue words related to their hidden word, one at a time. A clue is a Korean noun, and has to be in the game's list of words.",
         "With each clue, its similarity score with the hidden word is shown to everyone.",
@@ -295,7 +295,7 @@ const en: typeof ko = {
     "not-seated": "You are watching, not playing",
     "no-game": "No game is being played",
     "not-host": "Only the host can start a new game",
-    "too-few": "It takes three players or more",
+    "too-few": "It takes two players or more",
     "too-many": "Six players at most",
     "too-few-words": "Not enough words to fill the envelopes",
     "already-playing": "A game is already being played",

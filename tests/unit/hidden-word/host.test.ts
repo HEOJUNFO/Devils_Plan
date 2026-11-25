@@ -53,12 +53,13 @@ function chosen(session: HiddenSession, presence: Presence): HiddenSession {
 }
 
 describe("starting 히든 워드 in a room", () => {
-  it("is the host's to do, with three to six players", () => {
+  it("is the host's to do, with two to six players", () => {
     expect(host.start(null, people(3), request({ by: "t1" }), all(people(3)))).toEqual({ ok: false, reason: "not-host" });
-    expect(host.start(null, people(2), request(), all(people(2)))).toEqual({ ok: false, reason: "too-few" });
+    expect(host.start(null, people(1), request(), all(people(1)))).toEqual({ ok: false, reason: "too-few" });
+    expect(started(2).session.state.players).toEqual([0, 1]);
     expect(host.start(null, people(config.maxPlayers + 1), request(), all(people(config.maxPlayers + 1)))).toEqual({ ok: false, reason: "too-many" });
     expect(started(3).session.state.players).toEqual([0, 1, 2]);
-    expect(config.minPlayers).toBe(3);
+    expect(config.minPlayers).toBe(2);
     expect(config.maxPlayers).toBe(6);
   });
 
@@ -68,14 +69,13 @@ describe("starting 히든 워드 in a room", () => {
     expect(host.start(null, people(1), request({ bots: true, allowBots: false }), all(people(1)))).toEqual({ ok: false, reason: "bots-not-allowed" });
   });
 
-  it("fills the places up to three with bots when bots are asked for, and none where three are here", () => {
+  it("fills the places up to two with a bot when bots are asked for, and none where two are here", () => {
     const one = started(1, { bots: true }).session;
     expect(one.players.map((seat) => [seat.id, seat.token, seat.nick])).toEqual([
       [0, "t0", "P0"],
       [1, null, "봇 1"],
-      [2, null, "봇 2"],
     ]);
-    expect(started(3, { bots: true }).session.players.every((seat) => seat.token !== null)).toBe(true);
+    expect(started(2, { bots: true }).session.players.every((seat) => seat.token !== null)).toBe(true);
   });
 
   it("is refused where the list of words cannot fill the envelopes", () => {
@@ -149,20 +149,14 @@ describe("the bot", () => {
     expect(host.tick(session, presence, T0 + BOT_MS - 1)).toBe(session);
     let next = host.tick(session, presence, T0 + BOT_MS);
     expect(next.state.hands[1].chosen).toBe(WORDS[1][0]);
-    next = host.tick(next, presence, host.deadline(next) as number);
-    expect(next.state.hands[2].chosen).toBe(WORDS[2][0]);
-    // the person chooses, and gives a clue that ends the clues: the bots answer the word nearest it
+    // the person chooses, and gives a clue that ends the clues: the bot answers the word nearest it
     next = did(next, "t0", { type: "choose", word: "나무" }, presence, T0 + 20_000);
     expect(next.state.phase).toBe("clue");
     expect(next.state.setter).toBe(0);
     next = did(next, "t0", { type: "clue", word: "숲" }, presence, T0 + 21_000);
     next = host.tick(next, presence, host.deadline(next) as number);
-    next = host.tick(next, presence, host.deadline(next) as number);
     expect(next.state.phase).toBe("reveal");
-    expect(next.state.result?.answers).toEqual([
-      { player: 1, words: ["나무"], right: true },
-      { player: 2, words: ["나무"], right: true },
-    ]);
+    expect(next.state.result?.answers).toEqual([{ player: 1, words: ["나무"], right: true }]);
     // the next setter is a bot: its clue is the word nearest its hidden word
     next = host.tick(next, presence, host.deadline(next) as number);
     expect(next.state.setter).toBe(1);
@@ -193,15 +187,20 @@ describe("the bot", () => {
     }
     expect(session.state.phase).toBe("ended");
     expect(session.state.ended).toBe("played");
-    expect(session.state.past.length).toBe(6);
+    expect(session.state.past.length).toBe(4);
     expect(host.deadline(session)).toBeNull();
-    // the bots found the person's first word at once; nobody found the second in its three stages, at double worth
+    // the bot found the person's first word at once, and did not find the second in its three stages, at double worth
     expect(session.state.scores[0]).toEqual({ player: 0, rounds: [0, 2 * (1 + 2 + 3)] });
     expect(session.state.past.filter((turn) => turn.setter === 0)).toEqual([
-      { round: 1, setter: 0, word: "나무", stage: 1, right: [1, 2], setterPoints: 0 },
+      { round: 1, setter: 0, word: "나무", stage: 1, right: [1], setterPoints: 0 },
       { round: 2, setter: 0, word: "의자", stage: 3, right: [], setterPoints: 12 },
     ]);
-    expect(host.places?.(session)?.map((line) => line.token)).toEqual(["t0", null, null]);
+    // the person never found a word of the bot's: three stages to the bot in each round, and a point for the person's first word
+    expect(session.state.scores[1]).toEqual({ player: 1, rounds: [1 + (1 + 2 + 3), 2 * (1 + 2 + 3)] });
+    expect(host.places?.(session)).toEqual([
+      { token: "t0", place: 2 },
+      { token: null, place: 1 },
+    ]);
   });
 });
 

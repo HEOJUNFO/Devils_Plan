@@ -372,7 +372,7 @@
       "ko": "힌트의 유사도를 보고 서로의 히든 워드를 맞히세요. 내 낱말은 숨기고, 2라운드.",
       "en": "Guess each other's hidden word from the similarity scores of clues."
     },
-    "minPlayers": 3,
+    "minPlayers": 2,
     "maxPlayers": 6,
     "teamSize": 0,
     "turns": false,
