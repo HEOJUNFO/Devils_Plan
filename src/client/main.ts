@@ -19,7 +19,7 @@ import { BUILD, outOfDate } from "../shared/build";
 import { minutesPlayed, newlyOpen, quickNext, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
 import { louder, pressing, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
-import type { StoredWord } from "../shared/feedback";
+import { wordsAsPrompt, type StoredWord } from "../shared/feedback";
 import { GAMES, GAME_IDS, NEWEST_GAME_IDS, isGameId, type GameId } from "../shared/games";
 import { qrCode } from "../shared/qr";
 import { playedAny, stampOf, stampsIn, TOP_KIND } from "../shared/record";
@@ -130,6 +130,9 @@ const CREATE_ATTEMPTS = 3;
 
 /** How long a word about the game waits for the directory's answer before it is taken as not sent, in ms. */
 const FEEDBACK_WAIT_MS = 10_000;
+
+/** How long the inbox says that what it shows was copied (or was not) before it says again how many there are, in ms. */
+const INBOX_COPIED_MS = 3000;
 
 /** How long the way out of a game waits for its second press. */
 const LEAVE_CONFIRM_MS = 3000;
@@ -264,6 +267,7 @@ const feedbackSheet = el<HTMLElement>("feedback-sheet");
 const inboxSheet = el<HTMLElement>("inbox-sheet");
 const inboxKey = el<HTMLInputElement>("inbox-key");
 const inboxOpen = el<HTMLButtonElement>("inbox-open");
+const inboxCopy = el<HTMLButtonElement>("inbox-copy");
 const inboxNote = el<HTMLElement>("inbox-note");
 const inboxList = el<HTMLOListElement>("inbox-list");
 const feedbackText = el<HTMLTextAreaElement>("feedback-text");
@@ -374,6 +378,7 @@ function writeWords(): void {
     ["tally-when", WORDS.tally.when],
     ["inbox-title", wantNumbers ? WORDS.numbers.title : WORDS.inbox.title],
     ["inbox-open", WORDS.inbox.open],
+    ["inbox-copy", WORDS.inbox.copy],
     ["inbox-close", WORDS.inbox.close],
     ["by-code", WORDS.entry.byCode],
     ["join", WORDS.entry.join],
@@ -735,6 +740,12 @@ let feedbackWait: ReturnType<typeof setTimeout> | null = null;
 let inboxWait: ReturnType<typeof setTimeout> | null = null;
 /** Whether the inbox asked for with `?inbox` has been put on show: once, when the lobby first is. */
 let inboxShown = false;
+/** What the inbox shows, each as the line over it and what was written: what its button copies for a prompt. None while it shows nothing, or the numbers. */
+let inboxKept: { head: string; text: string }[] = [];
+/** The wait before the note under the key says again how many there are, after it said that they were copied. */
+let inboxCopiedWait: ReturnType<typeof setTimeout> | null = null;
+/** What the note last said of a copy: said twice running, a screen reader reads the second only if it differs. */
+let inboxCopiedSaid = "";
 
 /** What a new room will be: the last choices made in this browser. */
 const storedGame = localStorage.getItem(storageKey("game"));
@@ -2310,12 +2321,21 @@ function showInbox(open: boolean): void {
     return;
   }
   inboxList.replaceChildren();
-  inboxNote.textContent = "";
+  keepInbox([]);
+  sayInbox("", false);
   inboxKey.value = "";
+}
+
+/** Keeps what the inbox shows for its button to copy; the button is there only while there is something. */
+function keepInbox(kept: { head: string; text: string }[]): void {
+  inboxKept = kept;
+  inboxCopy.hidden = kept.length === 0;
 }
 
 /** Says on the sheet how the asking stands. */
 function sayInbox(text: string, failed: boolean, asking = false): void {
+  if (inboxCopiedWait !== null) clearTimeout(inboxCopiedWait);
+  inboxCopiedWait = null;
   inboxNote.textContent = text;
   inboxNote.classList.toggle("failed", failed);
   inboxOpen.disabled = asking;
@@ -2350,9 +2370,11 @@ function inboxAnswered(words: StoredWord[] | null): void {
   if (inboxSheet.hidden) return;
   if (words === null) {
     inboxList.replaceChildren();
+    keepInbox([]);
     return sayInbox(WORDS.inbox.refused, true);
   }
   sayInbox(words.length === 0 ? WORDS.inbox.none : WORDS.inbox.count(words.length), false);
+  const kept: { head: string; text: string }[] = [];
   inboxList.replaceChildren(
     ...words.map((word) => {
       const row = document.createElement("li");
@@ -2367,6 +2389,8 @@ function inboxAnswered(words: StoredWord[] | null): void {
           : word.flag === undefined
             ? WORDS.inbox.head(when, word.lang, word.build)
             : WORDS.inbox.flagHead(when, word.flag.nick, isGameId(word.flag.game) ? GAMES[word.flag.game].title[lang] : word.flag.game);
+      // what is copied for a prompt is what is shown: the same line over each, the same text under it
+      kept.push({ head: head.textContent, text: word.text });
       // what a stranger wrote is shown as text and nothing else
       const text = document.createElement("p");
       text.className = "word";
@@ -2385,6 +2409,38 @@ function inboxAnswered(words: StoredWord[] | null): void {
       row.append(head, text);
       return row;
     }),
+  );
+  keepInbox(kept);
+}
+
+/**
+ * Copies everything the inbox shows as one text to paste into a prompt
+ * (`wordsAsPrompt`): what it is first, then each word under its number and
+ * the line shown over it. How it went is said in the note under the key, for
+ * a moment in place of the count: a note is read out, a button's own words
+ * changing are not. The button stays as it is, to be pressed again.
+ */
+function copyInbox(): void {
+  const count = inboxKept.length;
+  if (count === 0) return;
+  const pasted = wordsAsPrompt(WORDS.inbox.prompt(count), inboxKept);
+  const said = (text: string, failed: boolean): void => {
+    // only the note is touched: an asking on its way keeps its button as it is
+    if (inboxCopiedWait !== null) clearTimeout(inboxCopiedWait);
+    inboxCopiedSaid = text === inboxCopiedSaid ? `${text}\u00a0` : text;
+    inboxNote.textContent = inboxCopiedSaid;
+    inboxNote.classList.toggle("failed", failed);
+    inboxCopiedWait = setTimeout(() => {
+      inboxCopiedWait = null;
+      inboxNote.textContent = WORDS.inbox.count(inboxKept.length);
+      inboxNote.classList.remove("failed");
+    }, INBOX_COPIED_MS);
+  };
+  // no clipboard here (an old browser, or a page not served securely) is a failure like any other
+  const copying = navigator.clipboard === undefined ? Promise.reject(new Error("no clipboard")) : navigator.clipboard.writeText(pasted);
+  copying.then(
+    () => said(WORDS.inbox.copied(count), false),
+    () => said(WORDS.inbox.copyFailed, true),
   );
 }
 
@@ -2437,6 +2493,7 @@ el<HTMLFormElement>("inbox-form").addEventListener("submit", (event) => {
   askInbox();
 });
 el<HTMLButtonElement>("inbox-close").addEventListener("click", () => showInbox(false));
+inboxCopy.addEventListener("click", copyInbox);
 
 feedbackButton.addEventListener("click", () => showFeedback(true));
 el<HTMLButtonElement>("feedback-close").addEventListener("click", () => showFeedback(false));

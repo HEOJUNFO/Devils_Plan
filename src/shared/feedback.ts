@@ -78,6 +78,25 @@ export interface StoredWord {
   fault?: FaultNote;
 }
 
+/**
+ * Everything kept, as one text to paste into a prompt for a model to read:
+ * `intro` (what this is, in its reader's language), then each word under its
+ * number and `head` (the line shown over it in the inbox), in the order given.
+ *
+ * Every line of what a stranger wrote begins with `> `, a head never does:
+ * so nothing written can pass for a head, for another word, or for the words
+ * of whoever pastes it. A head is kept on one line for the same reason (a
+ * nickname and a browser's name are a stranger's too).
+ */
+export function wordsAsPrompt(intro: string, words: readonly { head: string; text: string }[]): string {
+  const each = words.map((word, index) => {
+    const head = word.head.replace(/\s*[\r\n]+\s*/gu, " ");
+    const lines = word.text.split(/\r?\n/u).map((line) => (line === "" ? ">" : `> ${line}`));
+    return `[${index + 1}] ${head}\n${lines.join("\n")}`;
+  });
+  return `${[intro, ...each].join("\n\n")}\n`;
+}
+
 /** Tunable values of pointing a player out. Loaded from `chat-config.json` (`flag`). */
 export interface FlagConfig {
   /** How many lines go with a flag, the latest of what the player said: more are left out. */
