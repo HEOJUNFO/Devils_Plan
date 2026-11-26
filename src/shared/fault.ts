@@ -85,6 +85,19 @@ function fileOf(address: string): string {
   return name === "" ? "page" : name.slice(0, 60);
 }
 
+/**
+ * Whether a fault names where it was thrown and names nothing but the page
+ * itself. The page has no script written into it: every script of the game
+ * is a file (`index.html`). So an error whose every position is the page,
+ * with no script file on the way to it, was thrown by a script something
+ * else put there: an app showing the page in its own browser runs its own
+ * script in every page, and one that does not parse is thrown from the
+ * page's first line. A fault with no place at all is not this.
+ */
+function ofPageAlone(frames: readonly string[]): boolean {
+  return frames.length > 0 && frames.every((frame) => frame.startsWith("page:"));
+}
+
 /** An address written inside a sentence, as far as it runs. */
 const ADDRESS = /\b(?:https?|wss?|file|blob):[^\s"'`<>()[\]]+/giu;
 /** What a sentence quotes between double quotes or backticks: where a browser puts what it was reading (the start of a text that is not JSON, a value). Single quotes are left: they name a property or a class. */
@@ -125,7 +138,8 @@ function framesIn(stack: string): string[] {
 /**
  * The fault a page notes of what its browser handed it, or `null` for what
  * is not a fault of the game: an error with no sentence, one a browser's
- * extension threw, or one of the sentences set to be passed over.
+ * extension threw, one thrown from the page itself and from no script file
+ * (`ofPageAlone`), or one of the sentences set to be passed over.
  */
 export function faultOf(raw: RawFault, where: string, browser: Browser, config: FaultConfig): Fault | null {
   const message = sentenceOf(raw.message, config.messageLength);
@@ -136,6 +150,7 @@ export function faultOf(raw: RawFault, where: string, browser: Browser, config: 
   const frames = framesIn(stack);
   // where the browser says the error was thrown comes first, unless the stack begins there already
   const all = first === null || frames[0] === first ? frames : [first, ...frames.filter((frame) => frame !== first)];
+  if (ofPageAlone(all)) return null;
   return { message, frames: all.slice(0, config.frames), where, browser };
 }
 
@@ -165,7 +180,9 @@ function isWhere(where: unknown): where is string {
  * Reads a fault as a page sent it, cleaned as a line shown to its reader
  * is. `null` for anything else: a sentence that is empty or longer than a
  * page sends, more frames than one sends, a frame that is not a file's name
- * and a position, a screen or a browser there is none of.
+ * and a position, a screen or a browser there is none of. `null` too for
+ * one thrown from the page itself and from no script file (`ofPageAlone`):
+ * a page of a build before this was passed over still notes and sends it.
  */
 export function parseFault(raw: unknown, config: FaultConfig): Fault | null {
   if (typeof raw !== "object" || raw === null) return null;
@@ -179,6 +196,7 @@ export function parseFault(raw: unknown, config: FaultConfig): Fault | null {
     if (typeof frame !== "string" || !FRAME.test(frame)) return null;
     frames.push(frame);
   }
+  if (ofPageAlone(frames)) return null;
   if (!isWhere(data.where)) return null;
   if (!BROWSERS.includes(data.browser as Browser)) return null;
   return { message, frames, where: data.where, browser: data.browser as Browser };

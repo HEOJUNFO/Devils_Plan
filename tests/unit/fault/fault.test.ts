@@ -105,6 +105,25 @@ describe("faultOf", () => {
     expect(faultOf(raw, "lobby", "ios", directoryConfig.faults)).toBeNull();
     expect(faultOf({ message: "TypeError: undefined is not an object (evaluating 'view.players')" }, "lobby", "ios", directoryConfig.faults)).not.toBeNull();
   });
+
+  it("notes nothing of an error thrown from the page itself and from no script file: the page has no script written into it", () => {
+    // as they were kept on 2026-11-26 (once each, the same second, lobby, android, build b304243): a script an app put into the page, which did not parse
+    const identifier = { message: "Uncaught SyntaxError: Unexpected identifier 'https'", source: PAGE, line: 1, column: 18785 };
+    const token = { message: "Uncaught SyntaxError: Unexpected token 'else'", source: "https://play.example.com/", line: 1, column: 219, stack: "SyntaxError: Unexpected token 'else'" };
+
+    expect(faultOf(identifier, "lobby", "android", directoryConfig.faults)).toBeNull();
+    expect(faultOf(token, "lobby", "android", directoryConfig.faults)).toBeNull();
+    expect(faultOf({ message: "boom", stack: `global code@${PAGE}:1:16` }, "lobby", "ios", directoryConfig.faults)).toBeNull();
+  });
+
+  it("still notes an error the page's own script threw, whether or not the page is named on the way to it, and one with no place at all", () => {
+    const own = { message: "Uncaught SyntaxError: Unexpected identifier 'https'", source: SCRIPT, line: 1, column: 18785 };
+    const through = { message: "boom", source: PAGE, line: 1, column: 3, stack: `Error: boom\n    at ${PAGE}:1:3\n    at ${SCRIPT}:7:8` };
+
+    expect(faultOf(own, "lobby", "android", directoryConfig.faults)?.frames).toEqual(["main-AbC1.js:1:18785"]);
+    expect(faultOf(through, "lobby", "android", directoryConfig.faults)?.frames).toEqual(["page:1:3", "main-AbC1.js:7:8"]);
+    expect(faultOf({ message: "Uncaught SyntaxError: Unexpected token 'else'" }, "lobby", "android", directoryConfig.faults)?.frames).toEqual([]);
+  });
 });
 
 describe("browserOf", () => {
@@ -152,6 +171,13 @@ describe("parseFault", () => {
     expect(parseFault(fault({ frames: [frame, frame, frame] }), CONFIG)).toBeNull();
     for (const bad of [`${PAGE}:1:2`, "main.js", "main.js:1", "a b.js:1:2", "", 7]) expect(parseFault({ ...fault(), frames: [bad] }, CONFIG)).toBeNull();
     expect(parseFault({ ...fault(), frames: "main.js:1:1" }, CONFIG)).toBeNull();
+  });
+
+  it("rejects a fault thrown from the page itself and from no script file, which a page of an older build still sends", () => {
+    expect(parseFault(fault({ message: "Uncaught SyntaxError: Unexpected token 'else'", frames: ["page:1:219"] }), CONFIG)).toBeNull();
+    expect(parseFault(fault({ frames: ["page:1:219", "page:1:16"] }), CONFIG)).toBeNull();
+    expect(parseFault(fault({ frames: ["page:12:3", "main-AbC1.js:7:8"] }), CONFIG)).toEqual(fault({ frames: ["page:12:3", "main-AbC1.js:7:8"] }));
+    expect(parseFault(fault({ frames: [] }), CONFIG)).toEqual(fault({ frames: [] }));
   });
 
   it("rejects a screen or a browser there is none of, and what is not a fault at all", () => {
