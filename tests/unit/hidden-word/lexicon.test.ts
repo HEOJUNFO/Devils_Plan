@@ -103,6 +103,12 @@ describe("the game's own list (lexicon-ko.txt)", () => {
     expect(new Set(data.envelope).size).toBe(data.envelope.length);
   });
 
+  it("has so many of them that whoever has played many games has not met them all, and none of one letter", () => {
+    // a game of six opens thirty words: sixty such games and more before the words run out
+    expect(data.envelope.length).toBeGreaterThan(configJson.maxPlayers * configJson.envelope * 60);
+    expect(data.envelope.filter((word) => [...word].length < 2)).toEqual([]);
+  });
+
   it("gives every envelope word a few clues that end the giving of clues, and not a great many", () => {
     for (const word of data.envelope.filter((_, at) => at % 20 === 0)) {
       const near = list.nearest(word, 8);
