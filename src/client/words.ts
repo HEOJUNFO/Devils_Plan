@@ -22,11 +22,11 @@ const ko = {
     turnDevice: "가로로 돌리면 화면이 더 커집니다",
     /** On the button that turns the page itself, where the browser can. */
     turnFull: "가로 전체 화면으로 보기",
-    /** In the lobby's bar: which build the page is, to name when something is reported. */
-    version: (build: string) => `버전 ${build}`,
-    /** What the build's number leads to, said when a mouse rests on it and to a screen reader. */
-    news: "최근에 바뀐 것",
-    /** Beside the build's number while the page it leads to has lines this player has not read. */
+    /** In the lobby's bar: the link to what changed lately. */
+    patchNotes: "패치노트",
+    /** What the link leads to and which build the page is, to name when something is reported: said when a mouse rests on the link and to a screen reader. */
+    news: (build: string) => `최근에 바뀐 것 · 버전 ${build}`,
+    /** Beside the link while the page it leads to has lines this player has not read. */
     fresh: "NEW",
     /** On the button that opens the sheet for a word about the game. */
     feedback: "의견 보내기",
@@ -646,8 +646,8 @@ const en: typeof ko = {
     description: SITE_WORDS.en.app.description(GAME_IDS.length),
     turnDevice: "Turn your phone sideways for a larger screen",
     turnFull: "Go full screen, sideways",
-    version: (build) => `Version ${build}`,
-    news: "What changed lately",
+    patchNotes: "Patch notes",
+    news: (build) => `What changed lately · version ${build}`,
     fresh: "NEW",
     feedback: "Send feedback",
   },

@@ -4,8 +4,8 @@
  *
  * It is a page for players, not the list of commits: a line is here when
  * someone playing would notice the change, and it says what they can now do,
- * in the words the screens use. The lobby's line with the build's number
- * leads here.
+ * in the words the screens use. The lobby's link to the patch notes leads
+ * here.
  *
  * A change a player would notice adds a line under its day, newest day
  * first, in both languages. A game is called by the name `games.json` gives
@@ -79,6 +79,10 @@ export const NEWS: NewsDay[] = [
       {
         ko: "휴대폰을 세로로 들어도 할 수 있습니다. 「화면을 가로로 돌려 주세요」 안내가 화면을 덮지 않고, 화면 폭에 맞춘 게임이 그대로 나옵니다. 가로로 돌리면 더 크게 보입니다.",
         en: "A phone held upright now plays too. The notice that asked you to turn the screen no longer covers it: the game is shown as wide as the screen, and larger when the phone is turned sideways.",
+      },
+      {
+        ko: "로비 아래의 「버전」 글자가 「패치노트」로 바뀌었습니다. 누르면 전처럼 이 페이지가 열리고, 읽지 않은 줄이 있으면 옆에 NEW가 붙습니다.",
+        en: "The version at the bottom of the lobby now reads \"Patch notes\". It still opens this page, with NEW beside it while there are lines you have not read.",
       },
     ],
   },

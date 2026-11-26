@@ -351,7 +351,7 @@ function writeWords(): void {
     ["create", WORDS.entry.create],
     ["quick", WORDS.entry.quick],
     ["tab-share", WORDS.game.share],
-    ["version", WORDS.site.version(BUILD)],
+    ["version", WORDS.site.patchNotes],
     ["feedback", WORDS.site.feedback],
     ["feedback-title", WORDS.feedback.title],
     ["feedback-hint", WORDS.feedback.hint],
@@ -428,9 +428,9 @@ function writeWords(): void {
     ["menu-close", WORDS.menu.close],
   ];
   for (const [id, text] of said) el(id).textContent = text;
-  // the build's number leads to what changed lately, in the language the page is read in
+  // the link leads to what changed lately, in the language the page is read in; the build's number is said where a mouse rests
   el("version").setAttribute("href", newsPath(lang));
-  el("version").title = WORDS.site.news;
+  el("version").title = WORDS.site.news(BUILD);
   // said to a screen reader of what has no words on show
   const labelled: [id: string, text: string][] = [
     ["code", WORDS.entry.code],
@@ -461,7 +461,7 @@ function writeWords(): void {
 writeWords();
 
 /**
- * Says by the build's number that the page it leads to has lines this player
+ * Says by the link to the patch notes that the page it leads to has lines this player
  * has not read, until they go there (`src/shared/site/news-mark.ts`).
  *
  * The mark is inside the link, so it is pressed with it and read out with it.
