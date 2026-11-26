@@ -47,8 +47,8 @@ SLUGS = {"under-thirteen": "heavy-13"}
 
 # On a card that invites to one game, under what the game is about: who it is for, and what to do.
 INVITES = {
-    "ko": lambda low, high: f"{low}~{high}명 · 링크를 열면 방으로 들어갑니다",
-    "en": lambda low, high: f"{low}–{high} players · open the link to join the room",
+    "ko": lambda low, high: f"{low}명 · 링크를 열면 방으로 들어갑니다" if low == high else f"{low}~{high}명 · 링크를 열면 방으로 들어갑니다",
+    "en": lambda low, high: f"{low} players · open the link to join the room" if low == high else f"{low}–{high} players · open the link to join the room",
 }
 
 # The headline in each language, on two lines: `home.heading` of src/shared/site/words.ts.

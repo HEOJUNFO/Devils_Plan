@@ -48,12 +48,22 @@ const EQ = name("equation-traffic-light");
 const HIT = name("hit-stay");
 const FLAGS = name("flags-around-the-world");
 const HIDDEN = name("hidden-word");
+const TOWER = name("tower-of-equations");
+const OMOK = name("point-gomoku");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-26",
     lines: [
+      {
+        ko: `새 게임 ${OMOK.ko}: 두 사람이 19줄 판에서 합니다. 라운드마다 선택 플레이어가 연속된 세 점을 고르고, 둘 다 10포인트를 받아 세 점에 몰래 나눠 겁니다. 점마다 더 많이 건 사람의 돌이 놓이고, 남긴 포인트의 절반이 다음 라운드로 넘어갑니다. 먼저 오목을 만들면 이깁니다.`,
+        en: `New game, ${OMOK.en}: two players on a board of 19 lines. Each round the selector marks three spots in a row, and both get 10 points to bet on them in secret. The higher bet on a spot places its stone, and half the points you keep carry over to the next round. Five in a row wins.`,
+      },
+      {
+        ko: `새 게임 ${TOWER.ko}: 2~6명이 합니다. 네 자리에 쌓인 숫자 블록을 몇 번 옮기면 타깃 넘버가 되는 탑을 만들 수 있는지 머리로 세어, 먼저 버저를 누르고 이동 횟수를 선언합니다. 가장 적게 부른 사람이 실제로 옮겨 성공하면 점수를 얻고 실패하면 잃습니다. 7점이면 끝. 방을 만들 때 방송의 처음 배치로도 시작할 수 있습니다.`,
+        en: `New game, ${TOWER.en}: for 2 to 6 players. Count in your head how many moves of the number blocks on four positions build a tower equal to the target number, then press the buzzer first and declare your moves. Whoever declares the fewest makes them: points for success, points lost for failure. First to 7. A room can also begin with the show's own towers.`,
+      },
       {
         ko: "게임을 하는 중에 사이트가 새 버전으로 바뀌면 게임 화면이 멈출 수 있던 문제를 고쳤습니다. 이제 다음 판이 시작될 때나 화면에 문제가 생겼을 때 페이지가 스스로 새 버전으로 다시 열리고, 있던 방과 게임으로 돌아옵니다.",
         en: "Fixed: a game's screen could freeze when the site was updated while you were playing. The page now loads the new version by itself as the next game begins, or when its screen goes wrong, and comes back to your room and your game.",

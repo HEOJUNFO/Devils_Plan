@@ -24,7 +24,9 @@
 // 수식 신호등, who create their equations and play it to a win, and two a
 // room of HIT, STAY, who play its first round until one of them folds, and
 // two a room of 만국기, who are sent its first ten flags, and three a room of
-// 히든 워드, who hide a word each and see the first setter's clue scored.
+// 히든 워드, who hide a word each and see the first setter's clue scored, and
+// two a room of 수식의 탑 on the show's towers, who play its first round to a
+// failed challenge, and two a room of 포인트 오목, who play its first round.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -64,6 +66,8 @@ const EQ_GAME = "equation-traffic-light";
 const HIT_GAME = "hit-stay";
 const FLAGS_GAME = "flags-around-the-world";
 const HIDDEN_GAME = "hidden-word";
+const TOWER_GAME = "tower-of-equations";
+const OMOK_GAME = "point-gomoku";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1709,6 +1713,95 @@ async function hiddenGame() {
   for (const p of players) p.close();
 }
 
+/** 수식의 탑, in a room of its own: two players, off the list, on the show's towers. One presses the buzzer and declares, the other declares fewer and makes a move that cannot be right. */
+async function towerGame() {
+  const players = await roomOf(TOWER_GAME, 2, "stacker");
+  players[0].send({ type: "variant", variant: "show" });
+  await Promise.all(players.map((p) => p.until("the show's towers to be chosen", (m) => m.type === "lobby" && m.variant === "show")));
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("수식의 탑 to start", (m) => m.type === "game" || m.type === "refused")));
+  const start = "3,+3,×5,-2,+5,-7|+2,5,+7,×2,×7|7,-3,2,-5,×3|";
+  check(
+    "수식의 탑 starts on the show's towers with a target number, a target height and two and a half minutes for the buzzer",
+    games.every((g, n) => g.type === "game" && g.game === TOWER_GAME && g.view.you === n && g.view.phase === "think" && g.view.towers.map((tower) => tower.join()).join("|") === start) &&
+      games[0].view.target >= 1 &&
+      games[0].view.height >= 3 &&
+      games[0].view.height <= 5 &&
+      games[0].clock.turn > 140_000 &&
+      games[0].rules.goal === 7,
+    `target ${games[0].view?.target}, height ${games[0].view?.height}`,
+  );
+  check("the room's own way to solve the problem is not sent", games.every((g) => !JSON.stringify(g).includes('"way"')));
+
+  players[0].send({ type: "action", action: { type: "declare", moves: 3 } });
+  const early = await players[0].until("the refusal", (m) => m.type === "refused");
+  check("a number of moves is not taken before the buzzer", early.reason === "not-declaring", early.reason);
+  players[1].send({ type: "action", action: { type: "buzz" } });
+  const buzzed = await Promise.all(players.map((p) => p.until("the buzzer", (m) => m.type === "game" && m.view.phase === "say")));
+  check("whoever presses the buzzer first has five seconds to declare", buzzed.every((g) => g.view.buzzer === 1 && g.clock.turn <= 5_000));
+  players[1].send({ type: "action", action: { type: "declare", moves: 2 } });
+  const more = await Promise.all(players.map((p) => p.until("the first number of moves", (m) => m.type === "game" && m.view.phase === "more")));
+  check("the first number of moves is shown to everyone, and the others may declare fewer", more.every((g) => g.view.bids.length === 1 && g.view.bids[0].player === 1 && g.view.bids[0].moves === 2));
+  players[0].send({ type: "action", action: { type: "declare", moves: 2 } });
+  const same = await players[0].until("the second refusal", (m) => m.type === "refused" && m.reason !== "not-declaring");
+  check("as many moves as the fewest declared are refused", same.reason === "not-fewer", same.reason);
+  players[0].send({ type: "action", action: { type: "declare", moves: 1 } });
+  const moving = await Promise.all(players.map((p) => p.until("the challenge", (m) => m.type === "game" && m.view.phase === "move")));
+  check("whoever declared the fewest moves is the challenger", moving.every((g) => g.view.challenger === 0 && g.view.made === 0));
+  players[0].send({ type: "action", action: { type: "move", from: 0, count: 1, to: 3, flip: false } });
+  const judged = await Promise.all(players.map((p) => p.until("the result", (m) => m.type === "game" && m.view.phase === "result")));
+  check(
+    "the towers are judged once the moves declared are made: a failure after declaring fewer costs two points",
+    judged.every((g) => g.view.result.player === 0 && g.view.result.success === false && g.view.result.points === -2 && g.view.scores.find((each) => each.player === 0).points === -2 && g.view.towers[3].join() === "-7"),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 수식의 탑 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
+/** 포인트 오목, in a room of its own: two players, off the list. The selector marks three spots, both bet unseen, and the stones are placed. */
+async function omokGame() {
+  const players = await roomOf(OMOK_GAME, 2, "stone");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("포인트 오목 to start", (m) => m.type === "game" || m.type === "refused")));
+  const selector = games[0].view?.selector;
+  const other = 1 - selector;
+  check(
+    "포인트 오목 starts on an empty board of 19 lines with ten points each, black to mark three spots",
+    games.every((g, n) => g.type === "game" && g.game === OMOK_GAME && g.view.you === n && g.view.phase === "select" && g.view.board === ".".repeat(361) && g.view.mine.points === 10 && g.view.order[0] === selector) &&
+      games[0].rules.size === 19 &&
+      games[0].rules.line === 5,
+    `selector ${selector}`,
+  );
+  players[selector].send({ type: "action", action: { type: "select", spots: [180, 181, 183] } });
+  const apart = await players[selector].until("the refusal", (m) => m.type === "refused");
+  check("three spots that are not next to each other in a line are refused", apart.reason === "not-in-line", apart.reason);
+  players[selector].send({ type: "action", action: { type: "select", spots: [180, 181, 182] } });
+  const marked = await Promise.all(players.map((p) => p.until("the spots", (m) => m.type === "game" && m.view.phase === "bet")));
+  check("the spots marked are shown to both, who then bet", marked.every((g) => g.view.spots.join() === "180,181,182" && g.view.ready.length === 0));
+  players[selector].send({ type: "action", action: { type: "bet", bets: [5, 5, 1] } });
+  const over = await players[selector].until("the second refusal", (m) => m.type === "refused" && m.reason !== "not-in-line");
+  check("more points than a player has are refused", over.reason === "bets-over", over.reason);
+  players[selector].send({ type: "action", action: { type: "bet", bets: [5, 4, 1] } });
+  const waiting = await Promise.all(players.map((p) => p.until("the first bets", (m) => m.type === "game" && m.view.ready.length === 1)));
+  check("bets are sent to whoever made them alone", waiting[selector].view.mine.bets.join() === "5,4,1" && waiting[other].view.mine.bets === null && !JSON.stringify(waiting[other]).includes("[5,4,1]"));
+  players[other].send({ type: "action", action: { type: "bet", bets: [5, 1, 1] } });
+  const placed = await Promise.all(players.map((p) => p.until("the stones", (m) => m.type === "game" && m.view.round === 2)));
+  check(
+    "the higher bet places its stone, a tie goes to whoever did not mark the spots, and the other player marks the next",
+    placed.every((g) => [180, 181, 182].map((spot) => g.view.board[spot]).join("") === "wbw" && g.view.log[0].owners.join() === `${other},${selector},${other}` && g.view.selector === other && g.view.phase === "select"),
+  );
+  check(
+    "half of the points kept carry over, and neither the bets nor the points are shown to the opponent",
+    placed[selector].view.mine.points === 10 && placed[other].view.mine.points === 11 && placed.every((g) => g.view.log[0].bets.length === 0 && g.view.purses === null) && !JSON.stringify(placed[selector]).includes("[5,1,1]"),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 포인트 오목 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1729,6 +1822,8 @@ const PARTS = [
   [HIT_GAME, hitGame],
   [FLAGS_GAME, flagsGame],
   [HIDDEN_GAME, hiddenGame],
+  [TOWER_GAME, towerGame],
+  [OMOK_GAME, omokGame],
 ];
 
 async function main() {

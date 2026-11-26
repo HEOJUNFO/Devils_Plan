@@ -10,6 +10,8 @@ import { eqHost } from "./games/equation-traffic-light/host";
 import { hitHost } from "./games/hit-stay/host";
 import { flagsHost } from "./games/flags-around-the-world/host";
 import { hiddenHost } from "./games/hidden-word/host";
+import { towerHost } from "./games/tower-of-equations/host";
+import { omokHost } from "./games/point-gomoku/host";
 import { cubesHost } from "./games/count-cubes/host";
 import { gemHost } from "./games/gem-black-market/host";
 import { rectanglesHost } from "./games/count-rectangles/host";
@@ -42,4 +44,6 @@ export const HOSTS: Record<GameId, GameHost<any>> = {
   "hit-stay": hitHost,
   "flags-around-the-world": flagsHost,
   "hidden-word": hiddenHost,
+  "tower-of-equations": towerHost,
+  "point-gomoku": omokHost,
 };

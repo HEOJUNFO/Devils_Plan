@@ -20,7 +20,9 @@ import type { GradView } from "./games/gradation/rules";
 import type { FlagsView } from "./games/flags-around-the-world/rules";
 import type { HiddenView } from "./games/hidden-word/rules";
 import type { HitView } from "./games/hit-stay/rules";
+import type { OmokView } from "./games/point-gomoku/rules";
 import type { PiggyView } from "./games/piggy-bank/rules";
+import type { TowerView } from "./games/tower-of-equations/rules";
 import type { UnderView } from "./games/under-thirteen/rules";
 import type { WallView } from "./games/wall-go-2/rules";
 
@@ -161,4 +163,27 @@ export function hiddenWaits(view: Pick<HiddenView, "you" | "phase" | "setter" | 
   if (view.phase === "choose") return !view.ready.includes(view.you);
   if (view.phase === "clue") return view.setter === view.you;
   return view.phase === "answer" && view.setter !== view.you && !view.ready.includes(view.you);
+}
+
+/**
+ * 수식의 탑: this player pressed the buzzer and has yet to declare, or is
+ * the challenger moving blocks. Nobody has to press the buzzer or to declare
+ * fewer moves, so nobody is waited on for either. Past each clock the room
+ * goes on without them.
+ */
+export function towerWaits(view: Pick<TowerView, "you" | "phase" | "buzzer" | "challenger">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "say") return view.buzzer === view.you;
+  return view.phase === "move" && view.challenger === view.you;
+}
+
+/**
+ * 포인트 오목: this player is the round's selector and the spots are not
+ * marked, or the spots are marked and their bets are not in. Past the time
+ * the room marks the spots, or bets the least for them.
+ */
+export function omokWaits(view: Pick<OmokView, "you" | "phase" | "selector" | "ready">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "select") return view.selector === view.you;
+  return view.phase === "bet" && !view.ready.includes(view.you);
 }

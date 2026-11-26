@@ -34,6 +34,8 @@ export type EqMessage = Extract<ServerMessage, { type: "game"; game: "equation-t
 export type HitMessage = Extract<ServerMessage, { type: "game"; game: "hit-stay" }>;
 export type FlagsMessage = Extract<ServerMessage, { type: "game"; game: "flags-around-the-world" }>;
 export type HiddenMessage = Extract<ServerMessage, { type: "game"; game: "hidden-word" }>;
+export type TowerMessage = Extract<ServerMessage, { type: "game"; game: "tower-of-equations" }>;
+export type OmokMessage = Extract<ServerMessage, { type: "game"; game: "point-gomoku" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -269,6 +271,22 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "flags-around-the-world" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 수식의 탑 that satisfies `match`. */
+  async towerWhere(match: (game: TowerMessage) => boolean = () => true): Promise<TowerMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "tower-of-equations" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 포인트 오목 that satisfies `match`. */
+  async omokWhere(match: (game: OmokMessage) => boolean = () => true): Promise<OmokMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "point-gomoku" && match(message)) return message;
     }
   }
 

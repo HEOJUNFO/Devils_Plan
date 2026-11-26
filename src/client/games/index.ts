@@ -9,6 +9,10 @@ import type { ServerMessage } from "../../shared/protocol";
 import type { VoiceMark } from "../../shared/voice";
 import { createTable } from "../game/table";
 import { WORDS as ROULETTE_WORDS } from "../game/words";
+import { createTowerScreen } from "./tower-of-equations/screen";
+import { WORDS as TOWER_WORDS } from "./tower-of-equations/words";
+import { createOmokScreen } from "./point-gomoku/screen";
+import { WORDS as OMOK_WORDS } from "./point-gomoku/words";
 import { createLobbyScene } from "../lobby-scene";
 import type { RulesSheet } from "../sheet";
 import { createBingoScreen } from "./auction-bingo/screen";
@@ -372,5 +376,31 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: HIDDEN_WORDS.sheet,
+  },
+  "tower-of-equations": {
+    screen(canvas, handlers) {
+      const screen = createTowerScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "tower-of-equations") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: TOWER_WORDS.sheet,
+  },
+  "point-gomoku": {
+    screen(canvas, handlers) {
+      const screen = createOmokScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "point-gomoku") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: OMOK_WORDS.sheet,
   },
 };

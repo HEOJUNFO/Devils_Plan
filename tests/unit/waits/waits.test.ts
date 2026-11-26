@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, hiddenWaits, hitWaits, grassWaits, piggyWaits, rectWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -272,5 +272,49 @@ describe("hiddenWaits", () => {
   it("does not wait while the answers are on show, once the game is over, or on someone watching", () => {
     for (const phase of ["reveal", "ended"] as const) expect(hiddenWaits(view({ phase, setter: OTHER }))).toBe(false);
     expect(hiddenWaits(view({ you: null }))).toBe(false);
+  });
+});
+
+describe("towerWaits", () => {
+  const view = (changes: Partial<Parameters<typeof towerWaits>[0]> = {}): Parameters<typeof towerWaits>[0] => ({ you: ME, phase: "think", buzzer: null, challenger: null, ...changes });
+
+  it("waits on whoever pressed the buzzer and has yet to declare, and on the challenger moving blocks", () => {
+    expect(towerWaits(view({ phase: "say", buzzer: ME }))).toBe(true);
+    expect(towerWaits(view({ phase: "move", challenger: ME }))).toBe(true);
+  });
+
+  it("waits on nobody to press the buzzer or to declare fewer moves, nor on the others while one declares or moves", () => {
+    expect(towerWaits(view())).toBe(false);
+    expect(towerWaits(view({ phase: "more" }))).toBe(false);
+    expect(towerWaits(view({ phase: "say", buzzer: OTHER }))).toBe(false);
+    expect(towerWaits(view({ phase: "move", challenger: OTHER }))).toBe(false);
+    expect(towerWaits(view({ phase: "result" }))).toBe(false);
+    expect(towerWaits(view({ phase: "ended" }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(towerWaits(view({ you: null, phase: "say", buzzer: OTHER }))).toBe(false);
+    expect(towerWaits(view({ you: null, phase: "move", challenger: OTHER }))).toBe(false);
+  });
+});
+
+describe("omokWaits", () => {
+  const view = (changes: Partial<Parameters<typeof omokWaits>[0]> = {}): Parameters<typeof omokWaits>[0] => ({ you: ME, phase: "select", selector: ME, ready: [], ...changes });
+
+  it("waits on the round's selector while spots are marked, and on whoever has not bet once they are", () => {
+    expect(omokWaits(view())).toBe(true);
+    expect(omokWaits(view({ phase: "bet" }))).toBe(true);
+    expect(omokWaits(view({ phase: "bet", selector: OTHER, ready: [OTHER] }))).toBe(true);
+  });
+
+  it("does not wait on the other player while spots are marked, on a player whose bets are in, nor once the game is over", () => {
+    expect(omokWaits(view({ selector: OTHER }))).toBe(false);
+    expect(omokWaits(view({ phase: "bet", ready: [ME] }))).toBe(false);
+    expect(omokWaits(view({ phase: "ended" }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(omokWaits(view({ you: null }))).toBe(false);
+    expect(omokWaits(view({ you: null, phase: "bet" }))).toBe(false);
   });
 });

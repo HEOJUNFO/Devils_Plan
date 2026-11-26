@@ -14,6 +14,8 @@ import type { EqHostRefusal, EqSnapshot } from "./games/equation-traffic-light/h
 import type { HitHostRefusal, HitSnapshot } from "./games/hit-stay/host";
 import type { FlagsHostRefusal, FlagsSnapshot } from "./games/flags-around-the-world/host";
 import type { HiddenHostRefusal, HiddenSnapshot } from "./games/hidden-word/host";
+import type { TowerHostRefusal, TowerSnapshot } from "./games/tower-of-equations/host";
+import type { OmokHostRefusal, OmokSnapshot } from "./games/point-gomoku/host";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
@@ -141,6 +143,8 @@ export type ServerMessage =
   | ({ type: "game"; room: string; answer?: true; game: "hit-stay" } & HitSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "flags-around-the-world" } & FlagsSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "hidden-word" } & HiddenSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "tower-of-equations" } & TowerSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "point-gomoku" } & OmokSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**
@@ -222,6 +226,8 @@ export type Refusal =
   | HitHostRefusal
   | FlagsHostRefusal
   | HiddenHostRefusal
+  | TowerHostRefusal
+  | OmokHostRefusal
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal

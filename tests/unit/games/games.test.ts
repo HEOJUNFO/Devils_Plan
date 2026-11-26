@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isDeck } from "../../../src/shared/games/lay-the-grass/cards";
 import grassHosting from "../../../src/shared/games/lay-the-grass/host-config.json";
+import towerHosting from "../../../src/shared/games/tower-of-equations/host-config.json";
 import marketHosting from "../../../src/shared/games/mystery-stock-market/host-config.json";
 import { isRulebook } from "../../../src/shared/games/mystery-stock-market/rulebook";
 import { REVEAL_VARIANT } from "../../../src/shared/game/host";
@@ -88,8 +89,14 @@ describe("the games a room can be made for", () => {
     expect(GAMES["russian-roulette"].variants.map((each) => each.id)).toEqual(["kept", REVEAL_VARIANT]);
   });
 
-  it("offers a choice of ways in the two games whose hidden part the show gives away, of length in the two games the show gives none, of what is told at the end of the first, and of the time to talk in 경매 빙고", () => {
-    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["russian-roulette", "lay-the-grass", "count-cubes", "memory-poker", "mystery-stock-market", "auction-bingo"]);
+  it("offers a choice of ways in the two games whose hidden part the show gives away, of length in the two games the show gives none, of what is told at the end of the first, of the time to talk in 경매 빙고, and of the first towers of 수식의 탑", () => {
+    expect(GAME_IDS.filter((id) => GAMES[id].variants.length > 0)).toEqual(["russian-roulette", "lay-the-grass", "count-cubes", "memory-poker", "mystery-stock-market", "auction-bingo", "tower-of-equations"]);
+  });
+
+  it("lets a room of 수식의 탑 begin with towers dealt anew, which it starts with, or with the show's own, and has a way of playing in the host's settings for each", () => {
+    expect(GAMES["tower-of-equations"].variants.map((each) => each.id)).toEqual(["fresh", "show"]);
+    expect(GAMES["tower-of-equations"].variants.map((each) => each.title.ko)).toEqual(["판마다 새 배치", "방송의 배치"]);
+    expect(GAMES["tower-of-equations"].variants.map((each) => (towerHosting.ways as Record<string, { show: boolean }>)[each.id]?.show)).toEqual([false, true]);
   });
 
   it("lets a room of 경매 빙고 give a round's two steps as long as its host says, starting with the shortest", () => {
@@ -109,22 +116,22 @@ describe("the games a room can be made for", () => {
 
   it("names each game in Korean as the show does, and in English as its English release does", () => {
     // CLAUDE.md, Project Rules: a game is shown under the name the show gives it, also where the show made the name up for it
-    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장", "경매 빙고", "벽바둑Ⅱ", "그라데이션", "수식 신호등", "HIT, STAY", "만국기", "히든 워드"]);
-    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market", "Auction Bingo", "Wall Go II", "Gradation", "Equation Traffic Light", "Hit, Stay", "Flags Around the World", "Hidden Word"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.ko)).toEqual(["러시안 룰렛", "네모 세기", "잔디 깔기", "큐브 세기", "기억 포커", "무거운 13", "미스터리 거래소", "돼지 저금통", "보석 암시장", "경매 빙고", "벽바둑Ⅱ", "그라데이션", "수식 신호등", "HIT, STAY", "만국기", "히든 워드", "수식의 탑", "포인트 오목"]);
+    expect(GAME_IDS.map((id) => GAMES[id].title.en)).toEqual(["Russian Roulette", "Count the Rectangles", "Lay the Grass", "Count the Cubes", "Memory Poker", "Heavy 13", "Mystery Stock Market", "Piggy Bank", "Gem Black Market", "Auction Bingo", "Wall Go II", "Gradation", "Equation Traffic Light", "Hit, Stay", "Flags Around the World", "Hidden Word", "Tower of Equations", "Point Gomoku"]);
   });
 
   it("shows a list of games with the newest at the top: the game added last is first, and every game is in it once", () => {
     // the user's words: "게임목록새로만든게위로가게해줘"
     expect(NEWEST_GAME_IDS).toEqual([...GAME_IDS].reverse());
-    expect(NEWEST_GAME_IDS[0]).toBe("hidden-word");
+    expect(NEWEST_GAME_IDS[0]).toBe("point-gomoku");
     expect(NEWEST_GAME_IDS.at(-1)).toBe(DEFAULT_GAME);
-    expect(NEWEST_GAME_IDS.map((id) => GAMES[id].title.ko).slice(0, 4)).toEqual(["히든 워드", "만국기", "HIT, STAY", "수식 신호등"]);
+    expect(NEWEST_GAME_IDS.map((id) => GAMES[id].title.ko).slice(0, 4)).toEqual(["포인트 오목", "수식의 탑", "히든 워드", "만국기"]);
   });
 
   it("keeps the order the games were added in where a game's place is counted on", () => {
     // a meeting's room code is made from a game's place in this order (`src/shared/meet.ts`): a new game goes at its end
     expect(GAME_IDS[0]).toBe(DEFAULT_GAME);
-    expect(GAME_IDS.at(-1)).toBe("hidden-word");
+    expect(GAME_IDS.at(-1)).toBe("point-gomoku");
   });
 
   it("lets one player alone start the two counting games, and no other game", () => {

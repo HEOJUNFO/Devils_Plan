@@ -18,6 +18,8 @@ import { SHEETS as EQUATION_TRAFFIC_LIGHT } from "./games/equation-traffic-light
 import { SHEETS as HIT_STAY } from "./games/hit-stay/words";
 import { SHEETS as FLAGS_AROUND_THE_WORLD } from "./games/flags-around-the-world/words";
 import { SHEETS as HIDDEN_WORD } from "./games/hidden-word/words";
+import { SHEETS as TOWER_OF_EQUATIONS } from "./games/tower-of-equations/words";
+import { SHEETS as POINT_GOMOKU } from "./games/point-gomoku/words";
 import { SHEETS as COUNT_CUBES } from "./games/count-cubes/words";
 import { SHEETS as COUNT_RECTANGLES } from "./games/count-rectangles/words";
 import { SHEETS as LAY_THE_GRASS } from "./games/lay-the-grass/words";
@@ -46,4 +48,6 @@ export const SITE_SHEETS: Record<GameId, Record<Lang, RulesSheet>> = {
   "hit-stay": HIT_STAY,
   "flags-around-the-world": FLAGS_AROUND_THE_WORLD,
   "hidden-word": HIDDEN_WORD,
+  "tower-of-equations": TOWER_OF_EQUATIONS,
+  "point-gomoku": POINT_GOMOKU,
 };

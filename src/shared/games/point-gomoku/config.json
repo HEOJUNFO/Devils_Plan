@@ -1,0 +1,10 @@
+{
+  "size": 19,
+  "line": 5,
+  "spots": 3,
+  "roundPoints": 10,
+  "minBet": 1,
+  "selectSeconds": 45,
+  "betSeconds": 45,
+  "idleRounds": 3
+}

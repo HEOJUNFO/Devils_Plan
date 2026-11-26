@@ -1,0 +1,29 @@
+{
+  "blocks": ["2", "3", "5", "7", "+2", "+3", "+5", "+7", "-2", "-3", "-5", "-7", "×2", "×3", "×5", "×7"],
+  "positions": 4,
+  "startHeights": [6, 5, 5, 0],
+  "showStart": [
+    ["3", "+3", "×5", "-2", "+5", "-7"],
+    ["+2", "5", "+7", "×2", "×7"],
+    ["7", "-3", "2", "-5", "×3"],
+    []
+  ],
+  "goal": 7,
+  "firstPoints": 1,
+  "morePoints": 2,
+  "thinkSeconds": 150,
+  "saySeconds": 5,
+  "moreSeconds": 60,
+  "moveSeconds": 60,
+  "showSeconds": 6,
+  "maxMoves": 20,
+  "minHeight": 3,
+  "maxHeight": 5,
+  "maxTarget": 120,
+  "minWay": 3,
+  "maxWay": 5,
+  "shortest": 3,
+  "tries": 200,
+  "idleRounds": 3,
+  "maxRounds": 40
+}

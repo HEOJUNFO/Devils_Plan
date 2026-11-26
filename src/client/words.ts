@@ -269,7 +269,7 @@ const ko = {
     unlistedHint: "링크나 코드를 아는 사람만 들어옵니다.",
     /** How long a turn is when the room is made; `seconds` 0 is no limit. */
     startsAt: (seconds: number) => (seconds > 0 ? `차례 ${seconds}초로 시작.` : "차례 무제한으로 시작."),
-    howMany: (min: number, max: number) => (min === 1 ? `혼자서도 할 수 있고, ${max}명까지 함께 합니다.` : `${min}명부터 ${max}명까지 함께 합니다.`),
+    howMany: (min: number, max: number) => (min === 1 ? `혼자서도 할 수 있고, ${max}명까지 함께 합니다.` : min === max ? `${min}명이 합니다.` : `${min}명부터 ${max}명까지 함께 합니다.`),
   },
   room: {
     start: "게임 시작",
@@ -808,7 +808,7 @@ const en: typeof ko = {
     unlistedHint: "By link or code only.",
     // two lines of the column at most: five games leave the form no more
     startsAt: (seconds) => (seconds > 0 ? `Starts at ${seconds}s a turn.` : "No turn limit."),
-    howMany: (min, max) => (min === 1 ? `Can be played alone, or by up to ${max} together.` : `For ${min} to ${max} players.`),
+    howMany: (min, max) => (min === 1 ? `Can be played alone, or by up to ${max} together.` : min === max ? `For ${min} players.` : `For ${min} to ${max} players.`),
   },
   room: {
     // "Start game" would crowd the button beside it out of the row

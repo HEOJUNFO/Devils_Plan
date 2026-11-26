@@ -377,5 +377,50 @@
     "teamSize": 0,
     "turns": false,
     "variants": []
+  },
+  "tower-of-equations": {
+    "title": {
+      "ko": "수식의 탑",
+      "en": "Tower of Equations"
+    },
+    "summary": {
+      "ko": "블록을 몇 번 옮기면 타깃 넘버가 되는지 세어 먼저 버저를 누르세요. 7점이면 끝.",
+      "en": "Count the moves to the target number and buzz first. First to 7."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 6,
+    "teamSize": 0,
+    "turns": false,
+    "variants": [
+      {
+        "id": "fresh",
+        "title": {
+          "ko": "판마다 새 배치",
+          "en": "New towers"
+        }
+      },
+      {
+        "id": "show",
+        "title": {
+          "ko": "방송의 배치",
+          "en": "Show's towers"
+        }
+      }
+    ]
+  },
+  "point-gomoku": {
+    "title": {
+      "ko": "포인트 오목",
+      "en": "Point Gomoku"
+    },
+    "summary": {
+      "ko": "세 점에 포인트를 몰래 걸어, 더 많이 건 사람의 돌이 놓입니다. 먼저 오목이면 승리.",
+      "en": "Bet hidden points on three spots to place stones. Five in a row wins."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 2,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

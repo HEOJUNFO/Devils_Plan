@@ -36,6 +36,8 @@ export const TOP_KIND: Record<GameId, TopKind> = {
   "hit-stay": "first",
   "flags-around-the-world": "first",
   "hidden-word": "first",
+  "tower-of-equations": "first",
+  "point-gomoku": "won",
 };
 
 /** A game played to its end: which game it was, by a key no other game has, and whether the player was at the top of it. */
@@ -125,6 +127,16 @@ function topOf(message: GameMessage): boolean | null {
       const { you, places } = message.view;
       const own = places?.find((each) => each.player === you);
       return you === null || own === undefined ? null : own.place === 1;
+    }
+    case "tower-of-equations": {
+      const { you, places } = message.view;
+      const own = places?.find((each) => each.player === you);
+      return you === null || own === undefined ? null : own.place === 1;
+    }
+    case "point-gomoku": {
+      // a game neither won is played to its end and is nobody's win
+      const { you, places, winner } = message.view;
+      return you === null || places === null ? null : winner === you;
     }
   }
 }

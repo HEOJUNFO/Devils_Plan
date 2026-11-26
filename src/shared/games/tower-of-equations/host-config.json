@@ -1,0 +1,7 @@
+{
+  "standSeconds": 180,
+  "ways": {
+    "fresh": { "show": false },
+    "show": { "show": true }
+  }
+}
