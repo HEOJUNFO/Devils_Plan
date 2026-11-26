@@ -15,7 +15,7 @@
 import { takeWaiting, watchFaults } from "./fault";
 import { PartySocket } from "partysocket";
 import { backTrail, FIRST, isKnown } from "../shared/back";
-import { BUILD, outOfDate } from "../shared/build";
+import { BUILD, heldBack, outOfDate, type LoadWhy } from "../shared/build";
 import { minutesPlayed, newlyOpen, quickNext, quickPicks, roomsShown, type RoomListing, type Watching } from "../shared/directory";
 import { louder, pressing, titleFor, type Call } from "../shared/calling";
 import { gradeOf, shownMs, withSample, type LatencyConfig } from "../shared/latency";
@@ -690,7 +690,11 @@ let gameOn = false;
 // which screen is up, for a fault noted from here on (`fault.ts`); one noted is sent at once where the lobby is connected
 watchFaults(
   () => (currentCode === "" ? "lobby" : gameOn && currentView !== null ? currentView.game : "room"),
-  () => sendFaults(),
+  () => {
+    sendFaults();
+    // a page behind the server's build has gone wrong: the game on it may be one only the newer page can draw
+    loadNewer("fault");
+  },
 );
 /** The slot of the one player the chat's next line is said to, or `null` when it is said to everyone. */
 let chatTo: ChatTo = { kind: "all" };
@@ -1337,27 +1341,35 @@ function heardBuild(servers: unknown): void {
 /**
  * Loads the page again for a newer build, unless that would take something
  * from the player: a game on the screen, its results, the voice chat, a room
- * on its way, or words typed and not sent. A page in a room comes back to
- * it, as after any reload (`comeBack`). Asked again whenever one of those
- * may have ended.
+ * on its way, or words typed and not sent (`heldBack`). A page in a room
+ * comes back to it, and to its game, as after any reload (`comeBack`). Asked
+ * again whenever one of those may have ended, as a game begins, and when
+ * something on the page has gone wrong. Says whether the page is going.
  */
-function loadNewer(): void {
-  if (newerBuild === null) return;
-  if (table !== null || voice.on || creating || entering !== null || startAsked) return;
+function loadNewer(why: LoadWhy = "idle"): boolean {
+  if (newerBuild === null) return false;
   // in the lobby: a code typed in, or a nickname other than the one kept, which a reload would put back
   const typedInLobby = currentCode === "" && (codeInput.value.trim() !== "" || nickInput.value !== (localStorage.getItem(storageKey("nick")) ?? suggestedNick));
-  if (chatInput.value !== "" || typedInLobby || !newRoom.hidden || feedbackText.value !== "" || feedbackWait !== null) return;
-  // whoever is reading the inbox is not sent back to its key
-  if (!inboxSheet.hidden) return;
+  const held = heldBack(why, {
+    game: table !== null,
+    voice: voice.on,
+    onTheWay: creating || entering !== null,
+    startAsked,
+    typed: chatInput.value !== "" || typedInLobby || !newRoom.hidden || feedbackText.value !== "" || feedbackWait !== null,
+    // whoever is reading the inbox is not sent back to its key
+    reading: !inboxSheet.hidden,
+  });
+  if (held) return false;
   try {
     // noted first: a page that comes back the same is not loaded a second time (`outOfDate`)
     sessionStorage.setItem(storageKey("reloaded-from"), BUILD);
   } catch {
     // with nowhere to note it the page could load itself without end: it stays as it is
-    return;
+    return false;
   }
   newerBuild = null;
   location.reload();
+  return true;
 }
 
 // ---- The lobby: the rooms anyone can join -------------------------------------------------------
@@ -3825,6 +3837,10 @@ function connect(code: string, create: boolean, nick: string, attemptsLeft = 0, 
       const over = message.view.phase === "ended";
       // a game has begun that was not on a moment ago
       if (!over && !gameOn) {
+        // A page behind the room's build is loaded again before it draws a game it may not know: the results it
+        // was held back for are over. What is kept for the page that comes in its place is this game.
+        if (newerBuild !== null && typeof event.data === "string" && table !== null) lastGame = event.data;
+        if (loadNewer("start")) return;
         call("started");
         // a "one more" that crossed the start was not taken by the room: it is not shown as said at the next results
         delete asked.ready;

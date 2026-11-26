@@ -55,6 +55,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-26",
     lines: [
       {
+        ko: "게임을 하는 중에 사이트가 새 버전으로 바뀌면 게임 화면이 멈출 수 있던 문제를 고쳤습니다. 이제 다음 판이 시작될 때나 화면에 문제가 생겼을 때 페이지가 스스로 새 버전으로 다시 열리고, 있던 방과 게임으로 돌아옵니다.",
+        en: "Fixed: a game's screen could freeze when the site was updated while you were playing. The page now loads the new version by itself as the next game begins, or when its screen goes wrong, and comes back to your room and your game.",
+      },
+      {
         ko: `${HIDDEN.ko}: 히든 워드를 고르는 화면에서 「유사도 재 보기」가 빠졌습니다. 봉투에서 낱말을 고르면 바로 넘어가고, 고르는 시간은 30초입니다.`,
         en: `${HIDDEN.en}: the screen where you pick your hidden word no longer has the similarity checks. Pick a word of your envelope and the game goes on; you have 30 seconds to pick.`,
       },
