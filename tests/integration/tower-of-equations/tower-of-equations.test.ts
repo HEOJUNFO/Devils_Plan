@@ -46,12 +46,12 @@ afterEach(() => {
 
 describe("GameRoom: a room of 수식의 탑", () => {
   it("plays a round for two: one presses the buzzer and declares, the other declares fewer and makes the moves, and a tower that is not the target costs two points", async () => {
-    const stub = env.GameRoom.getByName("TOWRA");
-    const clients = await players("TOWRA");
+    const stub = env.GameRoom.getByName("TWRAA");
+    const clients = await players("TWRAA");
     const games = await startGame(clients);
 
     games.forEach((game, n) => {
-      expect(game).toMatchObject({ room: "TOWRA", game: GAME, frozen: false });
+      expect(game).toMatchObject({ room: "TWRAA", game: GAME, frozen: false });
       expect(game.view).toMatchObject({ phase: "think", round: 1, you: n, towers: SHOW_START, buzzer: null, out: [], bids: [], challenger: null, made: 0, result: null });
       expect(game.view.scores).toEqual([{ player: 0, points: 0 }, { player: 1, points: 0 }]);
       expect(game.view.target).toBeGreaterThanOrEqual(1);
@@ -92,8 +92,8 @@ describe("GameRoom: a room of 수식의 탑", () => {
   });
 
   it("goes on by the room's own clock: a buzzer with nothing declared shuts its player out of the round at no cost, and a round nobody declares in is passed over", async () => {
-    const stub = env.GameRoom.getByName("TOWRB");
-    const clients = await players("TOWRB");
+    const stub = env.GameRoom.getByName("TWRAB");
+    const clients = await players("TWRAB");
     await startGame(clients);
     act(clients[0], { type: "buzz" });
     await Promise.all(clients.map((client) => client.towerWhere((game) => game.view.phase === "say")));

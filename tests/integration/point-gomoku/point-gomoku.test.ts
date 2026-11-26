@@ -44,13 +44,13 @@ afterEach(() => {
 
 describe("GameRoom: a room of 포인트 오목", () => {
   it("plays a round for two: the selector marks three spots, both bet unseen, the higher bet places its stone and a tie goes against the selector, and half of what is left carries over", async () => {
-    const clients = await players("OMOKA");
+    const clients = await players("GMKAA");
     const games = await startGame(clients);
     const selector = games[0].view.selector;
     const other = 1 - selector;
 
     games.forEach((game, n) => {
-      expect(game).toMatchObject({ room: "OMOKA", game: GAME, frozen: false });
+      expect(game).toMatchObject({ room: "GMKAA", game: GAME, frozen: false });
       expect(game.view).toMatchObject({ phase: "select", round: 1, you: n, spots: null, ready: [], log: [], purses: null, winner: null });
       expect(game.view.order[0]).toBe(selector);
       expect(game.view.board).toBe(".".repeat(19 * 19));
@@ -83,8 +83,8 @@ describe("GameRoom: a room of 포인트 오목", () => {
   });
 
   it("goes on by the room's own clock: the room marks three spots for a selector who marks none, and bets one point a spot for whoever bets nothing", async () => {
-    const stub = env.GameRoom.getByName("OMOKB");
-    const clients = await players("OMOKB");
+    const stub = env.GameRoom.getByName("GMKAB");
+    const clients = await players("GMKAB");
     const games = await startGame(clients);
     const selector = games[0].view.selector;
     const other = 1 - selector;
