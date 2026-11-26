@@ -196,29 +196,11 @@ describe("choosing a hidden word", () => {
   });
 });
 
-describe("having a pair of words scored while choosing", () => {
-  it("tells the player alone how a word would score as a clue for a word of theirs", () => {
-    const state = did(game(), 0, { type: "check", reference: "나무", word: "뿌리" });
-    expect(viewFor(state, 0).hand?.checks).toEqual([{ reference: "나무", word: "뿌리", score: 96.5 }]);
-    expect(viewFor(state, 0).hand?.checksLeft).toBe(config.checks - 1);
-    expect(viewFor(state, 1).hand?.checks).toEqual([]);
-    expect(JSON.stringify(viewFor(state, 1))).not.toContain("뿌리");
-    expect(state.events).toBe(game().events);
-  });
-
-  it("is refused for a word not of theirs, a word not in the list, and once none are left", () => {
-    let state = game();
-    expect(refusal(state, 0, { type: "check", reference: "바다", word: "뿌리" })).toBe("not-in-envelope");
-    expect(refusal(state, 0, { type: "check", reference: "나무", word: "없는말" })).toBe("not-in-list");
-    for (let i = 0; i < config.checks; i++) state = did(state, 0, { type: "check", reference: "나무", word: "바람" });
-    expect(refusal(state, 0, { type: "check", reference: "나무", word: "뿌리" })).toBe("no-checks-left");
-    expect(state.hands[0].checks.length).toBeLessThan(config.checks);
-  });
-
-  it("is not there once clues are given", () => {
-    const state = chosen(game());
-    expect(refusal(state, 0, { type: "check", reference: "나무", word: "뿌리" })).toBe("not-choosing");
-    expect(viewFor(state, 0).hand?.checks).toEqual([]);
+describe("choosing with nothing to try a word on", () => {
+  it("has no pair of words scored: the user's decision of 2026-11-26", () => {
+    expect(parseAction({ type: "check", reference: "나무", word: "뿌리" }, config)).toBeNull();
+    expect(Object.keys(viewFor(game(), 0).hand ?? {}).sort()).toEqual(["chosen", "used", "words"]);
+    expect("checks" in config).toBe(false);
   });
 });
 
@@ -654,9 +636,8 @@ describe("what a player sends", () => {
     expect(tidy("나무".normalize("NFD"), 10)).toBe("나무");
   });
 
-  it("is one of four things to ask, or nothing", () => {
+  it("is one of three things to ask, or nothing", () => {
     expect(parseAction({ type: "choose", word: "나무 " }, config)).toEqual({ type: "choose", word: "나무" });
-    expect(parseAction({ type: "check", reference: "나무", word: "뿌리" }, config)).toEqual({ type: "check", reference: "나무", word: "뿌리" });
     expect(parseAction({ type: "clue", word: "뿌리" }, config)).toEqual({ type: "clue", word: "뿌리" });
     expect(parseAction({ type: "answer", words: ["나무", "숲"] }, config)).toEqual({ type: "answer", words: ["나무", "숲"] });
     expect(parseAction({ type: "answer", words: [] }, config)).toBeNull();

@@ -67,8 +67,8 @@ export interface HiddenScreen {
   destroy(): void;
 }
 
-/** What the box over the scene is for now: a word to score against one of the envelope, a clue, or an answer. */
-type BoxUse = "check" | "clue" | "answer";
+/** What the box over the scene is for now: a clue, or an answer. */
+type BoxUse = "clue" | "answer";
 
 /** One step of the screen's clock, in seconds. */
 const STEP = 1 / 60;
@@ -220,7 +220,6 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
   /** What the box is for now; `null` when there is nothing to type. */
   function boxNow(): BoxUse | null {
     if (latest === null || help || canvas.hidden) return null;
-    if (choosing()) return latest.view.hand !== null && latest.view.hand.checksLeft > 0 ? "check" : null;
     if (cluing()) return "clue";
     return answering() ? "answer" : null;
   }
@@ -335,23 +334,16 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
     sfx.move();
   }
 
-  /** The word in the box is entered: scored, given as a clue, or written as an answer. With the box empty, what the Enter key does anyway. */
+  /** The word in the box is entered: given as a clue, or written as an answer. With the box empty, what the Enter key does anyway. */
   function entered(): void {
     if (latest === null || boxUse === null) return;
     if (input.value.trim() === "") {
-      if (boxUse === "check") choose();
-      else if (boxUse === "answer" && draft.length > 0) sendAnswer();
+      if (boxUse === "answer" && draft.length > 0) sendAnswer();
       return;
     }
     const word = wordOf(input.value, latest.rules.wordLength);
     if (word === null) return deny(WORDS.say.notHangul);
-    if (boxUse === "check") {
-      if (picked === null) return deny(WORDS.say.pickFirst);
-      if (send({ type: "check", reference: picked, word })) {
-        input.value = "";
-        sfx.move();
-      }
-    } else if (boxUse === "clue") {
+    if (boxUse === "clue") {
       if (send({ type: "clue", word })) {
         input.value = "";
         sfx.pick();
@@ -369,17 +361,13 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
   function setBox(): void {
     const use = boxNow();
     const text =
-      use === "check"
-        ? picked === null
-          ? WORDS.box.checkPick
-          : WORDS.box.check(picked)
-        : use === "clue"
-          ? WORDS.box.clue
-          : use === "answer"
-            ? piece && draft.length >= 1
-              ? WORDS.box.answerSecond
-              : WORDS.box.answer
-            : "";
+      use === "clue"
+        ? WORDS.box.clue
+        : use === "answer"
+          ? piece && draft.length >= 1
+            ? WORDS.box.answerSecond
+            : WORDS.box.answer
+          : "";
     if (text !== boxLabel) {
       boxLabel = text;
       label.textContent = text;
@@ -393,7 +381,7 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
       if (document.activeElement === input) input.blur();
       return;
     }
-    submit.textContent = use === "check" ? WORDS.box.doCheck : use === "clue" ? WORDS.box.doClue : WORDS.box.doAnswer;
+    submit.textContent = use === "clue" ? WORDS.box.doClue : WORDS.box.doAnswer;
     // with keys, the box is ready to type in unless the player is typing elsewhere (the chat); under a finger it
     // waits to be pressed, so that no keyboard comes up over the screen unasked
     const elsewhere = document.activeElement !== null && document.activeElement !== document.body && document.activeElement !== input;
@@ -573,7 +561,7 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
   /** Where the lower block of the right column begins when it has `rows` lines under its heading. */
   const lowerTop = (rows: number): number => ROWS_Y + (ROWS - rows - 1) * ROW;
 
-  /** The envelope while hidden words are chosen, and the pairs the player had scored. */
+  /** The envelope while hidden words are chosen. */
   function drawChoose(): void {
     if (latest === null) return;
     const view = latest.view;
@@ -598,18 +586,6 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
       if (mine) ring(x, y, w, h, 1, C.teal);
       else if (at) ring(x, y, w, h, 1, C.amber);
     });
-    // beside the envelope: the pairs scored, the latest last
-    if (hand.chosen === null) {
-      pen.txt(pen.fit(WORDS.scene.checks(hand.checksLeft), RIGHT_W), RIGHT_X, HEAD_Y, C.boneD);
-      if (hand.checks.length === 0) WORDS.scene.checksNone.forEach((line, i) => pen.txt(pen.fit(line, RIGHT_W), RIGHT_X, ROWS_Y + i * ROW, C.dim));
-      hand.checks.forEach((check, i) => {
-        const y = ROWS_Y + i * ROW;
-        const score = WORDS.percent(check.score);
-        const reached = check.score >= latest!.rules.threshold;
-        pen.txt(score, RIGHT_X + RIGHT_W, y, reached ? C.teal : C.bone, "right");
-        pen.txt(pen.fit(WORDS.scene.check(check.reference, check.word), RIGHT_W - pen.width(score) - 6), RIGHT_X, y, reached ? C.teal : C.bone);
-      });
-    }
     pen.txt(WORDS.scene.ready(view.ready.length, view.players.length), RIGHT_X + RIGHT_W, ROWS_Y + (ROWS - 1) * ROW, C.boneD, "right");
   }
 
@@ -904,15 +880,11 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
     if (!event.repeat || event.code.startsWith("Arrow")) keys.push(event.code);
     if (event.code === "Space" || event.code.startsWith("Arrow")) event.preventDefault();
   };
-  /** In the game's own box: the arrows still move over the envelope, and Esc gives the keys back to the game. */
+  /** In the game's own box: Esc gives the keys back to the game. */
   const onBoxKey = (event: KeyboardEvent): void => {
     // (a key that is part of composing a syllable is the input method's)
     if (event.isComposing || event.keyCode === 229) return;
     if (event.code === "Escape") input.blur();
-    else if (boxUse === "check" && (event.code === "ArrowUp" || event.code === "ArrowDown")) {
-      keys.push(event.code);
-      event.preventDefault();
-    }
   };
   const onSubmit = (event: SubmitEvent): void => {
     event.preventDefault();

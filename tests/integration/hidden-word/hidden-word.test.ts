@@ -65,19 +65,14 @@ describe("GameRoom: a room of 히든 워드", () => {
     games.forEach((game, n) => {
       expect(game).toMatchObject({ room: "HWAAA", game: GAME, frozen: false });
       expect(game.view).toMatchObject({ phase: "choose", round: 1, you: n, order: null, setter: null, clues: [], ready: [], result: null, answer: null });
-      expect(game.view.hand).toMatchObject({ used: [], chosen: null, checksLeft: 20, checks: [] });
+      expect(game.view.hand).toEqual({ words: game.view.hand?.words, used: [], chosen: null });
       expect(game.view.hand?.words).toHaveLength(5);
-      expect(game.rules).toMatchObject({ rounds: 2, envelope: 5, clues: 10, clueSeconds: 450, threshold: 95, stages: 3, answerSeconds: 150, pieces: 3, checks: 20 });
+      expect(game.rules).toMatchObject({ rounds: 2, envelope: 5, clues: 10, clueSeconds: 450, threshold: 95, stages: 3, answerSeconds: 150, pieces: 3 });
+      expect(game.rules).not.toHaveProperty("checks");
     });
     // no word is in two envelopes
     const dealt = games.flatMap((game) => game.view.hand?.words ?? []);
     expect(new Set(dealt).size).toBe(15);
-
-    // a pair scored before choosing, by the room: the answer is the list's own
-    const [first, second] = games[0].view.hand?.words ?? [];
-    act(clients[0], { type: "check", reference: first, word: second });
-    const checked = await clients[0].hiddenWhere((game) => game.view.hand?.checks.length === 1);
-    expect(checked.view.hand).toMatchObject({ checksLeft: 19, checks: [{ reference: first, word: second, score: LIST.score(first, second) }] });
 
     const turn = await allChoose(clients, games);
     const setter = turn[0].view.setter as number;

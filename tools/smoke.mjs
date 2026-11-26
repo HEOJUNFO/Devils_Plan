@@ -1683,11 +1683,6 @@ async function hiddenGame() {
       games[0].rules.threshold === 95,
     `envelope ${games[0].view?.hand?.words.join(" ")}`,
   );
-  const [reference, word] = games[0].view.hand.words;
-  players[0].send({ type: "action", action: { type: "check", reference, word } });
-  const checked = await players[0].until("the pair scored", (m) => m.type === "refused" || (m.type === "game" && m.view.hand.checks.length === 1));
-  const pair = checked.view?.hand.checks[0];
-  check("a pair of the envelope is scored by the room, in percent", checked.type === "game" && pair.score >= 0 && pair.score < 100 && checked.view.hand.checksLeft === games[0].rules.checks - 1, `${reference} → ${word}: ${pair?.score}%`);
   games.forEach((g, n) => players[n].send({ type: "action", action: { type: "choose", word: g.view.hand.words[0] } }));
   const turn = await Promise.all(players.map((p) => p.until("the first setter's turn", (m) => m.type === "refused" || (m.type === "game" && m.view.phase === "clue"))));
   const setter = turn[0].view?.setter;
