@@ -55,8 +55,8 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-26",
     lines: [
       {
-        ko: `${HIDDEN.ko}: 히든 워드를 고르는 화면에서 「유사도 재 보기」가 빠졌습니다. 봉투에서 낱말을 고르면 바로 넘어갑니다.`,
-        en: `${HIDDEN.en}: the screen where you pick your hidden word no longer has the similarity checks. Pick a word of your envelope and the game goes on.`,
+        ko: `${HIDDEN.ko}: 히든 워드를 고르는 화면에서 「유사도 재 보기」가 빠졌습니다. 봉투에서 낱말을 고르면 바로 넘어가고, 고르는 시간은 30초입니다.`,
+        en: `${HIDDEN.en}: the screen where you pick your hidden word no longer has the similarity checks. Pick a word of your envelope and the game goes on; you have 30 seconds to pick.`,
       },
       {
         ko: "모든 게임의 제한 시간이 절반으로 줄었습니다. 차례 시간은 방장이 무제한·30초·60초 가운데 고르고, 게임마다 정해진 시간(답하기, 고르기, 한 라운드)도 반입니다. 외우는 시간과 결과를 보여 주는 시간은 그대로입니다.",

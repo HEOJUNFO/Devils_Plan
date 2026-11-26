@@ -3,7 +3,7 @@
   "multipliers": [1, 2],
   "envelope": 5,
   "apart": 60,
-  "chooseSeconds": 90,
+  "chooseSeconds": 30,
   "clues": 10,
   "clueSeconds": 450,
   "threshold": 95,
