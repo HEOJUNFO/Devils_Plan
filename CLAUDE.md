@@ -43,7 +43,7 @@ rule's edge.
   `.claude/rules/checks.md`
 - **A screen is looked at with ego-browser or browser-skill**, and the report
   says which. Neither is a real phone. `.claude/rules/browser-checks.md`
-- **A push is deployed within three minutes** (Cloudflare build and CI); no
+- **A push is deployed within three minutes** (the CI run tests, then deploys); no
   test is removed to keep the time. `.claude/rules/deploy-time.md`
 
 ## Project Structure

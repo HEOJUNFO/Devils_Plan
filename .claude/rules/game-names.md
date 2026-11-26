@@ -75,8 +75,9 @@ assistant translates plainly and says so in its report. Terms and sentences:
   - *Assistant's choice, not the user's words:* the project keeps the name
     `brain-survival` (`package.json`, the README's title, the browser's
     storage keys); only `wrangler.jsonc` carries `play`.
-  - Both parts of the address are changed in the Cloudflare dashboard, not
-    here: Workers Builds deploys to the Worker it is connected to, whatever
-    `wrangler.jsonc` says.
+  - The subdomain is changed in the Cloudflare dashboard, not here. The
+    Worker's name is the one in `wrangler.jsonc`, which the CI run deploys
+    to (until 2026-11-26 Workers Builds deployed, to the Worker it was
+    connected to whatever that file said).
   - `workers.dev` cannot be left out without a domain of the user's own.
   - The folder `prototypes/empty-chamber/` keeps its name.

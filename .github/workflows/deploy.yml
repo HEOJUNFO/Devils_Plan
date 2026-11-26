@@ -1,12 +1,18 @@
 name: CI
 
-# Every push and pull request is typechecked and tested here.
+# Every push and pull request is typechecked and tested here, and a push to
+# main that passes is deployed from here to the `play` Worker.
 #
-# Deployment does not happen in this workflow. Cloudflare Workers Builds is
-# connected to this repository: a push to main is built there (typecheck,
-# tests, build) and deployed to the `play` Worker, so no Cloudflare
-# credential is stored in GitHub. Its settings live in the Cloudflare
-# dashboard under Workers & Pages > play > Settings > Builds.
+# The tests run once, on this machine. Until 2026-11-26 Cloudflare Workers
+# Builds deployed instead, after running the same suite a second time on a
+# machine that took 58 to 148 seconds over it (here: 23 to 34), and a push
+# was past three minutes on the address when that machine was slow
+# (.claude/rules/deploy-time.md). Workers Builds is disconnected from the
+# repository: were it connected, every push would be deployed twice.
+#
+# Two secrets of the repository: CLOUDFLARE_API_TOKEN (a token of the
+# "Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID. Only the
+# step that deploys is given them, and a pull request never reaches it.
 on:
   push:
     branches: [main]
@@ -30,3 +36,17 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # What was built above is what is deployed (`wrangler deploy` reads the configuration the build wrote).
+      # Not when main has moved on meanwhile: the newer push deploys, with this one in it, and an older build
+      # arriving after it would put the older page back.
+      - name: Deploy to Cloudflare
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ "$(git ls-remote origin refs/heads/main | cut -f1)" != "$GITHUB_SHA" ]; then
+            echo "main has moved on from $GITHUB_SHA: not deployed here, the newer push deploys it"
+            exit 0
+          fi
+          npx wrangler deploy

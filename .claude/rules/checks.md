@@ -38,8 +38,7 @@ single files of it several times more: "통합테스트돌리지말라니까왜�
 
 "A change to the server means running the integration tests" was a habit of
 the assistant's own, never a rule, and is withdrawn. CI runs them on every
-push, and the Cloudflare build runs them before it deploys, so a push that
-breaks one is not deployed.
+push, before it deploys, so a push that breaks one is not deployed.
 
 *Reading:*
 
