@@ -10,9 +10,11 @@ name: CI
 # (.claude/rules/deploy-time.md). Workers Builds is disconnected from the
 # repository: were it connected, every push would be deployed twice.
 #
-# Two secrets of the repository: CLOUDFLARE_API_TOKEN (a token of the
-# "Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID. Only the
-# step that deploys is given them, and a pull request never reaches it.
+# A secret of the repository: CLOUDFLARE_API_TOKEN, a token of the "Edit
+# Cloudflare Workers" template for the one account, which is how the account
+# is known. CLOUDFLARE_ACCOUNT_ID is read too where it is set (a token of
+# more accounts than one needs it). Only the step that deploys is given
+# them, and a pull request never reaches it.
 on:
   push:
     branches: [main]
@@ -49,4 +51,6 @@ jobs:
             echo "main has moved on from $GITHUB_SHA: not deployed here, the newer push deploys it"
             exit 0
           fi
+          # (a secret that is not set arrives as an empty word, which is not an account)
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
           npx wrangler deploy

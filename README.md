@@ -352,8 +352,7 @@ production/qa/evidence/   # 화면을 바꿀 때마다 남긴 스크린샷
 
 `main` 에 푸시하면 GitHub Actions(`.github/workflows/deploy.yml`)가 타입 검사,
 테스트, 빌드를 거쳐 Cloudflare에 배포합니다. PR은 같은 검사만 하고 배포하지
-않습니다. 배포에는 저장소 시크릿 둘(`CLOUDFLARE_API_TOKEN`,
-`CLOUDFLARE_ACCOUNT_ID`)이 쓰입니다.
+않습니다. 배포에는 저장소 시크릿 `CLOUDFLARE_API_TOKEN`이 쓰입니다.
 
 ## 프로젝트 규칙
 
