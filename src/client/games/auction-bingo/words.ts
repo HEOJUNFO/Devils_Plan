@@ -9,7 +9,7 @@
  * bingo card, squares, the secret bid.
  */
 import type { BingoEnd, Shape } from "../../../shared/games/auction-bingo/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -26,9 +26,6 @@ export interface HelpNumbers {
   bidSeconds: number;
 }
 
-/** Seconds as the sheet says them: whole minutes where they are, seconds otherwise. */
-const koTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60}분` : `${seconds}초`);
-const enTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`);
 
 const ko = {
   sheet: {

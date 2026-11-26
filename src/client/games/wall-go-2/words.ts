@@ -9,7 +9,7 @@
  * breaker, territory, squares. The show calls its two games rounds.
  */
 import type { Dir, Kind, WallEnd } from "../../../shared/games/wall-go-2/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -27,9 +27,6 @@ export interface HelpNumbers {
   turnSeconds: number;
 }
 
-/** Seconds as the sheet says them: whole minutes where they are, seconds otherwise. */
-const koTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60}분` : `${seconds}초`);
-const enTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`);
 
 /** A line of the bar with the turn's clock after it, where the turn has one. */
 const timed = (line: string, clock: string): string => (clock === "" ? line : `${line} · ${clock}`);

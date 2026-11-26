@@ -78,7 +78,7 @@ describe("the shipped rules of Count the Rectangles", () => {
   });
 
   it("keep the numbers the document gives", () => {
-    expect(CONFIG).toMatchObject({ teamSize: 3, winsNeeded: 2, answerSeconds: 10, problemSeconds: 300 });
+    expect(CONFIG).toMatchObject({ teamSize: 3, winsNeeded: 2, answerSeconds: 5, problemSeconds: 150 });
   });
 
   it.each([
@@ -571,7 +571,7 @@ describe("createGame", () => {
 });
 
 describe("buzzing", () => {
-  it("gives the floor to the player who buzzes, for ten seconds", () => {
+  it("gives the floor to the player who buzzes, for five seconds", () => {
     const state = act(game(alone(3)), 1, { type: "buzz" }, START + 5000);
 
     expect(state.phase).toBe("answer");
@@ -751,7 +751,7 @@ describe("the clock", () => {
     expect(applyTimeout(state, START + PROBLEM_MS - 1, CONFIG)).toBe(state);
   });
 
-  it("counts an answer not given within ten seconds as wrong", () => {
+  it("counts an answer not given within five seconds as wrong", () => {
     const buzzed = act(game(alone(3)), 1, { type: "buzz" }, START + 1000);
 
     const early = applyTimeout(buzzed, START + 1000 + ANSWER_MS - 1, CONFIG);
@@ -763,7 +763,7 @@ describe("the clock", () => {
     expect(late.history.at(-1)).toEqual({ type: "silent", round: 1, player: 1 });
   });
 
-  it("closes a problem nobody has got right after five minutes", () => {
+  it("closes a problem nobody has got right after two and a half minutes", () => {
     const state = applyTimeout(game(alone(2)), START + PROBLEM_MS, CONFIG);
 
     expect(state.phase).toBe("pause");
@@ -772,7 +772,7 @@ describe("the clock", () => {
     expect(state.history.at(-1)).toEqual({ type: "time", round: 1 });
   });
 
-  it("lets a player who buzzed just before the five minutes were up finish answering", () => {
+  it("lets a player who buzzed just before the two and a half minutes were up finish answering", () => {
     const buzzed = act(game(alone(2)), 0, { type: "buzz" }, START + PROBLEM_MS - 2000);
 
     const waiting = applyTimeout(buzzed, START + PROBLEM_MS, CONFIG);
@@ -782,7 +782,7 @@ describe("the clock", () => {
     expect(right.ok && right.state.outcome).toEqual({ kind: "right", player: 0, unit: 0 });
   });
 
-  it("closes the problem for time when an answer given after the five minutes is wrong", () => {
+  it("closes the problem for time when an answer given after the two and a half minutes is wrong", () => {
     const buzzed = act(game(alone(3)), 0, { type: "buzz" }, START + PROBLEM_MS - 2000);
 
     const state = act(buzzed, 0, { type: "answer", count: buzzed.answer + 1 }, START + PROBLEM_MS + 3000);

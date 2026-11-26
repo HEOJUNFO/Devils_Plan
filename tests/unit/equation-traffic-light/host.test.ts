@@ -57,7 +57,7 @@ describe("starting 수식 신호등 in a room", () => {
     ]);
   });
 
-  it("gives five minutes for the equation and five for an answer, whatever the room's limit on a turn", () => {
+  it("gives two and a half minutes for the equation and as long for an answer, whatever the room's limit on a turn", () => {
     for (const turnSeconds of [0, 20]) {
       let { session, presence } = started(2, { turnSeconds });
       expect(eqHost.deadline(session)).toBe(T0 + CREATE_MS);
@@ -102,7 +102,7 @@ describe("what a room of 수식 신호등 sends", () => {
 
   it("has the numbers of the rules the screen checks an equation with", () => {
     const { session, presence } = started(2);
-    expect(seen(session, null, presence, T0).rules).toEqual({ cells: 9, createSeconds: 300, guessSeconds: 300, maxDigits: config.maxDigits });
+    expect(seen(session, null, presence, T0).rules).toEqual({ cells: 9, createSeconds: 150, guessSeconds: 150, maxDigits: config.maxDigits });
   });
 
   it("refuses someone watching, what is no action, and what the rules refuse", () => {

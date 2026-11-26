@@ -74,7 +74,7 @@ describe("GameRoom: a room of 그라데이션", () => {
     closeAll(clients);
   });
 
-  it("goes on by the room's own clock: after five minutes the room distributes the cubes of whoever has not, and the first round begins", async () => {
+  it("goes on by the room's own clock: after two and a half minutes the room distributes the cubes of whoever has not, and the first round begins", async () => {
     const stub = env.GameRoom.getByName("GDAAB");
     const clients = await players("GDAAB", 2);
     const games = await startGame(clients);

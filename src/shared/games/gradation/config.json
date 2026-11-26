@@ -5,7 +5,7 @@
   "maxSum": 30,
   "winsInARow": 2,
   "maxMatches": 6,
-  "arrangeSeconds": 300,
+  "arrangeSeconds": 150,
   "stopWhenDecided": true,
   "revealSeconds": 5,
   "betweenSeconds": 10

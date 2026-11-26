@@ -124,7 +124,7 @@ function afterMatches(count: number, winners: readonly (number | null)[]): GradS
 }
 
 describe("the numbers of 그라데이션", () => {
-  it("are the show's: seven cups, two cubes of each number from 0 to 9, a total of 30 at most, five minutes, two wins in a row", () => {
+  it("are the show's: seven cups, two cubes of each number from 0 to 9, a total of 30 at most, half its five minutes, two wins in a row", () => {
     expect(isValidConfig(config)).toBe(true);
     expect([config.cups, config.highest, config.copies, config.maxSum, config.arrangeSeconds, config.winsInARow]).toEqual([CUPS, HIGHEST, COPIES, MAX_SUM, ARRANGE_SECONDS, WINS_IN_A_ROW]);
   });
@@ -203,7 +203,7 @@ describe("distributing the number cubes", () => {
     expect(refusal(game(3), 0, { type: "arrange", values: [0, 0, 0, 6, 7, 7, 9] })).toBe("too-many-of-one");
   });
 
-  it("is done by the room for whoever has not done it in five minutes: cubes the rules allow, adding up to 30", () => {
+  it("is done by the room for whoever has not done it in two and a half minutes: cubes the rules allow, adding up to 30", () => {
     const one = did(game(3), 0, { type: "arrange", values: SHOW[0].cups[0] });
     expect(deadline(one)).toBe(T0 + ARRANGE_SECONDS * 1000);
     expect(applyTimeout(one, T0 + ARRANGE_SECONDS * 1000 - 1, config)).toBe(one);
@@ -260,7 +260,7 @@ describe("starting a game of 그라데이션", () => {
     expect(orders.size).toBe(6);
   });
 
-  it("begins with five minutes to distribute the cubes, whatever the room's limit on a turn", () => {
+  it("begins with two and a half minutes to distribute the cubes, whatever the room's limit on a turn", () => {
     for (const turnSeconds of [0, 20]) {
       const state = game(2, { turnSeconds });
       expect([state.phase, state.match, state.round, state.turn]).toEqual(["arrange", 1, 0, null]);

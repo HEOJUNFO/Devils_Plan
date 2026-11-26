@@ -694,7 +694,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
     const problem = left(latest.clock.problem);
     if (problem !== null) {
       const share = Math.max(0, Math.min(1, problem / (latest.rules.problemSeconds * 1000)));
-      const colour = problem <= 15_000 ? C.crim : problem <= 60_000 ? C.amber : C.teal;
+      const colour = problem <= 15_000 ? C.crim : problem <= 30_000 ? C.amber : C.teal;
       pen.px(x - 1, y + h + 5, w + 2, 5, C.ink);
       pen.px(x, y + h + 6, Math.round(w * share), 3, colour);
     }

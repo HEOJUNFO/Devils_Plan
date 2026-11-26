@@ -1,6 +1,6 @@
 {
   "rounds": 24,
-  "roundSeconds": 300,
+  "roundSeconds": 150,
   "startCash": 100000,
   "startPrice": 10000,
   "floorPrice": 100,

@@ -122,7 +122,7 @@ export interface HiddenSnapshot {
   /** The numbers of the rules the screen shows, and its sheet is written with. */
   rules: Pick<
     HiddenConfig,
-    "rounds" | "multipliers" | "envelope" | "chooseSeconds" | "checks" | "clues" | "clueSeconds" | "threshold" | "stages" | "answerSeconds" | "pieces" | "wordLength"
+    "rounds" | "multipliers" | "envelope" | "chooseSeconds" | "clues" | "clueSeconds" | "threshold" | "stages" | "answerSeconds" | "pieces" | "wordLength"
   > & { firstPieces: number };
   view: HiddenView;
   players: HiddenTablePlayer[];
@@ -285,7 +285,6 @@ export function makeHiddenHost(lexicon: Lexicon): GameHost<HiddenSession, Hidden
           multipliers: [...config.multipliers],
           envelope: config.envelope,
           chooseSeconds: config.chooseSeconds,
-          checks: config.checks,
           clues: config.clues,
           clueSeconds: config.clueSeconds,
           threshold: config.threshold,

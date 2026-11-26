@@ -67,7 +67,7 @@ describe("GameRoom: a room of 히든 워드", () => {
       expect(game.view).toMatchObject({ phase: "choose", round: 1, you: n, order: null, setter: null, clues: [], ready: [], result: null, answer: null });
       expect(game.view.hand).toMatchObject({ used: [], chosen: null, checksLeft: 20, checks: [] });
       expect(game.view.hand?.words).toHaveLength(5);
-      expect(game.rules).toMatchObject({ rounds: 2, envelope: 5, clues: 10, clueSeconds: 900, threshold: 95, stages: 3, answerSeconds: 300, pieces: 3, checks: 20 });
+      expect(game.rules).toMatchObject({ rounds: 2, envelope: 5, clues: 10, clueSeconds: 450, threshold: 95, stages: 3, answerSeconds: 150, pieces: 3, checks: 20 });
     });
     // no word is in two envelopes
     const dealt = games.flatMap((game) => game.view.hand?.words ?? []);

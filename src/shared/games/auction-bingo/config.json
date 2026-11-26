@@ -5,7 +5,7 @@
   "pieces": 3,
   "pieceWorth": 1,
   "minPlayers": 3,
-  "chooseSeconds": 45,
-  "bidSeconds": 45,
+  "chooseSeconds": 23,
+  "bidSeconds": 23,
   "resultSeconds": 8
 }

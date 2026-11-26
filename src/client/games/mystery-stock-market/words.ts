@@ -12,7 +12,7 @@ import type { StockId } from "../../../shared/games/mystery-stock-market/prices"
 import { STOCK_NAMES, textOf, type RuleArg } from "../../../shared/games/mystery-stock-market/rule-words";
 import type { Rulebook } from "../../../shared/games/mystery-stock-market/rulebook";
 import type { MarketEnd } from "../../../shared/games/mystery-stock-market/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -21,7 +21,7 @@ import { byInput, keyed } from "../../touch";
 export interface HelpNumbers {
   stocks: number;
   rounds: number;
-  roundMinutes: number;
+  roundSeconds: number;
   startCash: number;
   startPrice: number;
   floorPrice: number;
@@ -51,13 +51,13 @@ const ko = {
     parts: [
       "일곱 회사의 주식을 24라운드 동안 사고팝니다. 모두 가상 현금 100,000원으로 시작하고, 24라운드가 끝났을 때 자산(현금과 주식)이 가장 많은 사람이 1위입니다.",
       [
-        "모든 주식은 10,000원에서 시작하고 100원 아래로는 내려가지 않습니다. 라운드는 5분이고, 그동안 그 라운드의 가격으로 원하는 만큼 사고팔 수 있습니다.",
+        "모든 주식은 10,000원에서 시작하고 100원 아래로는 내려가지 않습니다. 라운드는 2분 30초이고, 그동안 그 라운드의 가격으로 원하는 만큼 사고팔 수 있습니다.",
         "주가는 라운드가 끝날 때 회사마다 다른 규칙으로 움직입니다. 규칙은 처음에 일부만 보입니다. 5·10·15라운드가 시작될 때 가려진 낱말이 더 열리고, 20라운드에 모두 열립니다.",
         "규칙은 판마다 새로 뽑습니다: 어느 회사가 어떤 규칙인지, 숫자가 얼마인지 판마다 다릅니다. 이런 판에서는 문장의 틀이 처음부터 모두에게 보이고, 가려지는 것은 그 판에서 뽑은 것뿐입니다: 회사, 어느 수량인지, 방향, 숫자. 방송의 규칙과 닮은 규칙도 방향이나 대상이 다를 수 있습니다. 방장은 대기실에서 방송의 규칙 그대로 하는 판으로 바꿀 수 있습니다 (그 판은 방송처럼 문장 대부분이 가려집니다).",
         "라운드가 시작되면 바뀐 주가, 지난 라운드에 사고판 수량, 모두가 가진 수량의 합(총 보유), 모든 사람의 자산과 순위가 공개됩니다.",
         "시크릿: 게임 중 한 번, 한 종목에 쓸 수 있습니다. 쓴 다음 두 라운드 동안 그 종목의 주가와 수량이 모두에게 가려지고, 그동안 모든 사람의 자산도 가려집니다 (순위는 보입니다). 그 종목을 가졌거나 거래한 사람은 자기 현금과 자산도 볼 수 없습니다. 누가 썼는지는 알려지지 않습니다.",
         "피스: 모두 3개씩 가지고 시작합니다. 20라운드까지, 1개로 한 종목의 다음에 열릴 규칙 낱말을 혼자 미리 보거나 현금 10,000원으로 바꿀 수 있습니다.",
-        "모두가 라운드를 마치면 5분을 기다리지 않고 다음 라운드로 넘어갑니다. 라운드를 마친 사람은 그 라운드에 더 거래할 수 없습니다.",
+        "모두가 라운드를 마치면 2분 30초를 기다리지 않고 다음 라운드로 넘어갑니다. 라운드를 마친 사람은 그 라운드에 더 거래할 수 없습니다.",
         "방장이 「끝나면 보유 공개」를 고른 방에서는 게임이 끝난 뒤 누가 어느 종목을 라운드마다 얼마나 들고 있었는지, 누가 시크릿을 썼는지가 모두에게 보입니다. 고르지 않은 방에서는 끝나도 알려지지 않습니다.",
       ],
       "최종 자산이 150만 원 이상이면 피스 1개, 300만 원 이상이면 2개, 600만 원 이상이면 3개, 1,000만 원 이상이면 상금의 징표를 받은 것으로 표시됩니다. 자산이 같으면 게임 도중 자산이 가장 낮았던 쪽이 아래입니다.",
@@ -245,7 +245,7 @@ const ko = {
       { text: "그동안 모두의 자산도 가려지고, 그 종목을 가졌거나 거래했으면", tone: "dim" },
       { text: "내 현금과 자산도 보이지 않습니다.", tone: "dim" },
       { text: `피스 (${n.pieceRounds}라운드까지): 한 종목의 다음 낱말 미리 보기, 또는 ${grouped(n.pieceCash)}원.` },
-      { text: `모두 라운드를 마치면 ${n.roundMinutes}분을 기다리지 않고 넘어갑니다.` },
+      { text: `라운드는 ${koTime(n.roundSeconds)}. 모두 마치면 기다리지 않고 넘어갑니다.` },
       { text: "" },
       { text: byInput("↑↓: 종목 · 숫자: 수량 · ←→: 한 주씩 · A: 최대 · Z: 전량 · B: 매수 · S: 매도", "종목은 눌러서 고릅니다. 수량 칸을 누르면 숫자판이 열립니다."), tone: "dim" },
       { text: byInput("X: 시크릿 · P: 피스 · C: 차트 · Enter: 라운드 마침", "마침을 누르면 이번 라운드의 거래를 마칩니다."), tone: "dim" },
@@ -265,13 +265,13 @@ const en: typeof ko = {
     parts: [
       "Trade the stocks of seven companies over 24 rounds. Everyone starts with 100,000 won of virtual cash, and whoever has the most assets (cash and shares) after round 24 wins.",
       [
-        "Every stock opens at 10,000 won and never goes under 100 won. A round lasts 5 minutes, and in it you may buy and sell as much as you like at the round's price.",
+        "Every stock opens at 10,000 won and never goes under 100 won. A round lasts 2 minutes 30 seconds, and in it you may buy and sell as much as you like at the round's price.",
         "Prices move when a round ends, each company's by a rule of its own. Only part of each rule is shown at first. More of its words open at the start of rounds 5, 10 and 15, and all of them at round 20.",
         "The rules are drawn afresh for every game: which company has which rule, and its numbers, differ from game to game. In such a game the frame of every sentence is open to everyone from the start, and only what the game drew is covered: the company, which count, which way, the numbers. A rule that looks like one of the show's may run the other way, or be about something else. In the room the host can switch to a game played by the show's own rules (there most of every sentence is covered, as in the show).",
         "At the start of a round the monitor shows the new prices, what was bought and sold in the round before, the total holdings of all players, and everyone's assets and rank.",
         "Secret: once in the game you may use it on one stock. For the two rounds after, that stock's price and volumes are hidden from everyone, and so are everyone's assets (ranks stay). Whoever holds or trades that stock cannot see their own cash and assets either. Nobody is told who used it.",
         "Pieces: everyone starts with 3. Through round 20, one Piece shows you alone the next word to open in one stock's rule, or turns into 10,000 won.",
-        "When everyone is done with a round it ends without waiting for the 5 minutes. Once you are done you cannot trade again in that round.",
+        "When everyone is done with a round it ends without waiting for the 2 minutes 30 seconds. Once you are done you cannot trade again in that round.",
         "In a room whose host chose \"holdings told\", once the game is over everyone sees how much of each stock every player held round by round, and who used a Secret. In any other room that stays untold.",
       ],
       "Final assets of 1.5 million won or more are marked as winning 1 Piece, 3 million 2, 6 million 3, and 10 million the prize token. Between equal assets, whoever's assets were ever the lowest during the game ranks lower.",
@@ -419,7 +419,7 @@ const en: typeof ko = {
       { text: "Assets are hidden meanwhile; if you hold or trade that stock,", tone: "dim" },
       { text: "so are your own cash and assets.", tone: "dim" },
       { text: `Piece (rounds 1-${n.pieceRounds}): a stock's next word early, or ${grouped(n.pieceCash)} won.` },
-      { text: `When everyone is done, the round ends before its ${n.roundMinutes} minutes.` },
+      { text: `A round is ${enTime(n.roundSeconds)}, or ends when everyone is done.` },
       { text: "" },
       { text: byInput("↑↓ stock · digits shares · ←→ ±1 · A max · Z all · B buy · S sell", "Tap a stock to choose it. Tap the share count for a number pad."), tone: "dim" },
       { text: byInput("X secret · P Piece · C charts · Enter done with the round", "Done ends your trading for the round."), tone: "dim" },

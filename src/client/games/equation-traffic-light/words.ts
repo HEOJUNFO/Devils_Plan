@@ -12,7 +12,7 @@
  * design/games/equation-traffic-light.md.
  */
 import type { EqEnd, EquationRefusal } from "../../../shared/games/equation-traffic-light/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -26,9 +26,6 @@ export interface HelpNumbers {
   guessSeconds: number;
 }
 
-/** Seconds as the sheet says them: whole minutes where they are, seconds otherwise. */
-const koTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60}분` : `${seconds}초`);
-const enTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`);
 
 /** A line of the bar with the step's clock after it. */
 const timed = (line: string, clock: string): string => (clock === "" ? line : `${line} · ${clock}`);
@@ -42,15 +39,15 @@ const ko = {
       end: "초록은 자리까지 맞음, 노랑은 자리가 다름, 빨강은 없음.",
     },
     parts: [
-      "두 사람이 합니다. 먼저 5분 안에 각자 9칸짜리 수식 하나를 만들어 상대 몰래 냅니다. 숫자 0~9와 기호 +, -, ×, ÷, =, ^(제곱)를 쓰고, 같은 것을 여러 번 써도 됩니다.",
+      "두 사람이 합니다. 먼저 2분 30초 안에 각자 9칸짜리 수식 하나를 만들어 상대 몰래 냅니다. 숫자 0~9와 기호 +, -, ×, ÷, =, ^(제곱)를 쓰고, 같은 것을 여러 번 써도 됩니다.",
       [
         "수식은 올바르게 성립해야 합니다. 등호는 하나 이상 있어야 하고, 어느 쪽이든 식이어도 됩니다. 등호가 여럿이면 등호로 나뉜 값이 모두 같아야 합니다 (2+2=4=2^2).",
         "기호는 이웃해서 쓸 수 없고, 수식의 처음과 끝은 숫자입니다. 곱할 때는 반드시 ×를 쓰고, 제곱(^) 뒤에는 반드시 숫자가 옵니다.",
         "수의 앞자리에 0을 붙일 수 없습니다 (05, 012). 0 하나는 수입니다.",
         "계산은 제곱 먼저, 그다음 곱셈과 나눗셈을 왼쪽부터, 그다음 덧셈과 뺄셈을 왼쪽부터 합니다. 제곱이 이어지면 오른쪽부터입니다 (2^3^2 = 2^9). 나눗셈은 분수로 정확히 셉니다. 0으로 나누는 수식과 0^0은 성립하지 않습니다.",
-        "5분 안에 내지 못하면 방이 수식 하나를 대신 정하고, 그 사실을 두 사람에게 알립니다.",
+        "2분 30초 안에 내지 못하면 방이 수식 하나를 대신 정하고, 그 사실을 두 사람에게 알립니다.",
       ],
-      "둘 다 수식을 내면 서로의 수식을 맞히기 시작합니다. 턴마다 5분 안에 숫자와 기호 9칸으로 답안을 냅니다. 답안은 성립하는 수식이 아니어도 됩니다. 두 답안이 모두 나오면 칸마다 색깔 힌트가 붙어 함께 공개됩니다.",
+      "둘 다 수식을 내면 서로의 수식을 맞히기 시작합니다. 턴마다 2분 30초 안에 숫자와 기호 9칸으로 답안을 냅니다. 답안은 성립하는 수식이 아니어도 됩니다. 두 답안이 모두 나오면 칸마다 색깔 힌트가 붙어 함께 공개됩니다.",
       [
         "초록: 그 숫자나 기호가 정확한 자리에 있습니다.",
         "노랑: 그 숫자나 기호가 상대의 수식에 있지만 자리가 다릅니다.",
@@ -207,15 +204,15 @@ const en: typeof ko = {
       end: "Green: right position. Yellow: another position. Red: not in it.",
     },
     parts: [
-      "For two players. First, in 5 minutes, each creates one nine-cell equation, hidden from the opponent. You may use the numbers 0 to 9 and the symbols +, -, ×, ÷, = and ^ (exponent), any of them more than once.",
+      "For two players. First, in 2 minutes 30 seconds, each creates one nine-cell equation, hidden from the opponent. You may use the numbers 0 to 9 and the symbols +, -, ×, ÷, = and ^ (exponent), any of them more than once.",
       [
         "The equation must be mathematically valid. It has one equals symbol or more, and any side may be an expression. With more than one, every side must come to the same value (2+2=4=2^2).",
         "Two symbols may not be next to each other, and the equation begins and ends with a number. You must write × when multiplying, and a number must always follow the exponent symbol.",
         "A number may not be written with a leading zero (05, 012). A 0 alone is a number.",
         "The exponent is done first, then multiplication and division from the left, then addition and subtraction from the left. Exponents in a row go from the right (2^3^2 = 2^9). Division is exact, in fractions. An equation that divides by zero, or has 0^0, is not valid.",
-        "If you have none in after 5 minutes, the room sets one for you, and tells both players so.",
+        "If you have none in after 2 minutes 30 seconds, the room sets one for you, and tells both players so.",
       ],
-      "Once both equations are in, each tries to guess the other's. Every turn you have 5 minutes to submit an answer of nine cells of the numbers and symbols. An answer does not need to be a valid equation. Once both answers are in, they are shown with a color clue on every cell.",
+      "Once both equations are in, each tries to guess the other's. Every turn you have 2 minutes 30 seconds to submit an answer of nine cells of the numbers and symbols. An answer does not need to be a valid equation. Once both answers are in, they are shown with a color clue on every cell.",
       [
         "Green: the number or symbol is in the correct position.",
         "Yellow: the number or symbol is in the opponent's equation, but in a different position.",
@@ -338,7 +335,7 @@ const en: typeof ko = {
     { text: "No two symbols together; numbers at both ends; no leading zero.", tone: "dim" },
     { text: "Order: exponent, then × ÷ from the left, then + - from the left.", tone: "dim" },
     { text: "" },
-    { text: `Each turn (${enTime(n.guessSeconds)}) both submit ${n.cells} cells. An answer need not be valid.` },
+    { text: `Each turn (${enTime(n.guessSeconds)}) both submit ${n.cells} cells. They need not be valid.` },
     { text: "Once both are in, they are shown with a color clue on every cell." },
     { text: "Green (filled): correct position.   Yellow (outline): elsewhere." },
     { text: "Red (dark): not in it. Only as many are marked as the equation has." },

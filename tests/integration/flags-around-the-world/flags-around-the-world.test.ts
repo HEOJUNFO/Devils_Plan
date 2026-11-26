@@ -58,7 +58,7 @@ describe("GameRoom: a room of 만국기", () => {
       expect(game).toMatchObject({ room: "FLAAA", game: GAME, frozen: false });
       expect(game.view).toMatchObject({ phase: "show", round: 1, tiebreak: 0, you: n, choices: null, answers: null, results: null });
       expect(game.view.shown).toHaveLength(10);
-      expect(game.rules).toMatchObject({ shown: 10, showSeconds: 1, passes: 3, gapSeconds: 5, choices: 25, answers: 5, chooseSeconds: 60, rounds: 3 });
+      expect(game.rules).toMatchObject({ shown: 10, showSeconds: 1, passes: 3, gapSeconds: 5, choices: 25, answers: 5, chooseSeconds: 30, rounds: 3 });
     });
     expect(games[1].view.shown).toEqual(games[0].view.shown);
     const shown = games[0].view.shown as string[];

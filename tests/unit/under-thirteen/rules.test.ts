@@ -141,13 +141,13 @@ const FOUR: Pick[] = [
 ];
 
 describe("무거운 13: the numbers of the game", () => {
-  it("ships the show's numbers: thirteen, cards 0 to 6, two chips of each colour and a rainbow one, two sets, three minutes", () => {
+  it("ships the show's numbers: thirteen, cards 0 to 6, two chips of each colour and a rainbow one, two sets, and half its three minutes", () => {
     expect(isValidConfig(config)).toBe(true);
     expect(config.limit).toBe(13);
     expect(config.cards).toEqual([0, 1, 2, 3, 4, 5, 6]);
     expect(chipSet(config)).toEqual(["red", "red", "green", "green", "blue", "blue", "rainbow"]);
     expect(roundsOf(config)).toEqual({ perSet: 7, total: 14 });
-    expect(config.submitSeconds).toBe(180);
+    expect(config.submitSeconds).toBe(90);
   });
 
   it.each<[string, Partial<UnderConfig>]>([
@@ -515,7 +515,7 @@ describe("무거운 13: putting in a card and a chip", () => {
     expect(chips.size).toBe(4);
   });
 
-  it("puts in for everyone who has not when the three minutes are up", () => {
+  it("puts in for everyone who has not when the minute and a half are up", () => {
     const state = step(submit(game(3), 0, [3, "red"]));
 
     expect(state.phase).toBe("chips");

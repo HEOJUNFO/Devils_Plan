@@ -75,7 +75,7 @@ describe("what a player is sent of 만국기", () => {
   it("is the show's numbers, the round's clock, and the ten flags while they go by", () => {
     const { session, presence } = started(2);
     const snapshot = seen(session, "t1", presence, T0 + 4000);
-    expect(snapshot.rules).toEqual({ shown: 10, showSeconds: 1, passes: 3, readySeconds: config.readySeconds, gapSeconds: 5, choices: 25, answers: 5, chooseSeconds: 60, rounds: 3, tiebreaks: config.tiebreaks });
+    expect(snapshot.rules).toEqual({ shown: 10, showSeconds: 1, passes: 3, readySeconds: config.readySeconds, gapSeconds: 5, choices: 25, answers: 5, chooseSeconds: 30, rounds: 3, tiebreaks: config.tiebreaks });
     expect(snapshot.clock).toEqual({ turn: SHOW_MS - 4000, stand: null });
     expect([snapshot.view.you, snapshot.view.shown?.length, snapshot.view.choices]).toEqual([1, 10, null]);
     expect(snapshot.players.map((each) => [each.id, each.nick, each.bot, each.connected, each.left])).toEqual([

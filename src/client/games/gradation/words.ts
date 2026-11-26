@@ -12,7 +12,7 @@
  * been found (design/games/gradation.md).
  */
 import type { GradEnd } from "../../../shared/games/gradation/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -34,9 +34,6 @@ export interface HelpNumbers {
   turnSeconds: number;
 }
 
-/** Seconds as the sheet says them: whole minutes where they are, seconds otherwise. */
-const koTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60}분` : `${seconds}초`);
-const enTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`);
 
 /** A line of the bar with the step's clock after it, where the step has one. */
 const timed = (line: string, clock: string): string => (clock === "" ? line : `${line} · ${clock}`);
@@ -52,7 +49,7 @@ const ko = {
     parts: [
       "각자 큐브 통 7개와 숫자 큐브 20개(0~9가 2개씩)를 받습니다. 통은 양 끝이 검정이고 가운데로 갈수록 밝아집니다: 검정, 짙은 회색, 옅은 회색, 흰색, 옅은 회색, 짙은 회색, 검정. 게임은 1:1 대결로 합니다.",
       [
-        "담기: 5분 안에 통마다 숫자 큐브를 1개씩, 상대 몰래 담습니다. 담은 수의 합은 30 이하여야 하고, 왼쪽 통에서 오른쪽으로 갈수록 수가 같거나 커져야 합니다. 시간 안에 담지 못하면 방이 규칙에 맞게 무작위로 담습니다.",
+        "담기: 2분 30초 안에 통마다 숫자 큐브를 1개씩, 상대 몰래 담습니다. 담은 수의 합은 30 이하여야 하고, 왼쪽 통에서 오른쪽으로 갈수록 수가 같거나 커져야 합니다. 시간 안에 담지 못하면 방이 규칙에 맞게 무작위로 담습니다.",
         "라운드: 선 플레이어가 통 하나를 냅니다. 상대에게는 그 통의 색만 보이고, 몇 번째 통인지는 보이지 않습니다. 이어서 상대도 통 하나를 냅니다.",
         "공개: 둘 다 내면 수를 공개합니다. 큰 쪽이 1점입니다. 같으면 아무도 점수를 얻지 못합니다.",
         "선 플레이어: 직전 라운드를 이긴 사람이 다음 라운드의 선입니다. 비기면 바뀌지 않습니다.",
@@ -219,7 +216,7 @@ const en: typeof ko = {
     parts: [
       "Each player has 7 cube cups and 20 number cubes, two of each number from 0 to 9. The cups are black at both ends and lighter toward the middle: black, dark gray, light gray, white, light gray, dark gray, black. The game is a series of one-on-one matches.",
       [
-        "Distributing: in 5 minutes, put one number cube in each cup, unseen by your opponent. The numbers may add up to 30 at most, and from the left cup to the right each must be equal to or higher than the one before. If you are not done in time, the room distributes cubes at random within the rules.",
+        "Distributing: in 2 minutes 30 seconds, put one number cube in each cup, unseen by your opponent. The numbers may add up to 30 at most, and from the left cup to the right each must be equal to or higher than the one before. If you are not done in time, the room distributes cubes at random within the rules.",
         "A round: the first player submits one cup. The opponent sees only its shade, not which of the cups it was. Then the opponent submits one.",
         "Reveal: once both are in, the numbers are revealed. The higher scores one point. If they are equal, nobody scores.",
         "First player: the winner of a round is the first player of the next. A tie changes nothing.",

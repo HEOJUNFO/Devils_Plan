@@ -16,8 +16,8 @@ export const COPIES = 2;
 /** The total of the numbers in the cups cannot exceed 30. */
 export const MAX_SUM = 30;
 
-/** Five minutes to distribute the cubes. */
-export const ARRANGE_SECONDS = 300;
+/** The show gives five minutes to distribute the cubes; the site gives half (the user's decision, 2026-11-26). */
+export const ARRANGE_SECONDS = 150;
 
 /** Two consecutive wins end the game. */
 export const WINS_IN_A_ROW = 2;

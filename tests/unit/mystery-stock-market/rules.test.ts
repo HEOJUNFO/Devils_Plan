@@ -98,9 +98,9 @@ function shown(state: MarketState, player: number | null, stock: StockId) {
 }
 
 describe("미스터리 거래소: the numbers of the game", () => {
-  it("ships the show's numbers: 24 rounds of five minutes, 100,000 won, 10,000 a share and never under 100", () => {
+  it("ships the show's numbers, with half its time: 24 rounds of two and a half minutes, 100,000 won, 10,000 a share and never under 100", () => {
     expect(isValidConfig(config)).toBe(true);
-    expect(config).toMatchObject({ rounds: 24, roundSeconds: 300, startCash: 100000, startPrice: 10000, floorPrice: 100 });
+    expect(config).toMatchObject({ rounds: 24, roundSeconds: 150, startCash: 100000, startPrice: 10000, floorPrice: 100 });
   });
 
   it("ships the show's numbers for what is opened, hidden and bought with a piece", () => {
@@ -310,7 +310,7 @@ describe("미스터리 거래소: finishing a round", () => {
     expect(moveOn(state, (player) => player !== 1, T0 + 20_000, config).round).toBe(2);
   });
 
-  it("goes on when the five minutes are up, whoever is not done", () => {
+  it("goes on when the two and a half minutes are up, whoever is not done", () => {
     const state = game(2);
 
     expect(applyTimeout(state, T0 + ROUND_MS - 1, config)).toBe(state);

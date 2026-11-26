@@ -98,7 +98,7 @@ describe("what a player asks", () => {
     const snapshot = viewOf(session, tokenOf(0), here, T0 + 4000);
 
     expect(snapshot.clock).toEqual({ phase: shipped.putSeconds * 1000 - 4000, stand: null });
-    expect(snapshot.rules).toMatchObject({ putMax: 5, answerSeconds: 20, suspectSeconds: 10, target: 5 });
+    expect(snapshot.rules).toMatchObject({ putMax: 5, answerSeconds: 10, suspectSeconds: 5, target: 5 });
     expect(JSON.stringify(snapshot)).not.toMatch(/"black":|"white":/);
   });
 });

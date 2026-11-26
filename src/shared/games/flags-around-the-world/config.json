@@ -6,7 +6,7 @@
   "gapSeconds": 5,
   "choices": 25,
   "answers": 5,
-  "chooseSeconds": 60,
+  "chooseSeconds": 30,
   "rounds": 3,
   "revealSeconds": 10,
   "tiebreaks": 3,

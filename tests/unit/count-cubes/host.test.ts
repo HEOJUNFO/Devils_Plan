@@ -478,9 +478,9 @@ describe("큐브 세기 in a room: what is sent and kept", () => {
 
 describe("큐브 세기 in a room: how long the host gives a problem", () => {
   it.each([
-    ["time-three", 180],
-    ["time-five", 300],
-    ["time-ten", 600],
+    ["time-three", 90],
+    ["time-five", 150],
+    ["time-ten", 300],
   ])("gives %s that many seconds: said to the players, and the game is over when they have gone and not before", (variant, seconds) => {
     const players = candidates(2);
     const presence = presenceOf(players);

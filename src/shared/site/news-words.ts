@@ -55,6 +55,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-26",
     lines: [
       {
+        ko: "모든 게임의 제한 시간이 절반으로 줄었습니다. 차례 시간은 방장이 무제한·30초·60초 가운데 고르고, 게임마다 정해진 시간(답하기, 고르기, 한 라운드)도 반입니다. 외우는 시간과 결과를 보여 주는 시간은 그대로입니다.",
+        en: "Every game's time limits are half what they were. The host picks a turn of no limit, 30 or 60 seconds, and each game's own clocks (to answer, to choose, a round) are half as long. The time to memorise and the time results stay up are as before.",
+      },
+      {
         ko: "휴대폰을 세로로 들어도 할 수 있습니다. 「화면을 가로로 돌려 주세요」 안내가 화면을 덮지 않고, 화면 폭에 맞춘 게임이 그대로 나옵니다. 가로로 돌리면 더 크게 보입니다.",
         en: "A phone held upright now plays too. The notice that asked you to turn the screen no longer covers it: the game is shown as wide as the screen, and larger when the phone is turned sideways.",
       },

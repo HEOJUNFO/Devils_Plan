@@ -1,8 +1,8 @@
 {
   "standSeconds": 180,
   "clocks": {
-    "quick": { "chooseSeconds": 45, "bidSeconds": 45 },
-    "talk": { "chooseSeconds": 120, "bidSeconds": 180 },
+    "quick": { "chooseSeconds": 23, "bidSeconds": 23 },
+    "talk": { "chooseSeconds": 60, "bidSeconds": 90 },
     "show": { "chooseSeconds": 900, "bidSeconds": 1200 }
   }
 }

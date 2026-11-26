@@ -271,7 +271,7 @@ describe("무거운 13 in a room: choosing where to stand", () => {
 });
 
 describe("무거운 13 in a room: a round", () => {
-  it("asks for the clock when the three minutes are up, and says how long is left", () => {
+  it("asks for the clock when the minute and a half are up, and says how long is left", () => {
     const players = candidates(2);
     const session = started(players);
 

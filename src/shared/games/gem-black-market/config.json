@@ -26,9 +26,9 @@
   "diamondPieces": 1,
   "rewardFrom": 1,
   "rewardMoreFrom": 10,
-  "auctionSeconds": 30,
+  "auctionSeconds": 15,
   "lookSeconds": 20,
-  "turnSeconds": 60,
+  "turnSeconds": 30,
   "seenSeconds": 6,
   "revealSeconds": 25
 }

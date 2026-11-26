@@ -1,6 +1,6 @@
 {
   "lockSeconds": 20,
-  "problemSeconds": 300,
+  "problemSeconds": 150,
   "minSide": 5,
   "maxSide": 9,
   "minHeight": 3,

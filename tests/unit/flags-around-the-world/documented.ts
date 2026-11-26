@@ -8,11 +8,11 @@
 export const SHOWN = 10;
 export const SHOW_SECONDS = 1;
 export const PASSES = 3;
-/** Five seconds later 25 flags, five of the ten among them, and a minute to find those five. */
+/** Five seconds later 25 flags, five of the ten among them, and half the show's minute to find those five (the user's decision, 2026-11-26). */
 export const GAP_SECONDS = 5;
 export const CHOICES = 25;
 export const ANSWERS = 5;
-export const CHOOSE_SECONDS = 60;
+export const CHOOSE_SECONDS = 30;
 /** A point for each right one, three rounds. */
 export const ROUNDS = 3;
 

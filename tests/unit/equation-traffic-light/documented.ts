@@ -5,10 +5,10 @@
  * clues to these.
  */
 
-/** A nine-cell equation, five minutes to create it and five for each answer. */
+/** A nine-cell equation. The show gives five minutes to create it and five for each answer; the site gives half of each (the user's decision, 2026-11-26). */
 export const CELLS = 9;
-export const CREATE_SECONDS = 300;
-export const GUESS_SECONDS = 300;
+export const CREATE_SECONDS = 150;
+export const GUESS_SECONDS = 150;
 
 /** The numbers zero through nine and the symbols for addition, subtraction, multiplication, division, equals and exponent. */
 export const SYMBOLS = "0123456789+-×÷=^";

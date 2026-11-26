@@ -1,7 +1,7 @@
 {
   "rounds": 1,
-  "pickSeconds": 30,
-  "placeSeconds": 60,
+  "pickSeconds": 15,
+  "placeSeconds": 30,
   "pauseSeconds": 10,
   "cellsPerPlayer": 7,
   "extraCells": 2,
@@ -15,8 +15,8 @@
     7,
     8
   ],
-  "chooseSeconds": 20,
-  "markSeconds": 20,
+  "chooseSeconds": 10,
+  "markSeconds": 10,
   "cards": {
     "outOf": 16,
     "show": {

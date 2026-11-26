@@ -67,11 +67,11 @@ describe("starting HIT, STAY in a room", () => {
     expect(started(4, { bots: true }).session.players).toHaveLength(4);
   });
 
-  it("gives half a minute to choose a card whatever the room's limit on a turn, and a turn the room's own time or none", () => {
+  it("gives a quarter of a minute to choose a card whatever the room's limit on a turn, and a turn the room's own time or none", () => {
     for (const turnSeconds of [0, 20]) {
       const { session, presence } = started(2, { turnSeconds });
       expect(hitHost.deadline(session)).toBe(T0 + REVEAL_MS);
-      expect(seen(session, "t0", presence, T0 + 20_000).clock).toEqual({ turn: REVEAL_MS - 20_000, stand: null });
+      expect(seen(session, "t0", presence, T0 + 10_000).clock).toEqual({ turn: REVEAL_MS - 10_000, stand: null });
       const betting = revealed(session, presence, T0 + 5000);
       expect(hitHost.deadline(betting)).toBe(turnSeconds === 0 ? null : T0 + 25_000);
       expect(seen(betting, "t0", presence, T0 + 10_000).clock.turn).toBe(turnSeconds === 0 ? null : 15_000);
@@ -102,7 +102,7 @@ describe("what a room of HIT, STAY sends", () => {
 
   it("has the numbers of the rules the screen's sheet is written with", () => {
     const { session, presence } = started(2);
-    expect(seen(session, null, presence, T0).rules).toEqual({ dealt: 3, startChips: 30, basicBet: 1, basicBetEvery: 10, limitLowest: 5, limitHighest: 12, revealSeconds: 30, cards: 35 });
+    expect(seen(session, null, presence, T0).rules).toEqual({ dealt: 3, startChips: 30, basicBet: 1, basicBetEvery: 10, limitLowest: 5, limitHighest: 12, revealSeconds: 15, cards: 35 });
   });
 
   it("refuses someone watching, what is no action, and what the rules refuse", () => {

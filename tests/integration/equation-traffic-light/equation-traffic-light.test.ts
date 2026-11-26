@@ -93,7 +93,7 @@ describe("GameRoom: a room of 수식 신호등", () => {
     closeAll(clients);
   });
 
-  it("goes on by the room's own clock: after five minutes the room sets an equation for whoever has none, and the first turn begins", async () => {
+  it("goes on by the room's own clock: after two and a half minutes the room sets an equation for whoever has none, and the first turn begins", async () => {
     const stub = env.GameRoom.getByName("EQAAB");
     const clients = await players("EQAAB");
     await startGame(clients);

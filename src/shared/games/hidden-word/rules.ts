@@ -25,7 +25,7 @@ import { randomInt, randomSource, seedFrom } from "../../game/rng";
 import type { Lexicon } from "./lexicon";
 
 /**
- * The numbers of the game. `chooseSeconds`, `checks`, `apart`, `pieces`,
+ * The numbers of the game. `chooseSeconds`, `apart`, `pieces`,
  * `revealSeconds`, `wordLength` and the two limits on players are filled in
  * for a room (the brief says so); the rest are the show's.
  */
@@ -39,8 +39,6 @@ export interface HiddenConfig {
   apart: number;
   /** Seconds to choose a round's hidden word; whoever has not is given the first word left in their envelope. */
   chooseSeconds: number;
-  /** How many pairs of words a player may have scored while a hidden word is chosen. */
-  checks: number;
   /** How many clues a stage has at most, and how many seconds. */
   clues: number;
   clueSeconds: number;
@@ -67,7 +65,7 @@ export function isValidConfig(config: HiddenConfig): boolean {
   const counts = [config.rounds, config.envelope, config.clues, config.stages, config.wordLength, config.minPlayers, config.maxPlayers];
   if (!counts.every((each) => isWhole(each) && each >= 1)) return false;
   if (!(config.chooseSeconds > 0) || !(config.clueSeconds > 0) || !(config.answerSeconds > 0) || !(config.revealSeconds > 0)) return false;
-  if (!isWhole(config.checks) || config.checks < 0 || !isWhole(config.pieces) || config.pieces < 0) return false;
+  if (!isWhole(config.pieces) || config.pieces < 0) return false;
   if (!(config.threshold > 0) || !(config.threshold <= 100) || !(config.apart > 0)) return false;
   if (!Array.isArray(config.multipliers) || config.multipliers.length !== config.rounds || !config.multipliers.every((each) => isWhole(each) && each >= 1)) return false;
   // a hidden word is not set twice: an envelope has one for every round
@@ -141,17 +139,8 @@ export type HiddenEvent =
 
 /** How many of the latest events a state keeps. */
 export const HISTORY_KEPT = 24;
-/** How many of a player's latest scored pairs a state keeps. */
-export const CHECKS_KEPT = 6;
 /** How many of the room's unguessable numbers a state keeps, for what it draws. */
 const SPARE_KEPT = 256;
-
-/** A pair of words a player had scored while choosing. */
-export interface Check {
-  reference: string;
-  word: string;
-  score: number;
-}
 
 /** What one player holds. All of it is theirs alone. */
 export interface Hand {
@@ -162,9 +151,6 @@ export interface Hand {
   used: string[];
   /** The round's hidden word, once chosen; `null` before. */
   chosen: string | null;
-  /** How many pairs they may still have scored in this round's choosing, and the latest of those scored. */
-  checksLeft: number;
-  checks: Check[];
 }
 
 /** One game, as the room stores it. It holds every hidden word: send only {@link viewFor} of it. */
@@ -218,8 +204,6 @@ export interface HiddenState {
 export type HiddenAction =
   /** This word of my envelope is my hidden word for the round. */
   | { type: "choose"; word: string }
-  /** How would `word` score as a clue for `reference`, a word of my envelope? */
-  | { type: "check"; reference: string; word: string }
   /** My next clue. */
   | { type: "clue"; word: string }
   /** What I think the hidden word is: one word, or two for a Piece. */
@@ -233,8 +217,6 @@ export type HiddenRefusal =
   | "already-chosen"
   /** Not a word of the player's envelope, or one they have set before. */
   | "not-in-envelope"
-  /** No pairs left to have scored. */
-  | "no-checks-left"
   /** No clues are being given now. */
   | "not-clue-time"
   /** Only the word setter gives clues. */
@@ -286,11 +268,9 @@ export interface HiddenView {
   pieces: { player: number; left: number }[];
   /**
    * What this player holds: their envelope, which of its words they have set
-   * before, this round's hidden word, and the pairs they had scored (the
-   * count and the pairs only while hidden words are chosen). `null` for
-   * someone watching.
+   * before, and this round's hidden word. `null` for someone watching.
    */
-  hand: { words: string[]; used: string[]; chosen: string | null; checksLeft: number; checks: Check[] } | null;
+  hand: { words: string[]; used: string[]; chosen: string | null } | null;
   /** What this player wrote in the stage being answered; `null` while they have not, and for the setter. */
   answer: string[] | null;
   /** The stage last scored, in this round or the one before. */
@@ -309,7 +289,7 @@ function clone(state: HiddenState): HiddenState {
   return {
     ...state,
     gone: [...state.gone],
-    hands: state.hands.map((each) => ({ ...each, words: [...each.words], used: [...each.used], checks: [...each.checks] })),
+    hands: state.hands.map((each) => ({ ...each, words: [...each.words], used: [...each.used] })),
     order: [...state.order],
     clues: [...state.clues],
     answers: state.answers.map((each) => ({ player: each.player, words: [...each.words] })),
@@ -414,11 +394,7 @@ function openRound(state: HiddenState, now: number, config: HiddenConfig): void 
   state.clues = [];
   state.answers = [];
   state.pieced = [];
-  for (const hand of state.hands) {
-    hand.chosen = null;
-    hand.checksLeft = config.checks;
-    hand.checks = [];
-  }
+  for (const hand of state.hands) hand.chosen = null;
   for (const score of state.scores) score.rounds.push(0);
   state.until = now + config.chooseSeconds * 1000;
   tell(state, { type: "round", round: state.round }, now);
@@ -464,7 +440,7 @@ export function createGame(
   };
   const envelopes = deal(drawer(state), lexicon, players.length, config);
   if (envelopes === null) return { ok: false, reason: "too-few-words" };
-  state.hands = players.map((player, at) => ({ player, words: envelopes[at], used: [], chosen: null, checksLeft: config.checks, checks: [] }));
+  state.hands = players.map((player, at) => ({ player, words: envelopes[at], used: [], chosen: null }));
   openRound(state, start.now, config);
   return { ok: true, state };
 }
@@ -476,11 +452,6 @@ export function parseAction(raw: unknown, config: Pick<HiddenConfig, "wordLength
   if (data.type === "choose" || data.type === "clue") {
     const word = tidy(data.word, config.wordLength);
     return word === null ? null : { type: data.type, word };
-  }
-  if (data.type === "check") {
-    const reference = tidy(data.reference, config.wordLength);
-    const word = tidy(data.word, config.wordLength);
-    return reference === null || word === null ? null : { type: "check", reference, word };
   }
   if (data.type === "answer") {
     if (!Array.isArray(data.words) || data.words.length < 1 || data.words.length > 2) return null;
@@ -559,7 +530,6 @@ function closeChoosing(state: HiddenState, now: number, config: HiddenConfig): v
   for (const hand of state.hands) {
     // whoever has not chosen is given the first word left in their envelope
     if (hand.chosen === null) hand.chosen = hand.words.find((word) => !hand.used.includes(word)) ?? hand.words[0];
-    hand.checks = [];
   }
   state.order = shuffled(drawer(state), state.players);
   state.turns = 0;
@@ -624,26 +594,14 @@ export function applyAction(state: HiddenState, player: number, action: HiddenAc
   const hand = handOf(state, player);
   if (hand === undefined) return { ok: false, reason: "bad-action" };
 
-  if (action.type === "choose" || action.type === "check") {
+  if (action.type === "choose") {
     if (state.phase !== "choose") return { ok: false, reason: "not-choosing" };
-    const own = (word: string): boolean => hand.words.includes(word) && !hand.used.includes(word);
-    if (action.type === "choose") {
-      if (hand.chosen !== null) return { ok: false, reason: "already-chosen" };
-      if (!own(action.word)) return { ok: false, reason: "not-in-envelope" };
-      const next = clone(state);
-      (handOf(next, player) as Hand).chosen = action.word;
-      next.at = now;
-      if (awaited(next).length === 0) closeChoosing(next, now, config);
-      return { ok: true, state: next };
-    }
-    if (!own(action.reference)) return { ok: false, reason: "not-in-envelope" };
-    if (hand.checksLeft < 1) return { ok: false, reason: "no-checks-left" };
-    const scored = action.reference === action.word ? null : lexicon.score(action.reference, action.word);
-    if (scored === null) return { ok: false, reason: action.reference === action.word ? "same-as-hidden" : "not-in-list" };
+    if (hand.chosen !== null) return { ok: false, reason: "already-chosen" };
+    if (!hand.words.includes(action.word) || hand.used.includes(action.word)) return { ok: false, reason: "not-in-envelope" };
     const next = clone(state);
-    const mine = handOf(next, player) as Hand;
-    mine.checksLeft -= 1;
-    mine.checks = [...mine.checks, { reference: action.reference, word: action.word, score: scored }].slice(-CHECKS_KEPT);
+    (handOf(next, player) as Hand).chosen = action.word;
+    next.at = now;
+    if (awaited(next).length === 0) closeChoosing(next, now, config);
     return { ok: true, state: next };
   }
 
@@ -801,8 +759,6 @@ export function viewFor(state: HiddenState, player: number | null): HiddenView {
             words: [...hand.words],
             used: [...hand.used],
             chosen: hand.chosen,
-            checksLeft: choosing ? hand.checksLeft : 0,
-            checks: choosing ? hand.checks.map((each) => ({ ...each })) : [],
           },
     answer: hand === undefined || state.phase !== "answer" ? null : (state.answers.find((each) => each.player === player)?.words.slice() ?? null),
     result:

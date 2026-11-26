@@ -29,14 +29,14 @@ const ko = {
     title: "기억 포커: 규칙",
     brief: {
       goal: "기억해 둔 카드 두 장으로 상대보다 높은 족보를 만듭니다.",
-      play: "16장을 20초 동안 외우고, 뒤집힌 뒤 60초 안에 두 장을 고릅니다.",
+      play: "16장을 20초 동안 외우고, 뒤집힌 뒤 30초 안에 두 장을 고릅니다.",
       end: "기본 다섯 라운드를 하고, 이긴 횟수로 순위를 정합니다.",
     },
     parts: [
       "카드 16장이 20초 동안 펼쳐졌다가 뒤집힙니다. 어디에 무엇이 있었는지 기억해, 뒤집힌 카드 가운데 두 장을 고릅니다.",
       [
         "고른 두 장과 모두가 함께 쓰는 공유 카드 3장, 이 다섯 장으로 만든 족보가 높은 쪽이 이깁니다.",
-        "공유 카드는 판이 뒤집힌 뒤에 나옵니다. 고르는 시간은 60초이고, 그 안에 고르지 않은 카드는 방이 무작위로 대신 고릅니다.",
+        "공유 카드는 판이 뒤집힌 뒤에 나옵니다. 고르는 시간은 30초이고, 그 안에 고르지 않은 카드는 방이 무작위로 대신 고릅니다.",
         "라운드마다 둘씩 짝지어 겨룹니다 (인원이 홀수면 한 조는 셋). 상대와 같은 카드를 골라도 됩니다.",
         "족보는 높은 것부터 스트레이트 플러시, 포카드, 풀하우스, 플러시, 스트레이트, 트리플, 투페어, 원페어, 하이카드입니다. 같은 족보면 숫자가 높은 쪽이, 그것도 같으면 나머지 카드의 숫자가 높은 쪽이 이깁니다. 무늬는 비교하지 않습니다.",
       ],
@@ -185,14 +185,14 @@ const en: typeof ko = {
     title: "Memory Poker: rules",
     brief: {
       goal: "Beat your opponent's hand with two cards from memory.",
-      play: "Memorise 16 cards in 20 seconds, then pick two within 60.",
+      play: "Memorise 16 cards in 20 seconds, then pick two within 30.",
       end: "Five rounds by default; players are ranked by rounds won.",
     },
     parts: [
       "Sixteen cards lie face up for 20 seconds, then are turned over. Remember what was where, and pick two of the face-down cards.",
       [
         "Your two cards and the three shared cards everyone uses make a hand of five. The higher hand wins.",
-        "The shared cards come out after the board is turned over. You have 60 seconds to pick; a card you did not pick in time is picked for you at random.",
+        "The shared cards come out after the board is turned over. You have 30 seconds to pick; a card you did not pick in time is picked for you at random.",
         "Each round players are paired off (with an odd number, one group is three). You may pick the same card as your opponent.",
         "Hands, highest first: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, one pair, high card. With the same hand the higher rank wins, then the higher remaining cards. Suits are not compared.",
       ],

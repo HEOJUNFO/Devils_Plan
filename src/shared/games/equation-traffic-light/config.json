@@ -1,7 +1,7 @@
 {
   "cells": 9,
-  "createSeconds": 300,
-  "guessSeconds": 300,
+  "createSeconds": 150,
+  "guessSeconds": 150,
   "maxDigits": 200,
   "idleTurns": 3,
   "stock": [

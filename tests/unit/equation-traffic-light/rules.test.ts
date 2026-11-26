@@ -58,7 +58,7 @@ const begun = (now = T0): EqState => did(did(game(), 0, { type: "create", equati
 const answered = (state: EqState, first: string, second: string, now = T0): EqState => did(did(state, 0, { type: "answer", cells: first }, now), 1, { type: "answer", cells: second }, now);
 
 describe("the numbers of 수식 신호등", () => {
-  it("are the show's: nine cells, five minutes for the equation and five for an answer, ten numbers and six symbols", () => {
+  it("are the show's, with half its time: nine cells, two and a half minutes for the equation and for an answer, ten numbers and six symbols", () => {
     expect(isValidConfig(config)).toBe(true);
     expect([config.cells, config.createSeconds, config.guessSeconds]).toEqual([CELLS, CREATE_SECONDS, GUESS_SECONDS]);
     expect(ALPHABET).toBe(SYMBOLS);
@@ -213,7 +213,7 @@ describe("the colour clues of 수식 신호등", () => {
 });
 
 describe("creating the equations", () => {
-  it("is for two players, who have five minutes", () => {
+  it("is for two players, who have two and a half minutes", () => {
     const start = (players: number[]) => createGame({ players, seed: 1, now: T0 }, config);
     expect(start([0])).toEqual({ ok: false, reason: "too-few" });
     expect(start([0, 1, 2])).toEqual({ ok: false, reason: "too-many" });
@@ -252,14 +252,14 @@ describe("creating the equations", () => {
     expect(again.events).toBe(state.events);
   });
 
-  it("begins the first turn as soon as both are in, with five minutes for an answer", () => {
+  it("begins the first turn as soon as both are in, with two and a half minutes for an answer", () => {
     const state = begun(T0 + 9000);
     expect([state.phase, state.turn, state.until]).toEqual(["guess", 1, T0 + 9000 + GUESS_MS]);
     expect(refusal(state, 0, { type: "create", equation: A })).toBe("not-creating");
     expect(awaited(state)).toEqual([0, 1]);
   });
 
-  it("is done by the room for whoever has none in after five minutes: one of its own equations, said to both", () => {
+  it("is done by the room for whoever has none in after two and a half minutes: one of its own equations, said to both", () => {
     const one = did(game({ chance: [12345, 67890] }), 0, { type: "create", equation: A });
     expect(applyTimeout(one, T0 + CREATE_MS - 1, config)).toBe(one);
 
@@ -328,7 +328,7 @@ describe("a turn of 수식 신호등", () => {
     expect(JSON.stringify(viewFor(state, 1))).not.toContain(A);
   });
 
-  it("gives no clues to whoever has no answer in after five minutes, and shows the other's all the same", () => {
+  it("gives no clues to whoever has no answer in after two and a half minutes, and shows the other's all the same", () => {
     const one = did(begun(), 1, { type: "answer", cells: "34=5×6+78" });
     expect(applyTimeout(one, T0 + GUESS_MS - 1, config)).toBe(one);
 

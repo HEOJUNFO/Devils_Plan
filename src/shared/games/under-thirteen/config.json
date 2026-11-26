@@ -4,10 +4,10 @@
   "chipsOfEach": 2,
   "rainbowChips": 1,
   "sets": 2,
-  "spotSeconds": 30,
-  "submitSeconds": 180,
+  "spotSeconds": 15,
+  "submitSeconds": 90,
   "chipsSeconds": 4,
-  "turnSeconds": 20,
+  "turnSeconds": 10,
   "placeSeconds": 2,
   "pauseSeconds": 6
 }

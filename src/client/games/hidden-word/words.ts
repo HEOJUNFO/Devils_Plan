@@ -15,7 +15,7 @@
  * noun, as in the show.
  */
 import type { CluesEnd, HiddenEnd } from "../../../shared/games/hidden-word/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -30,12 +30,8 @@ export interface HelpNumbers {
   stages: number;
   answerSeconds: number;
   pieces: number;
-  checks: number;
 }
 
-/** Seconds as the sheet says them: whole minutes where they are, seconds otherwise. */
-const koTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60}분` : `${seconds}초`);
-const enTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`);
 
 /** A line of the bar with the step's clock after it. */
 const timed = (line: string, clock: string): string => (clock === "" ? line : `${line} · ${clock}`);
@@ -53,17 +49,17 @@ const ko = {
       [
         "출제자는 자기 히든 워드와 관련된 힌트 낱말을 하나씩 냅니다. 힌트는 한글 명사이고, 게임의 낱말 목록에 있는 낱말이어야 합니다.",
         "힌트를 낼 때마다 히든 워드와 그 힌트의 유사도(%)가 모두에게 공개됩니다.",
-        "15분 안에 힌트를 10개까지 낼 수 있습니다. 유사도 95% 이상인 힌트가 나오면 힌트 제시는 바로 끝납니다.",
-        "10개를 다 내거나 15분이 지나도 95%가 없으면, 그때까지의 힌트 중 유사도가 가장 높은 것이 표시되고 답 적기로 넘어갑니다.",
+        "7분 30초 안에 힌트를 10개까지 낼 수 있습니다. 유사도 95% 이상인 힌트가 나오면 힌트 제시는 바로 끝납니다.",
+        "10개를 다 내거나 7분 30초가 지나도 95%가 없으면, 그때까지의 힌트 중 유사도가 가장 높은 것이 표시되고 답 적기로 넘어갑니다.",
       ],
       [
-        "출제자를 뺀 모두가 5분 안에 히든 워드라고 생각하는 낱말을 적고, 답은 동시에 공개됩니다.",
+        "출제자를 뺀 모두가 2분 30초 안에 히든 워드라고 생각하는 낱말을 적고, 답은 동시에 공개됩니다.",
         "피스 1개를 쓰면 답을 하나 더 적을 수 있습니다. 히든 워드 하나에 한 번만 쓸 수 있습니다.",
         "맞힌 사람은 모두 승점 1점을 얻고, 그 출제자의 차례가 끝납니다.",
         "아무도 못 맞히면 출제자가 승점을 얻고 힌트를 다시 냅니다. 힌트 제시는 3차까지이고, 1차 뒤에 1점, 2차 뒤에 2점, 3차 뒤에 3점이 쌓입니다.",
       ],
       "모두가 출제자를 하면 1라운드가 끝나고, 각자 남은 낱말 4개 중 하나를 2라운드의 히든 워드로 정합니다. 2라운드는 모든 승점이 2배입니다. 2라운드가 끝나면 승점 합으로 순위를 정하고, 동점은 같은 순위입니다.",
-      "유사도는 이 사이트가 미리 계산해 둔 값입니다. 방송의 유사도와 같은 값이 아닙니다. 뜻이 가깝거나, 함께 떠오르거나, 한 낱말의 다른 뜻에 닿는 낱말일수록 높게 나옵니다. 히든 워드를 정하는 동안에는 내 봉투의 낱말과 다른 낱말의 유사도를 미리 재 볼 수 있습니다.",
+      "유사도는 이 사이트가 미리 계산해 둔 값입니다. 방송의 유사도와 같은 값이 아닙니다. 뜻이 가깝거나, 함께 떠오르거나, 한 낱말의 다른 뜻에 닿는 낱말일수록 높게 나옵니다.",
     ],
   } as RulesSheet,
   notSent: "연결이 끊겨 보내지 못했습니다. 다시 해 주세요",
@@ -72,7 +68,6 @@ const ko = {
     "not-choosing": "지금은 히든 워드를 정하는 때가 아닙니다",
     "already-chosen": "이번 라운드의 히든 워드는 이미 정했습니다",
     "not-in-envelope": "내 봉투에 남은 낱말이 아닙니다",
-    "no-checks-left": "재 볼 수 있는 횟수를 다 썼습니다",
     "not-clue-time": "지금은 힌트를 내는 때가 아닙니다",
     "not-setter": "힌트는 출제자만 낼 수 있습니다",
     "not-in-list": "낱말 목록에 없는 낱말입니다",
@@ -126,9 +121,6 @@ const ko = {
   scene: {
     envelope: "내 봉투",
     used: "지난 라운드",
-    checks: (left: number) => `유사도 재 보기 ${left}번`,
-    checksNone: ["고른 낱말에 다른 낱말이", "힌트로 몇 %일지", "미리 재 볼 수 있습니다"],
-    check: (reference: string, word: string) => `${reference} → ${word}`,
     ready: (done: number, of: number) => `정한 사람 ${done}/${of}`,
     clues: (stage: number, given: number, of: number) => `${stage}차 힌트 ${given}/${of}`,
     earlier: "앞 차의 힌트",
@@ -151,12 +143,9 @@ const ko = {
   },
   /** The label over the box a word is typed in, and its button. */
   box: {
-    check: (reference: string) => `「${reference}」의 힌트로 재 볼 낱말`,
-    checkPick: "먼저 봉투의 낱말을 고르세요",
     clue: "힌트로 낼 낱말 (한글 명사)",
     answer: "히든 워드라고 생각하는 낱말",
     answerSecond: "피스로 적는 둘째 답",
-    doCheck: "재기",
     doClue: "힌트 내기",
     doAnswer: "적기",
   },
@@ -260,17 +249,17 @@ const en: typeof ko = {
       [
         "The word setter gives clue words related to their hidden word, one at a time. A clue is a Korean noun, and has to be in the game's list of words.",
         "With each clue, its similarity score with the hidden word is shown to everyone.",
-        "The setter has 15 minutes and ten clues at most. A clue with a similarity score of at least 95% ends the clues at once.",
-        "If ten clues or the 15 minutes pass without one, the clue with the highest score is marked and the answers follow.",
+        "The setter has 7 minutes 30 seconds and ten clues at most. A clue with a similarity score of at least 95% ends the clues at once.",
+        "If ten clues or the 7 minutes 30 seconds pass without one, the clue with the highest score is marked and the answers follow.",
       ],
       [
-        "Everyone but the setter has five minutes to write down what they think the hidden word is, and the answers are revealed together.",
+        "Everyone but the setter has 2 minutes 30 seconds to write down what they think the hidden word is, and the answers are revealed together.",
         "A Piece buys one additional answer, once for each hidden word.",
         "Everyone with the correct answer scores a point, and that setter's turn is over.",
         "With no correct answers the setter scores and gives clues again: up to three stages, with 1 point after the first, 2 after the second and 3 after the third, each on top of the last.",
       ],
       "When everyone has been the setter, Round 1 is over and each player chooses one of their four remaining words for Round 2, in which every point counts double. After Round 2 the players are ranked by their totals; players level share a place.",
-      "The similarity scores are worked out in advance by this site. They are not the show's scores. A word scores higher the closer it is in meaning, the more readily it comes to mind with the other, or when it meets another meaning of the same word. While you choose your hidden word you can check how other words would score against the words of your envelope.",
+      "The similarity scores are worked out in advance by this site. They are not the show's scores. A word scores higher the closer it is in meaning, the more readily it comes to mind with the other, or when it meets another meaning of the same word.",
     ],
   } as RulesSheet,
   notSent: "Not sent: the connection is down. Try again",
@@ -278,7 +267,6 @@ const en: typeof ko = {
     "not-choosing": "Hidden words are not being chosen right now",
     "already-chosen": "You have chosen this round's hidden word",
     "not-in-envelope": "That is not a word left in your envelope",
-    "no-checks-left": "You have no checks left",
     "not-clue-time": "Clues are not being given right now",
     "not-setter": "Only the word setter gives clues",
     "not-in-list": "That word is not in the list of words",
@@ -326,9 +314,6 @@ const en: typeof ko = {
   scene: {
     envelope: "My envelope",
     used: "last round",
-    checks: (left: number) => `Checks left: ${left}`,
-    checksNone: ["Try a word below to", "see its score as a", "clue for your pick"],
-    check: (reference: string, word: string) => `${reference} → ${word}`,
     ready: (done: number, of: number) => `Chosen ${done}/${of}`,
     clues: (stage: number, given: number, of: number) => `Stage ${stage} clues ${given}/${of}`,
     earlier: "Earlier stages",
@@ -350,12 +335,9 @@ const en: typeof ko = {
     turnPassed: "passed",
   },
   box: {
-    check: (reference: string) => `Word to check as a clue for ${reference}`,
-    checkPick: "Pick a word of your envelope first",
     clue: "Clue word (a Korean noun)",
     answer: "What you think the hidden word is",
     answerSecond: "Second answer, for a Piece",
-    doCheck: "Check",
     doClue: "Give clue",
     doAnswer: "Enter",
   },

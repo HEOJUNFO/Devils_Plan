@@ -99,7 +99,7 @@ describe("미스터리 거래소 in a room: starting", () => {
 
     expect(sent.rules).toEqual({
       rounds: 24,
-      roundSeconds: 300,
+      roundSeconds: 150,
       startCash: 100000,
       startPrice: 10000,
       floorPrice: 100,
@@ -154,7 +154,7 @@ describe("미스터리 거래소 in a room: starting", () => {
 });
 
 describe("미스터리 거래소 in a room: a round", () => {
-  it("asks for the clock when the five minutes are up, and says how long is left", () => {
+  it("asks for the clock when the two and a half minutes are up, and says how long is left", () => {
     const players = candidates(2);
     const session = started(players);
 

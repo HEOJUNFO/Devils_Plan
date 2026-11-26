@@ -15,7 +15,7 @@
   "basicBetEvery": 10,
   "limitLowest": 5,
   "limitHighest": 12,
-  "revealSeconds": 30,
+  "revealSeconds": 15,
   "showSeconds": 7,
   "takeSeconds": 3
 }

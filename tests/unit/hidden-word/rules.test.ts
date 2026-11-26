@@ -266,7 +266,7 @@ describe("giving clues", () => {
     expect(state.history.at(-1)).toEqual({ type: "clues-over", setter: 0, stage: 1, reason: "count" });
   });
 
-  it("ends after fifteen minutes with the clues given so far", () => {
+  it("ends after seven and a half minutes with the clues given so far", () => {
     const state = late(did(start(), 0, { type: "clue", word: "바람" }));
     expect(state.phase).toBe("answer");
     expect(state.clues.map((clue) => clue.word)).toEqual(["바람"]);
@@ -327,7 +327,7 @@ describe("answering", () => {
     expect(applyAction(next, 1, { type: "answer", words: ["오답", "나무"] }, next.at, { ...config, pieces: 0 }, lexicon)).toEqual({ ok: false, reason: "no-pieces" });
   });
 
-  it("shows the answers once everyone has written, or after five minutes", () => {
+  it("shows the answers once everyone has written, or after two and a half minutes", () => {
     expect(answered(start(), []).phase).toBe("reveal");
     const timed = late(did(start(), 1, { type: "answer", words: ["나무"] }));
     expect(timed.phase).toBe("reveal");

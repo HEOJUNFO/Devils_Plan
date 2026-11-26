@@ -5,7 +5,7 @@
  * The screen is 480 by 270 pixels and its lines are placed by the pixel: a
  * sentence changed here is looked at on the screen it is drawn on.
  */
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -27,7 +27,7 @@ const ko = {
         "틀리면 20초 동안 답할 수 없습니다.",
         "한 명만 남기고 모두 맞히면 끝납니다.",
       ],
-      "제한 시간은 5분입니다 (방장이 3분이나 10분으로 바꿀 수 있습니다). 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.",
+      "제한 시간은 2분 30초입니다 (방장이 1분 30초나 5분으로 바꿀 수 있습니다). 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.",
     ],
   } as RulesSheet,
   notSent: "연결이 끊겨 보내지 못했습니다. 다시 해 주세요",
@@ -118,7 +118,7 @@ const ko = {
   /** The two buttons under the results, 88 pixels wide inside. */
   button: { again: keyed("Enter", "새 판"), lobby: keyed("Esc", "대기실로") },
   /** The rules over the screen (H), by the room's own numbers. */
-  help: (lockSeconds: number, minutes: number, alone: boolean): HelpLine[] => [
+  help: (lockSeconds: number, problemSeconds: number, alone: boolean): HelpLine[] => [
     { text: "큐브 세기: 규칙", tone: "title" },
     { text: "그림의 입체가 큐브 몇 개로 되어 있는지 세어, 그 수를 각자 입력합니다." },
     { text: "" },
@@ -130,7 +130,7 @@ const ko = {
     { text: "모두에게 알려지지만, 입력한 숫자는 알려지지 않습니다." },
     { text: `틀리면 ${lockSeconds}초 동안 답할 수 없습니다.` },
     { text: alone ? "혼자 하는 판은 맞히면 끝납니다." : "한 명만 남기고 모두 맞히면 끝납니다." },
-    { text: `제한 시간은 ${minutes}분입니다. 시간이 지나면 그때까지 맞힌 사람만 순위에 듭니다.`, tone: "dim" },
+    { text: `제한 시간은 ${koTime(problemSeconds)}. 지나면 그때까지 맞힌 사람만 순위에 듭니다.`, tone: "dim" },
     { text: "" },
     { text: byInput("숫자 키: 넣기 · Backspace: 지움 · Enter: 입력 (아래 버튼도 같음)", "숫자는 아래 버튼으로 넣고, 입력을 누르면 답합니다."), tone: "dim" },
     { text: byInput("H 또는 Esc: 닫기 · M: 음소거 · T: 채팅", "아무 곳이나 누르면 닫힙니다"), tone: "title" },
@@ -157,7 +157,7 @@ const en: typeof ko = {
         "A wrong answer locks you out for 20 seconds.",
         "The game ends when all but one have got it right.",
       ],
-      "The time limit is 5 minutes (the host can make it 3 or 10). When it runs out, only those who were right by then are ranked.",
+      "The time limit is 2 minutes 30 seconds (the host can make it 1 minute 30 seconds, or 5 minutes). When it runs out, only those who were right by then are ranked.",
     ],
   } as RulesSheet,
   notSent: "Not sent: the connection is down. Try again",
@@ -229,7 +229,7 @@ const en: typeof ko = {
     waitHostOut: "Waiting for the host to start a new game",
   },
   button: { again: keyed("Enter", "again"), lobby: keyed("Esc", "to room") },
-  help: (lockSeconds, minutes, alone) => [
+  help: (lockSeconds, problemSeconds, alone) => [
     { text: "Count the Cubes: rules", tone: "title" },
     { text: "Count how many cubes the solid in the picture is made of," },
     { text: "and enter the number, each player for themselves." },
@@ -242,7 +242,7 @@ const en: typeof ko = {
     { text: "who was right and who was wrong, but not the numbers entered." },
     { text: `A wrong answer locks you out for ${lockSeconds} seconds.` },
     { text: alone ? "A game played alone ends when you get it right." : "The game ends when all but one have got it right." },
-    { text: `Limit: ${minutes} minutes. After that only those who were right are ranked.`, tone: "dim" },
+    { text: `Limit: ${enTime(problemSeconds)}. After that only those who were right are ranked.`, tone: "dim" },
     { text: "" },
     { text: byInput("Digits: type · Backspace: delete · Enter: answer (or the buttons)", "Enter the number with the buttons; OK answers."), tone: "dim" },
     { text: byInput("H or Esc: close · M: mute · T: chat", "Tap anywhere to close"), tone: "title" },

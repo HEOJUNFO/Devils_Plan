@@ -94,12 +94,12 @@ describe("the games a room can be made for", () => {
 
   it("lets a room of 경매 빙고 give a round's two steps as long as its host says, starting with the shortest", () => {
     expect(GAMES["auction-bingo"].variants.map((each) => each.id)).toEqual(["quick", "talk", "show"]);
-    expect(GAMES["auction-bingo"].variants.map((each) => each.title.ko)).toEqual(["선택·입찰 45초", "선택 2분 · 입찰 3분", "방송의 15분 · 20분"]);
+    expect(GAMES["auction-bingo"].variants.map((each) => each.title.ko)).toEqual(["선택·입찰 23초", "선택 60초 · 입찰 90초", "방송의 15분 · 20분"]);
   });
 
-  it("lets a room of 큐브 세기 give its problem as long as its host says, starting with the five minutes it always had", () => {
+  it("lets a room of 큐브 세기 give its problem as long as its host says, starting with the two and a half minutes it has by itself", () => {
     expect(GAMES["count-cubes"].variants.map((each) => each.id)).toEqual(["time-five", "time-three", "time-ten"]);
-    expect(GAMES["count-cubes"].variants.map((each) => each.title.ko)).toEqual(["제한 5분", "제한 3분", "제한 10분"]);
+    expect(GAMES["count-cubes"].variants.map((each) => each.title.ko)).toEqual(["제한 2분 30초", "제한 1분 30초", "제한 5분"]);
   });
 
   it("lets a room of 기억 포커 be as many rounds as its host says, starting with the five it always was", () => {

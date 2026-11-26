@@ -94,8 +94,8 @@ const CELL_Y = 38;
 const CELLS_IN_ROW = 4;
 /** The widest a name is drawn in the list of players, in pixels. */
 const NAME_WIDTH = 62;
-/** With this many seconds or fewer of the round left, the clock turns red: the show's dealer calls the last minute. */
-const HURRY_FROM = 60;
+/** With this many seconds or fewer of the round left, the clock turns red: the last fifth of a round, as the last minute the show's dealer calls is of its five. */
+const HURRY_FROM = 30;
 /** Seconds the results are on show before Enter starts another game: the host may have been pressing Enter to finish a round. */
 const RESULTS_HOLD = 1.5;
 /** How many of the first places the results name in the bar, and how wide its lines may be. */
@@ -1188,7 +1188,7 @@ export function createMarketScreen(canvas: HTMLCanvasElement, handlers: MarketHa
     const lines = WORDS.help({
       stocks: STOCKS.length,
       rounds: rules.rounds,
-      roundMinutes: Math.round(rules.roundSeconds / 60),
+      roundSeconds: rules.roundSeconds,
       startCash: rules.startCash,
       startPrice: rules.startPrice,
       floorPrice: rules.floorPrice,

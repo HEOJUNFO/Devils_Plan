@@ -5,7 +5,7 @@
   "shared": 3,
   "picks": 2,
   "memoriseSeconds": 20,
-  "chooseSeconds": 60,
+  "chooseSeconds": 30,
   "revealSeconds": 12,
   "sharedFromStart": false
 }

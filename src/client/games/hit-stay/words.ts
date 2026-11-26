@@ -47,7 +47,7 @@ const ko = {
       [
         "기본 베팅: 라운드가 시작되면 모두 기본 베팅 칩 1개를 냅니다. 10라운드가 끝날 때마다 1개씩 늘어납니다. 칩이 그보다 적은 사람이 있으면 그 사람의 칩 수만큼만 냅니다.",
         "한계 숫자: 8면체 주사위(5~12)로 그 라운드의 한계 숫자를 정합니다. 카드의 합이 넘으면 안 되는 수입니다.",
-        "카드: 덱을 새로 섞어 3장씩 뒤집어 받습니다. 그 가운데 한 장을 골라 모두에게 공개합니다 (30초; 지나면 방이 한 장을 뽑아 공개합니다).",
+        "카드: 덱을 새로 섞어 3장씩 뒤집어 받습니다. 그 가운데 한 장을 골라 모두에게 공개합니다 (15초; 지나면 방이 한 장을 뽑아 공개합니다).",
         "1차 베팅: 선 플레이어부터 차례로 합니다. 걸린 베팅이 없으면 1개 이상 걸거나 포기하고, 있으면 콜·레이즈·포기 가운데 고릅니다. 남은 사람들이 건 칩이 같아지면 끝납니다. 한 사람이 한 라운드에 낼 수 있는 칩은 그 라운드에 남아 있는 사람 가운데 칩이 가장 적은 사람의 칩 수까지입니다.",
         "힛·스테이: 선 플레이어부터 한 번에 한 장씩, 추가 카드를 받을지(힛) 받지 않을지(스테이) 고릅니다. 추가 카드는 모두에게 공개됩니다. 스테이한 사람에게는 다시 묻지 않고, 모두가 스테이하거나 카드가 떨어지면 끝납니다.",
         "2차 베팅을 한 뒤 남은 사람이 카드를 모두 공개합니다. 누군가 올인(낼 수 있는 칩을 다 냄)했으면 그 뒤의 베팅은 없습니다.",
@@ -217,7 +217,7 @@ const en: typeof ko = {
       [
         "Basic bet: when a round starts, everyone puts in one chip. At the end of every tenth round the basic bet increases by one chip. If someone has fewer chips than that, everyone puts in only as many as that player has.",
         "Limit: an eight-sided die showing 5 through 12 gives the limit for the round, the number your total card value cannot exceed.",
-        "Cards: the deck is shuffled anew and three cards are dealt face down to each player. You choose one card from your hand and reveal it to the table (30 seconds; after that the room reveals one at random).",
+        "Cards: the deck is shuffled anew and three cards are dealt face down to each player. You choose one card from your hand and reveal it to the table (15 seconds; after that the room reveals one at random).",
         "First round of betting: it starts with the first player. With no bet to call, you bet one chip or more, or fold; otherwise you call, raise or fold. It ends once all the players still in have put in the same. Nobody can put in, over a round, more than the number of chips held by the player with the fewest chips among those still in it.",
         "Hit or stay: starting with the first player and one at a time, each player still in can receive an additional card (hit) or not (stay). All additional cards are revealed to the table. A player who stays is not asked again; it goes on until every player stays or there are no cards left.",
         "After a second round of betting, every player still in the round reveals their full hand. Once someone is all in (has put in all they can), there is no more betting.",

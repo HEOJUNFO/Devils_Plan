@@ -92,7 +92,7 @@ describe("GameRoom: a room of HIT, STAY", () => {
     closeAll(clients);
   });
 
-  it("goes on by the room's own clock: after half a minute the room reveals a card for whoever has chosen none, and the betting begins", async () => {
+  it("goes on by the room's own clock: after a quarter of a minute the room reveals a card for whoever has chosen none, and the betting begins", async () => {
     const stub = env.GameRoom.getByName("HSAAB");
     const clients = await players("HSAAB", 2);
     await startGame(clients);

@@ -70,7 +70,7 @@ function round(state: FlagsState, points: number[]): FlagsState {
 }
 
 describe("the numbers of 만국기", () => {
-  it("are the show's: ten flags a second each three times over, 25 to choose five from in a minute, three rounds", () => {
+  it("are the show's: ten flags a second each three times over, 25 to choose five from in half a minute, three rounds", () => {
     expect([config.shown, config.showSeconds, config.passes]).toEqual([SHOWN, SHOW_SECONDS, PASSES]);
     expect(config.shown * config.showSeconds * config.passes).toBe(30);
     expect([config.gapSeconds, config.choices, config.answers, config.chooseSeconds, config.rounds]).toEqual([GAP_SECONDS, CHOICES, ANSWERS, CHOOSE_SECONDS, ROUNDS]);

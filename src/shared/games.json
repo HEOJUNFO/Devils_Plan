@@ -105,22 +105,22 @@
       {
         "id": "time-five",
         "title": {
-          "ko": "제한 5분",
-          "en": "5 min limit"
+          "ko": "제한 2분 30초",
+          "en": "2.5 min limit"
         }
       },
       {
         "id": "time-three",
         "title": {
-          "ko": "제한 3분",
-          "en": "3 min limit"
+          "ko": "제한 1분 30초",
+          "en": "1.5 min limit"
         }
       },
       {
         "id": "time-ten",
         "title": {
-          "ko": "제한 10분",
-          "en": "10 min limit"
+          "ko": "제한 5분",
+          "en": "5 min limit"
         }
       }
     ]
@@ -268,15 +268,15 @@
       {
         "id": "quick",
         "title": {
-          "ko": "선택·입찰 45초",
-          "en": "45 s each"
+          "ko": "선택·입찰 23초",
+          "en": "23 s each"
         }
       },
       {
         "id": "talk",
         "title": {
-          "ko": "선택 2분 · 입찰 3분",
-          "en": "2 min · 3 min"
+          "ko": "선택 60초 · 입찰 90초",
+          "en": "60 s · 90 s"
         }
       },
       {

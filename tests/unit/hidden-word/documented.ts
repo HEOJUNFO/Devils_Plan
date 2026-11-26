@@ -15,12 +15,12 @@ export const ROUNDS = 2;
 export const MULTIPLIERS = [1, 2];
 /** Five nouns in an envelope. */
 export const ENVELOPE = 5;
-/** Fifteen minutes and ten clues at most; a clue of at least 95% ends the giving of clues. */
-export const CLUE_SECONDS = 15 * 60;
+/** Ten clues at most, in half the show's fifteen minutes (the user's decision, 2026-11-26); a clue of at least 95% ends the giving of clues. */
+export const CLUE_SECONDS = (15 * 60) / 2;
 export const CLUES = 10;
 export const THRESHOLD = 95;
-/** Five minutes to write an answer. */
-export const ANSWER_SECONDS = 5 * 60;
+/** Half the show's five minutes to write an answer. */
+export const ANSWER_SECONDS = (5 * 60) / 2;
 /** Three stages of clues at most: 1, 2 and 3 points to the setter. */
 export const STAGES = 3;
 /** First place is paid four pieces. */

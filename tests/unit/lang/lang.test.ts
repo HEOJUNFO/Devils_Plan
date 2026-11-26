@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FALLBACK_LANG, LANGS, chooseLang, englishOrdinal, isLang } from "../../../src/shared/lang";
+import { FALLBACK_LANG, LANGS, chooseLang, enTime, englishOrdinal, isLang, koTime } from "../../../src/shared/lang";
 
 describe("the languages the game can be read in", () => {
   it("are Korean, which the game was written in, and English", () => {
@@ -61,5 +61,23 @@ describe("englishOrdinal", () => {
     [111, "111th"],
   ])("says place %i as %s", (place, said) => {
     expect(englishOrdinal(place)).toBe(said);
+  });
+});
+
+describe("koTime and enTime", () => {
+  it.each([
+    [5, "5초", "5 s"],
+    [23, "23초", "23 s"],
+    [30, "30초", "30 s"],
+    [60, "1분", "1 min"],
+    [90, "1분 30초", "1.5 min"],
+    [100, "1분 40초", "1 min 40 s"],
+    [150, "2분 30초", "2.5 min"],
+    [300, "5분", "5 min"],
+    [450, "7분 30초", "7.5 min"],
+    [1200, "20분", "20 min"],
+  ])("say %i seconds as %s and %s", (seconds, ko, en) => {
+    expect(koTime(seconds)).toBe(ko);
+    expect(enTime(seconds)).toBe(en);
   });
 });

@@ -6,7 +6,7 @@
  * sentence changed here is looked at on the screen it is drawn on.
  */
 import type { Chip, Stand, UnderEnd } from "../../../shared/games/under-thirteen/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -34,7 +34,7 @@ const ko = {
       end: "14라운드를 하면 끝나고, 벌점이 가장 적은 사람이 1위입니다.",
     },
     parts: [
-      "모두가 0~6이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다. 칩의 색은 바위를 올릴 받침대를, 카드의 숫자는 바위의 무게를 정합니다. 내는 시간은 3분입니다.",
+      "모두가 0~6이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다. 칩의 색은 바위를 올릴 받침대를, 카드의 숫자는 바위의 무게를 정합니다. 내는 시간은 1분 30초입니다.",
       [
         "칩을 먼저, 카드를 그다음에 공개하고, 한 사람씩 순서대로 바위를 올립니다. 레인보우 칩을 낸 사람들이 먼저이고 나머지가 그다음입니다. 그 안에서는 카드 숫자가 높은 사람부터, 숫자가 같으면 선 플레이어부터 시계 방향입니다.",
         "세 명 이상이면 판을 시작할 때 각자 설 자리를 고릅니다. 한 번 서면 바꿀 수 없고, 시계 방향은 이 자리의 순서입니다.",
@@ -187,7 +187,7 @@ const ko = {
   /** The rules over the screen (H), by the room's own numbers. */
   help: (n: HelpNumbers): HelpLine[] => [
     { text: "무거운 13: 규칙", tone: "title" },
-    { text: `모두가 ${n.low}~${n.high}이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다 (${Math.round(n.submitSeconds / 60)}분).` },
+    { text: `모두가 ${n.low}~${n.high}이 적힌 바위 카드 1장과 색깔 칩 1개를 몰래 냅니다 (${koTime(n.submitSeconds)}).` },
     { text: "칩의 색은 바위를 올릴 받침대를, 카드의 숫자는 바위의 무게를 정합니다." },
     { text: "" },
     { text: "칩을 먼저, 카드를 그다음에 공개하고, 한 사람씩 순서대로 바위를 올립니다:" },
@@ -214,7 +214,7 @@ const en: typeof ko = {
       end: "After 14 rounds, the fewest penalty points wins.",
     },
     parts: [
-      "Everyone secretly puts in one rock card, numbered 0 to 6, and one color chip. The chip's color says which stand the rock goes on; the card's number is the rock's weight. You have 3 minutes.",
+      "Everyone secretly puts in one rock card, numbered 0 to 6, and one color chip. The chip's color says which stand the rock goes on; the card's number is the rock's weight. You have 1 minute 30 seconds.",
       [
         "The chips are shown first, then the cards, and the rocks are placed one player at a time: those with a rainbow chip first, then the rest. In each group the higher card goes first, and between equal cards it is clockwise from the first player.",
         "With three or more players, everyone picks a spot to stand at as the game starts. A spot once taken cannot be changed, and clockwise is the order of those spots.",
@@ -338,7 +338,7 @@ const en: typeof ko = {
     { text: "Heavy 13: rules", tone: "title" },
     { text: `Everyone secretly puts in a rock card (${n.low} to ${n.high}) and a color chip.` },
     { text: "The chip says which stand; the card's number is the rock's weight." },
-    { text: `You have ${Math.round(n.submitSeconds / 60)} minutes.`, tone: "dim" },
+    { text: `You have ${enTime(n.submitSeconds)}.`, tone: "dim" },
     { text: "Chips are shown first, then cards. Rocks go on one at a time:" },
     { text: "rainbow chips first; in each group higher cards, ties clockwise." },
     { text: "With 3 or more, spots are picked first and kept: that is clockwise." },

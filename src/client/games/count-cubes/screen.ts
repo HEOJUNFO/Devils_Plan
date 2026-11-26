@@ -674,7 +674,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   function drawHelp(): void {
     if (latest === null) return;
     const rules = latest.rules;
-    const lines = WORDS.help(rules.lockSeconds, Math.round(rules.problemSeconds / 60), latest.players.length === 1);
+    const lines = WORDS.help(rules.lockSeconds, rules.problemSeconds, latest.players.length === 1);
     pen.clear(C.night);
     pen.px(8, 8, W - 16, H - 16, C.steelDD);
     pen.px(9, 9, W - 18, H - 18, C.bar);

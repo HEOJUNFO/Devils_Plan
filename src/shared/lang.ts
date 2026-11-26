@@ -29,6 +29,27 @@ export function englishOrdinal(n: number): string {
 }
 
 /**
+ * A length of time as a rules sheet says it in Korean: seconds under a
+ * minute ("30초"), whole minutes where they are ("5분"), both otherwise
+ * ("2분 30초").
+ */
+export function koTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds - minutes * 60;
+  if (minutes === 0) return `${rest}초`;
+  return rest === 0 ? `${minutes}분` : `${minutes}분 ${rest}초`;
+}
+
+/** The same length in English: "30 s", "5 min", "2.5 min" for a half minute over, "2 min 10 s" otherwise. */
+export function enTime(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds - minutes * 60;
+  if (minutes === 0) return `${rest} s`;
+  if (rest === 30) return `${minutes}.5 min`;
+  return rest === 0 ? `${minutes} min` : `${minutes} min ${rest} s`;
+}
+
+/**
  * The language a page shows: the one its address asks for (`?lang=`), else
  * the one the reader last chose there, else the first the browser prefers
  * that there are words for ("ko-KR" is Korean), else `FALLBACK_LANG`. Anything

@@ -11,7 +11,7 @@
  * 국기, 동그라미, 연장): design/games/flags-around-the-world.md.
  */
 import type { FlagsEnd } from "../../../shared/games/flags-around-the-world/rules";
-import { englishOrdinal } from "../../../shared/lang";
+import { enTime, englishOrdinal, koTime } from "../../../shared/lang";
 import { words } from "../../lang";
 import type { HelpLine, RulesSheet } from "../../sheet";
 import { byInput, keyed } from "../../touch";
@@ -29,9 +29,6 @@ export interface HelpNumbers {
   tiebreaks: number;
 }
 
-/** Seconds as the sheet says them: whole minutes where they are, seconds otherwise. */
-const koTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60}분` : `${seconds}초`);
-const enTime = (seconds: number): string => (seconds % 60 === 0 ? `${seconds / 60} min` : `${seconds} s`);
 
 /** A line of the bar with the step's clock after it. */
 const timed = (line: string, clock: string): string => (clock === "" ? line : `${line} · ${clock}`);
@@ -41,17 +38,17 @@ const ko = {
     title: "만국기: 규칙",
     brief: {
       goal: "잠깐 지나간 국기 10개 가운데 5개를, 25개 속에서 찾아내는 기억력 게임.",
-      play: "국기 10개가 1초씩, 같은 순서로 세 번 지나갑니다. 5초 뒤 25개가 나오면 1분 안에 고릅니다.",
+      play: "국기 10개가 1초씩, 같은 순서로 세 번 지나갑니다. 5초 뒤 25개가 나오면 30초 안에 고릅니다.",
       end: "맞힌 국기 하나에 1점. 3라운드의 점수 합이 가장 높으면 승리.",
     },
     parts: [
       "2명부터 16명까지 함께 합니다. 라운드마다 서로 다른 나라의 국기 10개가 1초에 하나씩 차례로 나오고, 같은 순서로 세 번 되풀이됩니다 (30초).",
-      "마지막 국기가 지나가고 5초 뒤, 화면에 국기 25개가 나옵니다. 그 가운데 5개가 방금 본 10개에 들어 있던 국기입니다. 1분 안에 그 5개를 찾아 동그라미를 칩니다.",
+      "마지막 국기가 지나가고 5초 뒤, 화면에 국기 25개가 나옵니다. 그 가운데 5개가 방금 본 10개에 들어 있던 국기입니다. 30초 안에 그 5개를 찾아 동그라미를 칩니다.",
       [
         "맞힌 국기 하나에 1점입니다. 틀린 국기를 골라도 점수가 깎이지 않습니다.",
         "5개까지만 고를 수 있습니다. 덜 골라도 됩니다.",
-        "「제출」을 누른 뒤에는 바꿀 수 없습니다. 누르지 않아도 1분이 다 되면 그때까지 고른 것이 제출됩니다.",
-        "모두 제출하면 1분을 기다리지 않고 정답을 공개합니다.",
+        "「제출」을 누른 뒤에는 바꿀 수 없습니다. 누르지 않아도 30초가 다 되면 그때까지 고른 것이 제출됩니다.",
+        "모두 제출하면 30초를 기다리지 않고 정답을 공개합니다.",
       ],
       "3라운드를 하고 점수 합이 가장 높은 사람이 1위입니다. 1위가 여럿이면 그 사람들끼리 연장 라운드를 하고 (3번까지), 그래도 같으면 공동 1위입니다. 그 아래의 동점은 같은 순위가 됩니다.",
       "국기는 유엔 회원국 193개국의 것이고, 모두 가로 4 세로 3의 비율로 작게 그렸습니다. 이 크기에서 구별되지 않는 국기(루마니아와 차드, 인도네시아와 모나코)는 한 라운드에 함께 나오지 않습니다. 한 판 안에서는 앞 라운드에 지나간 국기가 다시 나오지 않습니다.",
@@ -175,12 +172,12 @@ const en: typeof ko = {
     title: "Flags Around the World: rules",
     brief: {
       goal: "A memory game: of ten national flags that flash by, find five among 25.",
-      play: "Ten flags are shown for a second each, three times in the same order. Five seconds later 25 appear: you have a minute.",
+      play: "Ten flags are shown for a second each, three times in the same order. Five seconds later 25 appear: you have 30 seconds.",
       end: "One point for each correct flag. The highest total over three rounds wins.",
     },
     parts: [
       "For 2 to 16 players. Each round, ten different national flags are shown back to back for one second each, and the sequence is repeated three times in the same order (30 seconds).",
-      "Five seconds after the last flag, 25 flags appear on the screen. Included in the 25 are five of the ten you have just seen. You have one minute to find and circle those five.",
+      "Five seconds after the last flag, 25 flags appear on the screen. Included in the 25 are five of the ten you have just seen. You have 30 seconds to find and circle those five.",
       [
         "You score one point for each correct flag. A wrong flag costs nothing.",
         "You may circle five flags at most, or fewer.",
