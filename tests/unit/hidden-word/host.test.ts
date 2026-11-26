@@ -12,13 +12,13 @@ const T0 = 2_000_000;
 const BOT_MS = botJson.afterSeconds * 1000;
 const STAND_MS = hostJson.standSeconds * 1000;
 
-/** Three envelopes. Every word has 숲 as a clue that ends the giving of clues, and 숲 has 나무 nearest it. */
+/** Three envelopes. Every word has 숲 as a clue that ends the giving of clues, and 숲 has 나무 nearest it, then 모자. */
 const WORDS = [
   ["나무", "의자", "편지", "모자", "기차"],
   ["바다", "연필", "시계", "구두", "피아노"],
   ["사과", "거울", "우산", "비누", "자전거"],
 ];
-const SCORES: Record<string, number> = { "숲 나무": 99 };
+const SCORES: Record<string, number> = { "숲 나무": 99, "숲 모자": 98 };
 for (const word of WORDS.flat()) SCORES[`${word} 숲`] = 96;
 const lexicon = scripted(WORDS.flat(), SCORES, ["오답", "잎"]);
 const host = makeHiddenHost(lexicon);
@@ -91,6 +91,14 @@ describe("starting 히든 워드 in a room", () => {
 });
 
 describe("what a player is sent", () => {
+  it("has a hand the pages of builds before 9b5e8dc can draw: no checks left, none made", () => {
+    // those pages read `hand.checks.length` while a hidden word is chosen, and threw on a hand without it
+    // (the inbox, 2026-11-26 13:55 and 22:57)
+    const { session, presence } = started(3);
+    expect(seen(session, "t0", presence, T0).view.hand).toEqual({ words: WORDS[0], used: [], chosen: null, checksLeft: 0, checks: [] });
+    expect(seen(session, null, presence, T0).view.hand).toBeNull();
+  });
+
   it("has their own envelope and nobody else's, the numbers of the rules, and the clock", () => {
     const { session, presence } = started(3);
     const mine = seen(session, "t0", presence, T0 + 2000);
@@ -189,7 +197,8 @@ describe("the bot", () => {
     expect(session.state.ended).toBe("played");
     expect(session.state.past.length).toBe(4);
     expect(host.deadline(session)).toBeNull();
-    // the bot found the person's first word at once, and did not find the second in its three stages, at double worth
+    // the bot found the person's first word at once, and did not find the second in its three stages, at double worth:
+    // the words the room opened in the second and third (나무, 편지) scored under 숲, and the bot went on answering by 숲
     expect(session.state.scores[0]).toEqual({ player: 0, rounds: [0, 2 * (1 + 2 + 3)] });
     expect(session.state.past.filter((turn) => turn.setter === 0)).toEqual([
       { round: 1, setter: 0, word: "나무", stage: 1, right: [1], setterPoints: 0 },

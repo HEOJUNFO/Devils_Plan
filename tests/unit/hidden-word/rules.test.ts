@@ -248,17 +248,51 @@ describe("giving clues", () => {
     expect(state.history.at(-1)).toEqual({ type: "clues-over", setter: 0, stage: 1, reason: "count" });
   });
 
-  it("ends after seven and a half minutes with the clues given so far", () => {
+  it("has the room open the word nearest the hidden word once ten clues are given with none of 95%", () => {
+    let state = start();
+    const low = ["바람", "꾸중", "도토리", "버섯", "소나무", "물", "돌", "흙", "꽃", "풀"];
+    for (const word of low) state = did(state, 0, { type: "clue", word });
+    expect(state.clues.map((clue) => clue.word)).toEqual([...low, "숲"]);
+    expect(state.clues.at(-1)).toEqual({ word: "숲", score: 97, stage: 1, room: true });
+    // everyone is told the word before they are told the clues are over
+    expect(state.history.slice(-2)).toEqual([
+      { type: "clue", setter: 0, word: "숲", score: 97, room: true },
+      { type: "clues-over", setter: 0, stage: 1, reason: "count" },
+    ]);
+    for (const viewer of [0, 1, 2, null]) expect(viewFor(state, viewer).clues.at(-1)).toEqual({ word: "숲", score: 97, stage: 1, room: true });
+  });
+
+  it("opens no word where a clue of 95% ended the clues", () => {
+    const state = did(did(start(), 0, { type: "clue", word: "바람" }), 0, { type: "clue", word: "잎" });
+    expect(state.clues.map((clue) => clue.word)).toEqual(["바람", "잎"]);
+    expect(state.clues.some((clue) => clue.room)).toBe(false);
+  });
+
+  it("ends after seven and a half minutes, the room opening the word nearest the hidden word after the clues given so far", () => {
     const state = late(did(start(), 0, { type: "clue", word: "바람" }));
     expect(state.phase).toBe("answer");
-    expect(state.clues.map((clue) => clue.word)).toEqual(["바람"]);
+    expect(state.clues).toEqual([
+      { word: "바람", score: 78.5, stage: 1, room: false },
+      { word: "숲", score: 97, stage: 1, room: true },
+    ]);
     expect(state.history.at(-1)).toEqual({ type: "clues-over", setter: 0, stage: 1, reason: "time" });
   });
 
-  it("has the room give the word nearest the hidden word for a setter who gave none in time", () => {
+  it("has the room open the word nearest the hidden word for a setter who gave none in time", () => {
     const state = late(start());
     expect(state.phase).toBe("answer");
     expect(state.clues).toEqual([{ word: "숲", score: 97, stage: 1, room: true }]);
+  });
+
+  it("opens another word in the next stage: the nearest of those not yet given", () => {
+    // nobody answers the first stage, whose word the room opened; the second runs out of time as well
+    const second = late(late(late(late(start()))));
+    expect(second.stage).toBe(2);
+    expect(second.phase).toBe("answer");
+    expect(second.clues).toEqual([
+      { word: "숲", score: 97, stage: 1, room: true },
+      { word: "뿌리", score: 96.5, stage: 2, room: true },
+    ]);
   });
 });
 

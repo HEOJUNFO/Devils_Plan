@@ -84,6 +84,8 @@ const ROWS_Y = 48;
 const ROW = 13;
 /** How many lines a column has, over the box a word is typed in. */
 const ROWS = 10;
+/** How far apart the lines of ten clues and the word the room opened after them are: eleven lines, set closer to end over the box. */
+const FULL_ROW = 12;
 /** The words of the envelope, one under another. */
 const CARD_W = 124;
 const CARD_H = 20;
@@ -254,10 +256,14 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
       if (event.setter !== mine || event.room) sfx.chip();
     } else if (event.type === "clues-over") {
       const threshold = latest?.rules.threshold ?? 0;
+      // (clues that ended with none at the mark: the room opened the word nearest the hidden word)
+      const opened = cluesNow().some((clue) => clue.room);
       if (mine !== null && event.setter !== mine) {
-        say(WORDS.say.answerNow);
+        say(opened ? WORDS.say.answerOpened : WORDS.say.answerNow);
         sfx.turn();
-      } else say(event.reason === "reached" ? WORDS.say.reached(threshold) : event.reason === "count" ? WORDS.say.count : WORDS.say.time);
+      } else if (event.reason === "reached") say(WORDS.say.reached(threshold));
+      else if (event.reason === "count") say(opened ? WORDS.say.countOpened : WORDS.say.count);
+      else say(opened ? WORDS.say.timeOpened : WORDS.say.time);
     } else if (event.type === "answered") {
       if (event.player !== mine) sfx.chip();
     } else if (event.type === "scored") {
@@ -548,7 +554,8 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
     let room = width - pen.width(score) - 6;
     if (tag !== "") {
       pen.txt(tag, x + room, y, C.dim, "right");
-      room -= pen.width(tag) + 4;
+      // (3: a word of five letters, "auto" and "99.5%" are a column's width to the pixel)
+      room -= pen.width(tag) + 3;
     }
     pen.txt(pen.fit(clue.word, room), x, y, colour);
   }
@@ -604,13 +611,14 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
     else if (setter === mine && view.hand?.chosen != null) top(WORDS.top.setter(view.hand.chosen, view.stage), C.teal);
     else top(WORDS.top.guess(pen.fit(nickOf(setter), 56), view.stage), C.bone);
 
-    // the clues of this stage; once clues are over without one that reached the mark, the highest is pointed out
+    // the clues of this stage, and after them the word the room opened where none of them reached the mark
     const now = cluesNow();
-    pen.txt(WORDS.scene.clues(view.stage, now.length, rules.clues), LEFT_X, HEAD_Y, C.boneD);
+    pen.txt(WORDS.scene.clues(view.stage, now.filter((clue) => !clue.room).length, rules.clues), LEFT_X, HEAD_Y, C.boneD);
     const over = view.phase !== "clue";
     const highest = now.reduce<Clue | null>((best, clue) => (best === null || clue.score > best.score ? clue : best), null);
     if (now.length === 0) pen.txt(WORDS.scene.noClue, LEFT_X, ROWS_Y, C.dim);
-    now.slice(0, ROWS).forEach((clue, i) => clueRow(clue, LEFT_X, ROWS_Y + i * ROW, LEFT_W, over && clue === highest));
+    const pitch = now.length > ROWS ? FULL_ROW : ROW;
+    now.slice(0, ROWS + 1).forEach((clue, i) => clueRow(clue, LEFT_X, ROWS_Y + i * pitch, LEFT_W, over && clue === highest));
 
     // the lower block of the right column: the answer being written, how many have answered, or the answers
     const guessing = mine !== null && mine !== setter && view.phase === "answer";
@@ -764,7 +772,7 @@ export function createHiddenScreen(canvas: HTMLCanvasElement, handlers: HiddenHa
     for (const event of view.history) {
       if (event.type === "round") lines.push([WORDS.log.round(event.round), C.amber]);
       else if (event.type === "turn") lines.push([WORDS.log.turn(short(event.setter), event.stage), C.amber]);
-      else if (event.type === "clue") lines.push([WORDS.log.clue(event.word, event.score), event.score >= latest.rules.threshold ? C.teal : C.bone]);
+      else if (event.type === "clue") lines.push([(event.room ? WORDS.log.opened : WORDS.log.clue)(event.word, event.score), event.score >= latest.rules.threshold ? C.teal : C.bone]);
       else if (event.type === "clues-over") lines.push([WORDS.log.cluesOver[event.reason], C.boneD]);
       else if (event.type === "answered") lines.push([WORDS.log.answered(short(event.player), event.piece), C.boneD]);
       else if (event.type === "scored") lines.push(event.word !== null && event.right.length > 0 ? [WORDS.log.found(event.word, event.right.length), C.teal] : [WORDS.log.notFound(short(event.setter), event.setterPoints), C.bone]);

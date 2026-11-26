@@ -116,6 +116,26 @@ export interface HiddenTablePlayer {
   left: boolean;
 }
 
+/**
+ * A view as it is sent: its hand says of the similarity checks that none is
+ * left and none was made.
+ *
+ * The checks went on 2026-11-26 (9b5e8dc, 6c34d3c), and a hand has had
+ * neither `checksLeft` nor `checks` since. A page of a build from before
+ * that, still open, draws them while a hidden word is chosen, and throws on
+ * a hand without them: its player cannot choose (the inbox, 13:55 and 22:57
+ * of that day, the second from a page a day old). Such a page loads itself
+ * again only in a waiting room, and not at all once it has done so and come
+ * back the same. With these two it draws an empty column and no box to
+ * check with. The pages of this build read neither. To be taken out once no
+ * such page is left open.
+ */
+function forOlderPages(view: HiddenView): HiddenView {
+  if (view.hand === null) return view;
+  const hand: NonNullable<HiddenView["hand"]> & { checksLeft: number; checks: never[] } = { ...view.hand, checksLeft: 0, checks: [] };
+  return { ...view, hand };
+}
+
 /** What one player is sent about the game. */
 export interface HiddenSnapshot {
   startedAt: number;
@@ -294,7 +314,7 @@ export function makeHiddenHost(lexicon: Lexicon): GameHost<HiddenSession, Hidden
           wordLength: config.wordLength,
           firstPieces: hosting.firstPieces,
         },
-        view: viewFor(state, seat?.id ?? null),
+        view: forOlderPages(viewFor(state, seat?.id ?? null)),
         players: session.players.map((player) => ({
           id: player.id,
           nick: player.nick,

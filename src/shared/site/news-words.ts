@@ -54,6 +54,19 @@ const OMOK = name("point-gomoku");
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
+    date: "2026-11-27",
+    lines: [
+      {
+        ko: `${HIDDEN.ko}: 힌트 10개를 다 내거나 힌트 시간이 끝나도 유사도 95% 이상인 힌트가 없으면, 낱말 목록에서 히든 워드와 유사도가 가장 높은 낱말이 자동으로 공개됩니다. 전에는 그때까지 낸 힌트 가운데 가장 높은 것에 표시만 했습니다.`,
+        en: `${HIDDEN.en}: when ten clues are given or the time for clues runs out with no clue of at least 95%, the word of the game's list with the highest similarity score to the hidden word is now automatically revealed. Before, the highest of the clues given was only marked.`,
+      },
+      {
+        ko: `${HIDDEN.ko}: 오래 열어 둔 페이지에서 히든 워드를 고르는 화면에 오류가 나던 문제를 고쳤습니다.`,
+        en: `${HIDDEN.en}: fixed an error on the screen where you pick your hidden word, on a page that had been left open since before an update.`,
+      },
+    ],
+  },
+  {
     date: "2026-11-26",
     lines: [
       {

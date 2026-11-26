@@ -5,8 +5,9 @@
  * nouns and hides one of them for each of the two rounds. In a round each
  * player is the word setter once, in an order drawn by chance. The setter
  * gives clue words; each is scored against the hidden word and the score is
- * shown to all. A clue of at least 95% ends the giving of clues (so do ten
- * clues, and fifteen minutes). The others then have five minutes to write
+ * shown to all. A clue of at least 95% ends the giving of clues. So do ten
+ * clues, and the time for them: the room then opens the word of the list
+ * nearest the hidden word (the wiki's rule 9). The others then have time to write
  * the hidden word, and the answers are shown together; a Piece buys a second
  * answer, once for each hidden word. Whoever is right scores a point and the
  * setter's turn is over. With nobody right the setter scores (1, 2 and 3
@@ -82,7 +83,11 @@ export type HiddenEnd = "played" | "left" | "abandoned";
 /** Why the giving of clues ended: a clue reached the mark, the clues ran out, or the time did. */
 export type CluesEnd = "reached" | "count" | "time";
 
-/** A clue and what it scored. `room` marks the one the room gave for a setter who gave none in time. */
+/**
+ * A clue and what it scored. `room` marks the word the room opened where the
+ * clues of a stage ended with none at the mark: the word of the list nearest
+ * the hidden word.
+ */
 export interface Clue {
   word: string;
   score: number;
@@ -563,6 +568,28 @@ function score(state: HiddenState, now: number, config: HiddenConfig): void {
   tell(state, { type: "scored", setter, stage: state.stage, right, each, setterPoints, word: over ? word : null }, now);
 }
 
+/**
+ * The clues of the stage ended with none at the mark: the room opens the
+ * word of the list nearest the hidden word, of those not given for it yet,
+ * and it stands with the clues. `state` is changed.
+ *
+ * The wiki's rule 9: "히든 워드와 유사도가 가장 높은 워드가 공개된다". It says so
+ * of ten clues; the same is done when the time for clues runs out, or a
+ * setter would keep the word shut by giving nine and waiting.
+ */
+function openNearest(state: HiddenState, now: number, lexicon: Lexicon): void {
+  const hidden = hiddenOf(state) as string;
+  const [word] = lexicon.nearest(
+    hidden,
+    1,
+    state.clues.map((each) => each.word),
+  );
+  const scored = word === undefined ? null : lexicon.score(hidden, word);
+  if (word === undefined || scored === null) return;
+  state.clues.push({ word, score: scored, stage: state.stage, room: true });
+  tell(state, { type: "clue", setter: state.setter as number, word, score: scored, room: true }, now);
+}
+
 /** The giving of clues is over: the others write their answers. `state` is changed. */
 function closeClues(state: HiddenState, reason: CluesEnd, now: number, config: HiddenConfig): void {
   state.phase = "answer";
@@ -617,7 +644,10 @@ export function applyAction(state: HiddenState, player: number, action: HiddenAc
     next.clues.push({ word: action.word, score: scored, stage: state.stage, room: false });
     tell(next, { type: "clue", setter: player, word: action.word, score: scored, room: false }, now);
     if (scored >= config.threshold) closeClues(next, "reached", now, config);
-    else if (next.clues.filter((each) => each.stage === state.stage).length >= config.clues) closeClues(next, "count", now, config);
+    else if (next.clues.filter((each) => each.stage === state.stage).length >= config.clues) {
+      openNearest(next, now, lexicon);
+      closeClues(next, "count", now, config);
+    }
     return { ok: true, state: next };
   }
 
@@ -678,28 +708,16 @@ export function deadline(state: HiddenState): number | null {
 /**
  * What the clock brings at `now`: the hidden words of those who have not
  * chosen, the end of a giving of clues, the answers as they stand, or what
- * follows them. A setter who gave no clue in the time has one given by the
- * room: the word of the list nearest the hidden word. Returns `state`
- * itself when nothing is due.
+ * follows them. Where the time for clues runs out the room opens the word
+ * of the list nearest the hidden word, whether the setter gave clues or
+ * none. Returns `state` itself when nothing is due.
  */
 export function applyTimeout(state: HiddenState, now: number, config: HiddenConfig, lexicon: Lexicon): HiddenState {
   if (state.phase === "ended" || state.until === null || now < state.until) return state;
   const next = clone(state);
   if (state.phase === "choose") closeChoosing(next, now, config);
   else if (state.phase === "clue") {
-    if (!next.clues.some((each) => each.stage === next.stage)) {
-      const hidden = hiddenOf(next) as string;
-      const [word] = lexicon.nearest(
-        hidden,
-        1,
-        next.clues.map((each) => each.word),
-      );
-      const scored = word === undefined ? null : lexicon.score(hidden, word);
-      if (word !== undefined && scored !== null) {
-        next.clues.push({ word, score: scored, stage: next.stage, room: true });
-        tell(next, { type: "clue", setter: next.setter as number, word, score: scored, room: true }, now);
-      }
-    }
+    openNearest(next, now, lexicon);
     closeClues(next, "time", now, config);
   } else if (state.phase === "answer") score(next, now, config);
   else advance(next, now, config);

@@ -65,7 +65,8 @@ describe("GameRoom: a room of 히든 워드", () => {
     games.forEach((game, n) => {
       expect(game).toMatchObject({ room: "HWAAA", game: GAME, frozen: false });
       expect(game.view).toMatchObject({ phase: "choose", round: 1, you: n, order: null, setter: null, clues: [], ready: [], result: null, answer: null });
-      expect(game.view.hand).toEqual({ words: game.view.hand?.words, used: [], chosen: null });
+      // (`checksLeft` and `checks` are there for pages of builds before 9b5e8dc, which throw on a hand without them)
+      expect(game.view.hand).toEqual({ words: game.view.hand?.words, used: [], chosen: null, checksLeft: 0, checks: [] });
       expect(game.view.hand?.words).toHaveLength(5);
       expect(game.rules).toMatchObject({ rounds: 2, envelope: 5, clues: 10, clueSeconds: 450, threshold: 95, stages: 3, answerSeconds: 150, pieces: 3 });
       expect(game.rules).not.toHaveProperty("checks");
