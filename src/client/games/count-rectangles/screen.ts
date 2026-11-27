@@ -29,6 +29,7 @@ import {
 } from "../../game/draw";
 import { FIGURE_COUNT, figureRects } from "../../game/figures";
 import { C } from "../../game/palette";
+import { pixelFont } from "../../game/pixel-font";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import * as fxlib from "../../game/pixelfx.js";
 import { lessMotion } from "../../game/motion";
@@ -1178,7 +1179,7 @@ export function createRectScreen(canvas: HTMLCanvasElement, handlers: RectHandle
   }
   requestAnimationFrame(frame);
   // the pixel font comes with the page: draw again once it is in
-  void document.fonts?.load("12px Galmuri11");
+  void pixelFont();
 
   return {
     update,

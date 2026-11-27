@@ -56,6 +56,7 @@ import {
 import { CHAIR_DOWN, FIGURE_COUNT } from "./figures";
 import { makeRoom, type LabelBox, type LabelRoom } from "./labels";
 import { C } from "./palette";
+import { pixelFont } from "./pixel-font";
 import * as fxlib from "./pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "./pointer";
 import { lessMotion } from "./motion";
@@ -1596,7 +1597,7 @@ export function createTable(canvas: HTMLCanvasElement, handlers: TableHandlers):
   }
   requestAnimationFrame(frame);
   // the pixel font comes with the page: draw again once it is in
-  void document.fonts?.load("12px Galmuri11");
+  void pixelFont();
 
   return {
     update,

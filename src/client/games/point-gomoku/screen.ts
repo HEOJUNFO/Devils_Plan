@@ -20,6 +20,7 @@ import type { VoiceMark } from "../../../shared/voice";
 import { omokWaits } from "../../../shared/waits";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { C } from "../../game/palette";
+import { pixelFont } from "../../game/pixel-font";
 import { AGAIN_REACH, LOBBY_REACH, RESULTS_PRESS_HOLD, watchPointer } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
 import { TOUCH } from "../../touch";
@@ -859,7 +860,7 @@ export function createOmokScreen(canvas: HTMLCanvasElement, handlers: OmokHandle
   }
   requestAnimationFrame(loop);
   // the pixel font comes with the page: draw again once it is in
-  void document.fonts?.load("12px Galmuri11");
+  void pixelFont();
 
   return {
     update,

@@ -31,6 +31,7 @@ import {
 import { FIGURE_COUNT } from "./game/figures";
 import { lessMotion } from "./game/motion";
 import { C } from "./game/palette";
+import { pixelFont } from "./game/pixel-font";
 import { WORDS } from "./words";
 
 /** The lobby's picture. */
@@ -323,7 +324,7 @@ export function createLobbyScene(
   }
 
   // the pixel font comes with the page: the names are drawn again once it is in
-  void document.fonts?.load("12px Galmuri11");
+  void pixelFont();
 
   return {
     show(view: LobbyView | null): void {

@@ -25,6 +25,7 @@ import type { VoiceMark } from "../../../shared/voice";
 import { BAR_Y, H, PANEL_X, Pen, SCENE_W, VOICE_MARK_W, W, drawSpeech, drawVoiceMark, speechLines, speechSeconds } from "../../game/draw";
 import { createBursts } from "../../game/bursts";
 import { C } from "../../game/palette";
+import { pixelFont } from "../../game/pixel-font";
 import { confetti } from "../../game/pixelfx.js";
 import { AGAIN_REACH, LOBBY_REACH, watchPointer, RESULTS_PRESS_HOLD } from "../../game/pointer";
 import { isMuted, setMuted, sfx, startAudio } from "../../game/sound";
@@ -811,7 +812,7 @@ export function createCubesScreen(canvas: HTMLCanvasElement, handlers: CubesHand
   }
   requestAnimationFrame(frame);
   // the pixel font comes with the page: draw again once it is in (the scene's canvas is not drawn every frame)
-  void document.fonts?.load("12px Galmuri11").then(() => {
+  void pixelFont().then(() => {
     painted = null;
   });
 
