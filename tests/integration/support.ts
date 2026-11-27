@@ -37,6 +37,7 @@ export type HiddenMessage = Extract<ServerMessage, { type: "game"; game: "hidden
 export type TowerMessage = Extract<ServerMessage, { type: "game"; game: "tower-of-equations" }>;
 export type OmokMessage = Extract<ServerMessage, { type: "game"; game: "point-gomoku" }>;
 export type LinkMessage = Extract<ServerMessage, { type: "game"; game: "color-link" }>;
+export type JanggiMessage = Extract<ServerMessage, { type: "game"; game: "card-janggi" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -296,6 +297,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "color-link" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 카드 장기 that satisfies `match`. */
+  async janggiWhere(match: (game: JanggiMessage) => boolean = () => true): Promise<JanggiMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "card-janggi" && match(message)) return message;
     }
   }
 

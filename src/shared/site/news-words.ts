@@ -51,12 +51,17 @@ const HIDDEN = name("hidden-word");
 const TOWER = name("tower-of-equations");
 const OMOK = name("point-gomoku");
 const LINK = name("color-link");
+const JANGGI = name("card-janggi");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-27",
     lines: [
+      {
+        ko: `새 게임 ${JANGGI.ko}: 결승의 첫 번째 게임으로, 두 사람이 합니다. 가로 6칸, 세로 5칸 판에 큰 말 하나와 작은 말 셋을 두고, 행마 카드 다섯 장(쥐·말·원숭이·코끼리·기린)을 쓸 순서대로 엎어 놓습니다. 차례마다 앞면인 카드대로 내 말 하나를 옮기고 다음 카드를 공개합니다. 다 쓰면 곧바로 다시 배치합니다. 내 큰 말이 상대 큰 말의 시작 칸에 가거나 상대의 큰 말을 잡으면 그 라운드를 이기고, 3라운드 가운데 2승이면 이깁니다. 판과 카드의 행마는 방송 화면에서 읽었습니다.`,
+        en: `New game, ${JANGGI.en}: the first game of the final, for two players. On a board of 6 squares by 5 you each have one great piece and three small ones, and you arrange five movement cards (rat, horse, monkey, elephant, giraffe) face down in the order you will use them. Each turn you move one of your pieces by your face-up card, and your next card is turned over. When you run out, you rearrange them at once. Move your great piece onto the starting square of your opponent's great piece, or capture their great piece, to win the round; two rounds of three win the game. The board and the cards' movements were read from the broadcast.`,
+      },
       {
         ko: `새 게임 ${LINK.ko}: 결승의 두 번째 게임으로, 두 사람이 합니다. 색마다 두 개씩 있는 말을 번갈아 판에 놓되, 같은 색의 두 말이 6칸 이상의 길로 이어질 수 있어야 하고 길끼리 겹치면 안 됩니다. 더는 이을 수 없다고 보면 말을 놓는 대신 연결 불가를 선언합니다. 마지막에 말을 놓은 사람이 모든 짝을 이어 보이면 1점, 못 하면 선언한 사람이 1점. 3점을 먼저 얻으면 이깁니다. 1·2라운드의 판은 방송의 판입니다.`,
         en: `New game, ${LINK.en}: the second game of the final, for two players. Take turns placing pieces, two of each color, so that the two of a color can be linked by a path of at least 6 spaces, with no paths overlapping. When you think the board can no longer be linked, declare impossibility instead of placing. The player who placed last gets a point for proving every connection; otherwise the declarer gets it. First to 3 points wins. The boards of Rounds 1 and 2 are the show's.`,

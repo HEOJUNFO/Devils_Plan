@@ -437,5 +437,20 @@
     "teamSize": 0,
     "turns": false,
     "variants": []
+  },
+  "card-janggi": {
+    "title": {
+      "ko": "카드 장기",
+      "en": "Card Janggi"
+    },
+    "summary": {
+      "ko": "행마 카드 다섯 장을 쓸 순서대로 엎어 두고, 앞면인 카드대로 말을 옮기는 결승의 게임. 3판 2선승.",
+      "en": "Arrange five movement cards face down, then move by the card face up. Best of three."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 2,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

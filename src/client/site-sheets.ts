@@ -20,6 +20,7 @@ import { SHEETS as FLAGS_AROUND_THE_WORLD } from "./games/flags-around-the-world
 import { SHEETS as HIDDEN_WORD } from "./games/hidden-word/words";
 import { SHEETS as TOWER_OF_EQUATIONS } from "./games/tower-of-equations/words";
 import { SHEETS as POINT_GOMOKU } from "./games/point-gomoku/words";
+import { SHEETS as CARD_JANGGI } from "./games/card-janggi/words";
 import { SHEETS as COLOR_LINK } from "./games/color-link/words";
 import { SHEETS as COUNT_CUBES } from "./games/count-cubes/words";
 import { SHEETS as COUNT_RECTANGLES } from "./games/count-rectangles/words";
@@ -52,4 +53,5 @@ export const SITE_SHEETS: Record<GameId, Record<Lang, RulesSheet>> = {
   "tower-of-equations": TOWER_OF_EQUATIONS,
   "point-gomoku": POINT_GOMOKU,
   "color-link": COLOR_LINK,
+  "card-janggi": CARD_JANGGI,
 };

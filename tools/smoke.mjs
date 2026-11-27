@@ -27,7 +27,8 @@
 // 히든 워드, who hide a word each and see the first setter's clue scored, and
 // two a room of 수식의 탑 on the show's towers, who play its first round to a
 // failed challenge, and two a room of 포인트 오목, who play its first round,
-// and two a room of 컬러 링크, who play its first round to a proof.
+// and two a room of 컬러 링크, who play its first round to a proof, and two
+// a room of 카드 장기, who lay their cards and make its first move.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -70,6 +71,7 @@ const HIDDEN_GAME = "hidden-word";
 const TOWER_GAME = "tower-of-equations";
 const OMOK_GAME = "point-gomoku";
 const LINK_GAME = "color-link";
+const JANGGI_GAME = "card-janggi";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1843,6 +1845,43 @@ async function linkGame() {
   for (const p of players) p.close();
 }
 
+/** 카드 장기, in a room of its own: two players, off the list. Both lay their cards, the first cards are turned over, and the first player moves a piece by the rat. */
+async function janggiGame() {
+  const players = await roomOf(JANGGI_GAME, 2, "janggi");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("카드 장기 to start", (m) => m.type === "game" || m.type === "refused")));
+  const first = games[0].view?.first;
+  const other = 1 - first;
+  check(
+    "카드 장기 starts on the board of six squares by five with four pieces a side, both to lay their cards",
+    games.every((g, n) => g.type === "game" && g.game === JANGGI_GAME && g.view.you === n && g.view.phase === "arrange" && g.view.board.cells === "......a....bAa..bBa....b......" && g.view.homes[0] === 12 && g.view.homes[1] === 17) &&
+      games[0].rules.secondCards === 4 &&
+      games[0].rules.goal === 2,
+    `first ${first}`,
+  );
+  players[other].send({ type: "action", action: { type: "arrange", order: ["rat", "monkey", "horse", "giraffe", "elephant"] } });
+  const many = await players[other].until("the refusal", (m) => m.type === "refused");
+  check("five cards from the second player, who lays four, are refused", many.reason === "bad-order", many.reason);
+  players[first].send({ type: "action", action: { type: "arrange", order: ["rat", "monkey", "horse", "giraffe", "elephant"] } });
+  const one = await players[other].until("the first player's cards", (m) => m.type === "game" && m.view.hands.some((hand) => hand.player === first && hand.ready));
+  check("cards laid are not shown to the other player while theirs are not laid", one.view.hands.find((hand) => hand.player === first).current === null && !JSON.stringify(one.view).includes("elephant"));
+  players[other].send({ type: "action", action: { type: "arrange", order: ["giraffe", "rat", "horse", "monkey"] } });
+  const both = await Promise.all(players.map((p) => p.until("the first cards", (m) => m.type === "game" && m.view.phase === "move")));
+  check(
+    "the first cards are turned over together, and the first player is to move",
+    both.every((g) => g.view.turn === first && g.view.hands.find((hand) => hand.player === first).current === "rat" && g.view.hands.find((hand) => hand.player === other).current === "giraffe") &&
+      both[other].view.mine.length === 4 &&
+      !JSON.stringify({ ...both[other].view, mine: null }).includes("elephant"),
+  );
+  players[first].send({ type: "action", action: { type: "move", from: 18, to: 19 } });
+  const moved = await Promise.all(players.map((p) => p.until("the move", (m) => m.type === "game" && m.view.moves === 1)));
+  check("a piece moved by the rat is on the board both are shown, the next card is turned over, and the other player is to move", moved.every((g) => g.view.board.cells[19] === "a" && g.view.board.cells[18] === "." && g.view.turn === other && g.view.hands.find((hand) => hand.player === first).current === "monkey"));
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 카드 장기 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1866,6 +1905,7 @@ const PARTS = [
   [TOWER_GAME, towerGame],
   [OMOK_GAME, omokGame],
   [LINK_GAME, linkGame],
+  [JANGGI_GAME, janggiGame],
 ];
 
 async function main() {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, janggiWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -339,5 +339,32 @@ describe("linkWaits", () => {
   it("does not wait on someone watching", () => {
     expect(linkWaits(view({ you: null }))).toBe(false);
     expect(linkWaits(view({ you: null, phase: "prove", turn: null, prover: OTHER }))).toBe(false);
+  });
+});
+
+describe("janggiWaits", () => {
+  type View = Parameters<typeof janggiWaits>[0];
+  const hand = (player: number, ready: boolean): View["hands"][number] => ({ player, used: [], current: null, hidden: 0, ready, due: 5 });
+  const view = (changes: Partial<View> = {}): View => ({ you: ME, phase: "move", hands: [hand(ME, true), hand(OTHER, true)], arranger: null, mover: ME, ...changes });
+
+  it("waits on whoever has cards to lay, or is to choose the move: their own, or the opponent's when the opponent is out of time", () => {
+    expect(janggiWaits(view())).toBe(true);
+    expect(janggiWaits(view({ phase: "proxy" }))).toBe(true);
+    expect(janggiWaits(view({ phase: "arrange", mover: null, hands: [hand(ME, false), hand(OTHER, true)] }))).toBe(true);
+    expect(janggiWaits(view({ phase: "rearrange", mover: null, arranger: ME }))).toBe(true);
+  });
+
+  it("does not wait on a player whose cards are laid, on the other player's move, while a round's outcome is on show, nor once the game is over", () => {
+    expect(janggiWaits(view({ mover: OTHER }))).toBe(false);
+    expect(janggiWaits(view({ phase: "proxy", mover: OTHER }))).toBe(false);
+    expect(janggiWaits(view({ phase: "arrange", mover: null, hands: [hand(ME, true), hand(OTHER, false)] }))).toBe(false);
+    expect(janggiWaits(view({ phase: "rearrange", mover: null, arranger: OTHER }))).toBe(false);
+    expect(janggiWaits(view({ phase: "show", mover: null }))).toBe(false);
+    expect(janggiWaits(view({ phase: "ended", mover: null }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(janggiWaits(view({ you: null }))).toBe(false);
+    expect(janggiWaits(view({ you: null, phase: "arrange", hands: [hand(ME, false), hand(OTHER, false)] }))).toBe(false);
   });
 });

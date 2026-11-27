@@ -16,6 +16,7 @@ import type { RectView } from "./games/count-rectangles/rules";
 import type { GrassView } from "./games/lay-the-grass/rules";
 import type { EqView } from "./games/equation-traffic-light/rules";
 import type { GemView } from "./games/gem-black-market/rules";
+import type { JanggiView } from "./games/card-janggi/rules";
 import type { LinkView } from "./games/color-link/rules";
 import type { GradView } from "./games/gradation/rules";
 import type { FlagsView } from "./games/flags-around-the-world/rules";
@@ -200,4 +201,16 @@ export function linkWaits(view: Pick<LinkView, "you" | "phase" | "chooser" | "tu
   if (view.phase === "choose") return view.chooser === view.you;
   if (view.phase === "place") return view.turn === view.you;
   return view.phase === "prove" && view.prover === view.you;
+}
+
+/**
+ * 카드 장기: the player has cards to lay (at a round's beginning, or again
+ * once theirs are used), or the move waited for is theirs to choose: their
+ * own, or their opponent's when the opponent's time ran out.
+ */
+export function janggiWaits(view: Pick<JanggiView, "you" | "phase" | "hands" | "arranger" | "mover">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "arrange") return view.hands.some((hand) => hand.player === view.you && !hand.ready);
+  if (view.phase === "rearrange") return view.arranger === view.you;
+  return (view.phase === "move" || view.phase === "proxy") && view.mover === view.you;
 }
