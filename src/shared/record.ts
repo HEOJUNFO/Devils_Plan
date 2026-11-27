@@ -38,6 +38,7 @@ export const TOP_KIND: Record<GameId, TopKind> = {
   "hidden-word": "first",
   "tower-of-equations": "first",
   "point-gomoku": "won",
+  "color-link": "won",
 };
 
 /** A game played to its end: which game it was, by a key no other game has, and whether the player was at the top of it. */
@@ -135,6 +136,10 @@ function topOf(message: GameMessage): boolean | null {
     }
     case "point-gomoku": {
       // a game neither won is played to its end and is nobody's win
+      const { you, places, winner } = message.view;
+      return you === null || places === null ? null : winner === you;
+    }
+    case "color-link": {
       const { you, places, winner } = message.view;
       return you === null || places === null ? null : winner === you;
     }

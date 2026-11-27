@@ -1,0 +1,6 @@
+{
+  "afterSeconds": 1.5,
+  "declareFrom": 7,
+  "declareChance": 0.2,
+  "solveSteps": 60000
+}

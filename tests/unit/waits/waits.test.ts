@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -316,5 +316,28 @@ describe("omokWaits", () => {
   it("does not wait on someone watching", () => {
     expect(omokWaits(view({ you: null }))).toBe(false);
     expect(omokWaits(view({ you: null, phase: "bet" }))).toBe(false);
+  });
+});
+
+describe("linkWaits", () => {
+  const view = (changes: Partial<Parameters<typeof linkWaits>[0]> = {}): Parameters<typeof linkWaits>[0] => ({ you: ME, phase: "place", chooser: null, turn: ME, prover: null, ...changes });
+
+  it("waits on whoever is to choose who goes first, whose turn it is to place, or who has to prove the connections", () => {
+    expect(linkWaits(view())).toBe(true);
+    expect(linkWaits(view({ phase: "choose", chooser: ME, turn: null }))).toBe(true);
+    expect(linkWaits(view({ phase: "prove", turn: null, prover: ME }))).toBe(true);
+  });
+
+  it("does not wait on the other player, nor while a round's outcome is on show, nor once the game is over", () => {
+    expect(linkWaits(view({ turn: OTHER }))).toBe(false);
+    expect(linkWaits(view({ phase: "choose", chooser: OTHER, turn: null }))).toBe(false);
+    expect(linkWaits(view({ phase: "prove", turn: null, prover: OTHER }))).toBe(false);
+    expect(linkWaits(view({ phase: "show", turn: null }))).toBe(false);
+    expect(linkWaits(view({ phase: "ended", turn: null }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(linkWaits(view({ you: null }))).toBe(false);
+    expect(linkWaits(view({ you: null, phase: "prove", turn: null, prover: OTHER }))).toBe(false);
   });
 });

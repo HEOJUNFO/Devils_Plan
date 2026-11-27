@@ -16,6 +16,7 @@ import type { FlagsHostRefusal, FlagsSnapshot } from "./games/flags-around-the-w
 import type { HiddenHostRefusal, HiddenSnapshot } from "./games/hidden-word/host";
 import type { TowerHostRefusal, TowerSnapshot } from "./games/tower-of-equations/host";
 import type { OmokHostRefusal, OmokSnapshot } from "./games/point-gomoku/host";
+import type { LinkHostRefusal, LinkSnapshot } from "./games/color-link/host";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
@@ -145,6 +146,7 @@ export type ServerMessage =
   | ({ type: "game"; room: string; answer?: true; game: "hidden-word" } & HiddenSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "tower-of-equations" } & TowerSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "point-gomoku" } & OmokSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "color-link" } & LinkSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**
@@ -228,6 +230,7 @@ export type Refusal =
   | HiddenHostRefusal
   | TowerHostRefusal
   | OmokHostRefusal
+  | LinkHostRefusal
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal

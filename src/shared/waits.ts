@@ -16,6 +16,7 @@ import type { RectView } from "./games/count-rectangles/rules";
 import type { GrassView } from "./games/lay-the-grass/rules";
 import type { EqView } from "./games/equation-traffic-light/rules";
 import type { GemView } from "./games/gem-black-market/rules";
+import type { LinkView } from "./games/color-link/rules";
 import type { GradView } from "./games/gradation/rules";
 import type { FlagsView } from "./games/flags-around-the-world/rules";
 import type { HiddenView } from "./games/hidden-word/rules";
@@ -186,4 +187,17 @@ export function omokWaits(view: Pick<OmokView, "you" | "phase" | "selector" | "r
   if (view.you === null) return false;
   if (view.phase === "select") return view.selector === view.you;
   return view.phase === "bet" && !view.ready.includes(view.you);
+}
+
+/**
+ * 컬러 링크: this player is the one to choose who goes first, the one whose
+ * turn it is to place pieces or to declare, or the one who has to prove the
+ * connections. Past the time the room has them go second, or the round is
+ * the other player's.
+ */
+export function linkWaits(view: Pick<LinkView, "you" | "phase" | "chooser" | "turn" | "prover">): boolean {
+  if (view.you === null) return false;
+  if (view.phase === "choose") return view.chooser === view.you;
+  if (view.phase === "place") return view.turn === view.you;
+  return view.phase === "prove" && view.prover === view.you;
 }

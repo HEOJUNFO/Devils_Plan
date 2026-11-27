@@ -26,7 +26,8 @@
 // two a room of 만국기, who are sent its first ten flags, and three a room of
 // 히든 워드, who hide a word each and see the first setter's clue scored, and
 // two a room of 수식의 탑 on the show's towers, who play its first round to a
-// failed challenge, and two a room of 포인트 오목, who play its first round.
+// failed challenge, and two a room of 포인트 오목, who play its first round,
+// and two a room of 컬러 링크, who play its first round to a proof.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -68,6 +69,7 @@ const FLAGS_GAME = "flags-around-the-world";
 const HIDDEN_GAME = "hidden-word";
 const TOWER_GAME = "tower-of-equations";
 const OMOK_GAME = "point-gomoku";
+const LINK_GAME = "color-link";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1802,6 +1804,45 @@ async function omokGame() {
   for (const p of players) p.close();
 }
 
+/** 컬러 링크, in a room of its own: two players, off the list. The first places a piece, the other declares the board impossible, and the first proves the connections. */
+async function linkGame() {
+  const players = await roomOf(LINK_GAME, 2, "link");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("컬러 링크 to start", (m) => m.type === "game" || m.type === "refused")));
+  const first = games[0].view?.turn;
+  const other = 1 - first;
+  check(
+    "컬러 링크 starts on the first board of nine squares with its X and Y pairs, one piece to be placed by whoever was drawn",
+    games.every((g, n) => g.type === "game" && g.game === LINK_GAME && g.view.you === n && g.view.phase === "place" && g.view.due === 1 && g.view.board.width === 9 && g.view.board.cells[10] === "X" && g.view.board.cells[15] === "Y") &&
+      games[0].rules.minPath === 6 &&
+      games[0].rules.goal === 3,
+    `first ${first}`,
+  );
+  players[other].send({ type: "action", action: { type: "place", pieces: [{ letter: "A", cell: 72 }] } });
+  const early = await players[other].until("the refusal", (m) => m.type === "refused");
+  check("a piece placed out of turn is refused", early.reason === "not-your-turn", early.reason);
+  players[first].send({ type: "action", action: { type: "place", pieces: [{ letter: "A", cell: 72 }] } });
+  const placed = await Promise.all(players.map((p) => p.until("the piece", (m) => m.type === "game" && m.view.pieces === 1)));
+  check("the piece is on the board both are shown, and the other player is to place two", placed.every((g) => g.view.board.cells[72] === "A" && g.view.turn === other && g.view.due === 2));
+  players[other].send({ type: "action", action: { type: "declare" } });
+  const declared = await Promise.all(players.map((p) => p.until("the declaration", (m) => m.type === "game" && m.view.phase === "prove")));
+  check("whoever placed last has to prove a board declared impossible", declared.every((g) => g.view.prover === first && g.view.declarer === other));
+  const bottom = [72, 73, 74, 75, 76, 77];
+  players[first].send({ type: "action", action: { type: "prove", partners: [{ letter: "A", cell: 77 }], paths: [bottom] } });
+  const short = await players[first].until("the second refusal", (m) => m.type === "refused");
+  check("a proof without a path for every pair is refused", short.reason === "pair-missing", short.reason);
+  players[first].send({ type: "action", action: { type: "prove", partners: [{ letter: "A", cell: 77 }], paths: [bottom, [10, 9, 18, 27, 36, 45, 54, 55, 56], [15, 14, 13, 12, 11, 20, 29, 28]] } });
+  const proved = await Promise.all(players.map((p) => p.until("the proof", (m) => m.type === "game" && m.view.phase === "show")));
+  check(
+    "a proof is the prover's point, and its paths are shown to both",
+    proved.every((g) => g.view.log[0].winner === first && g.view.log[0].how === "proved" && g.view.log[0].paths.length === 3 && g.view.scores.find((each) => each.player === first).points === 1 && g.view.board.cells[77] === "A"),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 컬러 링크 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1824,6 +1865,7 @@ const PARTS = [
   [HIDDEN_GAME, hiddenGame],
   [TOWER_GAME, towerGame],
   [OMOK_GAME, omokGame],
+  [LINK_GAME, linkGame],
 ];
 
 async function main() {

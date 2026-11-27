@@ -36,6 +36,7 @@ export type FlagsMessage = Extract<ServerMessage, { type: "game"; game: "flags-a
 export type HiddenMessage = Extract<ServerMessage, { type: "game"; game: "hidden-word" }>;
 export type TowerMessage = Extract<ServerMessage, { type: "game"; game: "tower-of-equations" }>;
 export type OmokMessage = Extract<ServerMessage, { type: "game"; game: "point-gomoku" }>;
+export type LinkMessage = Extract<ServerMessage, { type: "game"; game: "color-link" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -287,6 +288,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "point-gomoku" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 컬러 링크 that satisfies `match`. */
+  async linkWhere(match: (game: LinkMessage) => boolean = () => true): Promise<LinkMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "color-link" && match(message)) return message;
     }
   }
 

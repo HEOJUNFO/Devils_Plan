@@ -422,5 +422,20 @@
     "teamSize": 0,
     "turns": false,
     "variants": []
+  },
+  "color-link": {
+    "title": {
+      "ko": "컬러 링크",
+      "en": "Color Link"
+    },
+    "summary": {
+      "ko": "같은 색 말을 길로 이을 수 있게 놓고, 못 잇겠다 싶으면 선언. 증명에 3점이 걸린 결승의 게임.",
+      "en": "Place pieces so each color can be linked. Call it impossible, or prove it. First to 3."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 2,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

@@ -50,12 +50,17 @@ const FLAGS = name("flags-around-the-world");
 const HIDDEN = name("hidden-word");
 const TOWER = name("tower-of-equations");
 const OMOK = name("point-gomoku");
+const LINK = name("color-link");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-27",
     lines: [
+      {
+        ko: `새 게임 ${LINK.ko}: 결승의 두 번째 게임으로, 두 사람이 합니다. 색마다 두 개씩 있는 말을 번갈아 판에 놓되, 같은 색의 두 말이 6칸 이상의 길로 이어질 수 있어야 하고 길끼리 겹치면 안 됩니다. 더는 이을 수 없다고 보면 말을 놓는 대신 연결 불가를 선언합니다. 마지막에 말을 놓은 사람이 모든 짝을 이어 보이면 1점, 못 하면 선언한 사람이 1점. 3점을 먼저 얻으면 이깁니다. 1·2라운드의 판은 방송의 판입니다.`,
+        en: `New game, ${LINK.en}: the second game of the final, for two players. Take turns placing pieces, two of each color, so that the two of a color can be linked by a path of at least 6 spaces, with no paths overlapping. When you think the board can no longer be linked, declare impossibility instead of placing. The player who placed last gets a point for proving every connection; otherwise the declarer gets it. First to 3 points wins. The boards of Rounds 1 and 2 are the show's.`,
+      },
       {
         ko: `${HIDDEN.ko}: 봉투에 들어가는 낱말이 417개에서 2,933개로 늘었습니다. 여러 판을 해도 같은 히든 워드를 다시 만나는 일이 드뭅니다.`,
         en: `${HIDDEN.en}: the envelopes are now filled from 2,933 words, up from 417. You will seldom meet the same hidden word again, however many games you play.`,

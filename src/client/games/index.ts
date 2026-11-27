@@ -13,6 +13,8 @@ import { createTowerScreen } from "./tower-of-equations/screen";
 import { WORDS as TOWER_WORDS } from "./tower-of-equations/words";
 import { createOmokScreen } from "./point-gomoku/screen";
 import { WORDS as OMOK_WORDS } from "./point-gomoku/words";
+import { createLinkScreen } from "./color-link/screen";
+import { WORDS as LINK_WORDS } from "./color-link/words";
 import { createLobbyScene } from "../lobby-scene";
 import type { RulesSheet } from "../sheet";
 import { createBingoScreen } from "./auction-bingo/screen";
@@ -402,5 +404,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: OMOK_WORDS.sheet,
+  },
+  "color-link": {
+    screen(canvas, handlers) {
+      const screen = createLinkScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "color-link") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: LINK_WORDS.sheet,
   },
 };
