@@ -62,6 +62,10 @@ export const NEWS: NewsDay[] = [
     date: "2026-11-27",
     lines: [
       {
+        ko: "연승이 방 안에서도 보입니다. 대기실에서 연승 중인 사람의 이름 옆 왕관 뒤에 몇 연승인지 숫자가 붙습니다.",
+        en: "Streaks now show inside a room too. In the waiting room, the crown beside the name of a player on a streak is followed by how many games in a row.",
+      },
+      {
         ko: `새 게임 ${CODE.ko}: 유배지의 세 번째 매치입니다. 두 명에서 여섯 명이 합니다. A부터 Z까지 카드 26장에 수와 색, 모양이 있고, 라운드마다 나오는 조건을 모두 만족하는 카드 네 장을 찾아 버저를 누릅니다. 맞히면 그 자리에서 통과하고, 틀리면 그 라운드에는 더 답할 수 없습니다. 맞힌 순서대로 순위가 정해집니다. 카드의 색과 모양, 조건은 판마다 새로 만들어지고 답은 하나뿐입니다.`,
         en: `New game, ${CODE.en}: the third match of the place of exile, for two to six players. The 26 cards, A to Z, each have a number, a color and a suit; each round you look for the four cards that meet every condition shown, and press the buzzer. A right answer makes you safe at once, a wrong one locks you out of that round, and players are ranked in the order they are right. The cards' colors and suits and the conditions are made anew every game, with exactly one answer.`,
       },

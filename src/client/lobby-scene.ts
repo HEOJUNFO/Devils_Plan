@@ -6,6 +6,8 @@
  * chairs instead, one for each place the room has.
  */
 import type { LobbyView } from "../shared/lobby";
+import { streakOf } from "../shared/tops";
+import topsConfig from "../shared/tops-config.json";
 import type { VoiceMark } from "../shared/voice";
 import {
   BAR_Y,
@@ -68,6 +70,8 @@ const HALL_TOP = 27;
 const HALL_ROW_MOST = 56;
 /** The widest a name and its marks are together under a chair, in pixels. */
 const HALL_NAME_ROOM = 74;
+/** The least of that a name is left by the number of a streak: where it would have less, the crown stands without the number. */
+const HALL_NAME_LEAST = 24;
 /** The host's mark: a plate a pixel wider than its word on each side, and the gap before it. */
 const HOST_MARK_EDGE = 2;
 const HOST_MARK_GAP = 3;
@@ -79,6 +83,8 @@ const PIECE_MARK_W = PIECE_MARK_GAP + 6;
 /** The mark of a player who was at the top of the room's last game, a crown: the room before it, and how wide it is with that room. */
 const TOP_MARK_GAP = 3;
 const TOP_MARK_W = TOP_MARK_GAP + 7;
+/** After the crown of a player on a streak, how many games in a row they were at the top of: the room before the number. */
+const STREAK_GAP = 2;
 /** A figure as a press finds it: how far to each side of its middle, and how far over and under its shoulders. */
 const FIGURE_REACH = { side: 14, over: 22, under: 14 };
 /** How far the lamp's light reaches over the rows of chairs, against 1 over a table: nobody sits in the dark. */
@@ -194,9 +200,18 @@ export function createLobbyScene(
       // after the name: the host's mark, or the tick of someone ready (the host is never that: the host starts)
       // last of all: the pieces they have won in this room, where they have any
       // (the crown of the last game's top comes after them; a room from before the mark sends none)
-      const top = player.top === true ? TOP_MARK_W : 0;
-      const pieces = (player.pieces > 0 ? PIECE_MARK_W + pen.width(String(player.pieces)) : 0) + top;
-      const after = (lead ? HOST_MARK_W : player.ready ? READY_MARK_W : 0) + pieces;
+      // Someone on a streak has the crown with how long the streak is after it, as the lobby's list says of the
+      // room: also when they sat out the room's last game, which leaves a streak as it was.
+      const streak = streakOf(player.streak ?? 0, topsConfig);
+      const crowned = player.top === true || streak > 0;
+      /** How wide the marks are with a streak of `count` written after the crown (0: the crown alone): the crown's, the pieces' with it, and all of them. */
+      const marksOf = (count: number): { top: number; pieces: number; after: number } => {
+        const top = count > 0 ? TOP_MARK_W + STREAK_GAP + pen.width(String(count)) : crowned ? TOP_MARK_W : 0;
+        const pieces = (player.pieces > 0 ? PIECE_MARK_W + pen.width(String(player.pieces)) : 0) + top;
+        return { top, pieces, after: (lead ? HOST_MARK_W : player.ready ? READY_MARK_W : 0) + pieces };
+      };
+      let run = streak;
+      let { top, pieces, after } = marksOf(run);
       const y = place.at.label.y;
       drawn.push({
         slot: place.slot,
@@ -209,6 +224,11 @@ export function createLobbyScene(
       if (place.row) {
         // under the chair: the name with its marks, cut to the chair's share of the row; the team goes beside the figure
         const mark = voice(place.slot);
+        // a chair's share of the row is narrow: the number of a streak is left out where it would leave the name too little
+        if (run > 0 && HALL_NAME_ROOM - after - (mark !== "out" ? VOICE_MARK_W : 0) < HALL_NAME_LEAST) {
+          run = 0;
+          ({ top, pieces, after } = marksOf(run));
+        }
         const marks = after + (mark !== "out" ? VOICE_MARK_W : 0);
         const name = pen.fit(player.nick, Math.min(NAME_WIDTH, HALL_NAME_ROOM - marks));
         const width = pen.width(name) + after;
@@ -218,7 +238,7 @@ export function createLobbyScene(
         if (lead) drawHostMark(x + width - pieces - (HOST_MARK_W - HOST_MARK_GAP), y);
         else if (player.ready) drawReadyMark(x + width - pieces - (READY_MARK_W - HOST_MARK_GAP), y);
         if (player.pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
-        if (top > 0) drawTopMark(x + width - top, y);
+        if (top > 0) drawTopMark(x + width - top, y, run);
         drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
         const beside = place.at.y - 6;
         if (!player.connected) pen.txt(WORDS.scene.offline, place.at.x + 15, beside, C.dim);
@@ -235,7 +255,7 @@ export function createLobbyScene(
       if (lead) drawHostMark(x + width - pieces - (HOST_MARK_W - HOST_MARK_GAP), y);
       else if (player.ready) drawReadyMark(x + width - pieces - (READY_MARK_W - HOST_MARK_GAP), y);
       if (player.pieces > 0) drawPieces(x + width - pieces, y, player.pieces);
-      if (top > 0) drawTopMark(x + width - top, y);
+      if (top > 0) drawTopMark(x + width - top, y, run);
       drawn.push({ slot: place.slot, name: true, x, y, w: width, h: 13 });
       if (!player.connected) pen.txt(WORDS.scene.offline, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.dim);
       else if (player.out) pen.txt(WORDS.scene.out, place.slot === me ? x + width + 5 : x, place.slot === me ? y : y + 13, C.crim);
@@ -280,8 +300,11 @@ export function createLobbyScene(
     pen.txt(String(pieces), left + 6, y, C.amber);
   }
 
-  /** The mark of a player who was at the top of the room's last game, a crown: the room before it starts at `x`, on the name's line at `y`. */
-  function drawTopMark(x: number, y: number): void {
+  /**
+   * The mark of a player who was at the top of the room's last game, a crown: the room before it starts at `x`, on
+   * the name's line at `y`. For a player on a streak, how many games in a row (`run`, 0 for none) is written after it.
+   */
+  function drawTopMark(x: number, y: number, run: number): void {
     const left = x + TOP_MARK_GAP;
     // three points over a band, seven pixels wide
     ["X..X..X", "XX.X.XX", "XXXXXXX", "XXXXXXX"].forEach((row, dy) => {
@@ -290,6 +313,7 @@ export function createLobbyScene(
       });
     });
     pen.px(left, y + 7, 7, 2, C.brass);
+    if (run > 0) pen.txt(String(run), left + 7 + STREAK_GAP, y, C.brassH);
   }
 
   function drawReadyMark(x: number, y: number): void {

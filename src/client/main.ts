@@ -3496,7 +3496,7 @@ function renderRoom(code: string, view: LobbyView): void {
     const player = bySlot.get(slot);
     const row = document.createElement("li");
     const words = player
-      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready, player.pieces ?? 0, player.out === true, player.top === true)
+      ? WORDS.room.seat(slot + 1, player.nick, slot === view.you, player.connected, player.ready, player.pieces ?? 0, player.out === true, player.top === true, streakOf(player.streak ?? 0, topsConfig))
       : WORDS.room.emptySeat(slot + 1);
     if (player !== undefined && hosting && slot !== view.you) {
       const pick = document.createElement("button");

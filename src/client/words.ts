@@ -336,8 +336,9 @@ const ko = {
     /** On the button of everyone but the host: said once, taken back with the same button. */
     ready: "준비",
     unready: "준비 취소",
-    seat: (seat: number, nick: string, me: boolean, connected: boolean, ready: boolean, pieces: number, out: boolean, top: boolean) =>
-      `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? (ready ? "준비" : "접속") : "끊김"}${pieces > 0 ? `, 피스 ${pieces}개` : ""}${out ? ", 탈락" : ""}${top ? ", 지난 판 1위" : ""}`,
+    /** A seat's line of the list a screen reader reads: what the picture shows of the player in it. `streak` is the games in a row they were at the top of, 0 for no streak. */
+    seat: (seat: number, nick: string, me: boolean, connected: boolean, ready: boolean, pieces: number, out: boolean, top: boolean, streak: number) =>
+      `${seat}번 ${nick}${me ? " (나)" : ""}: ${connected ? (ready ? "준비" : "접속") : "끊김"}${pieces > 0 ? `, 피스 ${pieces}개` : ""}${out ? ", 탈락" : ""}${top ? ", 지난 판 1위" : ""}${streak > 0 ? `, ${streak}연승 중` : ""}`,
     /**
      * 탈락전, the room's own way of playing game after game: the host's button for it in the sheet of games and
      * what it does, and the lines in the chat when it is turned on or off, puts someone out, has its winner, or
@@ -858,8 +859,8 @@ const en: typeof ko = {
     gameChanged: (game) => `This room now plays ${game}`,
     ready: "Ready",
     unready: "Unready",
-    seat: (seat, nick, me, connected, ready, pieces, out, top) =>
-      `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}${pieces > 0 ? `, ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}${out ? ", out" : ""}${top ? ", top of the last game" : ""}`,
+    seat: (seat, nick, me, connected, ready, pieces, out, top, streak) =>
+      `Seat ${seat}, ${nick}${me ? " (you)" : ""}: ${connected ? (ready ? "ready" : "connected") : "disconnected"}${pieces > 0 ? `, ${pieces} ${pieces === 1 ? "Piece" : "Pieces"}` : ""}${out ? ", out" : ""}${top ? ", top of the last game" : ""}${streak > 0 ? `, ${streak} in a row at the top` : ""}`,
     knockoutOff: "Knockout: off",
     knockoutOn: "Knockout: on",
     knockoutHelp: "Last place sits out; the last one in wins. A room rule, not the show's.",
