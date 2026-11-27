@@ -20,6 +20,8 @@ import { createDivineScreen } from "./divine-test/screen";
 import { WORDS as DIVINE_WORDS } from "./divine-test/words";
 import { createFenceScreen } from "./loop-fence/screen";
 import { WORDS as FENCE_WORDS } from "./loop-fence/words";
+import { createCodeScreen } from "./secret-code/screen";
+import { WORDS as CODE_WORDS } from "./secret-code/words";
 import { WORDS as LINK_WORDS } from "./color-link/words";
 import { createLobbyScene } from "../lobby-scene";
 import type { RulesSheet } from "../sheet";
@@ -462,5 +464,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: FENCE_WORDS.sheet,
+  },
+  "secret-code": {
+    screen(canvas, handlers) {
+      const screen = createCodeScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "secret-code") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: CODE_WORDS.sheet,
   },
 };

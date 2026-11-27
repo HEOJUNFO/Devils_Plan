@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, divineWaits, eqWaits, fenceWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, janggiWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, codeWaits, divineWaits, eqWaits, fenceWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, janggiWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -406,5 +406,27 @@ describe("fenceWaits", () => {
 
   it("does not wait on someone watching", () => {
     expect(fenceWaits(view({ you: null }))).toBe(false);
+  });
+});
+
+describe("codeWaits", () => {
+  type View = Parameters<typeof codeWaits>[0];
+  const seat = (player: number, changes: Partial<View["seats"][number]> = {}): View["seats"][number] => ({ player, safe: null, wrong: false, misses: 0, left: false, ...changes });
+  const view = (changes: Partial<View> = {}): View => ({ you: ME, phase: "round", seats: [seat(ME), seat(OTHER)], ...changes });
+
+  it("waits on every player who can still answer in the round", () => {
+    expect(codeWaits(view())).toBe(true);
+    expect(codeWaits(view({ seats: [seat(ME), seat(OTHER, { wrong: true })] }))).toBe(true);
+  });
+
+  it("does not wait on a player who is safe or was wrong in the round, nor while a code is shown, nor once the game is over", () => {
+    expect(codeWaits(view({ seats: [seat(ME, { safe: 1 }), seat(OTHER)] }))).toBe(false);
+    expect(codeWaits(view({ seats: [seat(ME, { wrong: true, misses: 1 }), seat(OTHER)] }))).toBe(false);
+    expect(codeWaits(view({ phase: "show" }))).toBe(false);
+    expect(codeWaits(view({ phase: "ended" }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(codeWaits(view({ you: null }))).toBe(false);
   });
 });

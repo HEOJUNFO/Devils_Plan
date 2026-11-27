@@ -24,6 +24,14 @@ const LATER_MS = [1, 1500, 24 * 60 * 60 * 1000];
 /** Where a snapshot keeps what the time moves: every game's `clock`, and the first game's `turnEndsIn`. */
 const CLOCKS = ["clock", "turnEndsIn"];
 
+/**
+ * The games whose whole course by the clock is shorter than the five states
+ * the others are held to, with how many states that is. 비밀 코드: its bot
+ * gives the first round's code, and a game of two is over once one of them
+ * is right: the start, the answer, and the end of the showing of the code.
+ */
+const SHORT: Partial<Record<GameId, number>> = { "secret-code": 3 };
+
 /** The person alone in the lobby, in slot 0. */
 const lobby: Candidate[] = [{ token: PERSON, nick: "p0", slot: 0 }];
 const here: Presence = { seated: new Set([PERSON]), connected: new Set([PERSON]) };
@@ -96,7 +104,7 @@ describe("what the passing of time may show a player", () => {
         const steps = played(game, presence);
 
         // the game went as far as this fixture is meant to take it
-        expect(steps.length).toBeGreaterThanOrEqual(least);
+        expect(steps.length).toBeGreaterThanOrEqual(Math.min(least, SHORT[game] ?? least));
         for (const { session, at } of steps) {
           for (const viewer of [PERSON, null]) {
             const sight = host.view(session, viewer, presence, TIME_OF_SIGHT);

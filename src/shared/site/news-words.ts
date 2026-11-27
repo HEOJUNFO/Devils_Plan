@@ -54,12 +54,17 @@ const LINK = name("color-link");
 const JANGGI = name("card-janggi");
 const DIVINE = name("divine-test");
 const FENCE = name("loop-fence");
+const CODE = name("secret-code");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-27",
     lines: [
+      {
+        ko: `새 게임 ${CODE.ko}: 유배지의 세 번째 매치입니다. 두 명에서 여섯 명이 합니다. A부터 Z까지 카드 26장에 수와 색, 모양이 있고, 라운드마다 나오는 조건을 모두 만족하는 카드 네 장을 찾아 버저를 누릅니다. 맞히면 그 자리에서 통과하고, 틀리면 그 라운드에는 더 답할 수 없습니다. 맞힌 순서대로 순위가 정해집니다. 카드의 색과 모양, 조건은 판마다 새로 만들어지고 답은 하나뿐입니다.`,
+        en: `New game, ${CODE.en}: the third match of the place of exile, for two to six players. The 26 cards, A to Z, each have a number, a color and a suit; each round you look for the four cards that meet every condition shown, and press the buzzer. A right answer makes you safe at once, a wrong one locks you out of that round, and players are ranked in the order they are right. The cards' colors and suits and the conditions are made anew every game, with exactly one answer.`,
+      },
       {
         ko: `새 게임 ${FENCE.ko}: 유배지의 네 번째 매치입니다. 두 명에서 여섯 명이 같은 문제를 각자 자기 판에서 풉니다. 점과 점을 이어 닫힌 고리 하나를 만들되, 칸의 숫자는 그 칸을 둘러싼 선의 수와 같아야 합니다. 다 그리면 버저를 눌러 확인받고, 먼저 통과한 순서대로 순위가 정해집니다. 틀린 버저 뒤에는 15초 동안 버저가 잠기고, 제한 시간은 20분입니다. 문제는 마흔여덟 개 가운데 하나가 나옵니다.`,
         en: `New game, ${FENCE.en}: the fourth match of the place of exile. Two to six players each solve the same puzzle on a board of their own. Join the dots into one closed loop so that every number has that many lines round its square. Press the buzzer when you are done to have it checked; players are ranked in the order they pass. A wrong buzzer locks it for 15 seconds, and the time limit is 20 minutes. The puzzle is one of forty-eight.`,

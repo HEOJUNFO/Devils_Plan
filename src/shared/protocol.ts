@@ -20,6 +20,7 @@ import type { JanggiHostRefusal, JanggiSnapshot } from "./games/card-janggi/host
 import type { LinkHostRefusal, LinkSnapshot } from "./games/color-link/host";
 import type { DivineHostRefusal, DivineSnapshot } from "./games/divine-test/host";
 import type { FenceHostRefusal, FenceSnapshot } from "./games/loop-fence/host";
+import type { CodeHostRefusal, CodeSnapshot } from "./games/secret-code/host";
 import type { CubesHostRefusal, CubesSnapshot } from "./games/count-cubes/host";
 import type { RectHostRefusal, RectSnapshot } from "./games/count-rectangles/host";
 import type { GrassHostRefusal, GrassSnapshot } from "./games/lay-the-grass/host";
@@ -153,6 +154,7 @@ export type ServerMessage =
   | ({ type: "game"; room: string; answer?: true; game: "card-janggi" } & JanggiSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "divine-test" } & DivineSnapshot)
   | ({ type: "game"; room: string; answer?: true; game: "loop-fence" } & FenceSnapshot)
+  | ({ type: "game"; room: string; answer?: true; game: "secret-code" } & CodeSnapshot)
   /** Something asked of the room was not accepted. Nothing changed; the connection stays open. */
   | { type: "refused"; reason: Refusal }
   /**
@@ -240,6 +242,7 @@ export type Refusal =
   | JanggiHostRefusal
   | DivineHostRefusal
   | FenceHostRefusal
+  | CodeHostRefusal
   | ChatRefusal
   | SettingRefusal
   | VoiceRefusal

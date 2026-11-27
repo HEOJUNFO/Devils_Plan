@@ -40,6 +40,7 @@ export type LinkMessage = Extract<ServerMessage, { type: "game"; game: "color-li
 export type JanggiMessage = Extract<ServerMessage, { type: "game"; game: "card-janggi" }>;
 export type DivineMessage = Extract<ServerMessage, { type: "game"; game: "divine-test" }>;
 export type FenceMessage = Extract<ServerMessage, { type: "game"; game: "loop-fence" }>;
+export type CodeMessage = Extract<ServerMessage, { type: "game"; game: "secret-code" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -323,6 +324,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "loop-fence" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 비밀 코드 that satisfies `match`. */
+  async codeWhere(match: (game: CodeMessage) => boolean = () => true): Promise<CodeMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "secret-code" && match(message)) return message;
     }
   }
 

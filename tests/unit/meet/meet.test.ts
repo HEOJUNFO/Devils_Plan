@@ -156,7 +156,7 @@ describe("the meetings as they are set", () => {
     expect([1, 2, 3, 4].map((date) => game(12, date))).toEqual(["wall-go-2", "gradation", "equation-traffic-light", "hit-stay"]);
     expect([5, 6, 7, 8].map((date) => game(12, date))).toEqual(["flags-around-the-world", "hidden-word", "tower-of-equations", "point-gomoku"]);
     expect([9, 10, 11, 12].map((date) => game(12, date))).toEqual(["color-link", "card-janggi", "divine-test", "loop-fence"]);
-    expect([13, 14, 15, 16, 17, 18, 19].map((date) => game(12, date))).toEqual(["mystery-stock-market", "russian-roulette", "under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
+    expect([13, 14, 15, 16, 17, 18, 19, 20].map((date) => game(12, date))).toEqual(["secret-code", "mystery-stock-market", "russian-roulette", "under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
   });
 
   it("are held at a time of day, every day", () => {

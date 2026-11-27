@@ -31,7 +31,7 @@
 // a room of 카드 장기, who lay their cards and make its first move, and two a
 // room of 신의 시험, one of whom lays a tile on a board the other is not shown,
 // and two a room of 울타리 치기, one of whom draws a line and presses the
-// buzzer too soon.
+// buzzer too soon, and two a room of 비밀 코드, one of whom gives a code.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -77,6 +77,7 @@ const LINK_GAME = "color-link";
 const JANGGI_GAME = "card-janggi";
 const DIVINE_GAME = "divine-test";
 const FENCE_GAME = "loop-fence";
+const CODE_GAME = "secret-code";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1939,6 +1940,38 @@ async function fenceGame() {
   for (const p of players) p.close();
 }
 
+/** 비밀 코드, in a room of its own: two players, off the list. One gives a code, which is judged and told to both. */
+async function codeGame() {
+  const players = await roomOf(CODE_GAME, 2, "code");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("비밀 코드 to start", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "비밀 코드 starts with 26 cards and the same four to six conditions for both, the code not sent, and three rounds of four minutes",
+    games.every((g, n) => g.type === "game" && g.game === CODE_GAME && g.view.you === n && g.view.phase === "round" && g.view.round === 1 && g.view.rounds === 3 && g.view.cards.length === 26 && g.view.conditions.length >= 4 && g.view.conditions.length <= 6 && g.view.code === null) &&
+      JSON.stringify(games[0].view.conditions) === JSON.stringify(games[1].view.conditions) &&
+      games[0].view.conditions[0].kind === "sum" &&
+      games[0].rules.roundSeconds === 240,
+  );
+  players[0].send({ type: "action", action: { type: "answer", code: [0, 1, 2] } });
+  const short = await players[0].until("the refusal", (m) => m.type === "refused");
+  check("a code of three cards is no answer", short.reason === "bad-code", short.reason);
+  // A, B, C and D: one code of 14,950, so wrong but for the rarest chance, and then the round is over with its code shown
+  players[0].send({ type: "action", action: { type: "answer", code: [3, 2, 1, 0] } });
+  const judged = await Promise.all(players.map((p) => p.until("the answer", (m) => m.type === "game" && ["wrong", "passed"].includes(m.view.history.at(-1).type))));
+  check(
+    "an answer is judged and told to both in the order of the alphabet: wrong, its player is locked out of the round and the code is still not sent; right, they are safe and it is shown",
+    judged.every((g) => {
+      const last = g.view.history.at(-1);
+      if (last.player !== 0 || last.code.join() !== "0,1,2,3") return false;
+      return last.type === "wrong" ? g.view.phase === "round" && g.view.code === null && g.view.seats[0].wrong : g.view.phase === "show" && g.view.code.join() === "0,1,2,3" && g.view.seats[0].safe === 1;
+    }),
+  );
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 비밀 코드 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1965,6 +1998,7 @@ const PARTS = [
   [JANGGI_GAME, janggiGame],
   [DIVINE_GAME, divineGame],
   [FENCE_GAME, fenceGame],
+  [CODE_GAME, codeGame],
 ];
 
 async function main() {

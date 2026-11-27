@@ -20,6 +20,7 @@ import type { JanggiView } from "./games/card-janggi/rules";
 import type { LinkView } from "./games/color-link/rules";
 import type { DivineView } from "./games/divine-test/rules";
 import type { FenceView } from "./games/loop-fence/rules";
+import type { CodeView } from "./games/secret-code/rules";
 import type { GradView } from "./games/gradation/rules";
 import type { FlagsView } from "./games/flags-around-the-world/rules";
 import type { HiddenView } from "./games/hidden-word/rules";
@@ -227,4 +228,10 @@ export function divineWaits(view: Pick<DivineView, "you" | "phase" | "standings"
 export function fenceWaits(view: Pick<FenceView, "you" | "phase" | "standings">): boolean {
   if (view.you === null || view.phase !== "play") return false;
   return view.standings.some((each) => each.player === view.you && each.done === null && !each.left);
+}
+
+/** 비밀 코드: a round is played, and the player can still answer in it: neither safe nor wrong in this round. */
+export function codeWaits(view: Pick<CodeView, "you" | "phase" | "seats">): boolean {
+  if (view.you === null || view.phase !== "round") return false;
+  return view.seats.some((seat) => seat.player === view.you && seat.safe === null && !seat.wrong && !seat.left);
 }

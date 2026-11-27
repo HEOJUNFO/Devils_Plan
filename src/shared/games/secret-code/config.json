@@ -1,0 +1,12 @@
+{
+  "letters": 26,
+  "codeLength": 4,
+  "colors": [9, 7, 6, 4],
+  "suits": [9, 7, 6, 4],
+  "rounds": 3,
+  "roundSeconds": 240,
+  "showSeconds": 8,
+  "minConditions": 4,
+  "maxConditions": 6,
+  "maxPlayers": 6
+}
