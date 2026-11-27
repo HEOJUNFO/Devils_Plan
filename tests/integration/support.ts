@@ -39,6 +39,7 @@ export type OmokMessage = Extract<ServerMessage, { type: "game"; game: "point-go
 export type LinkMessage = Extract<ServerMessage, { type: "game"; game: "color-link" }>;
 export type JanggiMessage = Extract<ServerMessage, { type: "game"; game: "card-janggi" }>;
 export type DivineMessage = Extract<ServerMessage, { type: "game"; game: "divine-test" }>;
+export type FenceMessage = Extract<ServerMessage, { type: "game"; game: "loop-fence" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -314,6 +315,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "divine-test" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 울타리 치기 that satisfies `match`. */
+  async fenceWhere(match: (game: FenceMessage) => boolean = () => true): Promise<FenceMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "loop-fence" && match(message)) return message;
     }
   }
 

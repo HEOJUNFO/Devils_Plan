@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, divineWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, janggiWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, divineWaits, eqWaits, fenceWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, janggiWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -386,5 +386,25 @@ describe("divineWaits", () => {
 
   it("does not wait on someone watching", () => {
     expect(divineWaits(view({ you: null }))).toBe(false);
+  });
+});
+
+describe("fenceWaits", () => {
+  type View = Parameters<typeof fenceWaits>[0];
+  const at = (player: number, done: number | null = null, left = false): View["standings"][number] => ({ player, lines: 3, wrong: 0, done, left });
+  const view = (changes: Partial<View> = {}): View => ({ you: ME, phase: "play", standings: [at(ME), at(OTHER)], ...changes });
+
+  it("waits on every player whose fence has not passed", () => {
+    expect(fenceWaits(view())).toBe(true);
+    expect(fenceWaits(view({ standings: [at(ME), at(OTHER, 5000)] }))).toBe(true);
+  });
+
+  it("does not wait on a player whose fence has passed, nor once the game is over", () => {
+    expect(fenceWaits(view({ standings: [at(ME, 5000), at(OTHER)] }))).toBe(false);
+    expect(fenceWaits(view({ phase: "ended" }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(fenceWaits(view({ you: null }))).toBe(false);
   });
 });

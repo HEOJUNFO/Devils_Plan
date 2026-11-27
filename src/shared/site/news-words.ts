@@ -53,12 +53,17 @@ const OMOK = name("point-gomoku");
 const LINK = name("color-link");
 const JANGGI = name("card-janggi");
 const DIVINE = name("divine-test");
+const FENCE = name("loop-fence");
 
 /** The days, newest first. */
 export const NEWS: NewsDay[] = [
   {
     date: "2026-11-27",
     lines: [
+      {
+        ko: `새 게임 ${FENCE.ko}: 유배지의 네 번째 매치입니다. 두 명에서 여섯 명이 같은 문제를 각자 자기 판에서 풉니다. 점과 점을 이어 닫힌 고리 하나를 만들되, 칸의 숫자는 그 칸을 둘러싼 선의 수와 같아야 합니다. 다 그리면 버저를 눌러 확인받고, 먼저 통과한 순서대로 순위가 정해집니다. 틀린 버저 뒤에는 15초 동안 버저가 잠기고, 제한 시간은 20분입니다. 문제는 마흔여덟 개 가운데 하나가 나옵니다.`,
+        en: `New game, ${FENCE.en}: the fourth match of the place of exile. Two to six players each solve the same puzzle on a board of their own. Join the dots into one closed loop so that every number has that many lines round its square. Press the buzzer when you are done to have it checked; players are ranked in the order they pass. A wrong buzzer locks it for 15 seconds, and the time limit is 20 minutes. The puzzle is one of forty-eight.`,
+      },
       {
         ko: `새 게임 ${DIVINE.ko}: 유배지의 49 마방진입니다. 두 명에서 여섯 명이 각자 자기 판에서, 1부터 49까지의 타일을 7×7 판에 놓아 가로·세로·대각선의 합을 모두 175로 만듭니다. 1은 맨 윗줄 가운데에 놓여 있습니다. 올바르게 다 놓는 순간 통과하고, 먼저 통과한 순서대로 순위가 정해집니다. 방송의 1시간 대신 모두에게 같은 30분이 주어집니다.`,
         en: `New game, ${DIVINE.en}: the magic square of 49 from the place of exile. Two to six players, each on a board of their own, place the tiles 1 to 49 on a board of 7 by 7 so that every row, column and diagonal adds up to 175. The 1 is on the middle of the top row. You pass the moment your board is right, and players are ranked in the order they pass. In place of the show's hour, everyone has the same 30 minutes.`,

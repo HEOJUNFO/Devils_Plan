@@ -467,5 +467,20 @@
     "teamSize": 0,
     "turns": false,
     "variants": []
+  },
+  "loop-fence": {
+    "title": {
+      "ko": "울타리 치기",
+      "en": "Loop Fence Puzzle"
+    },
+    "summary": {
+      "ko": "점을 이어 숫자에 맞는 울타리 하나를 누가 먼저 완성하나.",
+      "en": "Race to join the dots into the one fence that fits the numbers."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 6,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
   }
 }

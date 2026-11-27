@@ -41,6 +41,7 @@ export const TOP_KIND: Record<GameId, TopKind> = {
   "color-link": "won",
   "card-janggi": "won",
   "divine-test": "first",
+  "loop-fence": "first",
 };
 
 /** A game played to its end: which game it was, by a key no other game has, and whether the player was at the top of it. */
@@ -147,6 +148,11 @@ function topOf(message: GameMessage): boolean | null {
     }
     case "divine-test": {
       // at the top is whoever passed first; where nobody passed, nobody is
+      const { you, places, passed } = message.view;
+      return you === null || places === null ? null : passed[0] === you;
+    }
+    case "loop-fence": {
+      // likewise: whoever's fence passed first
       const { you, places, passed } = message.view;
       return you === null || places === null ? null : passed[0] === you;
     }

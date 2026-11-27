@@ -148,15 +148,15 @@ describe("the meetings as they are set", () => {
 
   it("kept the game of every meeting through 8 December when the later games joined them, and gave those the days after it", () => {
     // Set on 2026-11-25, a Wednesday, again on the 26th and again on the 27th. Through Tuesday 8 December each
-    // day's meeting is for the game it was for before; the three games added on the 27th follow, and then the list goes round.
+    // day's meeting is for the game it was for before; the games added on the 27th follow, and then the list goes round.
     const game = (month: number, date: number): string | undefined => meetNear(Date.UTC(2026, month - 1, date, 12, 0), meetConfig)?.game;
 
     expect([24, 25, 26, 27].map((date) => game(11, date))).toEqual(["count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
     expect([28, 29, 30].map((date) => game(11, date))).toEqual(["piggy-bank", "gem-black-market", "auction-bingo"]);
     expect([1, 2, 3, 4].map((date) => game(12, date))).toEqual(["wall-go-2", "gradation", "equation-traffic-light", "hit-stay"]);
     expect([5, 6, 7, 8].map((date) => game(12, date))).toEqual(["flags-around-the-world", "hidden-word", "tower-of-equations", "point-gomoku"]);
-    expect([9, 10, 11, 12].map((date) => game(12, date))).toEqual(["color-link", "card-janggi", "divine-test", "mystery-stock-market"]);
-    expect([13, 14, 15, 16, 17, 18].map((date) => game(12, date))).toEqual(["russian-roulette", "under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
+    expect([9, 10, 11, 12].map((date) => game(12, date))).toEqual(["color-link", "card-janggi", "divine-test", "loop-fence"]);
+    expect([13, 14, 15, 16, 17, 18, 19].map((date) => game(12, date))).toEqual(["mystery-stock-market", "russian-roulette", "under-thirteen", "count-rectangles", "memory-poker", "count-cubes", "lay-the-grass"]);
   });
 
   it("are held at a time of day, every day", () => {

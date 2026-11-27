@@ -29,7 +29,9 @@
 // failed challenge, and two a room of 포인트 오목, who play its first round,
 // and two a room of 컬러 링크, who play its first round to a proof, and two
 // a room of 카드 장기, who lay their cards and make its first move, and two a
-// room of 신의 시험, one of whom lays a tile on a board the other is not shown.
+// room of 신의 시험, one of whom lays a tile on a board the other is not shown,
+// and two a room of 울타리 치기, one of whom draws a line and presses the
+// buzzer too soon.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -74,6 +76,7 @@ const OMOK_GAME = "point-gomoku";
 const LINK_GAME = "color-link";
 const JANGGI_GAME = "card-janggi";
 const DIVINE_GAME = "divine-test";
+const FENCE_GAME = "loop-fence";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1910,6 +1913,32 @@ async function divineGame() {
   for (const p of players) p.close();
 }
 
+/** 울타리 치기, in a room of its own: two players, off the list. One draws a line, which the other is not shown, and presses the buzzer with it. */
+async function fenceGame() {
+  const players = await roomOf(FENCE_GAME, 2, "fence");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("울타리 치기 to start", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "울타리 치기 starts with the same puzzle of seven squares by seven for both, nothing drawn, and twenty minutes",
+    games.every((g, n) => g.type === "game" && g.game === FENCE_GAME && g.view.you === n && g.view.phase === "play" && g.view.puzzle.width === 7 && g.view.puzzle.height === 7 && g.view.marks.length === 112 && g.view.marks.every((mark) => mark === 0) && g.view.answer === null) &&
+      JSON.stringify(games[0].view.puzzle) === JSON.stringify(games[1].view.puzzle) &&
+      games[0].rules.seconds === 1200,
+  );
+  players[0].send({ type: "action", action: { type: "mark", side: 999, to: 1 } });
+  const off = await players[0].until("the refusal", (m) => m.type === "refused");
+  check("a line cannot be drawn off the board", off.reason === "bad-side", off.reason);
+  players[0].send({ type: "action", action: { type: "mark", side: 0, to: 1 } });
+  const drawn = await Promise.all(players.map((p) => p.until("the line", (m) => m.type === "game" && m.view.standings[0].lines === 1)));
+  check("a line drawn is on its player's board, and the other player is shown only that one is drawn", drawn[0].view.marks[0] === 1 && drawn[1].view.marks[0] === 0);
+  players[0].send({ type: "action", action: { type: "buzz" } });
+  const wrong = await Promise.all(players.map((p) => p.until("the buzzer", (m) => m.type === "game" && m.view.standings[0].wrong === 1)));
+  check("a fence that is no loop is wrong, its player is told what was, and their buzzer is locked", wrong[0].view.fault === "not-loop" && wrong[0].clock.lock > 0 && wrong[1].view.fault === null && wrong[1].clock.lock === 0 && wrong[0].view.phase === "play");
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 울타리 치기 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1935,6 +1964,7 @@ const PARTS = [
   [LINK_GAME, linkGame],
   [JANGGI_GAME, janggiGame],
   [DIVINE_GAME, divineGame],
+  [FENCE_GAME, fenceGame],
 ];
 
 async function main() {
