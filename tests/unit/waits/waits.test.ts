@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bingoWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, janggiWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
+import { bingoWaits, divineWaits, eqWaits, flagsWaits, gemWaits, gradWaits, grassWaits, hiddenWaits, hitWaits, janggiWaits, linkWaits, omokWaits, piggyWaits, rectWaits, towerWaits, underWaits, wallWaits } from "../../../src/shared/waits";
 
 /** The player looking, and another. */
 const ME = 3;
@@ -366,5 +366,25 @@ describe("janggiWaits", () => {
   it("does not wait on someone watching", () => {
     expect(janggiWaits(view({ you: null }))).toBe(false);
     expect(janggiWaits(view({ you: null, phase: "arrange", hands: [hand(ME, false), hand(OTHER, false)] }))).toBe(false);
+  });
+});
+
+describe("divineWaits", () => {
+  type View = Parameters<typeof divineWaits>[0];
+  const at = (player: number, done: number | null = null, left = false): View["standings"][number] => ({ player, placed: 1, lines: 0, moves: 0, done, left });
+  const view = (changes: Partial<View> = {}): View => ({ you: ME, phase: "play", standings: [at(ME), at(OTHER)], ...changes });
+
+  it("waits on every player whose board has not passed", () => {
+    expect(divineWaits(view())).toBe(true);
+    expect(divineWaits(view({ standings: [at(ME), at(OTHER, 5000)] }))).toBe(true);
+  });
+
+  it("does not wait on a player whose board has passed, nor once the game is over", () => {
+    expect(divineWaits(view({ standings: [at(ME, 5000), at(OTHER)] }))).toBe(false);
+    expect(divineWaits(view({ phase: "ended" }))).toBe(false);
+  });
+
+  it("does not wait on someone watching", () => {
+    expect(divineWaits(view({ you: null }))).toBe(false);
   });
 });

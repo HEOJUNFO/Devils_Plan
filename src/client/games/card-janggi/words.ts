@@ -344,8 +344,8 @@ const en: typeof ko = {
     clear: "Clear",
     resign: keyed("X", "Resign"),
     resignSure: "Confirm resign",
-    again: keyed("Enter", "New game"),
-    lobby: keyed("Esc", "To the lobby"),
+    again: keyed("Enter", "Again"),
+    lobby: keyed("Esc", "to room"),
   },
   log: {
     round: (round, who) => `Round ${round} · ${who} first`,
@@ -366,8 +366,8 @@ const en: typeof ko = {
     nobody: "No winner",
     winner: (who) => `${who} wins`,
     how: (mine, theirs, round) => `${mine} : ${theirs} · over in Round ${round}`,
-    hostNext: "Play again with the same player, or to the lobby",
-    waitHost: "Waiting for the host · say so with 'One more'",
+    hostNext: "Play again, or go back to the room",
+    waitHost: "Waiting for the host · \"Again\" to ask",
     waitHostOut: "Waiting for the host to start a new game",
   },
   help: (n) => [

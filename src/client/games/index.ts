@@ -16,6 +16,8 @@ import { WORDS as OMOK_WORDS } from "./point-gomoku/words";
 import { createJanggiScreen } from "./card-janggi/screen";
 import { WORDS as JANGGI_WORDS } from "./card-janggi/words";
 import { createLinkScreen } from "./color-link/screen";
+import { createDivineScreen } from "./divine-test/screen";
+import { WORDS as DIVINE_WORDS } from "./divine-test/words";
 import { WORDS as LINK_WORDS } from "./color-link/words";
 import { createLobbyScene } from "../lobby-scene";
 import type { RulesSheet } from "../sheet";
@@ -432,5 +434,18 @@ export const CLIENTS: Record<GameId, GameClient> = {
     },
     scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
     sheet: JANGGI_WORDS.sheet,
+  },
+  "divine-test": {
+    screen(canvas, handlers) {
+      const screen = createDivineScreen(canvas, handlers);
+      return {
+        ...screen,
+        update(message) {
+          if (message.game === "divine-test") screen.update(message);
+        },
+      };
+    },
+    scene: (canvas, voice) => createLobbyScene(canvas, voice, { device: false }),
+    sheet: DIVINE_WORDS.sheet,
   },
 };

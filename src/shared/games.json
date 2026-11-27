@@ -429,8 +429,8 @@
       "en": "Color Link"
     },
     "summary": {
-      "ko": "같은 색 말을 길로 이을 수 있게 놓고, 못 잇겠다 싶으면 선언. 증명에 3점이 걸린 결승의 게임.",
-      "en": "Place pieces so each color can be linked. Call it impossible, or prove it. First to 3."
+      "ko": "같은 색 말을 길로 이을 수 있게 놓기. 못 잇는다고 선언하면 증명 대결. 3점 선승.",
+      "en": "Place pieces so each color can link. Call it impossible or prove it."
     },
     "minPlayers": 2,
     "maxPlayers": 2,
@@ -444,11 +444,26 @@
       "en": "Card Janggi"
     },
     "summary": {
-      "ko": "행마 카드 다섯 장을 쓸 순서대로 엎어 두고, 앞면인 카드대로 말을 옮기는 결승의 게임. 3판 2선승.",
-      "en": "Arrange five movement cards face down, then move by the card face up. Best of three."
+      "ko": "행마 카드 다섯 장을 쓸 순서대로 엎어 두고, 앞면인 카드대로 말을 옮깁니다. 2선승.",
+      "en": "Order five movement cards in secret; each moves a piece. Best of 3."
     },
     "minPlayers": 2,
     "maxPlayers": 2,
+    "teamSize": 0,
+    "turns": false,
+    "variants": []
+  },
+  "divine-test": {
+    "title": {
+      "ko": "신의 시험",
+      "en": "The Divine Test"
+    },
+    "summary": {
+      "ko": "1부터 49까지의 타일로 7×7 마방진을 누가 먼저 완성하나. 모든 줄의 합은 175.",
+      "en": "First to finish a 7×7 magic square of the tiles 1 to 49 wins."
+    },
+    "minPlayers": 2,
+    "maxPlayers": 6,
     "teamSize": 0,
     "turns": false,
     "variants": []

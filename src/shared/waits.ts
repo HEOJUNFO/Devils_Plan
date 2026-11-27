@@ -18,6 +18,7 @@ import type { EqView } from "./games/equation-traffic-light/rules";
 import type { GemView } from "./games/gem-black-market/rules";
 import type { JanggiView } from "./games/card-janggi/rules";
 import type { LinkView } from "./games/color-link/rules";
+import type { DivineView } from "./games/divine-test/rules";
 import type { GradView } from "./games/gradation/rules";
 import type { FlagsView } from "./games/flags-around-the-world/rules";
 import type { HiddenView } from "./games/hidden-word/rules";
@@ -213,4 +214,10 @@ export function janggiWaits(view: Pick<JanggiView, "you" | "phase" | "hands" | "
   if (view.phase === "arrange") return view.hands.some((hand) => hand.player === view.you && !hand.ready);
   if (view.phase === "rearrange") return view.arranger === view.you;
   return (view.phase === "move" || view.phase === "proxy") && view.mover === view.you;
+}
+
+/** 신의 시험: the game is played, and the player's own board has not passed. */
+export function divineWaits(view: Pick<DivineView, "you" | "phase" | "standings">): boolean {
+  if (view.you === null || view.phase !== "play") return false;
+  return view.standings.some((each) => each.player === view.you && each.done === null && !each.left);
 }

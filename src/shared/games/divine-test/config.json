@@ -1,0 +1,6 @@
+{
+  "size": 7,
+  "fixed": [{ "tile": 1, "cell": 3 }],
+  "seconds": 1800,
+  "maxPlayers": 6
+}

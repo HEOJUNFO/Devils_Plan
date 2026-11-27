@@ -28,7 +28,8 @@
 // two a room of 수식의 탑 on the show's towers, who play its first round to a
 // failed challenge, and two a room of 포인트 오목, who play its first round,
 // and two a room of 컬러 링크, who play its first round to a proof, and two
-// a room of 카드 장기, who lay their cards and make its first move.
+// a room of 카드 장기, who lay their cards and make its first move, and two a
+// room of 신의 시험, one of whom lays a tile on a board the other is not shown.
 // It observes and reports; it changes nothing but the rooms it makes, which
 // it leaves. The second game shows each answer for a few seconds, the fifth
 // lays its board open for half a minute before anything can be chosen, and
@@ -72,6 +73,7 @@ const TOWER_GAME = "tower-of-equations";
 const OMOK_GAME = "point-gomoku";
 const LINK_GAME = "color-link";
 const JANGGI_GAME = "card-janggi";
+const DIVINE_GAME = "divine-test";
 /** The third game's tiles as its rules have them: the check lays them as a player would, by looking at the park. */
 const TILES = JSON.parse(readFileSync(new URL("../src/shared/games/lay-the-grass/tiles.json", import.meta.url), "utf8"));
 /** For each of the third game's choices 6 to 8, the kinds of option a card drawn for it may have, as its config has them. */
@@ -1882,6 +1884,32 @@ async function janggiGame() {
   for (const p of players) p.close();
 }
 
+/** 신의 시험, in a room of its own: two players, off the list. One lays a tile, which is on their own board and not on the other's. */
+async function divineGame() {
+  const players = await roomOf(DIVINE_GAME, 2, "divine");
+  players[0].send({ type: "start", bots: false });
+  const games = await Promise.all(players.map((p) => p.until("신의 시험 to start", (m) => m.type === "game" || m.type === "refused")));
+  check(
+    "신의 시험 starts with a board of seven squares by seven for each, the 1 on the middle of the top row, and half an hour",
+    games.every((g, n) => g.type === "game" && g.game === DIVINE_GAME && g.view.you === n && g.view.phase === "play" && g.view.cells.length === 49 && g.view.cells[3] === 1 && g.view.cells.filter((tile) => tile !== 0).length === 1) &&
+      games[0].rules.size === 7 &&
+      games[0].rules.seconds === 1800,
+  );
+  players[0].send({ type: "action", action: { type: "put", tile: 1, cell: 10 } });
+  const fixed = await players[0].until("the refusal", (m) => m.type === "refused");
+  check("the 1 cannot be moved", fixed.reason === "bad-tile", fixed.reason);
+  players[0].send({ type: "action", action: { type: "put", tile: 30, cell: 0 } });
+  const laid = await Promise.all(players.map((p) => p.until("the tile", (m) => m.type === "game" && m.view.standings[0].placed === 2)));
+  check("a tile laid is on its player's board, and the other player is shown only that one more is laid", laid[0].view.cells[0] === 30 && laid[1].view.cells[0] === 0 && laid[1].view.standings[0].moves === 1);
+  players[0].send({ type: "action", action: { type: "take", cell: 0 } });
+  const taken = await players[0].until("the tile taken back", (m) => m.type === "game" && m.view.standings[0].placed === 1);
+  check("a tile can be taken back", taken.view.cells[0] === 0 && taken.view.phase === "play");
+  const sentAll = players.flatMap((p) => p.messages).map((m) => JSON.stringify(m)).join("\n");
+  check("no token is sent in 신의 시험 either", !sentAll.includes("smoke-check-token"));
+  for (const p of players) p.send({ type: "leave" });
+  for (const p of players) p.close();
+}
+
 /** The parts of the check, each by the game it plays, in the order they run. */
 const PARTS = [
   [GAME, firstGame],
@@ -1906,6 +1934,7 @@ const PARTS = [
   [OMOK_GAME, omokGame],
   [LINK_GAME, linkGame],
   [JANGGI_GAME, janggiGame],
+  [DIVINE_GAME, divineGame],
 ];
 
 async function main() {

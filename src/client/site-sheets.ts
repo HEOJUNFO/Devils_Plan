@@ -22,6 +22,7 @@ import { SHEETS as TOWER_OF_EQUATIONS } from "./games/tower-of-equations/words";
 import { SHEETS as POINT_GOMOKU } from "./games/point-gomoku/words";
 import { SHEETS as CARD_JANGGI } from "./games/card-janggi/words";
 import { SHEETS as COLOR_LINK } from "./games/color-link/words";
+import { SHEETS as DIVINE_TEST } from "./games/divine-test/words";
 import { SHEETS as COUNT_CUBES } from "./games/count-cubes/words";
 import { SHEETS as COUNT_RECTANGLES } from "./games/count-rectangles/words";
 import { SHEETS as LAY_THE_GRASS } from "./games/lay-the-grass/words";
@@ -54,4 +55,5 @@ export const SITE_SHEETS: Record<GameId, Record<Lang, RulesSheet>> = {
   "point-gomoku": POINT_GOMOKU,
   "color-link": COLOR_LINK,
   "card-janggi": CARD_JANGGI,
+  "divine-test": DIVINE_TEST,
 };

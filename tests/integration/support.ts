@@ -38,6 +38,7 @@ export type TowerMessage = Extract<ServerMessage, { type: "game"; game: "tower-o
 export type OmokMessage = Extract<ServerMessage, { type: "game"; game: "point-gomoku" }>;
 export type LinkMessage = Extract<ServerMessage, { type: "game"; game: "color-link" }>;
 export type JanggiMessage = Extract<ServerMessage, { type: "game"; game: "card-janggi" }>;
+export type DivineMessage = Extract<ServerMessage, { type: "game"; game: "divine-test" }>;
 
 /** A well-formed token that is different for each `n`. */
 export function tokenFor(n: number): string {
@@ -305,6 +306,14 @@ export class TestClient extends Inbox<ServerMessage> {
     for (;;) {
       const message = await this.nextOf("game");
       if (message.game === "card-janggi" && match(message)) return message;
+    }
+  }
+
+  /** Reads forward to the first message about a game of 신의 시험 that satisfies `match`. */
+  async divineWhere(match: (game: DivineMessage) => boolean = () => true): Promise<DivineMessage> {
+    for (;;) {
+      const message = await this.nextOf("game");
+      if (message.game === "divine-test" && match(message)) return message;
     }
   }
 

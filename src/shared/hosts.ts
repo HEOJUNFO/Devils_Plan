@@ -14,6 +14,7 @@ import { towerHost } from "./games/tower-of-equations/host";
 import { omokHost } from "./games/point-gomoku/host";
 import { janggiHost } from "./games/card-janggi/host";
 import { linkHost } from "./games/color-link/host";
+import { divineHost } from "./games/divine-test/host";
 import { cubesHost } from "./games/count-cubes/host";
 import { gemHost } from "./games/gem-black-market/host";
 import { rectanglesHost } from "./games/count-rectangles/host";
@@ -50,4 +51,5 @@ export const HOSTS: Record<GameId, GameHost<any>> = {
   "point-gomoku": omokHost,
   "color-link": linkHost,
   "card-janggi": janggiHost,
+  "divine-test": divineHost,
 };

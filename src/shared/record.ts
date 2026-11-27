@@ -40,6 +40,7 @@ export const TOP_KIND: Record<GameId, TopKind> = {
   "point-gomoku": "won",
   "color-link": "won",
   "card-janggi": "won",
+  "divine-test": "first",
 };
 
 /** A game played to its end: which game it was, by a key no other game has, and whether the player was at the top of it. */
@@ -143,6 +144,11 @@ function topOf(message: GameMessage): boolean | null {
     case "color-link": {
       const { you, places, winner } = message.view;
       return you === null || places === null ? null : winner === you;
+    }
+    case "divine-test": {
+      // at the top is whoever passed first; where nobody passed, nobody is
+      const { you, places, passed } = message.view;
+      return you === null || places === null ? null : passed[0] === you;
     }
     case "card-janggi": {
       // a game that ends with a win each and a round nobody's is played to its end and is nobody's win
