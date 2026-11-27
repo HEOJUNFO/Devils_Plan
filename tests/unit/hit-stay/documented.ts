@@ -5,8 +5,9 @@
  * fold, every hit and stay, the totals said at a showdown, and the chips
  * after each round as worked out from those. The tests play it again.
  *
- * The captions have no cards but a few, so a hand is not here: only the
- * total a player showed, where it was said.
+ * The captions have no cards but a few, so the rounds have only the total a
+ * player showed. The wiki's tables of the first ten rounds (its page of
+ * 2026-11-27) have the cards: the hands of five showdowns are below.
  */
 
 /** One seven, two sixes, three fives, four fours, five threes, six twos, seven ones and seven negative ones: 35 cards. */
@@ -65,9 +66,9 @@ export interface ShowRound {
  * out only with it.
  */
 export const SHOW_ROUNDS: ShowRound[] = [
-  { first: 1, limit: 8, bet1: "1b3 2f 3f 4c 5b10 1b40 4f 5b44 1c", hits: "1h 5s 1h 1h 1h 1s", bet2: "", totals: { 1: 7, 5: 8 }, pot: 96, chips: [0, 39, 43, 40, 99] },
+  { first: 1, limit: 8, bet1: "1b3 2f 3f 4c 5b10 1b40 4f 5b44 1c", hits: "1h 5s 1h 1h 1h 1s", bet2: "", totals: { 1: 19, 5: 8 }, pot: 96, chips: [0, 39, 43, 40, 99] },
   { first: 2, limit: 9, bet1: "2b2 3c 4b30 5f 2f 3f", hits: "", bet2: "", pot: 38, chips: [0, 36, 40, 47, 98] },
-  { first: 3, limit: 11, bet1: "3b1 4f 5c 2c", hits: "3h 5h 2h 3s 5s 2h 2h 2s", bet2: "3b6 5c 2f", totals: { 3: 14, 5: 10 }, pot: 19, chips: [0, 34, 32, 46, 109] },
+  { first: 3, limit: 11, bet1: "3b1 4f 5c 2c", hits: "3h 5h 2h 3s 5s 2h 2h 2h 2s", bet2: "3b6 5c 2f", totals: { 3: 14, 5: 10 }, pot: 19, chips: [0, 34, 32, 46, 109] },
   { first: 4, limit: 9, bet1: "4f 5b5 2f 3f", hits: "", bet2: "", pot: 9, chips: [0, 33, 31, 45, 112] },
   { first: 5, limit: 9, bet1: "5b1 2c 3c 4c", hits: "5h 2h 3h 4h 5h 2h 3s 4s 5h 2s 5h 5s", bet2: "5f 2f 3b1 4b10 3c", totals: { 3: 8, 4: 8 }, pot: 28, chips: [0, 31, 33, 47, 110] },
   { first: 2, limit: 11, bet1: "2b5 3f 4c 5f", hits: "2s 4h 4h 4h 4s", bet2: "2b25 4f", pot: 39, chips: [0, 39, 32, 41, 109] },
@@ -90,6 +91,20 @@ export const SHOW_ROUNDS: ShowRound[] = [
   { first: 5, limit: 9, bet1: "5b1 3b10 5c", hits: "5h 3h 5s 3s", bet2: "5b1 3b15 5f", pot: 42, chips: [0, 0, 88, 0, 133] },
   { first: 3, limit: 9, bet1: "3b1 5b9 3b21 5c", hits: "3s 5s", bet2: "3b5 5b64 3c", totals: { 3: 8, 5: 9 }, pot: 176, chips: [0, 0, 0, 0, 221] },
 ];
+
+/**
+ * The hands of the showdowns the wiki's tables have cards for, by round and
+ * seat: the three dealt, then the additional cards in the order taken.
+ */
+export const SHOW_HANDS: Record<number, Record<number, number[]>> = {
+  1: { 1: [-1, 3, 1, 6, 2, 3, 5], 5: [-1, 5, 4] },
+  3: { 3: [1, 3, 3, 7], 5: [-1, 5, 3, 3] },
+  5: { 3: [5, 1, 1, 1], 4: [2, -1, 3, 4] },
+  7: { 4: [4, 5, 4, 2], 5: [5, -1, 5, -1, 3] },
+  10: { 2: [1, 3, 3, 2, 1], 3: [6, 5, -1, 2] },
+};
+/** Who the wiki's tables name the winner of each of those: both, where the round was tied. */
+export const SHOW_HANDS_WON: Record<number, number[]> = { 1: [5], 3: [5], 5: [3, 4], 7: [5], 10: [3] };
 
 /** The rounds the basic bet was two chips from, and three. */
 export const SHOW_BASIC_BET = { 11: 2, 21: 3 };

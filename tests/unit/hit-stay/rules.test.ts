@@ -23,7 +23,7 @@ import {
   type HitConfig,
   type HitState,
 } from "../../../src/shared/games/hit-stay/rules";
-import { BASIC_BET, BASIC_BET_EVERY, CARDS, DEALT, DECK, LIMITS, SHOW_BASIC_BET, SHOW_CHIPS, SHOW_OUT, SHOW_ROUNDS, START_CHIPS } from "./documented";
+import { BASIC_BET, BASIC_BET_EVERY, CARDS, DEALT, DECK, LIMITS, SHOW_BASIC_BET, SHOW_CHIPS, SHOW_HANDS, SHOW_HANDS_WON, SHOW_OUT, SHOW_ROUNDS, START_CHIPS } from "./documented";
 
 const config: HitConfig = configJson;
 const T0 = 1_000_000;
@@ -464,6 +464,20 @@ describe("the show's game of HIT, STAY, played again", () => {
       { player: 2, place: 4 },
       { player: 1, place: 5 },
     ]);
+  });
+
+  it("had the showdowns the wiki has cards for won by whom it says, the totals those of the rounds above", () => {
+    for (const [number, hands] of Object.entries(SHOW_HANDS)) {
+      const round = SHOW_ROUNDS[Number(number) - 1];
+      const shown = Object.entries(hands).map(([seat, cards]) => ({ player: Number(seat), total: totalOf(cards), cards: cards.length }));
+      for (const cards of Object.values(hands)) {
+        for (const [value, copies] of DECK) expect(cards.filter((card) => card === value).length).toBeLessThanOrEqual(copies);
+        expect(cards.every((card) => DECK.some(([value]) => value === card))).toBe(true);
+      }
+
+      expect(Object.fromEntries(shown.map((hand) => [hand.player, hand.total]))).toEqual(round.totals);
+      expect([number, judge(shown, round.limit).winners]).toEqual([number, SHOW_HANDS_WON[Number(number)]]);
+    }
   });
 
   it("had a tied round split evenly, and a round of equal totals won with more cards", () => {

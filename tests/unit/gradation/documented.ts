@@ -1,8 +1,10 @@
 /**
  * What the show says of 그라데이션 (design/games/gradation.md): its dealer's
  * explanation in the thirteenth episode, and the three matches its players
- * played, as the dealer read the numbers out. The tests hold the game's
- * numbers and its order of play to these.
+ * played, as the dealer read the numbers out. The cups of the first two
+ * matches are also in the wiki's tables of them (its page of 2026-11-27),
+ * which name the cup of every round. The tests hold the game's numbers and
+ * its order of play to these.
  */
 
 /** Seven cube cups, darker at both ends and lighter toward the middle: black, dark gray, light gray, white. */
@@ -22,7 +24,7 @@ export const ARRANGE_SECONDS = 150;
 /** Two consecutive wins end the game. */
 export const WINS_IN_A_ROW = 2;
 
-/** One cup of a round: the number in it, and the cup's shade where a caption names it (0 black to 3 white). */
+/** One cup of a round: the number in it, and the cup's shade where a caption or the wiki's table names it (0 black to 3 white). */
 export type ShowCup = [value: number, shade?: number];
 
 /** One round of a match: who was the first player, and the cup each of the match's two submitted, in the order of `players`. */
@@ -48,18 +50,18 @@ export interface ShowMatch {
 export const SHOW: ShowMatch[] = [
   {
     players: [0, 1],
-    // the first's third cup is in no caption: one of 1 to 4
+    // the first's third cup is in no caption and was not submitted: the wiki's table has 4 in it
     cups: [
-      [0, 0, 3, 5, 6, 7, 8],
+      [0, 0, 4, 5, 6, 7, 8],
       [0, 0, 1, 6, 7, 7, 9],
     ],
     rounds: [
-      { first: 0, cups: [[6], [9]], winner: 1 },
-      { first: 1, cups: [[7], [7]], winner: null },
-      { first: 1, cups: [[8], [7]], winner: 0 },
-      { first: 0, cups: [[0, 1], [0]], winner: null },
-      { first: 0, cups: [[0, 0], [1]], winner: 1 },
-      { first: 1, cups: [[5], [6]], winner: 1 },
+      { first: 0, cups: [[6, 2], [9, 0]], winner: 1 },
+      { first: 1, cups: [[7, 1], [7, 2]], winner: null },
+      { first: 1, cups: [[8, 0], [7, 1]], winner: 0 },
+      { first: 0, cups: [[0, 1], [0, 0]], winner: null },
+      { first: 0, cups: [[0, 0], [1, 2]], winner: 1 },
+      { first: 1, cups: [[5, 3], [6, 3]], winner: 1 },
     ],
     score: [1, 3],
     winner: 1,
@@ -71,13 +73,13 @@ export const SHOW: ShowMatch[] = [
       [0, 1, 2, 2, 8, 8, 9],
     ],
     rounds: [
-      { first: 1, cups: [[0, 0], [1]], winner: 2 },
-      { first: 2, cups: [[8], [2]], winner: 1 },
-      { first: 1, cups: [[1], [2]], winner: 2 },
-      { first: 2, cups: [[0], [9]], winner: 2 },
-      { first: 2, cups: [[6], [0]], winner: 1 },
-      { first: 1, cups: [[9], [8]], winner: 1 },
-      { first: 1, cups: [[6], [8]], winner: 2 },
+      { first: 1, cups: [[0, 0], [1, 1]], winner: 2 },
+      { first: 2, cups: [[8, 1], [2, 2]], winner: 1 },
+      { first: 1, cups: [[1, 2], [2, 3]], winner: 2 },
+      { first: 2, cups: [[0, 1], [9, 0]], winner: 2 },
+      { first: 2, cups: [[6, 3], [0, 0]], winner: 1 },
+      { first: 1, cups: [[9, 0], [8, 1]], winner: 1 },
+      { first: 1, cups: [[6, 2], [8, 2]], winner: 2 },
     ],
     score: [3, 4],
     winner: 2,

@@ -22,7 +22,7 @@ import {
   type EqConfig,
   type EqState,
 } from "../../../src/shared/games/equation-traffic-light/rules";
-import { CELLS, CREATE_SECONDS, GUESS_SECONDS, SHOW_EQUATIONS, SHOW_FIRST_ANSWERS, SYMBOLS, WIKI_CLUE_EXAMPLES } from "./documented";
+import { CELLS, CREATE_SECONDS, GUESS_SECONDS, SHOW_EQUATIONS, SHOW_FIRST_ANSWERS, SHOW_LATER_ANSWERS, SYMBOLS, WIKI_CLUE_EXAMPLES } from "./documented";
 
 const config: EqConfig = configJson;
 const T0 = 1_000_000;
@@ -184,6 +184,14 @@ describe("the colour clues of 수식 신호등", () => {
     for (const { secret, answer, clues } of SHOW_FIRST_ANSWERS) {
       expect(checkAnswer(answer, config)).toBeNull();
       expect(checkEquation(answer, config)).not.toBeNull();
+      expect(cluesOf(secret, answer)).toBe(clues);
+    }
+  });
+
+  it("are those the wiki's table gives every later answer of the show's game", () => {
+    for (const { secret, answer, clues } of SHOW_LATER_ANSWERS) {
+      expect(SHOW_EQUATIONS).toContain(secret);
+      expect(checkAnswer(answer, config)).toBeNull();
       expect(cluesOf(secret, answer)).toBe(clues);
     }
   });

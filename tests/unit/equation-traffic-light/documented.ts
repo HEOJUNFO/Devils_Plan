@@ -14,20 +14,35 @@ export const GUESS_SECONDS = 150;
 export const SYMBOLS = "0123456789+-×÷=^";
 
 /**
- * The two equations of the show. The first was said aloud by those watching
- * ("91 times 9 to the power of 0"); the second is put together from what its
- * guesser said on the last turn, and no caption has it whole.
+ * The two equations of the show, the winner's first: as the wiki's table of
+ * the game gives them (its page of 2026-11-27). The first was also said aloud
+ * by those watching ("91 times 9 to the power of 0"). The second has an
+ * expression on the right of its equals symbol and a number on the left.
  */
-export const SHOW_EQUATIONS = ["91×9^0=91", "2^5+15=47"];
+export const SHOW_EQUATIONS = ["91×9^0=91", "47=2^5+15"];
 
 /**
- * The first answers of the show (the wiki's table), each with the equation it
- * was an answer to and its clues as worked out from that equation by hand:
- * neither is an equation, and one has four symbols side by side.
+ * The first answers of the show, each with the equation it was an answer to
+ * and the clues the wiki's table gives it: neither is an equation, and one
+ * has four symbols side by side.
  */
 export const SHOW_FIRST_ANSWERS = [
-  { secret: "2^5+15=47", answer: "0×+-÷12^3", clues: "rryrryyyr" },
+  { secret: "47=2^5+15", answer: "0×+-÷12^3", clues: "rryrryyyr" },
   { secret: "91×9^0=91", answer: "34=5×6+78", clues: "rryryrrrr" },
+];
+
+/**
+ * The second, third and fourth answers of the show with the clues the same
+ * table gives them, the winner's first in each turn. The fourth turn ended
+ * the game: one answer was the equation, the other had three cells wrong.
+ */
+export const SHOW_LATER_ANSWERS = [
+  { secret: "47=2^5+15", answer: "4^5+78+96", clues: "gyyryrgrr" },
+  { secret: "91×9^0=91", answer: "9^21÷-=20", clues: "gyryrrgry" },
+  { secret: "47=2^5+15", answer: "11^2=5+77", clues: "yrygyggyr" },
+  { secret: "91×9^0=91", answer: "9^1×10=91", clues: "gyyyrgggg" },
+  { secret: "47=2^5+15", answer: "47=2^5+15", clues: "ggggggggg" },
+  { secret: "91×9^0=91", answer: "91^1×0=91", clues: "ggyrygggg" },
 ];
 
 /**
